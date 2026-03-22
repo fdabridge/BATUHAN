@@ -9,8 +9,8 @@ __pycache__/
 *.pyd
 .Python
 
-# Storage — generated job files, uploaded documents
-storage/
+# Storage — generated job files, uploaded documents (top-level only, not the backend/storage module)
+/storage/
 
 # Virtual environments
 venv/
