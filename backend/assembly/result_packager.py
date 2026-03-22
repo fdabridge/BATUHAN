@@ -17,12 +17,12 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
-from backend.schemas.models import (
+from schemas.models import (
     ValidatedReport, CorrectionLog, JobResult,
     ISOStandard, AuditStage,
 )
-from backend.assembly.docx_builder import assemble_docx
-from backend.storage.file_store import save_text_artifact, save_binary_artifact, _subdir
+from assembly.docx_builder import assemble_docx
+from storage.file_store import save_text_artifact, save_binary_artifact, _subdir
 
 logger = logging.getLogger(__name__)
 

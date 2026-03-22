@@ -9,13 +9,13 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 from docx import Document
 
-from backend.schemas.models import (
+from schemas.models import (
     ISOStandard, AuditStage, ParsedDocument,
     TemplateMap, TemplateSection, StyleGuidance, CorrectionLog,
 )
-from backend.pipeline.step_a.orchestrator import run_step_a
-from backend.pipeline.step_b.orchestrator import run_step_b
-from backend.pipeline.step_c.orchestrator import run_step_c
+from pipeline.step_a.orchestrator import run_step_a
+from pipeline.step_b.orchestrator import run_step_b
+from pipeline.step_c.orchestrator import run_step_c
 
 
 # ---------------------------------------------------------------------------
@@ -129,7 +129,7 @@ def _make_corpus(tmp_path: Path) -> list[ParsedDocument]:
 
 
 def _make_template_map(tmp_path: Path) -> TemplateMap:
-    from backend.parsers.template_parser import parse_template
+    from parsers.template_parser import parse_template
     p = tmp_path / "template.docx"
     _make_template_docx(p)
     return parse_template(str(p))

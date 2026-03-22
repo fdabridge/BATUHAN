@@ -9,13 +9,13 @@ import json
 from pathlib import Path
 from docx import Document
 
-from backend.schemas.models import (
+from schemas.models import (
     ISOStandard, AuditStage,
     ValidatedReport, ReportSection,
     CorrectionLog, CorrectionEntry,
 )
-from backend.assembly.docx_builder import assemble_docx, _norm
-from backend.assembly.result_packager import _format_correction_log_txt
+from assembly.docx_builder import assemble_docx, _norm
+from assembly.result_packager import _format_correction_log_txt
 
 
 # ---------------------------------------------------------------------------
@@ -181,8 +181,8 @@ def test_package_results_creates_all_artifacts(tmp_path):
     summary_output = str(artifacts_dir / "job_summary.json")
 
     # Call assemble_docx and format functions directly (bypassing storage singleton)
-    from backend.assembly.docx_builder import assemble_docx
-    from backend.assembly.result_packager import _format_correction_log_txt, _build_summary
+    from assembly.docx_builder import assemble_docx
+    from assembly.result_packager import _format_correction_log_txt, _build_summary
 
     final_docx_path = assemble_docx(template_path, report, docx_output)
     correction_log_txt = _format_correction_log_txt(report.correction_log)
@@ -214,8 +214,8 @@ def test_package_results_summary_json_written(tmp_path):
     correction_log_output = str(artifacts_dir / "correction_log.txt")
     summary_output = str(artifacts_dir / "job_summary.json")
 
-    from backend.assembly.docx_builder import assemble_docx
-    from backend.assembly.result_packager import _format_correction_log_txt, _build_summary
+    from assembly.docx_builder import assemble_docx
+    from assembly.result_packager import _format_correction_log_txt, _build_summary
 
     final_docx_path = assemble_docx(template_path, report, docx_output)
     correction_log_txt = _format_correction_log_txt(report.correction_log)

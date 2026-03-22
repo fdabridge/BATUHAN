@@ -5,20 +5,20 @@ without any real API calls.
 """
 
 import pytest
-from backend.schemas.models import (
+from schemas.models import (
     ISOStandard, AuditStage,
     TemplateSection, TemplateMap, StyleGuidance,
     GeneratedReport, ReportSection,
     ValidatedReport, CorrectionLog, CorrectionEntry,
 )
-from backend.pipeline.step_c.pre_validator import (
+from pipeline.step_c.pre_validator import (
     run_pre_validation, format_issues_for_prompt,
     format_report_for_prompt, PreValidationIssue,
 )
-from backend.pipeline.step_c.response_parser import (
+from pipeline.step_c.response_parser import (
     parse_validation_output, _split_top_level, _parse_corrections,
 )
-from backend.pipeline.step_c.post_validator import (
+from pipeline.step_c.post_validator import (
     run_post_validation, PostValidationError,
 )
 

@@ -20,8 +20,8 @@ import re
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 
-from backend.schemas.models import ValidatedReport, StyleGuidance
-from backend.storage.file_store import save_text_artifact
+from schemas.models import ValidatedReport, StyleGuidance
+from storage.file_store import save_text_artifact
 
 logger = logging.getLogger(__name__)
 

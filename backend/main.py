@@ -8,9 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import logging
 
-from backend.config.settings import get_settings
-from backend.api.routes import jobs
-from backend.ui import router as ui_router
+from config.settings import get_settings
+from api.routes import jobs
+from ui import router as ui_router
 
 settings = get_settings()
 
@@ -78,7 +78,7 @@ def health_detailed():
     stuck jobs. Returns 200 if healthy, 503 if any critical check fails.
     """
     from fastapi.responses import JSONResponse
-    from backend.monitoring.health_checker import run_health_checks
+    from monitoring.health_checker import run_health_checks
     report = run_health_checks()
     status_code = 200 if report["healthy"] else 503
     return JSONResponse(content=report, status_code=status_code)

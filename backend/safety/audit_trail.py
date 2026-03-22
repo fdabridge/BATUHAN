@@ -19,8 +19,8 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
-from backend.config.settings import get_settings
-from backend.storage.file_store import (
+from config.settings import get_settings
+from storage.file_store import (
     save_text_artifact, read_text_artifact, list_files,
 )
 

@@ -5,7 +5,7 @@ injected into Prompt B before sending to Claude.
 """
 
 from __future__ import annotations
-from backend.schemas.models import ISOStandard, AuditStage, StyleGuidance, TemplateMap
+from schemas.models import ISOStandard, AuditStage, StyleGuidance, TemplateMap
 
 # ---------------------------------------------------------------------------
 # T16 — Stage-Specific Instructions
@@ -134,8 +134,8 @@ def build_prompt_b_context(
         {standard}, {stage}, {stage_instructions}, {standard_instructions},
         {template_sections}, {extracted_evidence}, {style_guidance}
     """
-    from backend.parsers.template_parser import format_sections_for_prompt
-    from backend.parsers.style_extractor import format_style_guidance_for_prompt
+    from parsers.template_parser import format_sections_for_prompt
+    from parsers.style_extractor import format_style_guidance_for_prompt
 
     return {
         "standard": standard.value,

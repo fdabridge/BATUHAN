@@ -8,7 +8,7 @@ Only the validated ExtractedEvidence object proceeds to the next step.
 from __future__ import annotations
 import re
 import logging
-from backend.schemas.models import ExtractedEvidence, EvidenceItem, ParsedDocument
+from schemas.models import ExtractedEvidence, EvidenceItem, ParsedDocument
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,7 @@ def attach_traceability(
     Returns the same ExtractedEvidence with source_filename populated where found.
     Items that cannot be traced remain with source_filename=None.
     """
-    from backend.pipeline.step_a.evidence_parser import SECTION_FIELD_MAP
+    from pipeline.step_a.evidence_parser import SECTION_FIELD_MAP
 
     traced = 0
     total = 0
@@ -106,7 +106,7 @@ def build_traceability_report(evidence: ExtractedEvidence) -> str:
     Build a human-readable traceability summary for the audit trail.
     Lists each section, each item, its source, and weak flag.
     """
-    from backend.pipeline.step_a.evidence_parser import SECTION_FIELD_MAP
+    from pipeline.step_a.evidence_parser import SECTION_FIELD_MAP
 
     lines = [f"TRACEABILITY REPORT — Job: {evidence.job_id}\n"]
     lines.append("=" * 60)

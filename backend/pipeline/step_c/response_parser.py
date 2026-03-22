@@ -27,7 +27,7 @@ Expected output format (from prompt_c.txt):
 from __future__ import annotations
 import re
 import logging
-from backend.schemas.models import (
+from schemas.models import (
     ValidatedReport, CorrectionLog, CorrectionEntry,
     ReportSection, ISOStandard, AuditStage,
 )

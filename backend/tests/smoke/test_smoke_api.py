@@ -51,7 +51,7 @@ else:
                     "stuck_jobs": {"ok": True, "detail": "No stuck jobs", "stuck_jobs": []},
                 },
             }
-            from backend.main import app
+            from main import app
             with TestClient(app) as c:
                 yield c
 

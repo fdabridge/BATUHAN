@@ -14,7 +14,7 @@ Checks:
 from __future__ import annotations
 import re
 import logging
-from backend.schemas.models import ValidatedReport, TemplateMap
+from schemas.models import ValidatedReport, TemplateMap
 
 logger = logging.getLogger(__name__)
 

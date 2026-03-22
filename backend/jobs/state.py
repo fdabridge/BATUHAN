@@ -11,8 +11,8 @@ State machine:
 from __future__ import annotations
 import logging
 from datetime import datetime
-from backend.schemas.models import JobStatus, JobState
-from backend.storage.file_store import save_text_artifact, read_text_artifact
+from schemas.models import JobStatus, JobState
+from storage.file_store import save_text_artifact, read_text_artifact
 
 logger = logging.getLogger(__name__)
 

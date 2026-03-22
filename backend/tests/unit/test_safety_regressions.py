@@ -6,23 +6,23 @@ Ensures all safety guards remain effective and no regression is introduced.
 import pytest
 from unittest.mock import patch, MagicMock
 
-from backend.schemas.models import (
+from schemas.models import (
     ExtractedEvidence, EvidenceItem,
     GeneratedReport, ReportSection, ValidatedReport, CorrectionLog,
     TemplateMap, TemplateSection, StyleGuidance,
     ISOStandard, AuditStage,
 )
-from backend.pipeline.step_a.evidence_parser import (
+from pipeline.step_a.evidence_parser import (
     REQUIRED_SECTIONS, _is_weak,
 )
-from backend.safety.leakage_detector import (
+from safety.leakage_detector import (
     scan_report_for_leakage, _scan_placeholders, _scan_company_names, _scan_phrase_copy,
 )
-from backend.safety.failure_handler import (
+from safety.failure_handler import (
     PipelineAbort, filter_readable_documents, assert_template_valid,
     assert_evidence_valid, step_c_fallback,
 )
-from backend.pipeline.step_b.safety_checker import (
+from pipeline.step_b.safety_checker import (
     check_report_safety, _has_placeholder,
 )
 
@@ -155,13 +155,13 @@ class TestScanReportForLeakage:
 
 class TestFailureHandlerGuards:
     def test_filter_readable_docs_raises_on_all_empty(self):
-        from backend.schemas.models import ParsedDocument
+        from schemas.models import ParsedDocument
         docs = [ParsedDocument(filename="a.txt", text="", char_count=0)]
         with pytest.raises(PipelineAbort, match="unreadable"):
             filter_readable_documents(["a.txt"], docs)
 
     def test_filter_readable_docs_skips_empty_keeps_readable(self):
-        from backend.schemas.models import ParsedDocument
+        from schemas.models import ParsedDocument
         docs = [
             ParsedDocument(filename="a.txt", text="", char_count=0),
             ParsedDocument(filename="b.txt", text="Readable content here.", char_count=22),

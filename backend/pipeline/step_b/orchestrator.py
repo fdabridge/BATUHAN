@@ -18,18 +18,18 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from backend.config.settings import get_settings
-from backend.schemas.models import (
+from config.settings import get_settings
+from schemas.models import (
     ExtractedEvidence, GeneratedReport, TemplateMap, StyleGuidance,
     ISOStandard, AuditStage,
 )
-from backend.pipeline.step_a.evidence_parser import format_evidence_for_prompt
-from backend.pipeline.step_b.context_builder import build_prompt_b_context
-from backend.pipeline.step_b.report_parser import parse_report_output
-from backend.pipeline.step_b.safety_checker import (
+from pipeline.step_a.evidence_parser import format_evidence_for_prompt
+from pipeline.step_b.context_builder import build_prompt_b_context
+from pipeline.step_b.report_parser import parse_report_output
+from pipeline.step_b.safety_checker import (
     check_report_safety, format_violations, get_sections_needing_retry
 )
-from backend.storage.file_store import save_text_artifact
+from storage.file_store import save_text_artifact
 
 logger = logging.getLogger(__name__)
 settings = get_settings()

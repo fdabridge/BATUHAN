@@ -17,7 +17,7 @@ Each section block is separated by '---' on its own line.
 from __future__ import annotations
 import re
 import logging
-from backend.schemas.models import GeneratedReport, ReportSection, ISOStandard, AuditStage
+from schemas.models import GeneratedReport, ReportSection, ISOStandard, AuditStage
 
 logger = logging.getLogger(__name__)
 

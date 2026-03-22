@@ -19,11 +19,11 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
-from backend.schemas.models import (
+from schemas.models import (
     GeneratedReport, ValidatedReport, CorrectionLog,
     ExtractedEvidence, TemplateMap, ParsedDocument,
 )
-from backend.storage.file_store import save_text_artifact
+from storage.file_store import save_text_artifact
 
 logger = logging.getLogger(__name__)
 

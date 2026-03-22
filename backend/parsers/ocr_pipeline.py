@@ -7,7 +7,7 @@ Flags all output as OCR-sourced for traceability.
 from __future__ import annotations
 import logging
 from pathlib import Path
-from backend.schemas.models import ParsedDocument
+from schemas.models import ParsedDocument
 
 logger = logging.getLogger(__name__)
 

@@ -5,8 +5,8 @@ without making any real API calls.
 """
 
 import pytest
-from backend.schemas.models import ParsedDocument, ExtractedEvidence, EvidenceItem
-from backend.pipeline.step_a.evidence_parser import (
+from schemas.models import ParsedDocument, ExtractedEvidence, EvidenceItem
+from pipeline.step_a.evidence_parser import (
     parse_evidence_output,
     validate_evidence,
     format_evidence_for_prompt,
@@ -16,7 +16,7 @@ from backend.pipeline.step_a.evidence_parser import (
     _parse_bullets,
     _split_into_sections,
 )
-from backend.pipeline.step_a.traceability import (
+from pipeline.step_a.traceability import (
     attach_traceability,
     build_traceability_report,
 )

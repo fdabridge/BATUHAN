@@ -11,25 +11,25 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from backend.schemas.models import (
+from schemas.models import (
     ParsedDocument, TemplateMap, TemplateSection,
     ExtractedEvidence, EvidenceItem, GeneratedReport, ValidatedReport,
     CorrectionLog, ReportSection, StyleGuidance,
     ISOStandard, AuditStage,
 )
-from backend.safety.failure_handler import (
+from safety.failure_handler import (
     PipelineAbort,
     filter_readable_documents,
     assert_template_valid,
     assert_evidence_valid,
     step_c_fallback,
 )
-from backend.safety.leakage_detector import (
+from safety.leakage_detector import (
     scan_report_for_leakage,
     write_leakage_report,
     LeakageReport,
 )
-from backend.safety.audit_trail import build_audit_trail
+from safety.audit_trail import build_audit_trail
 
 
 # ---------------------------------------------------------------------------

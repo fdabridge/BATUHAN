@@ -8,15 +8,15 @@ from pathlib import Path
 from docx import Document
 from pydantic import ValidationError
 
-from backend.schemas.models import (
+from schemas.models import (
     ParsedDocument, TemplateMap, TemplateSection,
     ExtractedEvidence, CorrectionLog, JobStatus, JobState, StyleGuidance,
 )
-from backend.parsers.text_extractor import (
+from parsers.text_extractor import (
     extract_text_from_txt, extract_text_from_docx, extract_text, parse_documents,
 )
-from backend.parsers.template_parser import parse_template, format_sections_for_prompt
-from backend.parsers.style_extractor import (
+from parsers.template_parser import parse_template, format_sections_for_prompt
+from parsers.style_extractor import (
     extract_style_from_sample, build_style_guidance, format_style_guidance_for_prompt,
 )
 

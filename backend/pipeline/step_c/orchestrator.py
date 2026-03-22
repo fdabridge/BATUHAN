@@ -17,19 +17,19 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from backend.config.settings import get_settings
-from backend.schemas.models import (
+from config.settings import get_settings
+from schemas.models import (
     ExtractedEvidence, GeneratedReport, ValidatedReport,
     CorrectionLog, TemplateMap, StyleGuidance,
     ISOStandard, AuditStage,
 )
-from backend.pipeline.step_a.evidence_parser import format_evidence_for_prompt
-from backend.pipeline.step_c.pre_validator import (
+from pipeline.step_a.evidence_parser import format_evidence_for_prompt
+from pipeline.step_c.pre_validator import (
     run_pre_validation, format_issues_for_prompt, format_report_for_prompt,
 )
-from backend.pipeline.step_c.response_parser import parse_validation_output
-from backend.pipeline.step_c.post_validator import run_post_validation, PostValidationError
-from backend.storage.file_store import save_text_artifact
+from pipeline.step_c.response_parser import parse_validation_output
+from pipeline.step_c.post_validator import run_post_validation, PostValidationError
+from storage.file_store import save_text_artifact
 
 logger = logging.getLogger(__name__)
 settings = get_settings()

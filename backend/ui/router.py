@@ -17,8 +17,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from backend.schemas.models import ISOStandard, AuditStage
-from backend.storage.file_store import job_exists, read_text_artifact
+from schemas.models import ISOStandard, AuditStage
+from storage.file_store import job_exists, read_text_artifact
 
 logger = logging.getLogger(__name__)
 

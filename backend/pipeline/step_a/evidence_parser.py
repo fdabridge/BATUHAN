@@ -7,7 +7,7 @@ Enforces the 7 required sections. Flags weak evidence. Rejects malformed output.
 from __future__ import annotations
 import re
 import logging
-from backend.schemas.models import ExtractedEvidence, EvidenceItem
+from schemas.models import ExtractedEvidence, EvidenceItem
 
 logger = logging.getLogger(__name__)
 

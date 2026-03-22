@@ -11,10 +11,10 @@ import logging
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from backend.schemas.models import (
+from schemas.models import (
     ISOStandard, AuditStage, JobStatus, JobState, UploadBundle
 )
-from backend.storage.file_store import (
+from storage.file_store import (
     generate_job_id, save_upload, save_text_artifact,
     list_files, job_exists, read_text_artifact
 )
@@ -98,7 +98,7 @@ async def create_job(
 
     # --- Queue the pipeline (Celery task — imported lazily to avoid circular) ---
     try:
-        from backend.jobs.tasks import run_pipeline
+        from jobs.tasks import run_pipeline
         run_pipeline.delay(job_id)
         logger.info(f"Job {job_id} queued for pipeline execution.")
     except Exception as e:

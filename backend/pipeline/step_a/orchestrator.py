@@ -17,18 +17,18 @@ import logging
 import json
 from pathlib import Path
 
-from backend.config.settings import get_settings
-from backend.schemas.models import (
+from config.settings import get_settings
+from schemas.models import (
     ExtractedEvidence, ParsedDocument, ISOStandard, AuditStage
 )
-from backend.parsers.corpus_builder import format_corpus_for_prompt
-from backend.pipeline.step_a.evidence_parser import (
+from parsers.corpus_builder import format_corpus_for_prompt
+from pipeline.step_a.evidence_parser import (
     parse_evidence_output, validate_evidence, format_evidence_for_prompt
 )
-from backend.pipeline.step_a.traceability import (
+from pipeline.step_a.traceability import (
     attach_traceability, build_traceability_report
 )
-from backend.storage.file_store import save_text_artifact
+from storage.file_store import save_text_artifact
 
 logger = logging.getLogger(__name__)
 settings = get_settings()

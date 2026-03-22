@@ -6,9 +6,9 @@ unified document corpus ready for Prompt A injection.
 
 from __future__ import annotations
 import logging
-from backend.schemas.models import ParsedDocument
-from backend.parsers.text_extractor import parse_documents
-from backend.parsers.ocr_pipeline import run_ocr_pipeline
+from schemas.models import ParsedDocument
+from parsers.text_extractor import parse_documents
+from parsers.ocr_pipeline import run_ocr_pipeline
 
 logger = logging.getLogger(__name__)
 

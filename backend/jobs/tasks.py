@@ -12,18 +12,18 @@ import logging
 from pathlib import Path
 
 from celery import Celery
-from backend.config.settings import get_settings
-from backend.schemas.models import JobState, UploadBundle
-from backend.jobs.state import update_job_state
-from backend.safety.failure_handler import (
+from config.settings import get_settings
+from schemas.models import JobState, UploadBundle
+from jobs.state import update_job_state
+from safety.failure_handler import (
     PipelineAbort,
     filter_readable_documents,
     assert_template_valid,
     assert_evidence_valid,
     step_c_fallback,
 )
-from backend.safety.leakage_detector import scan_report_for_leakage, write_leakage_report
-from backend.safety.audit_trail import write_audit_trail
+from safety.leakage_detector import scan_report_for_leakage, write_leakage_report
+from safety.audit_trail import write_audit_trail
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -66,7 +66,7 @@ def run_pipeline(self, job_id: str) -> dict:
     logger.info(f"[Pipeline] Starting job {job_id}")
     try:
         # --- Load job bundle ---
-        from backend.storage.file_store import read_text_artifact
+        from storage.file_store import read_text_artifact
         raw_bundle = read_text_artifact(job_id, "bundle.json")
         bundle = UploadBundle.model_validate_json(raw_bundle)
 
@@ -75,10 +75,10 @@ def run_pipeline(self, job_id: str) -> dict:
         # -----------------------------------------------------------
         update_job_state(job_id, JobState.PREPROCESSING)
 
-        from backend.parsers.text_extractor import parse_documents
-        from backend.parsers.ocr_pipeline import run_ocr_pipeline
-        from backend.parsers.template_parser import parse_template
-        from backend.parsers.style_extractor import build_style_guidance
+        from parsers.text_extractor import parse_documents
+        from parsers.ocr_pipeline import run_ocr_pipeline
+        from parsers.template_parser import parse_template
+        from parsers.style_extractor import build_style_guidance
 
         raw_corpus = parse_documents(bundle.company_document_paths)
         ocr_docs = run_ocr_pipeline(bundle.company_document_paths)
@@ -98,7 +98,7 @@ def run_pipeline(self, job_id: str) -> dict:
         # -----------------------------------------------------------
         update_job_state(job_id, JobState.STEP_A)
 
-        from backend.pipeline.step_a.orchestrator import run_step_a
+        from pipeline.step_a.orchestrator import run_step_a
         evidence = run_step_a(
             job_id=job_id,
             corpus=corpus,
@@ -113,7 +113,7 @@ def run_pipeline(self, job_id: str) -> dict:
         # -----------------------------------------------------------
         update_job_state(job_id, JobState.STEP_B)
 
-        from backend.pipeline.step_b.orchestrator import run_step_b
+        from pipeline.step_b.orchestrator import run_step_b
         generated_report = run_step_b(
             job_id=job_id,
             evidence=evidence,
@@ -128,7 +128,7 @@ def run_pipeline(self, job_id: str) -> dict:
         # -----------------------------------------------------------
         update_job_state(job_id, JobState.STEP_C)
 
-        from backend.pipeline.step_c.orchestrator import run_step_c
+        from pipeline.step_c.orchestrator import run_step_c
         try:
             validated_report, correction_log = run_step_c(
                 job_id=job_id,
@@ -160,7 +160,7 @@ def run_pipeline(self, job_id: str) -> dict:
         # -----------------------------------------------------------
         update_job_state(job_id, JobState.ASSEMBLING)
 
-        from backend.assembly.result_packager import package_results
+        from assembly.result_packager import package_results
         files_used = [Path(p).name for p in bundle.company_document_paths]
         package_results(
             job_id=job_id,

@@ -9,8 +9,8 @@ from __future__ import annotations
 import re
 import logging
 from pathlib import Path
-from backend.schemas.models import StyleGuidance, ParsedDocument
-from backend.parsers.text_extractor import extract_text
+from schemas.models import StyleGuidance, ParsedDocument
+from parsers.text_extractor import extract_text
 
 logger = logging.getLogger(__name__)
 

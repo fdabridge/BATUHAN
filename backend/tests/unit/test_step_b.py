@@ -5,17 +5,17 @@ without making any real API calls.
 """
 
 import pytest
-from backend.schemas.models import (
+from schemas.models import (
     ISOStandard, AuditStage, TemplateSection, TemplateMap,
     StyleGuidance, GeneratedReport, ReportSection,
 )
-from backend.pipeline.step_b.context_builder import (
+from pipeline.step_b.context_builder import (
     get_stage_instructions, get_standard_instructions, build_prompt_b_context,
 )
-from backend.pipeline.step_b.report_parser import (
+from pipeline.step_b.report_parser import (
     parse_report_output, _split_blocks, _parse_block, _has_placeholder, _is_weak_section,
 )
-from backend.pipeline.step_b.safety_checker import (
+from pipeline.step_b.safety_checker import (
     check_report_safety, format_violations, get_sections_needing_retry, SafetyViolation,
 )
 

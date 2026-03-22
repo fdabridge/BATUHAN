@@ -7,7 +7,7 @@ Preserves original filenames. Returns list of ParsedDocument objects.
 from __future__ import annotations
 import logging
 from pathlib import Path
-from backend.schemas.models import ParsedDocument
+from schemas.models import ParsedDocument
 
 logger = logging.getLogger(__name__)
 

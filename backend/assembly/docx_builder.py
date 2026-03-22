@@ -19,7 +19,7 @@ import logging
 from pathlib import Path
 from lxml import etree
 from docx import Document
-from backend.schemas.models import ValidatedReport, ReportSection
+from schemas.models import ValidatedReport, ReportSection
 
 logger = logging.getLogger(__name__)
 

@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 from docx import Document
 from docx.oxml.ns import qn
-from backend.schemas.models import TemplateMap, TemplateSection
+from schemas.models import TemplateMap, TemplateSection
 
 logger = logging.getLogger(__name__)
 
