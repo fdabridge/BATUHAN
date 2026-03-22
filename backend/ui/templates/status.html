@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Job Status — {{ job_id[:8] }}{% endblock %}
+
+{% block head %}
+<style>
+  .job-id { font-family: monospace; background: var(--bg); padding: .25rem .5rem;
+    border-radius: 4px; font-size: .85rem; color: var(--muted); }
+  .progress-wrap { margin: 1.5rem 0; }
+  .progress-bar-bg { background: var(--bg); border-radius: 99px; height: 10px; overflow: hidden; border: 1px solid var(--border); }
+  .progress-bar-fill { height: 100%; border-radius: 99px; background: var(--primary);
+    transition: width .4s ease; }
+  .progress-bar-fill.done { background: var(--success); }
+  .progress-bar-fill.failed { background: var(--danger); }
+  .steps { display: flex; flex-direction: column; gap: .5rem; margin-top: 1.25rem; }
+  .step { display: flex; align-items: center; gap: .75rem; padding: .6rem .9rem;
+    border-radius: var(--radius); background: var(--bg); font-size: .9rem; }
+  .step.active { background: #eff6ff; border: 1px solid #93c5fd; font-weight: 600; }
+  .step.done { background: #f0fdf4; border: 1px solid #86efac; color: var(--success); }
+  .step.failed { background: #fef2f2; border: 1px solid #fca5a5; color: var(--danger); }
+  .step-icon { font-size: 1rem; width: 1.2rem; text-align: center; }
+  .error-box { margin-top: 1rem; background: #fef2f2; border: 1px solid #fca5a5;
+    border-radius: var(--radius); padding: 1rem; font-size: .9rem; color: var(--danger); }
+  .meta { font-size: .85rem; color: var(--muted); margin-top: 1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h1>Job Progress</h1>
+  <h2>Job ID: <span class="job-id">{{ job_id }}</span></h2>
+
+  <div class="progress-wrap">
+    <div style="display:flex; justify-content:space-between; font-size:.8rem; color:var(--muted); margin-bottom:.4rem">
+      <span id="statusLabel">Loading…</span>
+      <span id="pct">0%</span>
+    </div>
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
+    </div>
+  </div>
+
+  <div class="steps" id="stepsContainer">
+    <!-- filled by JS -->
+  </div>
+
+  <div id="errorBox" class="error-box" style="display:none"></div>
+
+  <div class="meta">
+    <span id="elapsedLabel"></span>
+    <span id="autoRefreshNote" style="float:right">🔄 Auto-refreshing…</span>
+  </div>
+</div>
+
+<script>
+const JOB_ID = "{{ job_id }}";
+const STEPS = [
+  {key:"QUEUED",        label:"Queued"},
+  {key:"PREPROCESSING", label:"Preprocessing"},
+  {key:"STEP_A",        label:"Step A — Evidence Extraction"},
+  {key:"STEP_B",        label:"Step B — Report Generation"},
+  {key:"STEP_C",        label:"Step C — Validation & Correction"},
+  {key:"ASSEMBLING",    label:"Assembling Final DOCX"},
+  {key:"COMPLETE",      label:"Complete"},
+];
+const PROGRESS = {QUEUED:0,PREPROCESSING:10,STEP_A:25,STEP_B:50,STEP_C:75,ASSEMBLING:90,COMPLETE:100,FAILED:100};
+
+let startTime = Date.now();
+let pollTimer = null;
+
+function renderSteps(currentState) {
+  const idx = STEPS.findIndex(s => s.key === currentState);
+  const container = document.getElementById('stepsContainer');
+  container.innerHTML = STEPS.map((s, i) => {
+    let cls = '', icon = '⚪';
+    if (i < idx || currentState === 'COMPLETE') { cls = 'done'; icon = '✅'; }
+    else if (i === idx) {
+      if (currentState === 'FAILED') { cls = 'failed'; icon = '❌'; }
+      else if (currentState === 'COMPLETE') { cls = 'done'; icon = '✅'; }
+      else { cls = 'active'; icon = '⏳'; }
+    }
+    return `<div class="step ${cls}"><span class="step-icon">${icon}</span><span>${s.label}</span></div>`;
+  }).join('');
+}
+
+async function poll() {
+  try {
+    const res = await fetch(`/jobs/${JOB_ID}/status`);
+    if (!res.ok) { setTimeout(poll, 4000); return; }
+    const data = await res.json();
+    const state = data.state;
+    const pct = PROGRESS[state] || 0;
+    const fill = document.getElementById('progressFill');
+    fill.style.width = pct + '%';
+    fill.className = 'progress-bar-fill' + (state==='COMPLETE'?' done':state==='FAILED'?' failed':'');
+    document.getElementById('pct').textContent = pct + '%';
+    document.getElementById('statusLabel').textContent = data.current_step || state;
+    renderSteps(state);
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
+    document.getElementById('elapsedLabel').textContent = `Elapsed: ${elapsed}s`;
+    if (state === 'FAILED') {
+      document.getElementById('errorBox').style.display = 'block';
+      document.getElementById('errorBox').textContent = '⚠ Error: ' + (data.error_message || 'Unknown error');
+      document.getElementById('autoRefreshNote').textContent = '';
+      return; // stop polling
+    }
+    if (state === 'COMPLETE') {
+      document.getElementById('autoRefreshNote').textContent = '✅ Done!';
+      setTimeout(() => { window.location.href = `/ui/results/${JOB_ID}`; }, 1500);
+      return; // stop polling
+    }
+    pollTimer = setTimeout(poll, 4000);
+  } catch(e) {
+    pollTimer = setTimeout(poll, 5000);
+  }
+}
+
+renderSteps('QUEUED');
+poll();
+</script>
+{% endblock %}
+

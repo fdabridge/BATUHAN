@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BATUHAN — {% block title %}Reporting for Duty{% endblock %}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f4f5f7; --surface: #fff; --border: #d0d5dd;
+      --primary: #2563eb; --primary-hover: #1d4ed8;
+      --success: #16a34a; --danger: #dc2626; --warn: #d97706;
+      --text: #1a1a2e; --muted: #6b7280;
+      --radius: 8px; --shadow: 0 1px 4px rgba(0,0,0,.08);
+    }
+    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 2rem; }
+    header .inner { max-width: 900px; margin: 0 auto; display: flex; align-items: center; gap: 2rem; height: 56px; }
+    header .logo { font-weight: 700; font-size: 1.15rem; color: var(--primary); text-decoration: none; }
+    header nav a { color: var(--muted); text-decoration: none; font-size: .9rem; }
+    header nav a:hover { color: var(--primary); }
+    main { max-width: 900px; margin: 2rem auto; padding: 0 1.5rem; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 2rem; box-shadow: var(--shadow); }
+    h1 { font-size: 1.5rem; margin-bottom: .25rem; }
+    h2 { font-size: 1.1rem; margin-bottom: 1rem; color: var(--muted); font-weight: 500; }
+    .label { display: block; font-size: .85rem; font-weight: 600; margin-bottom: .35rem; color: var(--text); }
+    .field { margin-bottom: 1.25rem; }
+    select, input[type="file"] {
+      width: 100%; padding: .55rem .75rem; border: 1px solid var(--border);
+      border-radius: var(--radius); font-size: .9rem; background: var(--surface);
+      color: var(--text);
+    }
+    select:focus, input[type="file"]:focus { outline: 2px solid var(--primary); }
+    .btn {
+      display: inline-flex; align-items: center; gap: .5rem;
+      padding: .65rem 1.5rem; border: none; border-radius: var(--radius);
+      font-size: .95rem; font-weight: 600; cursor: pointer; transition: background .15s;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-secondary { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--border); }
+    .alert { border-radius: var(--radius); padding: .85rem 1rem; font-size: .9rem; margin-bottom: 1rem; }
+    .alert-danger { background: #fef2f2; border: 1px solid #fca5a5; color: var(--danger); }
+    .alert-success { background: #f0fdf4; border: 1px solid #86efac; color: var(--success); }
+    .alert-info { background: #eff6ff; border: 1px solid #93c5fd; color: var(--primary); }
+    .hint { font-size: .8rem; color: var(--muted); margin-top: .25rem; }
+    footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 2rem; }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <header>
+    <div class="inner">
+      <a class="logo" href="/ui">⚡ BATUHAN</a>
+      <nav>
+        <a href="/ui">New Job</a>
+      </nav>
+    </div>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  <footer>BATUHAN — Internal ISO Audit Report System — For authorised personnel only</footer>
+</body>
+</html>
+

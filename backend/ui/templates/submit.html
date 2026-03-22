@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Submit Audit Job{% endblock %}
+
+{% block head %}
+<style>
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+  @media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } }
+  .section-heading { font-size: .7rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--muted); border-bottom: 1px solid var(--border); padding-bottom: .4rem; margin-bottom: 1rem; }
+  .upload-area { border: 2px dashed var(--border); border-radius: var(--radius); padding: 1rem;
+    text-align: center; cursor: pointer; transition: border-color .2s; }
+  .upload-area:hover { border-color: var(--primary); }
+  .upload-area input[type="file"] { width: 100%; cursor: pointer; }
+  .spinner { display: inline-block; width: 18px; height: 18px; border: 3px solid #fff;
+    border-top-color: transparent; border-radius: 50%; animation: spin .6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h1>New Audit Report Job</h1>
+  <h2>Upload documents, select the standard and stage, then submit.</h2>
+
+  {% if error %}
+  <div class="alert alert-danger">{{ error }}</div>
+  {% endif %}
+
+  <form id="submitForm" method="POST" action="/jobs/create" enctype="multipart/form-data">
+
+    <!-- Files -->
+    <div class="section-heading">Documents</div>
+
+    <div class="field">
+      <label class="label">Company Documents <span style="color:var(--danger)">*</span></label>
+      <div class="upload-area">
+        <input type="file" name="company_documents" multiple accept=".pdf,.docx,.doc,.txt,.png,.jpg,.jpeg" required />
+      </div>
+      <p class="hint">PDF, DOCX, TXT, PNG, JPG — multiple files allowed</p>
+    </div>
+
+    <div class="field">
+      <label class="label">Sample Audit Reports <span style="color:var(--danger)">*</span></label>
+      <div class="upload-area">
+        <input type="file" name="sample_reports" multiple accept=".pdf,.docx,.doc,.txt" required />
+      </div>
+      <p class="hint">Used for style guidance only — company data is blocked</p>
+    </div>
+
+    <div class="field">
+      <label class="label">Blank Report Template (.docx) <span style="color:var(--danger)">*</span></label>
+      <div class="upload-area">
+        <input type="file" name="template" accept=".docx,.doc" required />
+      </div>
+      <p class="hint">Must use Word Heading styles to define sections</p>
+    </div>
+
+    <!-- Audit Metadata -->
+    <div class="section-heading" style="margin-top:1.5rem">Audit Settings</div>
+
+    <div class="form-grid">
+      <div class="field">
+        <label class="label" for="standard">ISO Standard <span style="color:var(--danger)">*</span></label>
+        <select id="standard" name="standard" required>
+          <option value="" disabled selected>Select standard…</option>
+          {% for s in standards %}
+          <option value="{{ s }}">{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="field">
+        <label class="label" for="stage">Audit Stage <span style="color:var(--danger)">*</span></label>
+        <select id="stage" name="stage" required>
+          <option value="" disabled selected>Select stage…</option>
+          {% for st in stages %}
+          <option value="{{ st }}">{{ st }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:1rem; align-items:center; margin-top:.5rem">
+      <button class="btn btn-primary" type="submit" id="submitBtn">
+        ▶ Submit Job
+      </button>
+      <span id="loadingSpinner" style="display:none; color:var(--muted); font-size:.9rem">
+        <span class="spinner" style="border-color:var(--primary); border-top-color:transparent"></span>
+        Uploading…
+      </span>
+    </div>
+  </form>
+</div>
+
+<script>
+  document.getElementById('submitForm').addEventListener('submit', function(e) {
+    document.getElementById('submitBtn').disabled = true;
+    document.getElementById('submitBtn').textContent = 'Submitting…';
+    document.getElementById('loadingSpinner').style.display = 'inline-flex';
+  });
+</script>
+{% endblock %}
+

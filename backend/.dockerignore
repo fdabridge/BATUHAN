@@ -1,0 +1,38 @@
+# BATUHAN — Docker build context exclusions
+# Keeps the image lean and prevents secrets from leaking into the image.
+
+# Environment secrets — NEVER bake into image
+.env
+.env.*
+!.env.example
+
+# Python byte-code and caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Test artefacts
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+
+# Local storage (mounted as a volume at runtime)
+storage/
+
+# Version control
+.git/
+.gitignore
+
+# Editor / OS noise
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+
