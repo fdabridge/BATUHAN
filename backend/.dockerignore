@@ -22,9 +22,6 @@ build/
 htmlcov/
 tests/
 
-# Local storage (mounted as a volume at runtime)
-storage/
-
 # Version control
 .git/
 .gitignore
