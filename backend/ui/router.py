@@ -78,6 +78,12 @@ def ui_status(request: Request, job_id: str):
 # Results / download page
 # ---------------------------------------------------------------------------
 
+@router.get("/guide", response_class=HTMLResponse)
+def ui_guide(request: Request):
+    """Render the comprehensive user guide page."""
+    return templates.TemplateResponse("guide.html", {"request": request})
+
+
 @router.get("/results/{job_id}", response_class=HTMLResponse)
 def ui_results(request: Request, job_id: str):
     """Render the results page once a job is complete."""

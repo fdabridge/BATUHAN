@@ -1,102 +1,150 @@
 {% extends "base.html" %}
-{% block title %}Submit Audit Job{% endblock %}
+{% block title %}New Audit Job{% endblock %}
 
 {% block head %}
 <style>
-  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
-  @media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } }
-  .section-heading { font-size: .7rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
-    color: var(--muted); border-bottom: 1px solid var(--border); padding-bottom: .4rem; margin-bottom: 1rem; }
-  .upload-area { border: 2px dashed var(--border); border-radius: var(--radius); padding: 1rem;
-    text-align: center; cursor: pointer; transition: border-color .2s; }
-  .upload-area:hover { border-color: var(--primary); }
-  .upload-area input[type="file"] { width: 100%; cursor: pointer; }
-  .spinner { display: inline-block; width: 18px; height: 18px; border: 3px solid #fff;
-    border-top-color: transparent; border-radius: 50%; animation: spin .6s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  .page-layout { display: grid; grid-template-columns: 1fr 380px; gap: 1.5rem; align-items: start; }
+  @media (max-width: 860px) { .page-layout { grid-template-columns: 1fr; } .guide-panel { order: -1; } }
+  .upload-zone { border: 2px dashed var(--border); border-radius: var(--radius-sm); padding: 1.1rem 1.25rem; transition: all .2s; background: var(--bg); }
+  .upload-zone:hover { border-color: var(--primary); background: var(--primary-light); }
+  .upload-zone input[type="file"] { width: 100%; cursor: pointer; font-size: .875rem; color: var(--muted); }
+  .upload-icon { font-size: 1.3rem; display: block; margin-bottom: .3rem; }
+  .upload-label { font-size: .82rem; color: var(--muted); display: block; margin-bottom: .5rem; }
+  .req-badge { display: inline-flex; align-items: center; gap: .3rem; padding: .2rem .6rem; border-radius: 99px; font-size: .72rem; font-weight: 600; margin-bottom: .65rem; }
+  .req-min { background: #FEF3C7; color: #92400E; border: 1px solid #FDE68A; }
+  .req-one { background: #EDE9FE; color: #4C1D95; border: 1px solid #DDD6FE; }
+  .guide-panel { position: sticky; top: 80px; }
+  .guide-step { display: flex; gap: .75rem; padding: .85rem 0; border-bottom: 1px solid var(--border); }
+  .guide-step:last-child { border-bottom: none; }
+  .step-num { width: 26px; height: 26px; background: var(--primary-light); color: var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: .75rem; font-weight: 700; flex-shrink: 0; }
+  .step-content h4 { font-size: .85rem; font-weight: 600; margin-bottom: .2rem; color: var(--text); }
+  .step-content p { font-size: .78rem; color: var(--muted); line-height: 1.55; margin: 0; }
+  .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 520px) { .form-grid-2 { grid-template-columns: 1fr; } }
+  .submit-row { display: flex; align-items: center; gap: 1rem; padding-top: .5rem; }
+  .loading-msg { display: none; align-items: center; gap: .5rem; color: var(--muted); font-size: .875rem; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="card">
-  <h1>New Audit Report Job</h1>
-  <h2>Upload documents, select the standard and stage, then submit.</h2>
+<div style="margin-bottom: 2rem;">
+  <p class="page-title">New Audit Job</p>
+  <p class="page-subtitle">Upload your documents, select the ISO standard and audit stage, then submit.</p>
+</div>
 
-  {% if error %}
-  <div class="alert alert-danger">{{ error }}</div>
-  {% endif %}
+<div class="page-layout">
 
-  <form id="submitForm" method="POST" action="/jobs/create" enctype="multipart/form-data">
+  <!-- LEFT: Form -->
+  <div class="card">
+    {% if error %}<div class="alert alert-danger">⚠ {{ error }}</div>{% endif %}
 
-    <!-- Files -->
-    <div class="section-heading">Documents</div>
+    <form id="submitForm" method="POST" action="/jobs/create" enctype="multipart/form-data">
 
-    <div class="field">
-      <label class="label">Company Documents <span style="color:var(--danger)">*</span></label>
-      <div class="upload-area">
-        <input type="file" name="company_documents" multiple accept=".pdf,.docx,.doc,.txt,.png,.jpg,.jpeg" required />
-      </div>
-      <p class="hint">PDF, DOCX, TXT, PNG, JPG — multiple files allowed</p>
-    </div>
-
-    <div class="field">
-      <label class="label">Sample Audit Reports <span style="color:var(--danger)">*</span></label>
-      <div class="upload-area">
-        <input type="file" name="sample_reports" multiple accept=".pdf,.docx,.doc,.txt" required />
-      </div>
-      <p class="hint">Used for style guidance only — company data is blocked</p>
-    </div>
-
-    <div class="field">
-      <label class="label">Blank Report Template (.docx) <span style="color:var(--danger)">*</span></label>
-      <div class="upload-area">
-        <input type="file" name="template" accept=".docx,.doc" required />
-      </div>
-      <p class="hint">Must use Word Heading styles to define sections</p>
-    </div>
-
-    <!-- Audit Metadata -->
-    <div class="section-heading" style="margin-top:1.5rem">Audit Settings</div>
-
-    <div class="form-grid">
+      <div class="section-label">Step 1 — Company Documents</div>
       <div class="field">
-        <label class="label" for="standard">ISO Standard <span style="color:var(--danger)">*</span></label>
-        <select id="standard" name="standard" required>
-          <option value="" disabled selected>Select standard…</option>
-          {% for s in standards %}
-          <option value="{{ s }}">{{ s }}</option>
-          {% endfor %}
-        </select>
+        <label>Company Documents <span style="color:var(--danger)">*</span></label>
+        <span class="req-badge req-min">📁 Minimum 1 file · More = better results</span>
+        <div class="upload-zone">
+          <span class="upload-icon">📂</span>
+          <span class="upload-label">Click to select one or more files</span>
+          <input type="file" name="company_documents" multiple accept=".pdf,.docx,.doc,.txt,.png,.jpg,.jpeg" required />
+        </div>
+        <p class="hint">PDF, Word, TXT, or scanned images (PNG/JPG). Include policies, procedures, training records, risk registers, internal audits, and any management system documents.</p>
       </div>
 
+      <div class="section-label" style="margin-top:1.5rem">Step 2 — Sample Audit Reports</div>
       <div class="field">
-        <label class="label" for="stage">Audit Stage <span style="color:var(--danger)">*</span></label>
-        <select id="stage" name="stage" required>
-          <option value="" disabled selected>Select stage…</option>
-          {% for st in stages %}
-          <option value="{{ st }}">{{ st }}</option>
-          {% endfor %}
-        </select>
+        <label>Sample Audit Reports <span style="color:var(--danger)">*</span></label>
+        <span class="req-badge req-min">📄 Minimum 1 file · Recommend 2–3</span>
+        <div class="upload-zone">
+          <span class="upload-icon">📋</span>
+          <span class="upload-label">Click to select one or more files</span>
+          <input type="file" name="sample_reports" multiple accept=".pdf,.docx,.doc,.txt" required />
+        </div>
+        <p class="hint">Real completed ISO audit reports (PDF or DOCX). Used <strong>only</strong> for writing style guidance — all company names and data are automatically blocked.</p>
+      </div>
+
+      <div class="section-label" style="margin-top:1.5rem">Step 3 — Blank Report Template</div>
+      <div class="field">
+        <label>Blank Report Template <span style="color:var(--danger)">*</span></label>
+        <span class="req-badge req-one">📝 Exactly 1 .docx file required</span>
+        <div class="upload-zone">
+          <span class="upload-icon">📑</span>
+          <span class="upload-label">Click to select your Word template</span>
+          <input type="file" name="template" accept=".docx,.doc" required />
+        </div>
+        <p class="hint">Must be a <strong>.docx file</strong> with sections formatted as Word <strong>Heading 1, 2, or 3</strong> styles — not just bold text. The AI preserves your exact structure.</p>
+      </div>
+
+      <div class="divider"></div>
+      <div class="section-label">Step 4 — Audit Settings</div>
+      <div class="form-grid-2">
+        <div class="field">
+          <label for="standard">ISO Standard <span style="color:var(--danger)">*</span></label>
+          <select id="standard" name="standard" required>
+            <option value="" disabled selected>Select standard…</option>
+            {% for s in standards %}
+            <option value="{{ s }}">{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="stage">Audit Stage <span style="color:var(--danger)">*</span></label>
+          <select id="stage" name="stage" required>
+            <option value="" disabled selected>Select stage…</option>
+            {% for st in stages %}
+            <option value="{{ st }}">{{ st }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="submit-row">
+        <button class="btn btn-primary btn-lg" type="submit" id="submitBtn">▶ Submit Job</button>
+        <div class="loading-msg" id="loadingMsg">
+          <span class="spinner"></span> Uploading files, please wait…
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <!-- RIGHT: Guide -->
+  <div class="guide-panel">
+    <div class="card" style="padding:1.5rem;">
+      <h3 style="font-size:.95rem; margin-bottom:1.25rem;">📖 How It Works</h3>
+      <div class="guide-step">
+        <div class="step-num">1</div>
+        <div class="step-content"><h4>Upload Company Docs</h4><p>All your management system documents — policies, procedures, records, training logs, risk assessments. More content = richer report.</p></div>
+      </div>
+      <div class="guide-step">
+        <div class="step-num">2</div>
+        <div class="step-content"><h4>Upload Sample Reports</h4><p>Completed ISO audit reports from any auditor. Used only for writing style — company data is auto-blocked. 2–3 reports recommended.</p></div>
+      </div>
+      <div class="guide-step">
+        <div class="step-num">3</div>
+        <div class="step-content"><h4>Prepare Your Template</h4><p>A blank .docx with sections formatted as <strong>Heading 1/2/3</strong> in Word — not just bold text. This exact structure is preserved in the final report.</p></div>
+      </div>
+      <div class="guide-step">
+        <div class="step-num">4</div>
+        <div class="step-content"><h4>AI Processes in 3 Stages</h4><p>Evidence extraction → Report generation → Validation & correction. Typically takes <strong>10–15 minutes</strong>.</p></div>
+      </div>
+      <div class="guide-step">
+        <div class="step-num">5</div>
+        <div class="step-content"><h4>Download Final Report</h4><p>A complete .docx audit report ready to review and sign off, plus a correction log showing all AI changes.</p></div>
+      </div>
+      <div style="margin-top:1.25rem; padding-top:1rem; border-top:1px solid var(--border);">
+        <a href="/ui/guide" style="font-size:.8rem; color:var(--primary); text-decoration:none; font-weight:600;">Full user guide & file requirements →</a>
       </div>
     </div>
+  </div>
 
-    <div style="display:flex; gap:1rem; align-items:center; margin-top:.5rem">
-      <button class="btn btn-primary" type="submit" id="submitBtn">
-        ▶ Submit Job
-      </button>
-      <span id="loadingSpinner" style="display:none; color:var(--muted); font-size:.9rem">
-        <span class="spinner" style="border-color:var(--primary); border-top-color:transparent"></span>
-        Uploading…
-      </span>
-    </div>
-  </form>
 </div>
 
 <script>
-  document.getElementById('submitForm').addEventListener('submit', function(e) {
-    document.getElementById('submitBtn').disabled = true;
-    document.getElementById('submitBtn').textContent = 'Submitting…';
-    document.getElementById('loadingSpinner').style.display = 'inline-flex';
+  document.getElementById('submitForm').addEventListener('submit', function() {
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true; btn.textContent = 'Submitting…';
+    document.getElementById('loadingMsg').style.display = 'inline-flex';
   });
 </script>
 {% endblock %}

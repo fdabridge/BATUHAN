@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}How to Use{% endblock %}
+
+{% block head %}
+<style>
+  .guide-layout { display: grid; grid-template-columns: 240px 1fr; gap: 2rem; align-items: start; }
+  @media (max-width: 780px) { .guide-layout { grid-template-columns: 1fr; } }
+  .toc { position: sticky; top: 80px; }
+  .toc-list { list-style: none; }
+  .toc-list li + li { margin-top: .2rem; }
+  .toc-list a { display: block; padding: .4rem .85rem; border-radius: var(--radius-sm); font-size: .875rem; color: var(--muted); text-decoration: none; font-weight: 500; transition: all .15s; }
+  .toc-list a:hover { color: var(--primary); background: var(--primary-light); }
+  .gs { margin-bottom: 2.5rem; }
+  .gs h2 { font-size: 1.15rem; font-weight: 700; color: var(--text); margin-bottom: .75rem; padding-bottom: .6rem; border-bottom: 2px solid var(--border); }
+  .gs h3 { font-size: .9rem; font-weight: 600; margin: .85rem 0 .3rem; color: var(--text); }
+  .gs p { font-size: .9rem; color: var(--text-secondary); margin-bottom: .65rem; line-height: 1.7; }
+  .gs ul { padding-left: 1.25rem; margin-bottom: .75rem; }
+  .gs li { font-size: .9rem; color: var(--text-secondary); margin-bottom: .3rem; line-height: 1.6; }
+  .warn-box { background: #FFFBEB; border: 1px solid #FDE68A; border-radius: var(--radius-sm); padding: .9rem 1rem; font-size: .875rem; color: #92400E; display: flex; gap: .75rem; margin: .85rem 0; }
+  .iso-tbl { width: 100%; border-collapse: collapse; font-size: .875rem; margin: .85rem 0; }
+  .iso-tbl th { background: var(--bg); padding: .55rem .9rem; text-align: left; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); border: 1px solid var(--border); }
+  .iso-tbl td { padding: .6rem .9rem; border: 1px solid var(--border); color: var(--text-secondary); }
+  .iso-tbl tr:nth-child(even) td { background: var(--bg); }
+  .iso-badge { display: inline-block; padding: .15rem .5rem; background: var(--primary-light); color: var(--primary); border-radius: var(--radius-sm); font-size: .75rem; font-weight: 700; }
+  .step-cards { display: flex; flex-direction: column; gap: .5rem; }
+  .step-card { display: flex; gap: 1rem; padding: .9rem 1rem; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); align-items: flex-start; }
+  .step-badge { min-width: 28px; height: 28px; background: var(--primary); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: .78rem; font-weight: 700; flex-shrink: 0; }
+  .step-card h4 { font-size: .875rem; font-weight: 600; margin-bottom: .15rem; color: var(--text); }
+  .step-card p { font-size: .82rem; color: var(--muted); margin: 0; line-height: 1.5; }
+  .step-card .est { font-size: .72rem; color: var(--primary); font-weight: 600; margin-top: .25rem; }
+  .step-card.complete { background: var(--success-light); border-color: #A7F3D0; }
+  .step-badge.ok { background: var(--success); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:2rem;">
+  <p class="page-title">How to Use BATUHAN</p>
+  <p class="page-subtitle">Everything you need to prepare your files and run a job successfully.</p>
+</div>
+
+<div class="guide-layout">
+
+  <!-- Sidebar TOC -->
+  <div class="toc card" style="padding:1.25rem;">
+    <p style="font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-bottom:.65rem;">Contents</p>
+    <ul class="toc-list">
+      <li><a href="#overview">Overview</a></li>
+      <li><a href="#company-docs">Company Documents</a></li>
+      <li><a href="#sample-reports">Sample Reports</a></li>
+      <li><a href="#template">Report Template</a></li>
+      <li><a href="#standards">ISO Standards</a></li>
+      <li><a href="#pipeline">What Happens After Submit</a></li>
+      <li><a href="#timing">Timing</a></li>
+      <li><a href="#download">Downloading Results</a></li>
+      <li><a href="#tips">Tips for Best Results</a></li>
+    </ul>
+    <div style="margin-top:1.25rem; padding-top:1rem; border-top:1px solid var(--border);">
+      <a href="/ui" class="btn btn-primary" style="width:100%; justify-content:center;">+ New Job</a>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <div>
+
+    <div class="gs" id="overview">
+      <h2>Overview</h2>
+      <p>BATUHAN is an AI-powered system that automatically generates ISO audit reports. You provide your company documents, sample audit reports for style reference, and a blank Word template. The AI extracts evidence, writes the report, validates it, and delivers a final <strong>.docx</strong> file ready for review.</p>
+      <p>The process runs three AI stages — Evidence Extraction, Report Generation, and Validation — and typically completes in <strong>10–15 minutes</strong>.</p>
+    </div>
+
+    <div class="gs" id="company-docs">
+      <h2>1. Company Documents</h2>
+      <p><strong>Minimum: 1 file. More is always better.</strong> These are your management system documents. The AI reads all of them to extract evidence. More relevant content = more accurate and detailed report.</p>
+      <h3>What to include:</h3>
+      <ul>
+        <li>Quality / Environmental / Safety manual or policy</li>
+        <li>Procedures and work instructions</li>
+        <li>Risk registers and assessments</li>
+        <li>Training records and competency matrices</li>
+        <li>Internal audit reports and corrective actions</li>
+        <li>Management review minutes and KPI reports</li>
+        <li>Org charts, supplier evaluations, monitoring data</li>
+      </ul>
+      <h3>Accepted formats:</h3>
+      <p>PDF · Word (.docx / .doc) · Plain text (.txt) · Scanned images (PNG, JPG)</p>
+      <div class="warn-box">⚠ <span>The system skips unreadable files. If all files are unreadable, the job fails. Upload at least one clearly readable document.</span></div>
+    </div>
+
+    <div class="gs" id="sample-reports">
+      <h2>2. Sample Audit Reports</h2>
+      <p><strong>Minimum: 1 file. Recommended: 2–3 files.</strong> Completed ISO audit reports from any auditor, for any company. Used <em>only</em> for writing style and tone. The system automatically blocks all company names and specific data from appearing in your report.</p>
+      <h3>What makes a good sample:</h3>
+      <ul>
+        <li>Real completed audit reports in your preferred writing style</li>
+        <li>Ideally for the same ISO standard (but not required)</li>
+        <li>Multiple samples improve consistency of tone</li>
+      </ul>
+      <div class="warn-box">⚠ <span>Do not use the same company's documents as both a company document and a sample report. Sample reports are for style only — client data protection is built in.</span></div>
+    </div>
+
+    <div class="gs" id="template">
+      <h2>3. Blank Report Template</h2>
+      <p><strong>Exactly 1 .docx file required.</strong> The structural skeleton of your report. The AI fills content under each section heading while preserving your exact structure and section titles.</p>
+      <h3>Critical: sections MUST use Word Heading styles</h3>
+      <p>Each section <strong>MUST</strong> use Word's built-in Heading 1, 2, or 3 style — not just bold or large text. The system identifies sections by style, not appearance.</p>
+      <h3>How to apply Heading styles in Word:</h3>
+      <ul>
+        <li>Click on a section title in your document</li>
+        <li>In the <strong>Home</strong> tab → <strong>Styles</strong> panel → click <strong>Heading 1</strong> (or 2/3)</li>
+        <li>Use <strong>View → Navigation Pane</strong> to confirm headings appear in the outline</li>
+      </ul>
+      <h3>Typical sections for an audit report:</h3>
+      <ul>
+        <li>Audit Scope &amp; Objectives · Audit Team &amp; Methodology</li>
+        <li>Document Review Summary · Audit Findings by Clause</li>
+        <li>Nonconformities · Opportunities for Improvement · Audit Conclusion</li>
+      </ul>
+      <div class="warn-box">⚠ <span>If the template has no Heading-style sections, the job fails immediately at preprocessing. Always verify headings are correctly applied before uploading.</span></div>
+    </div>
+
+    <div class="gs" id="standards">
+      <h2>4. ISO Standards Supported</h2>
+      <table class="iso-tbl">
+        <tr><th>Code</th><th>Standard</th><th>Scope</th></tr>
+        <tr><td><span class="iso-badge">QMS</span></td><td>ISO 9001</td><td>Quality Management System</td></tr>
+        <tr><td><span class="iso-badge">EMS</span></td><td>ISO 14001</td><td>Environmental Management System</td></tr>
+        <tr><td><span class="iso-badge">OHSMS</span></td><td>ISO 45001</td><td>Occupational Health &amp; Safety</td></tr>
+        <tr><td><span class="iso-badge">FSMS</span></td><td>ISO 22000</td><td>Food Safety Management System</td></tr>
+        <tr><td><span class="iso-badge">MDQMS</span></td><td>ISO 13485</td><td>Medical Devices Quality Management</td></tr>
+        <tr><td><span class="iso-badge">ISMS</span></td><td>ISO 27001</td><td>Information Security Management</td></tr>
+        <tr><td><span class="iso-badge">ABMS</span></td><td>ISO 37001</td><td>Anti-Bribery Management System</td></tr>
+        <tr><td><span class="iso-badge">ENMS</span></td><td>ISO 50001</td><td>Energy Management System</td></tr>
+      </table>
+      <h3>Audit Stages:</h3>
+      <ul>
+        <li><strong>Stage 1:</strong> Document review and readiness assessment — evaluates management system documentation and site readiness.</li>
+        <li><strong>Stage 2:</strong> Main conformity audit — assesses implementation and effectiveness of the management system.</li>
+      </ul>
+    </div>
+
+    <div class="gs" id="pipeline">
+      <h2>5. What Happens After You Submit</h2>
+      <div class="step-cards">
+        <div class="step-card"><div class="step-badge">1</div><div><h4>Queued</h4><p>Job created and placed in the processing queue.</p><div class="est">Instant</div></div></div>
+        <div class="step-card"><div class="step-badge">2</div><div><h4>Preprocessing</h4><p>Files parsed: text extracted from PDFs and Word docs, OCR run on images, template sections mapped.</p><div class="est">~30 seconds</div></div></div>
+        <div class="step-card"><div class="step-badge">3</div><div><h4>Step A — Evidence Extraction</h4><p>AI reads all company documents and extracts structured evidence: company overview, processes, records, and identified gaps.</p><div class="est">~2–4 minutes</div></div></div>
+        <div class="step-card"><div class="step-badge">4</div><div><h4>Step B — Report Generation</h4><p>Using extracted evidence, template structure, and style guidance, the AI writes the full audit report section by section.</p><div class="est">~3–5 minutes</div></div></div>
+        <div class="step-card"><div class="step-badge">5</div><div><h4>Step C — Validation &amp; Correction</h4><p>AI reviews the draft for consistency and accuracy, applies corrections, and produces a correction log.</p><div class="est">~2–4 minutes</div></div></div>
+        <div class="step-card"><div class="step-badge">6</div><div><h4>Assembly</h4><p>Validated content inserted into your Word template, preserving all formatting and section structure.</p><div class="est">~30 seconds</div></div></div>
+        <div class="step-card complete"><div class="step-badge ok">✓</div><div><h4>Complete — Report Ready</h4><p>Final .docx report and correction log ready to download from the Results page.</p></div></div>
+      </div>
+    </div>
+
+    <div class="gs" id="timing">
+      <h2>6. Timing</h2>
+      <p>A typical job takes <strong>10–15 minutes</strong> end to end. Jobs with many large documents may take slightly longer due to text extraction time. The status page auto-refreshes every 4 seconds and redirects automatically when ready.</p>
+      <p>You can bookmark the status page URL and check back later — the report is stored and available until job data is cleared.</p>
+    </div>
+
+    <div class="gs" id="download">
+      <h2>7. Downloading Your Results</h2>
+      <p>Once complete you are redirected to the Results page. Two files are available:</p>
+      <ul>
+        <li><strong>Final Report (.docx)</strong> — complete audit report formatted using your template. Open in Microsoft Word or Google Docs.</li>
+        <li><strong>Correction Log (.txt)</strong> — record of all changes the AI made in Step C. Useful for quality review.</li>
+      </ul>
+      <p>Save both files immediately. Job data is not guaranteed to persist indefinitely.</p>
+    </div>
+
+    <div class="gs" id="tips">
+      <h2>8. Tips for Best Results</h2>
+      <ul>
+        <li><strong>More documents = better report.</strong> Upload all available management system documentation, even if some sections feel redundant.</li>
+        <li><strong>Use text-based PDFs.</strong> Scanned images rely on OCR which is slower and less accurate. Use native PDF or Word files where possible.</li>
+        <li><strong>Match your template to the standard.</strong> Clause-specific sections (e.g. Clause 6 Planning, Clause 8 Operation) produce a more structured report.</li>
+        <li><strong>Check your template headings.</strong> Use View → Navigation Pane in Word to confirm headings appear in the document outline.</li>
+        <li><strong>Use 2–3 sample reports.</strong> More samples = better style consistency. Mix Stage 1 and Stage 2 samples if available.</li>
+      </ul>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
