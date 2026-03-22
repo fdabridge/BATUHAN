@@ -45,9 +45,6 @@ RUN useradd --no-create-home --shell /bin/false batuhan \
     && chown -R batuhan:batuhan /app
 USER batuhan
 
-# Storage volume — mount a host directory here in production
-VOLUME ["/app/storage"]
-
 # API port
 EXPOSE 8000
 
