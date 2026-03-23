@@ -33,33 +33,76 @@
     <a href="/ui" class="btn btn-secondary">+ New Job</a>
   </div>
 
+  <!-- Progress bar -->
   <div style="display:flex; justify-content:space-between; font-size:.8rem; color:var(--muted); margin-bottom:.35rem;">
     <span id="statusLabel">Connecting…</span>
     <span id="pct" style="font-weight:700; color:var(--text);">0%</span>
   </div>
   <div class="progress-outer"><div class="progress-inner" id="progressFill" style="width:0%"></div></div>
 
+  <!-- Step list -->
   <div class="step-list" id="stepList"></div>
 
-  <div id="errorBanner" class="error-banner" style="display:none;"></div>
-
-  <div class="stat-grid">
-    <div class="stat-cell"><div class="stat-label">Elapsed</div><div class="stat-val" id="elapsedVal">0s</div></div>
-    <div class="stat-cell"><div class="stat-label">Estimated Total</div><div class="stat-val">10–15 min</div></div>
+  <!-- SUCCESS panel (hidden until COMPLETE) -->
+  <div id="successPanel" style="display:none; margin-top:1.25rem; background:var(--success-light); border:1px solid #A7F3D0; border-radius:var(--radius-sm); padding:1.25rem 1.5rem;">
+    <div style="display:flex; align-items:center; gap:.75rem; margin-bottom:1rem;">
+      <span style="font-size:1.5rem;">✅</span>
+      <div>
+        <div style="font-weight:700; color:#065F46; font-size:1rem;">Report generated successfully!</div>
+        <div style="font-size:.82rem; color:#059669; margin-top:.15rem;" id="redirectNote">Redirecting to results page…</div>
+      </div>
+    </div>
+    <div style="display:flex; gap:.75rem; flex-wrap:wrap;">
+      <a id="downloadBtn" href="/jobs/{{ job_id }}/download/report" download
+         style="display:inline-flex; align-items:center; gap:.5rem; padding:.8rem 1.6rem; background:var(--success); color:#fff; border-radius:var(--radius-sm); font-weight:700; font-size:.95rem; text-decoration:none;">
+        📄 Download Final Report (.docx)
+      </a>
+      <a href="/ui/results/{{ job_id }}"
+         style="display:inline-flex; align-items:center; gap:.5rem; padding:.8rem 1.25rem; background:var(--surface); color:var(--text-secondary); border:1.5px solid var(--border); border-radius:var(--radius-sm); font-weight:600; font-size:.875rem; text-decoration:none;">
+        View Full Results →
+      </a>
+    </div>
   </div>
-  <div style="margin-top:.85rem; font-size:.75rem; color:var(--muted-light); text-align:right;" id="refreshNote">🔄 Auto-refreshing every 4s…</div>
+
+  <!-- FAILED panel (hidden until FAILED) -->
+  <div id="failedPanel" style="display:none; margin-top:1.25rem; background:var(--danger-light); border:1px solid #FCA5A5; border-radius:var(--radius-sm); padding:1.25rem 1.5rem;">
+    <div style="display:flex; align-items:flex-start; gap:.75rem; margin-bottom:.85rem;">
+      <span style="font-size:1.35rem; flex-shrink:0;">❌</span>
+      <div>
+        <div style="font-weight:700; color:#B91C1C; font-size:.95rem; margin-bottom:.3rem;">Job failed</div>
+        <div id="errorMsg" style="font-size:.875rem; color:#7F1D1D; line-height:1.6;"></div>
+      </div>
+    </div>
+    <div style="font-size:.8rem; color:#B91C1C; margin-top:.5rem; padding-top:.75rem; border-top:1px solid #FCA5A5;">
+      Common causes: unreadable files, template has no Word Heading styles, or Celery worker is not running.
+    </div>
+    <div style="margin-top:.85rem;">
+      <a href="/ui" style="display:inline-flex; align-items:center; gap:.4rem; padding:.6rem 1.25rem; background:var(--danger); color:#fff; border-radius:var(--radius-sm); font-weight:600; font-size:.875rem; text-decoration:none;">
+        ↩ Try Again
+      </a>
+    </div>
+  </div>
+
+  <!-- Stats + refresh note (hidden when done/failed) -->
+  <div id="liveStats">
+    <div class="stat-grid">
+      <div class="stat-cell"><div class="stat-label">Elapsed</div><div class="stat-val" id="elapsedVal">0s</div></div>
+      <div class="stat-cell"><div class="stat-label">Estimated Total</div><div class="stat-val">10–15 min</div></div>
+    </div>
+    <div style="margin-top:.85rem; font-size:.75rem; color:var(--muted-light); text-align:right;" id="refreshNote">🔄 Auto-refreshing every 4s…</div>
+  </div>
 </div>
 
 <script>
 const JOB_ID = "{{ job_id }}";
 const STEPS = [
-  {key:"QUEUED",        label:"Queued",                        est:"< 1 min"},
-  {key:"PREPROCESSING", label:"Preprocessing files",           est:"~30 sec"},
-  {key:"STEP_A",        label:"Step A — Evidence Extraction",  est:"~2–4 min"},
-  {key:"STEP_B",        label:"Step B — Report Generation",    est:"~3–5 min"},
-  {key:"STEP_C",        label:"Step C — Validation",           est:"~2–4 min"},
-  {key:"ASSEMBLING",    label:"Assembling Final Document",      est:"~30 sec"},
-  {key:"COMPLETE",      label:"Complete",                       est:""},
+  {key:"QUEUED",        label:"Queued",                       est:"< 1 min"},
+  {key:"PREPROCESSING", label:"Preprocessing files",          est:"~30 sec"},
+  {key:"STEP_A",        label:"Step A — Evidence Extraction", est:"~2–4 min"},
+  {key:"STEP_B",        label:"Step B — Report Generation",   est:"~3–5 min"},
+  {key:"STEP_C",        label:"Step C — Validation",          est:"~2–4 min"},
+  {key:"ASSEMBLING",    label:"Assembling Final Document",     est:"~30 sec"},
+  {key:"COMPLETE",      label:"Complete",                      est:""},
 ];
 const PROGRESS = {QUEUED:2,PREPROCESSING:10,STEP_A:25,STEP_B:55,STEP_C:78,ASSEMBLING:92,COMPLETE:100,FAILED:100};
 let startTime = Date.now();
@@ -70,10 +113,20 @@ function renderSteps(state) {
     const isDone = state === 'COMPLETE' || i < idx;
     let cls = '', icon = '○';
     if (isDone) { cls = 'done'; icon = '✓'; }
-    else if (i === idx) { cls = state === 'FAILED' ? 'failed' : 'active'; icon = state === 'FAILED' ? '✕' : '◉'; }
+    else if (i === idx) {
+      cls = state === 'FAILED' ? 'failed' : 'active';
+      icon = state === 'FAILED' ? '✕' : '◉';
+    }
     const est = cls === 'active' ? `<span class="step-est">${s.est}</span>` : '';
     return `<div class="step-row ${cls}"><span class="step-icon">${icon}</span><span>${s.label}</span>${est}</div>`;
   }).join('');
+}
+
+function updateElapsed() {
+  const elapsed = Math.round((Date.now() - startTime) / 1000);
+  const m = Math.floor(elapsed / 60), s = elapsed % 60;
+  const el = document.getElementById('elapsedVal');
+  if (el) el.textContent = m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
 async function poll() {
@@ -83,28 +136,51 @@ async function poll() {
     const data = await res.json();
     const state = data.state;
     const pct = PROGRESS[state] || 0;
+
+    // Update progress bar
     const fill = document.getElementById('progressFill');
     fill.style.width = pct + '%';
-    fill.className = 'progress-inner' + (state==='COMPLETE'?' done':state==='FAILED'?' failed':'');
+    fill.className = 'progress-inner' + (state === 'COMPLETE' ? ' done' : state === 'FAILED' ? ' failed' : '');
     document.getElementById('pct').textContent = pct + '%';
-    document.getElementById('statusLabel').textContent = data.current_step || state.replace(/_/g,' ');
+    document.getElementById('statusLabel').textContent = data.current_step || state.replace(/_/g, ' ');
     renderSteps(state);
-    const elapsed = Math.round((Date.now() - startTime) / 1000);
-    const m = Math.floor(elapsed/60), s = elapsed%60;
-    document.getElementById('elapsedVal').textContent = m > 0 ? `${m}m ${s}s` : `${s}s`;
+    updateElapsed();
+
     if (state === 'FAILED') {
-      document.getElementById('errorBanner').style.display = 'block';
-      document.getElementById('errorBanner').textContent = '⚠ ' + (data.error_message || 'An unknown error occurred.');
-      document.getElementById('refreshNote').textContent = ''; return;
+      // Show failure panel
+      document.getElementById('liveStats').style.display = 'none';
+      document.getElementById('failedPanel').style.display = 'block';
+      const rawMsg = data.error_message || 'An unknown error occurred.';
+      document.getElementById('errorMsg').textContent = rawMsg;
+      return; // stop polling
     }
+
     if (state === 'COMPLETE') {
-      document.getElementById('refreshNote').textContent = '✅ Done! Redirecting…';
-      setTimeout(() => { window.location.href = `/ui/results/${JOB_ID}`; }, 1500); return;
+      // Show success panel with download button
+      document.getElementById('liveStats').style.display = 'none';
+      document.getElementById('successPanel').style.display = 'block';
+      // Auto-redirect to results page after 4 seconds
+      let countdown = 4;
+      const note = document.getElementById('redirectNote');
+      const timer = setInterval(() => {
+        countdown--;
+        if (note) note.textContent = `Redirecting to results page in ${countdown}s…`;
+        if (countdown <= 0) {
+          clearInterval(timer);
+          window.location.href = `/ui/results/${JOB_ID}`;
+        }
+      }, 1000);
+      return; // stop polling
     }
+
     setTimeout(poll, 4000);
-  } catch(e) { setTimeout(poll, 5000); }
+  } catch(e) {
+    setTimeout(poll, 5000);
+  }
 }
+
 renderSteps('QUEUED');
+setInterval(updateElapsed, 1000);
 poll();
 </script>
 {% endblock %}

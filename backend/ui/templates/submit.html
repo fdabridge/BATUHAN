@@ -37,8 +37,9 @@
   <!-- LEFT: Form -->
   <div class="card">
     {% if error %}<div class="alert alert-danger">⚠ {{ error }}</div>{% endif %}
+    <div id="alertBox" class="alert alert-danger" style="display:none;"></div>
 
-    <form id="submitForm" method="POST" action="/jobs/create" enctype="multipart/form-data">
+    <form id="submitForm" enctype="multipart/form-data">
 
       <div class="section-label">Step 1 — Company Documents</div>
       <div class="field">
@@ -141,10 +142,51 @@
 </div>
 
 <script>
-  document.getElementById('submitForm').addEventListener('submit', function() {
+  document.getElementById('submitForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
     const btn = document.getElementById('submitBtn');
-    btn.disabled = true; btn.textContent = 'Submitting…';
-    document.getElementById('loadingMsg').style.display = 'inline-flex';
+    const loadingMsg = document.getElementById('loadingMsg');
+    const alertBox = document.getElementById('alertBox');
+
+    // Clear previous errors
+    alertBox.style.display = 'none';
+    alertBox.textContent = '';
+
+    // Show loading state
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Uploading…';
+    loadingMsg.style.display = 'inline-flex';
+
+    try {
+      const formData = new FormData(this);
+      const res = await fetch('/jobs/create', { method: 'POST', body: formData });
+
+      if (res.ok) {
+        const data = await res.json();
+        // Redirect to the status page
+        window.location.href = `/ui/status/${data.job_id}`;
+        return;
+      }
+
+      // Handle errors — try to parse detail from FastAPI's JSON error
+      let msg = `Server error (${res.status})`;
+      try {
+        const err = await res.json();
+        msg = err.detail || msg;
+      } catch (_) {}
+      alertBox.textContent = '⚠ ' + msg;
+      alertBox.style.display = 'block';
+
+    } catch (err) {
+      alertBox.textContent = '⚠ Network error — check your connection and try again.';
+      alertBox.style.display = 'block';
+    }
+
+    // Reset button on error
+    btn.disabled = false;
+    btn.innerHTML = '▶ Submit Job';
+    loadingMsg.style.display = 'none';
   });
 </script>
 {% endblock %}
