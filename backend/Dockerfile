@@ -26,6 +26,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # -----------------------------------------------------------------------
 WORKDIR /app
 
+# Ensure all backend modules (parsers, pipeline, safety, etc.) are importable
+# by every process started from this image — uvicorn, celery master, and all
+# celery worker child processes alike.  WORKDIR only sets the shell's cwd; it
+# does NOT add the directory to Python's sys.path.  PYTHONPATH does.
+ENV PYTHONPATH=/app
+
 # Copy and install requirements before the rest of the source so this
 # layer is cached unless requirements.txt changes.
 COPY requirements.txt .
