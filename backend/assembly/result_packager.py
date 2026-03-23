@@ -110,6 +110,7 @@ def package_results(
             validated_report=validated_report,
             output_path=tmp_docx_path,
             standard=standard,
+            job_id=job_id,
         )
         docx_bytes = Path(tmp_docx_path).read_bytes()
     finally:

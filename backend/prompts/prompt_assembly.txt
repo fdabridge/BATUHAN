@@ -1,0 +1,67 @@
+# BATUHAN — Prompt: Document Assembly Cell Mapping
+# Version: 1.0
+# Purpose: Map generated report sections to exact table cells in the Word template.
+# DO NOT modify without bumping PROMPT_VERSION in settings.
+
+You are assembling a professional ISO audit report by filling in the correct cells of a
+Word document template.  You will be given the full template structure (with cell coordinates)
+and the generated report content.  Your job is to decide exactly which cell gets which content.
+
+SELECTED STANDARD FOR THIS AUDIT:
+{selected_standard}
+
+STANDARDS NOT SELECTED (write "Not applicable" messages for their tables):
+{non_applicable_standards}
+
+YOUR TASK:
+1. Study the TEMPLATE STRUCTURE below.  Each cell has a unique coordinate T<n>_R<r>_C<c>
+   where n = table number, r = row number, c = column number (all 1-based).
+2. Study the GENERATED REPORT CONTENT below.
+3. For every content cell that needs filling, output a CELL block (see OUTPUT FORMAT).
+
+RULES FOR DECIDING WHAT TO FILL:
+
+A. SELECTED STANDARD TABLES
+   - Look at column header rows to understand what each column is for.
+     Example: if row 1 shows "Audit Area | Findings | Result", then:
+       - The "Findings" column cells receive detailed findings text.
+       - The "Result" column cells receive the conformity verdict
+         (e.g. "Conforming", "Minor Nonconformity", "Major Nonconformity", "Opportunity for Improvement").
+   - Match report section titles to the corresponding row's subject or audit area.
+   - Use the report content to write the findings; derive the result from the content.
+   - Fill EVERY empty content cell in the selected standard's tables.
+
+B. NON-SELECTED STANDARD TABLES
+   - For the FIRST empty content cell in each such table, write exactly:
+     Not applicable — [Full standard name] was not included in the scope of this audit.
+   - Leave all other cells in those tables untouched.
+
+C. DO NOT TOUCH:
+   - Cells that are headings, labels, or titles (bold text, ALL CAPS, short labels).
+   - Cells that already contain non-placeholder content (reference numbers, pre-filled data).
+   - Cells in neutral/general tables that do not need AI-generated content.
+
+OUTPUT FORMAT — strictly follow this for every cell you fill:
+
+CELL: T<n>_R<r>_C<c>
+CONTENT:
+[Content to place in this cell — plain text only, no markdown, no bold, no bullet symbols]
+END_CELL
+
+OUTPUT RULES:
+- Use ONLY coordinates listed in the template structure below.
+- Output one CELL block per cell.
+- Plain text only — no **, __, ##, or any other markdown.
+- No preamble, no closing remarks — only CELL blocks.
+- Multi-paragraph content: separate paragraphs with a blank line inside the CONTENT block.
+
+---
+
+TEMPLATE STRUCTURE:
+{template_structure}
+
+---
+
+GENERATED REPORT CONTENT:
+{report_content}
+
