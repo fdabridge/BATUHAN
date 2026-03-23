@@ -53,9 +53,39 @@ def _is_weak_section(content: str) -> bool:
     return any(phrase in lower for phrase in WEAK_EVIDENCE_PHRASES)
 
 
+def _strip_markdown(text: str) -> str:
+    """
+    Remove common markdown formatting characters from a single line so that
+    label-matching regexes work regardless of how Claude wraps them.
+
+    Handles:
+      **Section Title:**  →  Section Title:
+      ## Section Title:   →  Section Title:
+      __Content:__        →  Content:
+      `Section Title:`    →  Section Title:
+    """
+    # Strip leading heading markers (# ## ### …)
+    text = re.sub(r"^#+\s*", "", text)
+    # Strip surrounding bold/italic/code markers (* ** _ __ `)
+    text = re.sub(r"[*_`]+", "", text)
+    return text.strip()
+
+
 def _split_blocks(raw_output: str) -> list[str]:
     """Split the raw output into individual section blocks by '---' separator."""
-    # Normalise line endings and split on '---' standing alone on a line
+    # 1. Strip markdown code fences the model may wrap everything in
+    raw_output = re.sub(r"^```[a-z]*\n?", "", raw_output.strip(), flags=re.IGNORECASE)
+    raw_output = re.sub(r"\n?```$", "", raw_output.strip(), flags=re.IGNORECASE)
+
+    # 2. Normalise line endings
+    raw_output = raw_output.replace("\r\n", "\n").replace("\r", "\n")
+
+    # 3. Ensure every standalone '---' line is surrounded by newlines so the
+    #    split regex can find it even at the very start/end of the response.
+    raw_output = re.sub(r"(?<!\n)(^|\n)\s*---\s*(\n|$)(?!\n)",
+                        "\n\n---\n\n", raw_output, flags=re.MULTILINE)
+
+    # 4. Split on '---' standing alone on a line
     blocks = re.split(r"\n\s*---\s*\n", raw_output)
     return [b.strip() for b in blocks if b.strip()]
 
@@ -80,15 +110,18 @@ def _parse_block(block: str) -> tuple[str, str] | None:
 
     for line in lines:
         stripped = line.strip()
-        if re.match(r"^Section\s+Title\s*:", stripped, re.IGNORECASE):
+        # Strip markdown formatting before label-matching so that
+        # "**Section Title:**", "## Content:", etc. all match correctly.
+        cleaned = _strip_markdown(stripped)
+        if re.match(r"^Section\s+Title\s*:", cleaned, re.IGNORECASE):
             mode = "title"
             # Inline: "Section Title: The actual title"
-            inline = re.sub(r"^Section\s+Title\s*:\s*", "", stripped, flags=re.IGNORECASE).strip()
+            inline = re.sub(r"^Section\s+Title\s*:\s*", "", cleaned, flags=re.IGNORECASE).strip()
             if inline:
                 title_lines.append(inline)
-        elif re.match(r"^Content\s*:", stripped, re.IGNORECASE):
+        elif re.match(r"^Content\s*:", cleaned, re.IGNORECASE):
             mode = "content"
-            inline = re.sub(r"^Content\s*:\s*", "", stripped, flags=re.IGNORECASE).strip()
+            inline = re.sub(r"^Content\s*:\s*", "", cleaned, flags=re.IGNORECASE).strip()
             if inline:
                 content_lines.append(inline)
         elif mode == "title":

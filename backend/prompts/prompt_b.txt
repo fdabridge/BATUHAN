@@ -69,15 +69,21 @@ If evidence is weak, use phrases like:
 
 OUTPUT FORMAT
 Return structured output for EVERY section in the template.
-For each section use exactly this format:
+For each section use EXACTLY this format — no exceptions:
 
-Section Title:
-[Exact title from template]
+Section Title: [Exact title from template]
 
 Content:
 [Well-written paragraph(s) ready to insert into report]
 
 ---
+
+STRICT FORMATTING RULES:
+- Write "Section Title:" and "Content:" as plain text — no bold, no markdown
+- Do NOT use **, __, ##, or any other markdown syntax anywhere in your response
+- Do NOT wrap your response in a code block or backticks
+- Every section MUST end with --- on its own line
+- Do NOT add any preamble, introduction, or closing remarks outside the sections
 
 TEMPLATE SECTIONS TO COMPLETE:
 {template_sections}
