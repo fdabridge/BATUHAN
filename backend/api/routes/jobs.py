@@ -1,27 +1,38 @@
 """
 BATUHAN — Job Submission API Routes (T6 + T7)
 Handles file uploads, audit metadata capture, and job creation.
-POST /jobs/create  → accepts all inputs, stores files, returns job_id
-GET  /jobs/{job_id}/status → returns current job state
+POST /jobs/create  → accepts all inputs, encodes files, queues task, returns job_id
+GET  /jobs/{job_id}/status → returns current job state (read from Redis)
 """
 
 from __future__ import annotations
+import base64
 import json
 import logging
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
-
-from schemas.models import (
-    ISOStandard, AuditStage, JobStatus, JobState, UploadBundle
-)
-from storage.file_store import (
-    generate_job_id, save_upload, save_text_artifact,
-    list_files, job_exists, read_text_artifact
-)
 from datetime import datetime
+
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.responses import Response
+
+from schemas.models import ISOStandard, AuditStage, JobStatus, JobState
+from storage.file_store import (
+    generate_job_id, validate_extension, save_text_artifact,
+    job_exists, read_text_artifact, read_binary_artifact,
+)
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 logger = logging.getLogger(__name__)
+
+ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".png", ".jpg", ".jpeg", ".tiff"}
+
+
+async def _encode_file(upload: UploadFile) -> dict:
+    """Read an UploadFile and return {filename, content_b64} — JSON-serialisable."""
+    content = await upload.read()
+    return {
+        "filename": upload.filename or "upload",
+        "content_b64": base64.b64encode(content).decode("ascii"),
+    }
 
 
 @router.post("/create")
@@ -40,55 +51,42 @@ async def create_job(
 ):
     """
     Create a new BATUHAN audit job.
-    Accepts all required inputs, stores them, and queues the pipeline.
-    Returns the job_id for status polling.
+    File contents are read into memory, base64-encoded, and passed directly
+    to the Celery task through Redis — no shared filesystem is required.
     """
     job_id = generate_job_id()
     logger.info(f"Creating job {job_id} | standard={standard} | stage={stage}")
 
     # --- Validate template extension ---
     if not (template.filename or "").lower().endswith((".docx", ".doc")):
-        raise HTTPException(
-            status_code=400,
-            detail="Template must be a .docx file."
-        )
+        raise HTTPException(status_code=400, detail="Template must be a .docx file.")
 
-    # --- Save company documents ---
-    company_paths: list[str] = []
+    # --- Validate and encode company documents ---
+    company_files: list[dict] = []
     for f in company_documents:
-        try:
-            path = await save_upload(f, job_id, "company_documents")
-            company_paths.append(path)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+        if not validate_extension(f.filename or ""):
+            raise HTTPException(
+                status_code=400,
+                detail=f"File type not allowed: {f.filename}. "
+                       f"Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
+            )
+        company_files.append(await _encode_file(f))
 
-    # --- Save sample reports ---
-    sample_paths: list[str] = []
+    # --- Validate and encode sample reports ---
+    sample_files: list[dict] = []
     for f in sample_reports:
-        try:
-            path = await save_upload(f, job_id, "sample_reports")
-            sample_paths.append(path)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+        if not validate_extension(f.filename or ""):
+            raise HTTPException(
+                status_code=400,
+                detail=f"File type not allowed: {f.filename}. "
+                       f"Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
+            )
+        sample_files.append(await _encode_file(f))
 
-    # --- Save template ---
-    try:
-        template_path = await save_upload(template, job_id, "template")
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    # --- Encode template ---
+    template_file = await _encode_file(template)
 
-    # --- Persist job metadata ---
-    bundle = UploadBundle(
-        job_id=job_id,
-        standard=standard,
-        stage=stage,
-        company_document_paths=company_paths,
-        sample_report_paths=sample_paths,
-        template_path=template_path,
-    )
-    save_text_artifact(job_id, "bundle.json", bundle.model_dump_json(indent=2))
-
-    # --- Initialise job status ---
+    # --- Initialise job status in Redis (shared with the worker) ---
     status = JobStatus(
         job_id=job_id,
         state=JobState.QUEUED,
@@ -96,21 +94,29 @@ async def create_job(
     )
     save_text_artifact(job_id, "status.json", status.model_dump_json(indent=2))
 
-    # --- Queue the pipeline (Celery task — imported lazily to avoid circular) ---
+    # --- Queue pipeline — pass file contents directly, no filesystem dependency ---
     try:
         from jobs.tasks import run_pipeline
-        run_pipeline.delay(job_id)
-        logger.info(f"Job {job_id} queued for pipeline execution.")
+        run_pipeline.delay(
+            job_id,
+            company_files,
+            sample_files,
+            template_file,
+            standard.value,
+            stage.value,
+        )
+        logger.info(f"Job {job_id} queued with {len(company_files)} company docs, "
+                    f"{len(sample_files)} sample reports.")
     except Exception as e:
-        logger.warning(f"Could not queue job {job_id} via Celery: {e}. Run manually.")
+        logger.warning(f"Could not queue job {job_id} via Celery: {e}.")
 
     return {
         "job_id": job_id,
         "status": JobState.QUEUED,
         "standard": standard,
         "stage": stage,
-        "company_documents_received": len(company_paths),
-        "sample_reports_received": len(sample_paths),
+        "company_documents_received": len(company_files),
+        "sample_reports_received": len(sample_files),
         "template_received": True,
         "message": "Job created and queued. Poll /jobs/{job_id}/status for progress.",
     }
@@ -130,18 +136,17 @@ def get_job_status(job_id: str):
 
 @router.get("/{job_id}/download/report")
 def download_report(job_id: str):
-    """Download the final assembled .docx report."""
+    """Download the final assembled .docx report (served from Redis)."""
     if not job_exists(job_id):
         raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
-    files = list_files(job_id, "artifacts")
-    # Packager saves as 'final_report.docx' (no prefix)
-    docx_files = [f for f in files if f.endswith("final_report.docx")]
-    if not docx_files:
+    try:
+        content = read_binary_artifact(job_id, "final_report.docx")
+    except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Report not ready yet.")
-    return FileResponse(
-        path=docx_files[0],
+    return Response(
+        content=content,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        filename=f"audit_report_{job_id}.docx",
+        headers={"Content-Disposition": f'attachment; filename="audit_report_{job_id}.docx"'},
     )
 
 

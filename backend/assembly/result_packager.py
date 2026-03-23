@@ -22,7 +22,7 @@ from schemas.models import (
     ISOStandard, AuditStage,
 )
 from assembly.docx_builder import assemble_docx
-from storage.file_store import save_text_artifact, save_binary_artifact, _subdir
+from storage.file_store import save_text_artifact, save_binary_artifact
 
 logger = logging.getLogger(__name__)
 
@@ -99,15 +99,25 @@ def package_results(
     """
     logger.info(f"[Packager] Assembling deliverables | job={job_id}")
 
-    # --- 1. Assemble final DOCX ---
-    artifacts_dir = str(_subdir(job_id, "artifacts"))
-    docx_output_path = str(Path(artifacts_dir) / "final_report.docx")
+    # --- 1. Assemble final DOCX into a temp file, then push bytes to Redis ---
+    import tempfile
+    import os
+    tmp_fd, tmp_docx_path = tempfile.mkstemp(suffix=".docx", prefix=f"batuhan_{job_id}_")
+    os.close(tmp_fd)
+    try:
+        assemble_docx(
+            template_path=template_path,
+            validated_report=validated_report,
+            output_path=tmp_docx_path,
+        )
+        docx_bytes = Path(tmp_docx_path).read_bytes()
+    finally:
+        try:
+            os.unlink(tmp_docx_path)
+        except OSError:
+            pass
 
-    final_docx_path = assemble_docx(
-        template_path=template_path,
-        validated_report=validated_report,
-        output_path=docx_output_path,
-    )
+    final_docx_path = save_binary_artifact(job_id, "final_report.docx", docx_bytes)
 
     # --- 2. Write human-readable correction log ---
     correction_log_txt = _format_correction_log_txt(correction_log)
@@ -128,7 +138,7 @@ def package_results(
     logger.info(
         f"[Packager] Complete | job={job_id} | "
         f"{correction_log.correction_count} correction(s) | "
-        f"DOCX: {Path(final_docx_path).name}"
+        f"DOCX stored at {final_docx_path}"
     )
 
     return JobResult(

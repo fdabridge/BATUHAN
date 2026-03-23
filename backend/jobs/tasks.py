@@ -3,17 +3,23 @@ BATUHAN — Celery Worker & Pipeline Task (T28)
 Defines the Celery application and the run_pipeline task that executes
 the full A→B→C→Assembly pipeline for a given job_id.
 
+File data is passed directly as base64-encoded task arguments — no shared
+filesystem is required between the API container and the Worker container.
+
 Start the worker with:
-  celery -A backend.jobs.tasks worker --loglevel=info
+  celery -A jobs.tasks worker --loglevel=info --concurrency=2
 """
 
 from __future__ import annotations
+import base64
 import logging
+import shutil
+import tempfile
 from pathlib import Path
 
 from celery import Celery
 from config.settings import get_settings
-from schemas.models import JobState, UploadBundle
+from schemas.models import ISOStandard, AuditStage, JobState
 from jobs.state import update_job_state
 from safety.failure_handler import (
     PipelineAbort,
@@ -45,9 +51,38 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     task_track_started=True,
-    task_acks_late=True,          # acknowledge only after completion (safe)
-    worker_prefetch_multiplier=1,  # one task at a time per worker (resource-heavy AI calls)
+    task_acks_late=True,           # acknowledge only after completion (safe)
+    worker_prefetch_multiplier=1,  # one task at a time per worker
 )
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+def _write_files(file_list: list[dict], dest_dir: Path) -> list[str]:
+    """
+    Decode base64 file data and write each file to dest_dir.
+    Returns a list of absolute path strings.
+    Each item in file_list must have {"filename": str, "content_b64": str}.
+    """
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    paths: list[str] = []
+    for item in file_list:
+        filename = item["filename"]
+        content = base64.b64decode(item["content_b64"])
+        dest = dest_dir / filename
+        # Handle duplicate filenames
+        counter = 1
+        while dest.exists():
+            stem = Path(filename).stem
+            suffix = Path(filename).suffix
+            dest = dest_dir / f"{stem}_{counter}{suffix}"
+            counter += 1
+        dest.write_bytes(content)
+        paths.append(str(dest))
+        logger.debug(f"[Pipeline] Wrote temp file: {dest} ({len(content)} bytes)")
+    return paths
 
 
 # ---------------------------------------------------------------------------
@@ -55,20 +90,40 @@ celery_app.conf.update(
 # ---------------------------------------------------------------------------
 
 @celery_app.task(name="batuhan.run_pipeline", bind=True, max_retries=0)
-def run_pipeline(self, job_id: str) -> dict:
+def run_pipeline(
+    self,
+    job_id: str,
+    company_files: list[dict],
+    sample_files: list[dict],
+    template_file: dict,
+    standard_value: str,
+    stage_value: str,
+) -> dict:
     """
     Execute the full BATUHAN pipeline for a job:
       PREPROCESSING → STEP_A → STEP_B → STEP_C → ASSEMBLING → COMPLETE
 
-    On any unrecoverable failure, transitions to FAILED with an error message.
-    The task does NOT retry automatically — retries would re-bill the Anthropic API.
+    File contents are received as base64-encoded dicts and written to a
+    temporary directory for processing. All output artifacts are stored in
+    Redis so the API container can retrieve them for downloads.
+
+    The task does NOT retry automatically — retries would re-bill the API.
     """
     logger.info(f"[Pipeline] Starting job {job_id}")
+    # Create a dedicated temp directory for this job's files
+    tmp_root = Path(tempfile.gettempdir()) / "batuhan_jobs" / job_id
+
     try:
-        # --- Load job bundle ---
-        from storage.file_store import read_text_artifact
-        raw_bundle = read_text_artifact(job_id, "bundle.json")
-        bundle = UploadBundle.model_validate_json(raw_bundle)
+        standard = ISOStandard(standard_value)
+        stage = AuditStage(stage_value)
+
+        # -----------------------------------------------------------
+        # Write uploaded file data to the worker's local temp dir
+        # -----------------------------------------------------------
+        company_paths = _write_files(company_files, tmp_root / "company_documents")
+        sample_paths = _write_files(sample_files, tmp_root / "sample_reports")
+        template_paths = _write_files([template_file], tmp_root / "template")
+        template_path = template_paths[0]
 
         # -----------------------------------------------------------
         # PREPROCESSING — text extraction, OCR, template, style
@@ -80,18 +135,18 @@ def run_pipeline(self, job_id: str) -> dict:
         from parsers.template_parser import parse_template
         from parsers.style_extractor import build_style_guidance
 
-        raw_corpus = parse_documents(bundle.company_document_paths)
-        ocr_docs = run_ocr_pipeline(bundle.company_document_paths)
+        raw_corpus = parse_documents(company_paths)
+        ocr_docs = run_ocr_pipeline(company_paths)
         all_docs = raw_corpus + ocr_docs
 
         # T31: skip unreadable files, abort if ALL documents are empty
-        corpus = filter_readable_documents(bundle.company_document_paths, all_docs)
+        corpus = filter_readable_documents(company_paths, all_docs)
 
-        template_map = parse_template(bundle.template_path)
+        template_map = parse_template(template_path)
         # T31: abort if template has no sections
         assert_template_valid(template_map)
 
-        style_guidance = build_style_guidance(bundle.sample_report_paths)
+        style_guidance = build_style_guidance(sample_paths)
 
         # -----------------------------------------------------------
         # STEP A — Evidence Extraction
@@ -102,8 +157,8 @@ def run_pipeline(self, job_id: str) -> dict:
         evidence = run_step_a(
             job_id=job_id,
             corpus=corpus,
-            standard=bundle.standard,
-            stage=bundle.stage,
+            standard=standard,
+            stage=stage,
         )
         # T31: abort if Step A produced nothing
         assert_evidence_valid(evidence, job_id)
@@ -119,8 +174,8 @@ def run_pipeline(self, job_id: str) -> dict:
             evidence=evidence,
             template_map=template_map,
             style_guidance=style_guidance,
-            standard=bundle.standard,
-            stage=bundle.stage,
+            standard=standard,
+            stage=stage,
         )
 
         # -----------------------------------------------------------
@@ -156,19 +211,19 @@ def run_pipeline(self, job_id: str) -> dict:
             )
 
         # -----------------------------------------------------------
-        # ASSEMBLING — DOCX + correction log + summary
+        # ASSEMBLING — DOCX + correction log + summary (all in Redis)
         # -----------------------------------------------------------
         update_job_state(job_id, JobState.ASSEMBLING)
 
         from assembly.result_packager import package_results
-        files_used = [Path(p).name for p in bundle.company_document_paths]
+        files_used = [item["filename"] for item in company_files]
         package_results(
             job_id=job_id,
             validated_report=validated_report,
             correction_log=correction_log,
-            template_path=bundle.template_path,
-            standard=bundle.standard,
-            stage=bundle.stage,
+            template_path=template_path,
+            standard=standard,
+            stage=stage,
             files_used=files_used,
         )
 
@@ -185,4 +240,10 @@ def run_pipeline(self, job_id: str) -> dict:
         logger.error(f"[Pipeline] Job {job_id} FAILED: {error_msg}", exc_info=True)
         update_job_state(job_id, JobState.FAILED, error_message=error_msg)
         raise  # Re-raise so Celery records task as failed
+
+    finally:
+        # Always clean up temp files — whether the job succeeded or failed
+        if tmp_root.exists():
+            shutil.rmtree(tmp_root, ignore_errors=True)
+            logger.debug(f"[Pipeline] Cleaned up temp dir: {tmp_root}")
 
