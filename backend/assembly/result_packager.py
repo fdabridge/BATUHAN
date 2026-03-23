@@ -109,6 +109,7 @@ def package_results(
             template_path=template_path,
             validated_report=validated_report,
             output_path=tmp_docx_path,
+            standard=standard,
         )
         docx_bytes = Path(tmp_docx_path).read_bytes()
     finally:

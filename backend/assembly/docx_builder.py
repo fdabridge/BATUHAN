@@ -19,10 +19,11 @@ CRITICAL RULE: Template structure is IMMUTABLE. Only content areas are replaced.
 
 from __future__ import annotations
 import logging
+import re
 from pathlib import Path
 from lxml import etree
 from docx import Document
-from schemas.models import ValidatedReport, ReportSection
+from schemas.models import ValidatedReport, ReportSection, ISOStandard
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,20 @@ _HEADING_STYLE_IDS = {"Heading1", "Heading2", "Heading3"}
 
 # Maximum text length for a table cell to be considered a section heading.
 _MAX_HEADING_LEN = 150
+
+# Compiled regex patterns used to identify which standard a table belongs to.
+# Word-bounded abbreviations + unique ISO numbers (ISO numbers cannot appear
+# inside other words, so no word boundary needed for the numeric patterns).
+_STANDARD_PATTERNS: dict[str, list[re.Pattern]] = {
+    "QMS":   [re.compile(r"\bqms\b", re.IGNORECASE), re.compile(r"9001")],
+    "EMS":   [re.compile(r"\bems\b", re.IGNORECASE), re.compile(r"14001")],
+    "OHSMS": [re.compile(r"\bohsms\b", re.IGNORECASE), re.compile(r"45001")],
+    "FSMS":  [re.compile(r"\bfsms\b", re.IGNORECASE), re.compile(r"22000")],
+    "MDQMS": [re.compile(r"\bmdqms\b", re.IGNORECASE), re.compile(r"13485")],
+    "ISMS":  [re.compile(r"\bisms\b", re.IGNORECASE), re.compile(r"27001")],
+    "ABMS":  [re.compile(r"\babms\b", re.IGNORECASE), re.compile(r"37001")],
+    "ENMS":  [re.compile(r"\benms\b", re.IGNORECASE), re.compile(r"50001")],
+}
 
 
 # ---------------------------------------------------------------------------
@@ -171,7 +186,32 @@ def _fill_tc_elem(tc_elem, content_lines: list[str]) -> None:
         tc_elem.append(_make_text_para_elem(line))
 
 
-def _collect_table_heading_targets(body) -> list[tuple[str, object]]:
+def _tbl_matches_standard(tbl_elem, selected_std_value: str) -> bool:
+    """
+    Return True if this table should be processed for the selected standard.
+
+    Logic:
+    - If the table text contains identifiers for a DIFFERENT standard
+      (e.g. "EMS" / "14001" when the job is for QMS), return False → skip.
+    - If the table text contains no standard identifiers at all (neutral
+      header/cover tables), return True → process normally.
+    - If the table text matches the selected standard, return True → process.
+    """
+    all_text = " ".join(t.text or "" for t in tbl_elem.iter(_wtag("t")))
+    for std_value, patterns in _STANDARD_PATTERNS.items():
+        if std_value == selected_std_value:
+            continue  # Don't skip the selected standard's own table
+        for pattern in patterns:
+            if pattern.search(all_text):
+                logger.debug(
+                    "[Assembly] Skipping table — belongs to %s, not %s.",
+                    std_value, selected_std_value,
+                )
+                return False
+    return True
+
+
+def _collect_table_heading_targets(body, selected_standard: ISOStandard) -> list[tuple[str, object]]:
     """
     Scan all tables in the document body for heading-like cells.
 
@@ -185,6 +225,10 @@ def _collect_table_heading_targets(body) -> list[tuple[str, object]]:
     results: list[tuple[str, object]] = []
 
     for tbl in body.findall(_wtag("tbl")):
+        # Bug 2 fix: skip tables that belong to a different standard.
+        if not _tbl_matches_standard(tbl, selected_standard.value):
+            continue
+
         rows = tbl.findall(_wtag("tr"))
         seen_tc_ids: set[int] = set()
 
@@ -202,15 +246,21 @@ def _collect_table_heading_targets(body) -> list[tuple[str, object]]:
                 # Determine content target cell
                 content_tc = None
                 if tc_idx + 1 < len(tcs):
-                    # Pattern B: adjacent cell in the same row
+                    # Pattern B (two-column): RIGHT cell in the same row.
                     content_tc = tcs[tc_idx + 1]
                 elif row_idx + 1 < len(rows):
-                    # Pattern A: first cell of the next row
+                    # Pattern A (one-column): first cell of the next row.
                     next_tcs = rows[row_idx + 1].findall(_wtag("tc"))
                     if next_tcs:
                         content_tc = next_tcs[0]
 
                 if content_tc is not None:
+                    # Bug 1 fix: mark the content cell as seen so it is never
+                    # re-evaluated as a heading itself. Without this, the right
+                    # cell of a two-column row could be detected as a second
+                    # heading and inject content into the LEFT cell of the next
+                    # row instead of staying in the correct right cell.
+                    seen_tc_ids.add(id(content_tc))
                     results.append((_norm(text), content_tc))
 
     return results
@@ -224,6 +274,7 @@ def assemble_docx(
     template_path: str,
     validated_report: ValidatedReport,
     output_path: str,
+    standard: ISOStandard | None = None,
 ) -> str:
     """
     Assemble the final report DOCX by injecting validated section content
@@ -235,6 +286,9 @@ def assemble_docx(
         template_path:    Absolute path to the original blank .docx template.
         validated_report: Validated corrected report from Step C.
         output_path:      Where to save the completed .docx.
+        standard:         The ISO standard for this job. When provided, tables
+                          belonging to OTHER standards are left completely
+                          untouched (their 'Not applicable' text is preserved).
 
     Returns:
         Absolute path of the saved DOCX file.
@@ -286,7 +340,10 @@ def assemble_docx(
         # -----------------------------------------------------------------------
         # Strategy 2: Table-cell headings (bold / ALL CAPS)
         # -----------------------------------------------------------------------
-        table_targets = _collect_table_heading_targets(body)
+        # Fall back to ISOStandard.QMS if no standard was supplied (should not
+        # happen in normal pipeline flow, but keeps the function self-contained).
+        effective_standard = standard if standard is not None else next(iter(ISOStandard))
+        table_targets = _collect_table_heading_targets(body, effective_standard)
         if not table_targets:
             raise ValueError(
                 "Template has no detectable sections. "
