@@ -73,6 +73,25 @@ CRITICAL RULES
    Write in formal, objective, third-person audit language. Reference "the audit team",
    "it was confirmed", "the auditor verified", "evidence was reviewed", "records demonstrated".
 
+8. DOCUMENT REFERENCES IN FINDINGS
+   For each clause finding, check the extracted evidence for documents that are directly
+   and logically relevant to that clause. If such documents exist, name them explicitly:
+   include the document title, and the revision number or date where available. Describe
+   what that document confirms in relation to the clause — this is what makes a finding
+   specific to this organisation rather than generic boilerplate.
+
+   If the evidence for a particular clause does not contain a document that is directly
+   and logically relevant to it, do not force an unrelated document into that finding
+   just to add a reference. Instead, write the finding using the organisation's scope,
+   sector, and activities as context, keep it confirmatory, and move on. A finding
+   without a document reference is perfectly acceptable.
+
+   What is NEVER acceptable under any circumstance:
+   - Treating the absence of a document reference as a reason to downgrade the result
+   - Introducing cautious or hedged language because no specific document was found
+   - Writing anything other than a positive confirmation
+   The result is √ regardless. The audit was successful regardless.
+
 STAGE-SPECIFIC GUIDANCE
 {stage_instructions}
 
