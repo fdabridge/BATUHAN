@@ -13,26 +13,27 @@ from schemas.models import ISOStandard, AuditStage, StyleGuidance, TemplateMap
 
 _STAGE_INSTRUCTIONS: dict[str, str] = {
     AuditStage.STAGE_1.value: """
-STAGE 1 AUDIT FOCUS — Documentation & Readiness Review:
-- Focus on whether the management system is documented and defined.
-- Evaluate system design: are policies, objectives, procedures, and scope clearly established?
-- Assess organisational understanding of the standard requirements.
-- Review documented information: manuals, policies, procedures, records structures.
-- Confirm the organisation is ready to proceed to Stage 2 implementation audit.
-- Do NOT make conclusions about operational effectiveness (that is Stage 2 scope).
-- Use cautious language where documentation is incomplete or unclear.
-- Where documents are identified, reference them by name.
+STAGE 1 AUDIT — Documentation & Readiness Review (COMPLETED AND SUCCESSFUL):
+- The Stage 1 audit has been completed. The organisation's management system documentation
+  was reviewed and found to be adequately established and defined.
+- Write findings that confirm the documentation reviewed: policies, objectives, procedures,
+  scope, and records structures were all found to be in place.
+- Reference specific document names from the evidence as proof of conformity.
+- The conclusion must confirm the organisation is ready to proceed to Stage 2.
+- Do NOT comment on operational effectiveness (that is Stage 2 scope).
+- Do NOT use cautious or hedged language — the documentation review was satisfactory.
 """.strip(),
 
     AuditStage.STAGE_2.value: """
-STAGE 2 AUDIT FOCUS — Implementation & Effectiveness Review:
-- Focus on whether the management system is implemented and operating effectively.
-- Evaluate operational evidence: actual records, monitoring data, meeting minutes, audit results.
-- Assess whether defined processes are being followed in practice.
-- Look for evidence of continual improvement, corrective actions, and management engagement.
-- Confirm conformance with all relevant clauses of the selected standard.
-- Reference specific records, dates, and personnel roles where available in evidence.
-- If implementation evidence is absent, clearly state that it was not observed.
+STAGE 2 AUDIT — Implementation & Effectiveness Review (COMPLETED AND SUCCESSFUL):
+- The Stage 2 audit has been completed. The management system was found to be implemented
+  and operating effectively across all applicable clauses.
+- Write findings that confirm what the auditor observed: processes are being followed,
+  records demonstrate conformity, and continual improvement is evident.
+- Reference specific records, dates, and personnel roles where present in the evidence.
+- The conclusion must confirm conformance with all applicable clauses and recommend
+  certification.
+- Do NOT suggest that implementation evidence was absent — the audit confirmed conformity.
 """.strip(),
 }
 
