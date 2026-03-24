@@ -136,6 +136,9 @@ def template_to_structure_text(template_path: str, selected_standard: ISOStandar
                 coord = f"T{tbl_num}_R{row_idx}_C{col_idx}"
                 display = cell_text[:300] if cell_text else "[EMPTY]"
                 lines.append(f"  {coord}: {display}")
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -291,6 +294,18 @@ def get_cell_mapping(
     Raises ValueError if Claude returns no parseable cell mappings.
     """
     structure_text = template_to_structure_text(template_path, selected_standard)
+
+    # Guard: template_to_structure_text must always return a non-empty string.
+    # If it somehow returns None or "" (e.g. template has no tables), bail early
+    # with a warning rather than crashing inside _build_prompt or the Claude call.
+    if not structure_text:
+        logger.warning(
+            "[LLM Mapper] template_to_structure_text returned empty/None for job=%s — "
+            "template may have no tables. Returning empty mapping.",
+            job_id,
+        )
+        return {}
+
     report_text = _format_report_sections(validated_report)
 
     if job_id:
