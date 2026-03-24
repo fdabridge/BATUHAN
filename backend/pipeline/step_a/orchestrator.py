@@ -95,12 +95,28 @@ def run_step_a(
         FileNotFoundError: If prompt_a.txt is missing.
     """
     logger.info(f"[Step A] Starting evidence extraction | job={job_id}")
+    logger.info(
+        f"[Step A] Corpus received: {len(corpus)} document(s) | "
+        f"{sum(d.char_count for d in corpus):,} total chars"
+    )
+    for doc in corpus:
+        logger.info(
+            f"[Step A]   '{doc.filename}' | {doc.char_count:,} chars | ocr={doc.is_ocr_sourced}"
+        )
 
     prompt_template = _load_prompt_a()
     corpus_text = format_corpus_for_prompt(corpus)
+    logger.info(f"[Step A] Formatted corpus_text: {len(corpus_text):,} chars")
 
     if not corpus_text.strip() or corpus_text == "[No readable content extracted from company documents]":
         raise ValueError("[Step A] Document corpus is empty. Cannot extract evidence.")
+
+    # Save a corpus snippet as an artifact so failures are inspectable
+    save_text_artifact(
+        job_id,
+        "step_a_corpus_snippet.txt",
+        f"[Step A corpus — first 5000 chars]\n\n{corpus_text[:5000]}",
+    )
 
     prompt = _build_prompt(prompt_template, corpus_text, standard, stage)
 
@@ -110,6 +126,12 @@ def run_step_a(
         logger.info(f"[Step A] Calling Claude (attempt {attempt}/{MAX_RETRIES + 1})")
         try:
             raw_output = _call_claude(prompt)
+            logger.info(
+                f"[Step A] Claude response received: {len(raw_output):,} chars | "
+                f"first 200: {raw_output[:200]!r}"
+            )
+            # Persist raw output every attempt so we can inspect even on retry failures
+            save_text_artifact(job_id, "step_a_raw_output.txt", raw_output)
             evidence = parse_evidence_output(raw_output, job_id)
             warnings = validate_evidence(evidence)
             if warnings:

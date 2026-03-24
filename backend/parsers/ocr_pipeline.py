@@ -34,17 +34,24 @@ def _is_scanned_pdf(path: str) -> bool:
     """
     Heuristic: if pdfplumber extracts very little text from a PDF,
     treat it as scanned and run OCR on its pages.
+    Both page_count and total_chars are computed inside the `with` block
+    while the file is still open, so the page list is always valid.
     """
     try:
         import pdfplumber
         with pdfplumber.open(path) as pdf:
-            total_chars = sum(
-                len(page.extract_text() or "") for page in pdf.pages
-            )
+            pages = pdf.pages
+            page_count = max(1, len(pages))
+            total_chars = sum(len(page.extract_text() or "") for page in pages)
         # If fewer than 100 chars per page on average, likely scanned
-        page_count = max(1, len(pdf.pages) if hasattr(pdf, "pages") else 1)
-        return (total_chars / page_count) < 100
-    except Exception:
+        is_scanned = (total_chars / page_count) < 100
+        logger.debug(
+            f"[OCR] Scanned-PDF check: {Path(path).name} | "
+            f"{page_count} pages | {total_chars} chars | scanned={is_scanned}"
+        )
+        return is_scanned
+    except Exception as e:
+        logger.warning(f"[OCR] _is_scanned_pdf check failed for {Path(path).name}: {e}")
         return False
 
 

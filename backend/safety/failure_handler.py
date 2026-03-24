@@ -55,12 +55,24 @@ def filter_readable_documents(
     Filter out documents with empty text. Logs a warning for each skipped file.
     If ALL documents are unreadable, raises PipelineAbort.
     """
-    readable = [d for d in parsed if d.text.strip()]
+    readable: list[ParsedDocument] = []
+    for doc in parsed:
+        if doc.text.strip():
+            logger.info(
+                f"[SafetyHandler] KEEP  '{doc.filename}' | "
+                f"{doc.char_count:,} chars | ocr={doc.is_ocr_sourced}"
+            )
+            readable.append(doc)
+        else:
+            logger.warning(
+                f"[SafetyHandler] DROP  '{doc.filename}' | 0 chars (empty) | ocr={doc.is_ocr_sourced}"
+            )
+
     skipped = len(parsed) - len(readable)
-    if skipped:
-        logger.warning(
-            f"[SafetyHandler] {skipped} document(s) yielded no text and will be skipped."
-        )
+    logger.info(
+        f"[SafetyHandler] Filter result: {len(readable)} readable, {skipped} dropped | "
+        f"total corpus chars={sum(d.char_count for d in readable):,}"
+    )
     if not readable:
         raise PipelineAbort(
             "All uploaded company documents are unreadable or empty. "

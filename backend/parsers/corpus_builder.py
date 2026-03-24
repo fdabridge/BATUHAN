@@ -58,9 +58,12 @@ def format_corpus_for_prompt(corpus: list[ParsedDocument]) -> str:
     parts: list[str] = []
     for doc in corpus:
         if not doc.text.strip():
-            logger.warning(f"Skipping empty document from corpus: {doc.filename}")
+            logger.warning(f"[CorpusBuilder] Skipping empty document: {doc.filename}")
             continue
-        source_label = f"[OCR-sourced]" if doc.is_ocr_sourced else "[Text-extracted]"
+        source_label = "[OCR-sourced]" if doc.is_ocr_sourced else "[Text-extracted]"
+        logger.info(
+            f"[CorpusBuilder] Including '{doc.filename}' {source_label} | {doc.char_count:,} chars"
+        )
         parts.append(
             f"=== DOCUMENT: {doc.filename} {source_label} ===\n"
             f"{doc.text.strip()}\n"
@@ -68,7 +71,12 @@ def format_corpus_for_prompt(corpus: list[ParsedDocument]) -> str:
         )
 
     if not parts:
+        logger.error("[CorpusBuilder] format_corpus_for_prompt: NO documents included — corpus will be empty!")
         return "[No readable content extracted from company documents]"
 
+    total_chars = sum(len(p) for p in parts)
+    logger.info(
+        f"[CorpusBuilder] Formatted corpus: {len(parts)} document(s) | ~{total_chars:,} chars total"
+    )
     return "\n\n".join(parts)
 

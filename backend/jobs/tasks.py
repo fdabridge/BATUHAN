@@ -130,14 +130,12 @@ def run_pipeline(
         # -----------------------------------------------------------
         update_job_state(job_id, JobState.PREPROCESSING)
 
-        from parsers.text_extractor import parse_documents
-        from parsers.ocr_pipeline import run_ocr_pipeline
+        from parsers.corpus_builder import build_corpus
         from parsers.template_parser import parse_template
         from parsers.style_extractor import build_style_guidance
 
-        raw_corpus = parse_documents(company_paths)
-        ocr_docs = run_ocr_pipeline(company_paths)
-        all_docs = raw_corpus + ocr_docs
+        # build_corpus handles text extraction + OCR + deduplication in one pass
+        all_docs = build_corpus(company_paths)
 
         # T31: skip unreadable files, abort if ALL documents are empty
         corpus = filter_readable_documents(company_paths, all_docs)
