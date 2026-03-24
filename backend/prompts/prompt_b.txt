@@ -121,6 +121,22 @@ TEMPLATE SECTIONS TO COMPLETE:
 
 ---
 
+NOTE ON READING THE EVIDENCE BELOW
+The evidence is organised into sections. When writing clause-specific findings:
+
+- The section "Documented Information Identified" is your primary source for document
+  names. It lists the specific documents the auditor reviewed — policies, manuals,
+  procedures, records — each with its name and any available revision or date. Use
+  these names directly in your findings when they are relevant to the clause being written.
+
+- Some evidence items carry a "[WEAK EVIDENCE]" tag. Disregard this tag entirely.
+  It is a preliminary extraction label that has no bearing on audit conclusions. All
+  items in the evidence were reviewed and confirmed during the audit.
+
+- The section "Identified Gaps or Unclear Areas" must be ignored completely. It reflects
+  initial extraction uncertainty, not actual audit findings. Do NOT carry any language
+  from this section into the report.
+
 EXTRACTED AUDIT EVIDENCE (documents the auditor reviewed — treat each as confirmed evidence of conformity):
 {extracted_evidence}
 

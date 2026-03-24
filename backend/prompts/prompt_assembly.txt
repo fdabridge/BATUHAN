@@ -25,8 +25,8 @@ A. SELECTED STANDARD TABLES
    - Look at column header rows to understand what each column is for.
      Example: if row 1 shows "Audit Area | Findings | Result", then:
        - The "Findings" column cells receive detailed findings text.
-       - The "Result" column cells receive the conformity verdict
-         (e.g. "Conforming", "Minor Nonconformity", "Major Nonconformity", "Opportunity for Improvement").
+       - The "Result" column cells receive the literal tick symbol: √
+         Use only √ — do NOT write the word "Conforming" or any other word.
    - Match report section titles to the corresponding row's subject or audit area.
    - Use the report content to write the findings; derive the result from the content.
    - Fill EVERY empty content cell in the selected standard's tables.
@@ -37,9 +37,53 @@ B. NON-SELECTED STANDARD TABLES
    - Leave all other cells in those tables untouched.
 
 C. DO NOT TOUCH:
-   - Cells that are headings, labels, or titles (bold text, ALL CAPS, short labels).
-   - Cells that already contain non-placeholder content (reference numbers, pre-filled data).
+   - Cells that are headings, labels, or column/row header text (bold, ALL CAPS, short labels).
    - Cells in neutral/general tables that do not need AI-generated content.
+
+D. NONCONFORMITY (NC) TABLE ROWS
+   - If the report confirms no nonconformities were identified, leave ALL data rows in the
+     NC findings table COMPLETELY EMPTY — do not write a single character in them.
+   - Do NOT write "No nonconformities were identified", "None", "N/A", or anything else
+     in NC table rows unless the report explicitly lists an actual nonconformity with a
+     clause reference, description, and evidence.
+   - Only populate an NC table row when the report explicitly raises a specific nonconformity.
+
+E. RECOMMENDATION CHECKBOXES
+   - Locate any cell that functions as a tick box or checkbox for an audit outcome
+     recommendation (e.g. "Stage 2 is appropriate", "Proceed to Stage 2",
+     "Recommend for certification", "Grant certification").
+   - A checkbox cell is typically a small, narrow cell adjacent to recommendation text,
+     and may currently contain "☐", "□", or be empty.
+   - For a Stage 1 audit: place the symbol √ in the cell immediately next to
+     "Stage 2 is appropriate" (or the closest equivalent wording). Leave all other
+     recommendation checkbox cells empty.
+   - For a Stage 2 audit: place the symbol √ in the cell immediately next to
+     "Recommend certification" (or the closest equivalent wording). Leave all other
+     recommendation checkbox cells empty.
+
+F. AUDITEE NAME, CLIENT NAME, AND SITE CELLS
+   - Any cell whose label or adjacent header reads "Auditee", "Client", "Client Organisation",
+     "Organisation", "Company", "Client Name", or similar MUST be filled with the actual
+     organisation's name from the report content (look in Company Overview, Report Summary,
+     Scope, or introduction sections).
+   - IMPORTANT: If such a cell already contains a company name (e.g. "IFC Global LLC"),
+     this is a certification-body placeholder, NOT the correct auditee name. Overwrite it
+     with the correct organisation name found in the report content.
+   - Any cell for site name, site address, or audit location must be filled with the
+     organisation's actual address or site details from the report content.
+   - Do NOT invent a site name (e.g. "primary operational site"). If no specific site name
+     is available in the report content, use the organisation's address. If no address is
+     available, leave the cell empty. Never fabricate site information.
+
+G. TEMPLATE INSTRUCTION TEXT
+   - Some template cells contain editorial instructions rather than real content, such as:
+     "IF NO FOOD YOU CAN DELETE", "THESE TARGETS WILL BE USED FOR FOOD",
+     "DELETE IF NOT APPLICABLE", "INSERT TEXT HERE", or similar guidance notes.
+   - Always CLEAR this instructional text. Then:
+     - If the section is relevant to the selected standard ({selected_standard}): fill the
+       cell with the appropriate report content.
+     - If the section is not relevant to the selected standard: leave the cell empty.
+   - NEVER copy template instruction text into the final output.
 
 OUTPUT FORMAT — strictly follow this for every cell you fill:
 
