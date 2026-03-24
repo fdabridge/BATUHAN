@@ -27,16 +27,21 @@ def build_corpus(file_paths: list[str]) -> list[ParsedDocument]:
     # Step 2: OCR for images and scanned PDFs
     ocr_docs = run_ocr_pipeline(file_paths)
 
-    # Step 3: Merge — OCR results override text results for same filename
-    # (in case a scanned PDF was also attempted by text extractor)
+    # Step 3: Merge — keep the result with the higher char_count for each filename.
+    # This ensures scanned PDFs (where pdfplumber returns a few garbage chars) are
+    # overridden by the high-quality OCR result rather than the other way around.
     merged: dict[str, ParsedDocument] = {}
     for doc in text_docs:
         merged[doc.filename] = doc
     for doc in ocr_docs:
-        if doc.filename in merged and not merged[doc.filename].text.strip():
-            # Replace empty text-extracted doc with OCR result
+        existing = merged.get(doc.filename)
+        if existing is None:
             merged[doc.filename] = doc
-        elif doc.filename not in merged:
+        elif doc.char_count > existing.char_count:
+            logger.info(
+                f"[CorpusBuilder] OCR ({doc.char_count:,} chars) > text-extract "
+                f"({existing.char_count:,} chars) for '{doc.filename}' — preferring OCR."
+            )
             merged[doc.filename] = doc
 
     corpus = sorted(merged.values(), key=lambda d: d.filename)

@@ -13,6 +13,7 @@ Detection strategy (applied in order, first match wins):
 
 from __future__ import annotations
 import logging
+import re
 from pathlib import Path
 from docx import Document
 from schemas.models import TemplateMap, TemplateSection
@@ -27,6 +28,21 @@ HEADING_STYLES = {
 
 # Maximum character length a cell's text can have and still be treated as a heading.
 _MAX_HEADING_LEN = 150
+
+# Matches template editorial-instruction text that must never be treated as a section heading.
+# Kept in sync with assembly/llm_mapper.py _INSTRUCTION_CELL_RE.
+_INSTRUCTION_CELL_RE = re.compile(
+    r"THESE TARGETS WILL BE USED FOR FOOD"
+    r"|IF NO FOOD YOU CAN DELETE"
+    r"|DELETE IF NOT APPLICABLE"
+    r"|INSERT TEXT HERE"
+    r"|\[Name of reviewer[^\]]*\]"
+    r"|\[Name of approver[^\]]*\]"
+    r"|\[Insert[^\]]+\]"
+    r"|\[ADD[^\]]+\]"
+    r"|\[YOUR[^\]]+\]",
+    re.IGNORECASE,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -142,6 +158,12 @@ def _scan_tables_for_headings(doc) -> list[TemplateSection]:
                 for para in cell.paragraphs:
                     if _is_table_heading_para(para):
                         title = para.text.strip()
+                        # Skip editorial instructions — they are never real section headings.
+                        if title and _INSTRUCTION_CELL_RE.search(title):
+                            logger.debug(
+                                "Skipping instruction cell as heading: %r", title[:80]
+                            )
+                            break
                         if title and title not in seen_titles:
                             seen_titles.add(title)
                             sections.append(TemplateSection(
