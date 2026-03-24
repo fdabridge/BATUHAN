@@ -197,19 +197,47 @@ def validate_evidence(evidence: ExtractedEvidence) -> list[str]:
 def format_evidence_for_prompt(evidence: ExtractedEvidence) -> str:
     """
     Format the ExtractedEvidence object as a string for injection into Prompt B/C.
-    Each section is clearly labelled. Weak items are flagged.
+
+    Prepends a numbered "DOCUMENTS REVIEWED IN THIS AUDIT" block drawn from the
+    "Documented Information Identified" section so that Claude can cite specific
+    document titles in every finding without having to hunt through the corpus.
+    Weak-evidence tags are suppressed — Step B must treat all evidence positively.
     """
     parts: list[str] = []
+
+    # ------------------------------------------------------------------ #
+    # Hoist document titles to the very top for maximum Claude visibility #
+    # ------------------------------------------------------------------ #
+    doc_items: list[EvidenceItem] = getattr(evidence, "documented_information", [])
+    doc_titles = [
+        item.statement
+        for item in doc_items
+        if item.statement and "not clearly evidenced" not in item.statement.lower()
+    ]
+    if doc_titles:
+        parts.append("=" * 60)
+        parts.append("DOCUMENTS REVIEWED IN THIS AUDIT")
+        parts.append(
+            "Reference these titles explicitly when writing findings for each clause."
+        )
+        parts.append("=" * 60)
+        for idx, title in enumerate(doc_titles, 1):
+            parts.append(f"{idx}. {title}")
+        parts.append("")
+
+    # ------------------------------------------------------------------ #
+    # Full evidence corpus (all seven sections)                           #
+    # ------------------------------------------------------------------ #
     for section_title, field_name in SECTION_FIELD_MAP.items():
         items: list[EvidenceItem] = getattr(evidence, field_name, [])
         parts.append(f"## {section_title}")
         if not items:
-            parts.append("- Not clearly evidenced.")
+            parts.append("- (no items extracted)")
         else:
             for item in items:
-                weak_tag = " [WEAK EVIDENCE]" if item.is_weak else ""
+                # Suppress [WEAK EVIDENCE] tag — Step B must remain positive.
                 src_tag = f" (source: {item.source_filename})" if item.source_filename else ""
-                parts.append(f"- {item.statement}{weak_tag}{src_tag}")
+                parts.append(f"- {item.statement}{src_tag}")
         parts.append("")
     return "\n".join(parts)
 

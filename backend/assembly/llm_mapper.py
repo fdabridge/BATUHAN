@@ -26,11 +26,34 @@ from schemas.models import ValidatedReport, ISOStandard
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-_WNS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+_WNS  = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+_W14NS = "http://schemas.microsoft.com/office/word/2010/wordml"
+
+# Regex matching template editorial-instruction text that must never appear in output.
+# Catches food-safety boilerplate, generic placeholders, and reviewer/approver name stubs.
+_INSTRUCTION_CELL_RE = re.compile(
+    r"THESE TARGETS WILL BE USED FOR FOOD"
+    r"|IF NO FOOD YOU CAN DELETE"
+    r"|DELETE IF NOT APPLICABLE"
+    r"|INSERT TEXT HERE"
+    r"|\[Name of reviewer[^\]]*\]"
+    r"|\[Name of approver[^\]]*\]"
+    r"|\[Insert[^\]]+\]"
+    r"|\[ADD[^\]]+\]"
+    r"|\[YOUR[^\]]+\]",
+    re.IGNORECASE,
+)
+
+# Tick symbols that signal "check this checkbox cell"
+_TICK_SYMBOLS = {"√", "☑", "✓", "✔", "x", "X"}
 
 
 def _wtag(name: str) -> str:
     return f"{{{_WNS}}}{name}"
+
+
+def _w14tag(name: str) -> str:
+    return f"{{{_W14NS}}}{name}"
 
 
 def _get_cell_text(tc) -> str:
@@ -52,6 +75,94 @@ def _fill_tc_elem(tc_elem, content_lines: list[str]) -> None:
         tc_elem.remove(p)
     for line in content_lines:
         tc_elem.append(_make_text_para_elem(line))
+
+
+# ---------------------------------------------------------------------------
+# Checkbox helpers
+# ---------------------------------------------------------------------------
+
+def _tick_checkbox_cell(tc) -> bool:
+    """
+    Attempt to tick a Word checkbox control inside a table cell.
+
+    Handles two forms:
+      1. Modern SDT checkbox  (w14:checkbox inside w:sdtPr).
+      2. Legacy form-field    (w:checkBox inside w:fldChar / w:ffData).
+
+    Returns True if a checkbox was found and ticked; False if the cell
+    contains no checkbox control (caller should fall back to text fill).
+    """
+    # --- Modern SDT checkbox ---
+    for sdt in tc.iter(_wtag("sdt")):
+        sdtPr = sdt.find(_wtag("sdtPr"))
+        if sdtPr is None:
+            continue
+        checkbox_elem = sdtPr.find(_w14tag("checkbox"))
+        if checkbox_elem is None:
+            continue
+        # Set w14:checked val="1"
+        checked_elem = checkbox_elem.find(_w14tag("checked"))
+        if checked_elem is None:
+            checked_elem = etree.SubElement(checkbox_elem, _w14tag("checked"))
+        checked_elem.set(_w14tag("val"), "1")
+        # Update display character in sdtContent
+        sdtContent = sdt.find(_wtag("sdtContent"))
+        if sdtContent is not None:
+            for t in sdtContent.iter(_wtag("t")):
+                t.text = "☑"
+                break
+        logger.debug("[LLM Mapper] Ticked modern SDT checkbox in cell.")
+        return True
+
+    # --- Legacy form-field checkbox (w:fldChar / w:ffData / w:checkBox) ---
+    for fldChar in tc.iter(_wtag("fldChar")):
+        ffData = fldChar.find(_wtag("ffData"))
+        if ffData is None:
+            continue
+        checkBox = ffData.find(_wtag("checkBox"))
+        if checkBox is None:
+            continue
+        # Remove old default/checked children and set checked=1
+        for old in list(checkBox):
+            checkBox.remove(old)
+        checked_elem = etree.SubElement(checkBox, _wtag("checked"))
+        checked_elem.set(_wtag("val"), "1")
+        logger.debug("[LLM Mapper] Ticked legacy fldChar checkbox in cell.")
+        return True
+
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Post-assembly instruction strip
+# ---------------------------------------------------------------------------
+
+def strip_template_instruction_cells(body) -> int:
+    """
+    Walk every table cell in the document body and clear any whose text
+    matches _INSTRUCTION_CELL_RE (template editorial instructions / food
+    boilerplate / placeholder stubs).
+
+    Called after apply_cell_mapping as a final safety pass — guarantees that
+    strings like "THESE TARGETS WILL BE USED FOR FOOD. IF NO FOOD YOU CAN
+    DELETE." can never appear in the saved output regardless of what the LLM
+    returned.  Returns the number of cells cleared.
+    """
+    cleared = 0
+    for tbl in body.findall(_wtag("tbl")):
+        for tr in tbl.findall(_wtag("tr")):
+            for tc in tr.findall(_wtag("tc")):
+                cell_text = _get_cell_text(tc)
+                if cell_text and _INSTRUCTION_CELL_RE.search(cell_text):
+                    for p in list(tc.findall(_wtag("p"))):
+                        tc.remove(p)
+                    tc.append(etree.Element(_wtag("p")))
+                    cleared += 1
+                    logger.debug(
+                        "[LLM Mapper] Cleared instruction cell: %r", cell_text[:80]
+                    )
+    logger.info("[LLM Mapper] strip_template_instruction_cells: %d cells cleared.", cleared)
+    return cleared
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +245,11 @@ def template_to_structure_text(template_path: str, selected_standard: ISOStandar
             for col_idx, tc in enumerate(tcs, 1):
                 cell_text = _get_cell_text(tc)
                 coord = f"T{tbl_num}_R{row_idx}_C{col_idx}"
-                display = cell_text[:300] if cell_text else "[EMPTY]"
+                # Mask editorial instructions so Claude never outputs them.
+                if cell_text and _INSTRUCTION_CELL_RE.search(cell_text):
+                    display = "[TEMPLATE INSTRUCTION — DO NOT OUTPUT]"
+                else:
+                    display = cell_text[:300] if cell_text else "[EMPTY]"
                 lines.append(f"  {coord}: {display}")
         lines.append("")
 
@@ -265,7 +380,15 @@ def apply_cell_mapping(body, mapping: dict[str, str]) -> int:
         if coord not in coord_index:
             logger.warning("[LLM Mapper] Unknown coordinate %s — skipping.", coord)
             continue
-        _fill_tc_elem(coord_index[coord], content.splitlines() or [""])
+        tc = coord_index[coord]
+        # If the LLM returned a tick symbol, try to activate the Word checkbox
+        # control first.  Fall back to plain-text fill if no control exists.
+        if content.strip() in _TICK_SYMBOLS:
+            if _tick_checkbox_cell(tc):
+                filled += 1
+                logger.debug("[LLM Mapper] Checkbox ticked at %s.", coord)
+                continue
+        _fill_tc_elem(tc, content.splitlines() or [""])
         filled += 1
         logger.debug("[LLM Mapper] Filled cell %s.", coord)
     return filled

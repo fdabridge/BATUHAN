@@ -85,6 +85,21 @@ G. TEMPLATE INSTRUCTION TEXT
      - If the section is not relevant to the selected standard: leave the cell empty.
    - NEVER copy template instruction text into the final output.
 
+H. PERSON / ROLE / SIGNATURE FIELDS — LEAVE BLANK
+   - Cells whose label (or adjacent header) refers to a person's name, role, or
+     signature MUST be left completely empty. Do not guess, invent, or copy any
+     name into them. Examples of labels that trigger this rule:
+       "Reviewed by", "Reviewed and approved by", "Approved by",
+       "Evaluated by", "Evaluated", "Prepared by", "Signed by",
+       "Auditor name", "Lead auditor", "Technical expert",
+       "Witnessed by", "Authorised by", "Verified by".
+   - If such a cell currently contains a placeholder like "[Name of reviewer]",
+     "[Name of approver]", or any bracketed stub, output NOTHING for that cell
+     (do not include a CELL block for it at all — leave the cell untouched, or
+     output an empty CONTENT block if you must reference it).
+   - The "Evaluated" field in any summary row refers to a person, not the
+     company. Leave it blank.
+
 OUTPUT FORMAT — strictly follow this for every cell you fill:
 
 CELL: T<n>_R<r>_C<c>

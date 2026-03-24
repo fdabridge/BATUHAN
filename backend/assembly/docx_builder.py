@@ -203,6 +203,12 @@ def assemble_docx(
                 "found in the document. Check assembly_cell_mapping_raw.txt artifact."
             )
 
+    # Final safety pass: clear any template instruction text that survived
+    # (food boilerplate, placeholder stubs, etc.) regardless of which
+    # injection strategy was used above.
+    from assembly.llm_mapper import strip_template_instruction_cells
+    strip_template_instruction_cells(body)
+
     out_path = Path(output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(out_path))
