@@ -78,7 +78,27 @@
       </div>
 
       <div class="divider"></div>
-      <div class="section-label">Step 4 — Audit Settings</div>
+      <div class="section-label">Step 4 — Organisation Details</div>
+      <div class="field">
+        <label for="org_name">Organisation / Auditee Name <span style="color:var(--danger)">*</span></label>
+        <input type="text" id="org_name" name="org_name" placeholder="e.g. Acme Manufacturing Ltd" required />
+        <p class="hint">The exact legal name of the organisation being audited. This appears in the Organisation Information block of the report.</p>
+      </div>
+      <div class="form-grid-2">
+        <div class="field">
+          <label for="org_address">Address / Site</label>
+          <input type="text" id="org_address" name="org_address" placeholder="e.g. 42 Industrial Park, London, UK" />
+          <p class="hint">Primary site address for the audit.</p>
+        </div>
+        <div class="field">
+          <label for="org_phone">Phone Number</label>
+          <input type="text" id="org_phone" name="org_phone" placeholder="e.g. +44 20 1234 5678" />
+          <p class="hint">Main contact number for the organisation.</p>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="section-label">Step 5 — Audit Settings</div>
       <div class="form-grid-2">
         <div class="field">
           <label for="standard">ISO Standard <span style="color:var(--danger)">*</span></label>

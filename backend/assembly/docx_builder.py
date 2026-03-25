@@ -112,6 +112,7 @@ def assemble_docx(
     output_path: str,
     standard: ISOStandard | None = None,
     job_id: str | None = None,
+    org_info: dict | None = None,
 ) -> str:
     """
     Assemble the final report DOCX by injecting validated section content
@@ -193,6 +194,7 @@ def assemble_docx(
             validated_report=validated_report,
             selected_standard=effective_standard,
             job_id=job_id,
+            org_info=org_info,
         )
 
         sections_injected = apply_cell_mapping(body, mapping)

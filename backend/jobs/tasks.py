@@ -98,6 +98,9 @@ def run_pipeline(
     template_file: dict,
     standard_value: str,
     stage_value: str,
+    org_name: str | None = None,
+    org_address: str | None = None,
+    org_phone: str | None = None,
 ) -> dict:
     """
     Execute the full BATUHAN pipeline for a job:
@@ -215,6 +218,11 @@ def run_pipeline(
 
         from assembly.result_packager import package_results
         files_used = [item["filename"] for item in company_files]
+        org_info = {
+            "name":    org_name    or "",
+            "address": org_address or "",
+            "phone":   org_phone   or "",
+        }
         package_results(
             job_id=job_id,
             validated_report=validated_report,
@@ -223,6 +231,7 @@ def run_pipeline(
             standard=standard,
             stage=stage,
             files_used=files_used,
+            org_info=org_info,
         )
 
         # -----------------------------------------------------------

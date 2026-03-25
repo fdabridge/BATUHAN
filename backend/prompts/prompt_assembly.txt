@@ -13,6 +13,9 @@ SELECTED STANDARD FOR THIS AUDIT:
 STANDARDS NOT SELECTED (write "Not applicable" messages for their tables):
 {non_applicable_standards}
 
+SUBMITTED ORGANISATION DETAILS — AUTHORITATIVE SOURCE:
+{org_info}
+
 YOUR TASK:
 1. Study the TEMPLATE STRUCTURE below.  Each cell has a unique coordinate T<n>_R<r>_C<c>
    where n = table number, r = row number, c = column number (all 1-based).
@@ -62,18 +65,22 @@ E. RECOMMENDATION CHECKBOXES
      recommendation checkbox cells empty.
 
 F. AUDITEE NAME, CLIENT NAME, AND SITE CELLS
-   - Any cell whose label or adjacent header reads "Auditee", "Client", "Client Organisation",
-     "Organisation", "Company", "Client Name", or similar MUST be filled with the actual
-     organisation's name from the report content (look in Company Overview, Report Summary,
-     Scope, or introduction sections).
-   - IMPORTANT: If such a cell already contains a company name (e.g. "IFC Global LLC"),
-     this is a certification-body placeholder, NOT the correct auditee name. Overwrite it
-     with the correct organisation name found in the report content.
-   - Any cell for site name, site address, or audit location must be filled with the
-     organisation's actual address or site details from the report content.
-   - Do NOT invent a site name (e.g. "primary operational site"). If no specific site name
-     is available in the report content, use the organisation's address. If no address is
-     available, leave the cell empty. Never fabricate site information.
+   - The "SUBMITTED ORGANISATION DETAILS" block at the top of this prompt is the
+     HIGHEST-PRIORITY source for organisation name, address, and phone. Use those
+     values verbatim if they are present — do NOT infer, invent, or copy from the
+     template's existing placeholder content (e.g. "IFC Global LLC" is always a
+     certification-body placeholder, never the correct auditee name).
+   - Any cell whose label or adjacent header reads "Auditee", "Client", "Client
+     Organisation", "Organisation", "Company", "Client Name", or similar MUST be
+     filled with the organisation name from the SUBMITTED ORGANISATION DETAILS.
+     If that field is blank, fall back to the name found in the Company Overview
+     or Report Summary section of the generated report.
+   - Any cell for site name, site address, or audit location must be filled with
+     the address from the SUBMITTED ORGANISATION DETAILS. If blank, use the
+     organisation's actual address from the report content.
+   - Any cell for phone / telephone must be filled from the SUBMITTED ORGANISATION
+     DETAILS phone field. If blank, leave the cell empty — never invent a number.
+   - Never fabricate, guess, or copy placeholder text for any of these fields.
 
 G. TEMPLATE INSTRUCTION TEXT
    - Some template cells contain editorial instructions rather than real content, such as:

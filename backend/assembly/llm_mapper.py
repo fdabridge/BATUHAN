@@ -289,6 +289,7 @@ def _build_prompt(
     template_structure: str,
     report_content: str,
     selected_standard: ISOStandard,
+    org_info: dict | None = None,
 ) -> str:
     template = _load_assembly_prompt()
     non_applicable_lines = [
@@ -300,10 +301,24 @@ def _build_prompt(
         f"{selected_standard.value} — "
         f"{_STANDARD_FULL_NAMES.get(selected_standard.value, selected_standard.value)}"
     )
+    # Build the org_info block injected into the prompt
+    if org_info and any(org_info.get(k) for k in ("name", "address", "phone")):
+        org_lines = ["Use these submitted values verbatim — they override anything in the template:"]
+        if org_info.get("name"):
+            org_lines.append(f"  Organisation / Auditee Name: {org_info['name']}")
+        if org_info.get("address"):
+            org_lines.append(f"  Address / Site: {org_info['address']}")
+        if org_info.get("phone"):
+            org_lines.append(f"  Phone: {org_info['phone']}")
+        org_block = "\n".join(org_lines)
+    else:
+        org_block = "(No explicit organisation details submitted — infer from report content.)"
+
     return (
         template
         .replace("{selected_standard}", selected_full)
         .replace("{non_applicable_standards}", "\n".join(non_applicable_lines))
+        .replace("{org_info}", org_block)
         .replace("{template_structure}", template_structure)
         .replace("{report_content}", report_content)
     )
@@ -403,6 +418,7 @@ def get_cell_mapping(
     validated_report: ValidatedReport,
     selected_standard: ISOStandard,
     job_id: str | None = None,
+    org_info: dict | None = None,
 ) -> dict[str, str]:
     """
     Full LLM-guided mapping flow:
@@ -435,7 +451,7 @@ def get_cell_mapping(
         from storage.file_store import save_text_artifact
         save_text_artifact(job_id, "assembly_template_structure.txt", structure_text)
 
-    prompt = _build_prompt(structure_text, report_text, selected_standard)
+    prompt = _build_prompt(structure_text, report_text, selected_standard, org_info=org_info)
     logger.info("[LLM Mapper] Calling Claude for cell-by-cell assembly mapping | job=%s", job_id)
     raw_response = _call_claude(prompt)
 

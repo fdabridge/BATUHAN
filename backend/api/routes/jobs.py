@@ -48,6 +48,9 @@ async def create_job(
     template: UploadFile = File(
         ..., description="Blank audit report template (.docx)"
     ),
+    org_name: str | None = Form(None, description="Auditee / organisation name"),
+    org_address: str | None = Form(None, description="Organisation address or site"),
+    org_phone: str | None = Form(None, description="Organisation phone number"),
 ):
     """
     Create a new BATUHAN audit job.
@@ -104,6 +107,9 @@ async def create_job(
             template_file,
             standard.value,
             stage.value,
+            org_name or "",
+            org_address or "",
+            org_phone or "",
         )
         logger.info(f"Job {job_id} queued with {len(company_files)} company docs, "
                     f"{len(sample_files)} sample reports.")
