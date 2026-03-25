@@ -44,8 +44,24 @@ CRITICAL RULES
    - The recommendation checkbox for Stage 2 progression or certification MUST be ticked
 
 4. NOT APPLICABLE CLAUSES
-   If a clause is marked N/A in the evidence, write a clear, factual, one-sentence
-   justification for why it does not apply to this organisation's scope.
+   If a clause is marked N/A in the evidence, write a one-sentence justification that
+   explicitly states the organisation does NOT perform the excluded activity — that is
+   WHY the clause is excluded.
+
+   MANDATORY PATTERN:
+     "Clause X.X is not applicable as the organisation does not [perform / operate / conduct]
+     [the excluded activity]."
+
+   EXAMPLE (ISO 9001 Clause 8.3 — Design and Development):
+     CORRECT:   "Clause 8.3 is not applicable as the organisation does not perform design
+                 and development activities; all products are manufactured to customer-supplied
+                 or pre-defined specifications."
+     WRONG:     "The organisation has an active design and development process…"
+                "Design and development is managed through…"
+                "The organisation applies clause 8.3 to…"
+
+   The justification must confirm the ABSENCE of the activity, not describe or imply its
+   presence. Writing that an organisation performs the excluded activity is a factual error.
    Do NOT write "documentation required" or any negative or gap language for N/A clauses.
 
 5. ABSOLUTE LANGUAGE PROHIBITIONS

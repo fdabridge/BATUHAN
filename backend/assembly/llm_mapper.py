@@ -31,6 +31,8 @@ _W14NS = "http://schemas.microsoft.com/office/word/2010/wordml"
 
 # Regex matching template editorial-instruction text that must never appear in output.
 # Catches food-safety boilerplate, generic placeholders, and reviewer/approver name stubs.
+# IMPORTANT: Keep patterns specific — do NOT use broad patterns like bare "DELETE" or
+# "NOT APPLICABLE" that would match legitimate audit-objectives or findings text.
 _INSTRUCTION_CELL_RE = re.compile(
     r"THESE TARGETS WILL BE USED FOR FOOD"
     r"|IF NO FOOD YOU CAN DELETE"
@@ -41,6 +43,19 @@ _INSTRUCTION_CELL_RE = re.compile(
     r"|\[Insert[^\]]+\]"
     r"|\[ADD[^\]]+\]"
     r"|\[YOUR[^\]]+\]",
+    re.IGNORECASE,
+)
+
+# Regex that positively identifies cells containing LEGITIMATE audit content.
+# A cell matching this pattern is PROTECTED from being cleared by
+# strip_template_instruction_cells even if it also contains an instruction fragment.
+# Covers: numbered audit objectives (a) to determine…), scope statements, findings text.
+_AUDIT_CONTENT_RE = re.compile(
+    r"\ba\)\s+to\s+(determine|evaluate|assess|examine|verify|review|confirm|establish)"
+    r"|\baudit\s+objective"
+    r"|\bthe\s+objective[s]?\s+of\s+this\s+audit"
+    r"|\bto\s+determine\s+(the\s+)?(conformity|compliance|effectiveness)"
+    r"|\bscope\s+of\s+(the\s+)?audit",
     re.IGNORECASE,
 )
 
@@ -85,14 +100,43 @@ def _tick_checkbox_cell(tc) -> bool:
     """
     Attempt to tick a Word checkbox control inside a table cell.
 
-    Handles two forms:
-      1. Modern SDT checkbox  (w14:checkbox inside w:sdtPr).
-      2. Legacy form-field    (w:checkBox inside w:fldChar / w:ffData).
+    Handles three forms — detection and type are logged at DEBUG level:
+      1. Modern SDT content-control checkbox  (w14:checkbox inside w:sdtPr).
+      2. Legacy form-field checkbox           (w:checkBox inside w:fldChar / w:ffData).
+      3. Unicode checkbox character           (☐ / □ / ▢ in a w:t element).
+         The character is replaced in-place preserving all run/font formatting.
 
     Returns True if a checkbox was found and ticked; False if the cell
     contains no checkbox control (caller should fall back to text fill).
     """
-    # --- Modern SDT checkbox ---
+    # --- Type-detection probe: log what we find before acting ---
+    has_sdt_checkbox = any(
+        sdt.find(_wtag("sdtPr")) is not None
+        and sdt.find(_wtag("sdtPr")).find(_w14tag("checkbox")) is not None
+        for sdt in tc.iter(_wtag("sdt"))
+    )
+    has_legacy_checkbox = any(
+        fldChar.find(_wtag("ffData")) is not None
+        and fldChar.find(_wtag("ffData")).find(_wtag("checkBox")) is not None
+        for fldChar in tc.iter(_wtag("fldChar"))
+    )
+    unicode_checkbox_chars = {"☐", "□", "▢", "\u2610", "\u25a1", "\u25a2"}
+    cell_t_texts = [t.text or "" for t in tc.iter(_wtag("t"))]
+    has_unicode_checkbox = any(
+        any(ch in txt for ch in unicode_checkbox_chars)
+        for txt in cell_t_texts
+    )
+
+    if has_sdt_checkbox:
+        logger.debug("[LLM Mapper] Checkbox type detected: MODERN SDT content-control.")
+    elif has_legacy_checkbox:
+        logger.debug("[LLM Mapper] Checkbox type detected: LEGACY form-field (fldChar).")
+    elif has_unicode_checkbox:
+        logger.debug("[LLM Mapper] Checkbox type detected: UNICODE character (☐/□).")
+    else:
+        logger.debug("[LLM Mapper] No checkbox control found in cell — will use text fill fallback.")
+
+    # --- Branch 1: Modern SDT checkbox ---
     for sdt in tc.iter(_wtag("sdt")):
         sdtPr = sdt.find(_wtag("sdtPr"))
         if sdtPr is None:
@@ -114,7 +158,7 @@ def _tick_checkbox_cell(tc) -> bool:
         logger.debug("[LLM Mapper] Ticked modern SDT checkbox in cell.")
         return True
 
-    # --- Legacy form-field checkbox (w:fldChar / w:ffData / w:checkBox) ---
+    # --- Branch 2: Legacy form-field checkbox (w:fldChar / w:ffData / w:checkBox) ---
     for fldChar in tc.iter(_wtag("fldChar")):
         ffData = fldChar.find(_wtag("ffData"))
         if ffData is None:
@@ -128,6 +172,18 @@ def _tick_checkbox_cell(tc) -> bool:
         checked_elem = etree.SubElement(checkBox, _wtag("checked"))
         checked_elem.set(_wtag("val"), "1")
         logger.debug("[LLM Mapper] Ticked legacy fldChar checkbox in cell.")
+        return True
+
+    # --- Branch 3: Unicode checkbox character in w:t text ---
+    # Replace ☐/□/▢ with ☑ in-place, preserving the run's font and formatting.
+    replaced = False
+    for t_elem in tc.iter(_wtag("t")):
+        if t_elem.text and any(ch in t_elem.text for ch in unicode_checkbox_chars):
+            for ch in unicode_checkbox_chars:
+                t_elem.text = t_elem.text.replace(ch, "☑")
+            replaced = True
+    if replaced:
+        logger.debug("[LLM Mapper] Replaced Unicode checkbox character with ☑ in cell.")
         return True
 
     return False
@@ -153,14 +209,25 @@ def strip_template_instruction_cells(body) -> int:
         for tr in tbl.findall(_wtag("tr")):
             for tc in tr.findall(_wtag("tc")):
                 cell_text = _get_cell_text(tc)
-                if cell_text and _INSTRUCTION_CELL_RE.search(cell_text):
-                    for p in list(tc.findall(_wtag("p"))):
-                        tc.remove(p)
-                    tc.append(etree.Element(_wtag("p")))
-                    cleared += 1
+                if not cell_text:
+                    continue
+                if not _INSTRUCTION_CELL_RE.search(cell_text):
+                    continue
+                # PROTECT cells that contain legitimate audit content (e.g. audit
+                # objectives a/b/c/d) even if they also contain an instruction fragment.
+                if _AUDIT_CONTENT_RE.search(cell_text):
                     logger.debug(
-                        "[LLM Mapper] Cleared instruction cell: %r", cell_text[:80]
+                        "[LLM Mapper] Skipping protected audit-content cell: %r",
+                        cell_text[:80],
                     )
+                    continue
+                for p in list(tc.findall(_wtag("p"))):
+                    tc.remove(p)
+                tc.append(etree.Element(_wtag("p")))
+                cleared += 1
+                logger.debug(
+                    "[LLM Mapper] Cleared instruction cell: %r", cell_text[:80]
+                )
     logger.info("[LLM Mapper] strip_template_instruction_cells: %d cells cleared.", cleared)
     return cleared
 
@@ -246,7 +313,9 @@ def template_to_structure_text(template_path: str, selected_standard: ISOStandar
                 cell_text = _get_cell_text(tc)
                 coord = f"T{tbl_num}_R{row_idx}_C{col_idx}"
                 # Mask editorial instructions so Claude never outputs them.
-                if cell_text and _INSTRUCTION_CELL_RE.search(cell_text):
+                # Exception: protect cells with legitimate audit content (e.g. audit
+                # objectives a/b/c/d) — show them as-is so Claude preserves them.
+                if cell_text and _INSTRUCTION_CELL_RE.search(cell_text) and not _AUDIT_CONTENT_RE.search(cell_text):
                     display = "[TEMPLATE INSTRUCTION — DO NOT OUTPUT]"
                 else:
                     display = cell_text[:300] if cell_text else "[EMPTY]"
