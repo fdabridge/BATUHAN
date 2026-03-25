@@ -65,7 +65,24 @@ Analyze all inputs and extract:
    - Areas with insufficient proof
 
 OUTPUT FORMAT (STRICT)
-Return your output in structured sections:
+Return your output in exactly these 7 sections, using the EXACT heading text shown below.
+
+HEADING RULES — ABSOLUTE:
+- Copy each heading character-for-character. Do NOT add numbers, prefixes, or change capitalisation.
+- CORRECT:   ## Company Overview
+- WRONG:     ## 1. Company Overview  /  ## COMPANY OVERVIEW  /  ## Company Information
+- CORRECT:   ## Scope of Activities
+- WRONG:     ## 2. Scope of Activities  /  ## Scope
+- CORRECT:   ## Documented Information Identified
+- WRONG:     ## 3. Documented Information  /  ## Documents
+- CORRECT:   ## Key Processes and Functions
+- WRONG:     ## 4. Key Processes  /  ## Processes and Functions
+- CORRECT:   ## Evidence of System Implementation
+- WRONG:     ## 5. Evidence of Implementation  /  ## System Evidence
+- CORRECT:   ## Audit-Relevant Records
+- WRONG:     ## 6. Audit Records  /  ## Records
+- CORRECT:   ## Identified Gaps or Unclear Areas
+- WRONG:     ## 7. Gaps  /  ## Gaps and Issues
 
 ## Company Overview
 [bullet-style factual statements]
@@ -90,6 +107,7 @@ Return your output in structured sections:
 
 Each section must contain clear bullet-style factual statements.
 Do NOT write paragraphs. Do NOT write conclusions.
+Do NOT number the sections. Do NOT alter the heading text in any way.
 
 COMPANY DOCUMENTS:
 {document_corpus}

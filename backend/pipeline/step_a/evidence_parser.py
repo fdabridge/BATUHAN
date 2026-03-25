@@ -9,6 +9,21 @@ import re
 import logging
 from schemas.models import ExtractedEvidence, EvidenceItem
 
+# Strips leading numeric prefixes Claude sometimes adds: "1. ", "2) ", etc.
+_NUMERIC_PREFIX_RE = re.compile(r"^\d+[\.\)]\s*")
+
+# Unique discriminating keywords per section — used for fuzzy fallback matching
+# when Claude rephrases a heading (e.g. "COMPANY INFORMATION" → "Company Overview").
+_SECTION_KEYWORDS: dict[str, list[str]] = {
+    "Company Overview":                   ["company", "overview", "organisation", "organization"],
+    "Scope of Activities":                ["scope", "activities"],
+    "Documented Information Identified":  ["documented", "documentation", "policies", "procedures", "manuals"],
+    "Key Processes and Functions":        ["processes", "functions", "departments"],
+    "Evidence of System Implementation":  ["evidence", "implementation"],
+    "Audit-Relevant Records":             ["records", "relevant", "compliance"],
+    "Identified Gaps or Unclear Areas":   ["gaps", "unclear", "missing"],
+}
+
 logger = logging.getLogger(__name__)
 
 # The 7 required section headings exactly as defined in prompt_a.txt and A.pdf
@@ -90,20 +105,60 @@ def _split_into_sections(raw_output: str) -> dict[str, str]:
 
 def _find_section(sections: dict[str, str], expected_title: str) -> str:
     """
-    Find a section body by title with fuzzy matching.
-    Handles minor casing/spacing differences from Claude.
+    Find a section body by title with multi-stage fuzzy matching.
+
+    Matching order (first hit wins):
+    1. Exact match on raw title.
+    2. Case-insensitive exact match after stripping numeric prefixes
+       ("1. ", "2) ", …) that Claude sometimes prepends.
+    3. Substring match either way (handles abbreviations / extra words).
+    4. Keyword-scoring fallback — each expected section has a list of
+       unique discriminating words; the candidate with the highest overlap
+       wins.  Prevents mismatches like "COMPANY INFORMATION" → "Company
+       Overview" failing the substring check.
     """
-    # Exact match first
+    # 1. Exact match
     if expected_title in sections:
         return sections[expected_title]
-    # Case-insensitive match
+
+    expected_lower = expected_title.lower().strip()
+
+    # Build a normalised view: strip numeric prefixes, lowercase
+    normalised: dict[str, str] = {}
     for title, body in sections.items():
-        if title.lower().strip() == expected_title.lower().strip():
+        norm = _NUMERIC_PREFIX_RE.sub("", title).lower().strip()
+        normalised[norm] = body
+
+    # 2. Case-insensitive + prefix-stripped exact match
+    if expected_lower in normalised:
+        logger.debug(f"[Step A] Prefix-stripped match for '{expected_title}'")
+        return normalised[expected_lower]
+
+    # 3. Substring match (either direction)
+    for norm_title, body in normalised.items():
+        if expected_lower in norm_title or norm_title in expected_lower:
+            logger.debug(f"[Step A] Substring match '{norm_title}' → '{expected_title}'")
             return body
-    # Partial match (Claude may abbreviate)
-    for title, body in sections.items():
-        if expected_title.lower() in title.lower() or title.lower() in expected_title.lower():
-            return body
+
+    # 4. Keyword-scoring fallback
+    keywords = _SECTION_KEYWORDS.get(expected_title, [])
+    if keywords:
+        best_body = ""
+        best_score = 0
+        best_candidate = ""
+        for norm_title, body in normalised.items():
+            score = sum(1 for kw in keywords if kw in norm_title)
+            if score > best_score:
+                best_score = score
+                best_body = body
+                best_candidate = norm_title
+        if best_body:
+            logger.debug(
+                f"[Step A] Keyword-scored match '{best_candidate}' → "
+                f"'{expected_title}' (score={best_score})"
+            )
+            return best_body
+
     return ""
 
 
