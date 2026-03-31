@@ -78,6 +78,12 @@ def ui_status(request: Request, job_id: str):
 # Results / download page
 # ---------------------------------------------------------------------------
 
+@router.get("/calculator", response_class=HTMLResponse)
+def ui_calculator(request: Request):
+    """Render the Audit Time Calculator page."""
+    return templates.TemplateResponse("calculator.html", {"request": request})
+
+
 @router.get("/guide", response_class=HTMLResponse)
 def ui_guide(request: Request):
     """Render the comprehensive user guide page."""

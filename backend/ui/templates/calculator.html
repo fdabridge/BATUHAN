@@ -1,0 +1,309 @@
+{% extends "base.html" %}
+{% block title %}Audit Time Calculator{% endblock %}
+
+{% block head %}
+<style>
+  .calc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+  @media (max-width: 700px) { .calc-grid { grid-template-columns: 1fr; } }
+  .drop-zone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 2rem 1.5rem; text-align: center; cursor: pointer; transition: all .2s; }
+  .drop-zone.drag-over { border-color: var(--primary); background: var(--primary-light); }
+  .drop-zone input[type=file] { display: none; }
+  .drop-zone-icon { font-size: 2rem; margin-bottom: .5rem; }
+  .file-list { margin-top: .75rem; text-align: left; }
+  .file-item { display: flex; align-items: center; gap: .5rem; font-size: .82rem; color: var(--text-secondary); padding: .3rem 0; border-bottom: 1px solid var(--border); }
+  .file-item:last-child { border-bottom: none; }
+  .file-item .remove-file { cursor: pointer; color: var(--danger); margin-left: auto; font-weight: 700; padding: 0 .4rem; }
+  /* Result section */
+  #result-section { display: none; }
+  .result-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 1.25rem; }
+  .result-card-header { background: var(--primary); color: #fff; padding: .75rem 1.25rem; font-weight: 600; font-size: .9rem; display: flex; align-items: center; gap: .5rem; }
+  .result-card-body { padding: 1.25rem; }
+  .metric-row { display: flex; justify-content: space-between; align-items: baseline; padding: .45rem 0; border-bottom: 1px solid var(--border); font-size: .875rem; }
+  .metric-row:last-child { border-bottom: none; }
+  .metric-label { color: var(--text-secondary); }
+  .metric-value { font-weight: 700; color: var(--text); font-size: 1rem; }
+  .metric-value.big { font-size: 1.4rem; color: var(--primary); }
+  .phase-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: .75rem; margin-top: .5rem; }
+  .phase-box { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: .85rem; text-align: center; }
+  .phase-box .phase-label { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: .35rem; }
+  .phase-box .phase-val { font-size: 1.35rem; font-weight: 700; color: var(--primary); }
+  .phase-box .phase-sub { font-size: .72rem; color: var(--muted); }
+  .badge { display: inline-block; padding: .2rem .6rem; border-radius: 999px; font-size: .72rem; font-weight: 700; letter-spacing: .03em; }
+  .badge-blue { background: var(--primary-light); color: var(--primary); }
+  .badge-green { background: var(--success-light); color: #065F46; }
+  .badge-yellow { background: var(--warning-light); color: #92400E; }
+  .extraction-table { width: 100%; font-size: .82rem; border-collapse: collapse; }
+  .extraction-table th { text-align: left; color: var(--muted); font-weight: 600; padding: .35rem .5rem; border-bottom: 1px solid var(--border); }
+  .extraction-table td { padding: .35rem .5rem; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
+  .extraction-table td:last-child { font-weight: 600; color: var(--text); }
+  .loading-overlay { display: none; position: fixed; inset: 0; background: rgba(15,23,42,.55); z-index: 200; align-items: center; justify-content: center; flex-direction: column; gap: 1rem; color: #fff; font-size: .95rem; }
+  .big-spinner { width: 44px; height: 44px; border: 4px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .75s linear infinite; }
+  .deduction-row { display: flex; justify-content: space-between; font-size: .82rem; padding: .3rem 0; color: var(--muted); }
+  .deduction-row.total { font-weight: 700; color: var(--text); font-size: .95rem; border-top: 1px solid var(--border); margin-top: .35rem; padding-top: .55rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="loading-overlay" id="loading-overlay">
+  <div class="big-spinner"></div>
+  <span id="loading-msg">Extracting form data with Claude…</span>
+</div>
+
+<div style="margin-bottom:1.75rem;">
+  <h1 class="page-title">⏱ Audit Time Calculator</h1>
+  <p class="page-subtitle">Upload your certification application form — Claude will extract the data and calculate audit days automatically.</p>
+</div>
+
+<div id="upload-section">
+  <div class="card">
+    <div class="section-label">Step 1 — Upload application form(s)</div>
+    <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+      <div class="drop-zone-icon">📄</div>
+      <p style="font-weight:600; margin-bottom:.25rem;">Drop files here or click to browse</p>
+      <p class="hint">PDF, DOCX, or TXT · Max 20 MB per file · For ISO 50001 also upload the EnMS form</p>
+      <input type="file" id="file-input" multiple accept=".pdf,.docx,.doc,.txt" />
+    </div>
+    <div class="file-list" id="file-list"></div>
+
+    <div class="divider"></div>
+
+    <div id="error-banner" class="alert alert-danger" style="display:none;"></div>
+
+    <div style="display:flex; gap:.75rem; align-items:center;">
+      <button class="btn btn-primary btn-lg" id="calc-btn" onclick="runCalculation()">
+        Calculate Audit Time
+      </button>
+      <span class="hint" style="margin:0;">Claude will read the form and compute audit days using ISO tables.</span>
+    </div>
+  </div>
+</div>
+
+<!-- Results section — shown after calculation -->
+<div id="result-section">
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1.25rem; flex-wrap:wrap; gap:.75rem;">
+    <div>
+      <h1 class="page-title" id="res-org-name">Results</h1>
+      <p class="page-subtitle" id="res-scope" style="max-width:700px;"></p>
+    </div>
+    <button class="btn btn-secondary" onclick="resetCalculator()">← New Calculation</button>
+  </div>
+
+  <!-- Badges row -->
+  <div style="display:flex; flex-wrap:wrap; gap:.5rem; margin-bottom:1.25rem;" id="res-badges"></div>
+
+  <!-- Initial certification -->
+  <div class="result-card">
+    <div class="result-card-header">🎯 Initial Certification</div>
+    <div class="result-card-body">
+      <div class="phase-grid" id="init-phase-grid"></div>
+      <div class="divider"></div>
+      <div id="deduction-rows"></div>
+    </div>
+  </div>
+
+  <!-- Surveillance & Recertification -->
+  <div class="calc-grid">
+    <div class="result-card">
+      <div class="result-card-header">🔁 Annual Surveillance</div>
+      <div class="result-card-body" id="surv-body"></div>
+    </div>
+    <div class="result-card">
+      <div class="result-card-header">🔄 Recertification (Year 3)</div>
+      <div class="result-card-body" id="recert-body"></div>
+    </div>
+  </div>
+
+  <!-- Per-standard breakdown -->
+  <div class="result-card" id="std-breakdown-card" style="display:none;">
+    <div class="result-card-header">📊 Per-Standard Breakdown</div>
+    <div class="result-card-body" id="std-breakdown-body"></div>
+  </div>
+
+  <!-- Extracted data summary -->
+  <div class="result-card">
+    <div class="result-card-header" style="cursor:pointer;" onclick="toggleExtracted()">
+      🔍 Extracted Form Data <span id="extracted-toggle" style="margin-left:auto; font-size:.8rem; opacity:.8;">▼ Show</span>
+    </div>
+    <div class="result-card-body" id="extracted-body" style="display:none;"></div>
+  </div>
+</div>
+
+<script>
+// ---- File management ----
+let selectedFiles = [];
+
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const fileListEl = document.getElementById('file-list');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  addFiles(Array.from(e.dataTransfer.files));
+});
+fileInput.addEventListener('change', () => { addFiles(Array.from(fileInput.files)); fileInput.value = ''; });
+
+function addFiles(files) {
+  const allowed = ['.pdf', '.docx', '.doc', '.txt'];
+  for (const f of files) {
+    const ext = '.' + f.name.split('.').pop().toLowerCase();
+    if (!allowed.includes(ext)) { showError(`Unsupported file type: ${f.name}`); continue; }
+    if (!selectedFiles.find(sf => sf.name === f.name)) selectedFiles.push(f);
+  }
+  renderFileList();
+}
+
+function renderFileList() {
+  fileListEl.innerHTML = selectedFiles.map((f, i) =>
+    `<div class="file-item">📄 ${f.name} <span style="color:var(--muted);margin-left:.5rem;">(${(f.size/1024).toFixed(0)} KB)</span>
+     <span class="remove-file" onclick="removeFile(${i})">✕</span></div>`
+  ).join('');
+}
+
+function removeFile(idx) { selectedFiles.splice(idx, 1); renderFileList(); }
+
+// ---- Calculation ----
+async function runCalculation() {
+  hideError();
+  if (selectedFiles.length === 0) { showError('Please upload at least one application form file.'); return; }
+
+  showLoading('Extracting form data with Claude…');
+
+  const form = new FormData();
+  selectedFiles.forEach(f => form.append('files', f));
+
+  try {
+    const resp = await fetch('/calculator/calculate', { method: 'POST', body: form });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+      throw new Error(err.detail || `HTTP ${resp.status}`);
+    }
+    const data = await resp.json();
+    renderResults(data);
+  } catch (e) {
+    hideLoading();
+    showError(e.message || 'An unexpected error occurred.');
+  }
+}
+
+function renderResults(d) {
+  hideLoading();
+
+  // Header
+  document.getElementById('res-org-name').textContent = d.org_name || 'Calculation Results';
+  document.getElementById('res-scope').textContent = d.scope ? `Scope: ${d.scope}` : '';
+
+  // Badges
+  const badgesEl = document.getElementById('res-badges');
+  badgesEl.innerHTML = d.standards.map(s => `<span class="badge badge-blue">${s}</span>`).join('') +
+    `<span class="badge badge-green">${d.audit_type}</span>` +
+    `<span class="badge badge-yellow">${d.total_employees} employees · EPS ${d.eps}</span>`;
+
+  // Initial phase grid
+  document.getElementById('init-phase-grid').innerHTML = `
+    <div class="phase-box">
+      <div class="phase-label">Stage 1</div>
+      <div class="phase-val">${d.final_ph1}</div>
+      <div class="phase-sub">audit days</div>
+    </div>
+    <div class="phase-box">
+      <div class="phase-label">Stage 2</div>
+      <div class="phase-val">${d.final_ph2}</div>
+      <div class="phase-sub">audit days</div>
+    </div>
+    <div class="phase-box" style="border-color:var(--primary); background:var(--primary-light);">
+      <div class="phase-label" style="color:var(--primary);">Total Initial</div>
+      <div class="phase-val">${d.final_total}</div>
+      <div class="phase-sub">audit days</div>
+    </div>`;
+
+  // Deduction rows
+  let dedHTML = `<div class="deduction-row"><span>Combined base (from tables)</span><span>${d.combined_base} days</span></div>`;
+  if (d.integration_reduction > 0)
+    dedHTML += `<div class="deduction-row"><span>Integration reduction (−20%)</span><span>−${d.integration_reduction} days</span></div>`;
+  dedHTML += `<div class="deduction-row"><span>Reporting reduction (−20%)</span><span>−${d.reporting_reduction} days</span></div>`;
+  dedHTML += `<div class="deduction-row total"><span>Final Total</span><span>${d.final_total} days</span></div>`;
+  document.getElementById('deduction-rows').innerHTML = dedHTML;
+
+  // Surveillance
+  document.getElementById('surv-body').innerHTML = `
+    <div class="phase-grid">
+      <div class="phase-box"><div class="phase-label">Surv. 1</div><div class="phase-val">${d.final_surv1}</div><div class="phase-sub">days</div></div>
+      <div class="phase-box"><div class="phase-label">Surv. 2</div><div class="phase-val">${d.final_surv2}</div><div class="phase-sub">days</div></div>
+    </div>`;
+
+  // Recertification
+  document.getElementById('recert-body').innerHTML = `
+    <div class="phase-grid">
+      <div class="phase-box"><div class="phase-label">Stage 1</div><div class="phase-val">${d.final_recert_ph1}</div><div class="phase-sub">days</div></div>
+      <div class="phase-box"><div class="phase-label">Stage 2</div><div class="phase-val">${d.final_recert_ph2}</div><div class="phase-sub">days</div></div>
+      <div class="phase-box" style="border-color:var(--primary); background:var(--primary-light);">
+        <div class="phase-label" style="color:var(--primary);">Total</div>
+        <div class="phase-val">${d.final_recert}</div><div class="phase-sub">days</div></div>
+    </div>`;
+
+  // Per-standard breakdown (only if >1 standard)
+  if (d.standard_results && d.standard_results.length > 1) {
+    const stdCard = document.getElementById('std-breakdown-card');
+    stdCard.style.display = '';
+    document.getElementById('std-breakdown-body').innerHTML = d.standard_results.map(r => `
+      <div style="margin-bottom:1rem;">
+        <div style="font-weight:600; margin-bottom:.4rem;">${r.standard} <span class="badge badge-blue">${r.category}</span> <span class="hint" style="display:inline;">EPS ${r.eps}</span></div>
+        <table class="extraction-table">
+          <tr><th>Base Initial</th><th>Base Surv.</th><th>Base Recert.</th><th>Site Addition</th></tr>
+          <tr><td>${r.base_init}</td><td>${r.base_surv}</td><td>${r.base_recert}</td><td>${r.site_addition}</td></tr>
+        </table>
+      </div>`).join('<div class="divider"></div>');
+  }
+
+  // Extracted data
+  const ext = d;
+  document.getElementById('extracted-body').innerHTML = `
+    <table class="extraction-table">
+      <tr><th>Field</th><th>Value</th></tr>
+      <tr><td>Organisation</td><td>${ext.org_name || '—'}</td></tr>
+      <tr><td>Total employees</td><td>${ext.total_employees}</td></tr>
+      <tr><td>Office / management</td><td>${ext.office_employees}</td></tr>
+      <tr><td>Repetitive workers</td><td>${ext.repetitive_employees}</td></tr>
+      <tr><td>Effective Person Count (EPS)</td><td>${ext.eps}</td></tr>
+      ${ext.enms_k ? `<tr><td>EnMS K-factor</td><td>${ext.enms_k} (${ext.enms_complexity})</td></tr>` : ''}
+      ${ext.warning ? `<tr><td colspan="2" style="color:var(--warning);font-weight:600;">⚠ ${ext.warning}</td></tr>` : ''}
+    </table>`;
+
+  document.getElementById('upload-section').style.display = 'none';
+  document.getElementById('result-section').style.display = '';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function resetCalculator() {
+  selectedFiles = [];
+  renderFileList();
+  hideError();
+  document.getElementById('upload-section').style.display = '';
+  document.getElementById('result-section').style.display = 'none';
+}
+
+function toggleExtracted() {
+  const body = document.getElementById('extracted-body');
+  const toggle = document.getElementById('extracted-toggle');
+  const shown = body.style.display !== 'none';
+  body.style.display = shown ? 'none' : '';
+  toggle.textContent = shown ? '▼ Show' : '▲ Hide';
+}
+
+// ---- Helpers ----
+function showLoading(msg) {
+  document.getElementById('loading-msg').textContent = msg;
+  const el = document.getElementById('loading-overlay');
+  el.style.display = 'flex';
+}
+function hideLoading() { document.getElementById('loading-overlay').style.display = 'none'; }
+function showError(msg) {
+  const el = document.getElementById('error-banner');
+  el.textContent = '⚠ ' + msg; el.style.display = '';
+}
+function hideError() { document.getElementById('error-banner').style.display = 'none'; }
+</script>
+{% endblock %}
+

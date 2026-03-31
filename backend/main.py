@@ -11,6 +11,7 @@ import logging
 from config.settings import get_settings
 from api.routes import jobs
 from ui import router as ui_router
+from calculator.routes import router as calculator_router
 
 settings = get_settings()
 
@@ -44,6 +45,7 @@ app.add_middleware(
 # --- Routers ---
 app.include_router(jobs.router)
 app.include_router(ui_router.router)
+app.include_router(calculator_router)
 
 
 # --- Global error handler ---
