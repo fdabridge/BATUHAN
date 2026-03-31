@@ -173,21 +173,28 @@ async function runCalculation() {
   const form = new FormData();
   selectedFiles.forEach(f => form.append('files', f));
 
+  let data;
   try {
     const resp = await fetch('/calculator/calculate', { method: 'POST', body: form });
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({ detail: resp.statusText }));
       throw new Error(err.detail || `HTTP ${resp.status}`);
     }
-    const data = await resp.json();
-    renderResults(data);
+    data = await resp.json();
   } catch (e) {
     hideLoading();
     showError(e.message || 'An unexpected error occurred.');
+    return;
   }
+
+  // Log raw response for debugging
+  console.log('Calculator raw response:', JSON.stringify(data, null, 2));
+
+  renderResults(data);
 }
 
 function renderResults(d) {
+  try {
   hideLoading();
 
   // Header
@@ -272,15 +279,30 @@ function renderResults(d) {
     </table>`;
 
   document.getElementById('upload-section').style.display = 'none';
-  document.getElementById('result-section').style.display = '';
+  document.getElementById('result-section').style.display = 'block';
   window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  } catch (err) {
+    hideLoading();
+    console.error('renderResults failed:', err);
+    // Show error in a always-visible overlay so it's never hidden by parent display:none
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.7);z-index:300;display:flex;align-items:center;justify-content:center;padding:2rem;';
+    overlay.innerHTML = `<div style="background:#fff;border-radius:8px;padding:2rem;max-width:600px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);">
+      <h3 style="color:#dc2626;margin-bottom:1rem;">⚠ Render Error</h3>
+      <p style="margin-bottom:.75rem;color:#374151;font-size:.9rem;">${err.message}</p>
+      <pre style="background:#f1f5f9;padding:1rem;border-radius:4px;font-size:.75rem;overflow:auto;max-height:200px;">${err.stack || ''}</pre>
+      <button onclick="this.closest('[style*=fixed]').remove(); resetCalculator();" style="margin-top:1rem;padding:.5rem 1.25rem;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer;">Close &amp; Reset</button>
+    </div>`;
+    document.body.appendChild(overlay);
+  }
 }
 
 function resetCalculator() {
   selectedFiles = [];
   renderFileList();
   hideError();
-  document.getElementById('upload-section').style.display = '';
+  document.getElementById('upload-section').style.display = 'block';
   document.getElementById('result-section').style.display = 'none';
 }
 
