@@ -96,7 +96,7 @@ def run_pipeline(
     company_files: list[dict],
     sample_files: list[dict],
     template_file: dict,
-    standard_value: str,
+    standard_values: list[str],   # One or more standard codes, e.g. ["QMS", "EMS"]
     stage_value: str,
     org_name: str | None = None,
     org_address: str | None = None,
@@ -111,13 +111,14 @@ def run_pipeline(
     Redis so the API container can retrieve them for downloads.
 
     The task does NOT retry automatically — retries would re-bill the API.
+    Integrated audits pass multiple standard codes in standard_values.
     """
     logger.info(f"[Pipeline] Starting job {job_id}")
     # Create a dedicated temp directory for this job's files
     tmp_root = Path(tempfile.gettempdir()) / "batuhan_jobs" / job_id
 
     try:
-        standard = ISOStandard(standard_value)
+        standards = [ISOStandard(v) for v in standard_values]
         stage = AuditStage(stage_value)
 
         # -----------------------------------------------------------
@@ -158,7 +159,7 @@ def run_pipeline(
         evidence = run_step_a(
             job_id=job_id,
             corpus=corpus,
-            standard=standard,
+            standards=standards,
             stage=stage,
         )
         # T31: abort if Step A produced nothing
@@ -175,7 +176,7 @@ def run_pipeline(
             evidence=evidence,
             template_map=template_map,
             style_guidance=style_guidance,
-            standard=standard,
+            standards=standards,
             stage=stage,
         )
 
@@ -228,7 +229,7 @@ def run_pipeline(
             validated_report=validated_report,
             correction_log=correction_log,
             template_path=template_path,
-            standard=standard,
+            standards=standards,
             stage=stage,
             files_used=files_used,
             org_info=org_info,

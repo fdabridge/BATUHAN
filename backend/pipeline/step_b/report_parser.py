@@ -141,7 +141,7 @@ def _parse_block(block: str) -> tuple[str, str] | None:
 def parse_report_output(
     raw_output: str,
     job_id: str,
-    standard: ISOStandard,
+    standards: list[ISOStandard],
     stage: AuditStage,
     expected_titles: list[str] | None = None,
 ) -> GeneratedReport:
@@ -151,7 +151,7 @@ def parse_report_output(
     Args:
         raw_output:      Full Claude response text.
         job_id:          Current job ID.
-        standard:        Selected ISO standard.
+        standards:       Selected ISO standard(s).
         stage:           Audit stage.
         expected_titles: Ordered list of section titles from the template (for ordering).
 
@@ -212,7 +212,7 @@ def parse_report_output(
 
     return GeneratedReport(
         job_id=job_id,
-        standard=standard,
+        standards=standards,
         stage=stage,
         sections=sections,
         raw_output=raw_output,

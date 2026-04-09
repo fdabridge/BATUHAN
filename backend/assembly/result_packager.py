@@ -51,7 +51,7 @@ def _format_correction_log_txt(correction_log: CorrectionLog) -> str:
 
 def _build_summary(
     job_id: str,
-    standard: ISOStandard,
+    standards: list[ISOStandard],
     stage: AuditStage,
     files_used: list[str],
     correction_count: int,
@@ -60,7 +60,8 @@ def _build_summary(
 ) -> dict:
     return {
         "job_id": job_id,
-        "standard": standard.value,
+        "standards": [s.value for s in standards],          # list for display
+        "standard": " + ".join(s.value for s in standards), # backward-compat label
         "stage": stage.value,
         "files_used": files_used,
         "correction_count": correction_count,
@@ -75,10 +76,9 @@ def package_results(
     validated_report: ValidatedReport,
     correction_log: CorrectionLog,
     template_path: str,
-    standard: ISOStandard,
+    standards: list[ISOStandard],
     stage: AuditStage,
     files_used: list[str],
-    org_info: dict | None = None,
 ) -> JobResult:
     """
     Assemble all deliverables and return a JobResult.
@@ -110,9 +110,7 @@ def package_results(
             template_path=template_path,
             validated_report=validated_report,
             output_path=tmp_docx_path,
-            standard=standard,
-            job_id=job_id,
-            org_info=org_info,
+            standards=standards,
         )
         docx_bytes = Path(tmp_docx_path).read_bytes()
     finally:
@@ -130,7 +128,7 @@ def package_results(
     # --- 3. Write job summary JSON ---
     summary = _build_summary(
         job_id=job_id,
-        standard=standard,
+        standards=standards,
         stage=stage,
         files_used=files_used,
         correction_count=correction_log.correction_count,
@@ -149,7 +147,7 @@ def package_results(
         job_id=job_id,
         final_docx_path=final_docx_path,
         correction_log_path=correction_log_path,
-        standard=standard,
+        standards=standards,
         stage=stage,
         files_used=files_used,
         correction_count=correction_log.correction_count,

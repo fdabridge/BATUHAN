@@ -176,7 +176,7 @@ def _parse_corrections(corrections_block: str, job_id: str) -> CorrectionLog:
 def parse_validation_output(
     raw_output: str,
     job_id: str,
-    standard: ISOStandard,
+    standards: list[ISOStandard],  # noqa: ARG001 — kept for API consistency
     stage: AuditStage,
     expected_titles: list[str] | None = None,
 ) -> tuple[ValidatedReport, CorrectionLog]:

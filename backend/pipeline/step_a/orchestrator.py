@@ -19,7 +19,7 @@ from pathlib import Path
 
 from config.settings import get_settings
 from schemas.models import (
-    ExtractedEvidence, ParsedDocument, ISOStandard, AuditStage
+    ExtractedEvidence, ParsedDocument, ISOStandard, AuditStage,
 )
 from parsers.corpus_builder import format_corpus_for_prompt
 from pipeline.step_a.evidence_parser import (
@@ -49,12 +49,14 @@ def _load_prompt_a() -> str:
 def _build_prompt(
     prompt_template: str,
     corpus_text: str,
-    standard: ISOStandard,
+    standards: list[ISOStandard],
     stage: AuditStage,
 ) -> str:
+    # For integrated audits, show all selected codes joined with " + "
+    standards_label = " + ".join(s.value for s in standards)
     return (
         prompt_template
-        .replace("{standard}", standard.value)
+        .replace("{standard}", standards_label)
         .replace("{stage}", stage.value)
         .replace("{document_corpus}", corpus_text)
     )
@@ -75,17 +77,17 @@ def _call_claude(prompt: str) -> str:
 def run_step_a(
     job_id: str,
     corpus: list[ParsedDocument],
-    standard: ISOStandard,
+    standards: list[ISOStandard],
     stage: AuditStage,
 ) -> ExtractedEvidence:
     """
     Execute Step A: Evidence Extraction.
 
     Args:
-        job_id:   The current processing job ID.
-        corpus:   Parsed company documents (text + OCR merged).
-        standard: Selected ISO standard.
-        stage:    Audit stage (Stage 1 or Stage 2).
+        job_id:    The current processing job ID.
+        corpus:    Parsed company documents (text + OCR merged).
+        standards: Selected ISO standard(s). Multiple = integrated audit.
+        stage:     Audit stage (Stage 1 or Stage 2).
 
     Returns:
         Validated ExtractedEvidence with traceability attached.
@@ -95,30 +97,14 @@ def run_step_a(
         FileNotFoundError: If prompt_a.txt is missing.
     """
     logger.info(f"[Step A] Starting evidence extraction | job={job_id}")
-    logger.info(
-        f"[Step A] Corpus received: {len(corpus)} document(s) | "
-        f"{sum(d.char_count for d in corpus):,} total chars"
-    )
-    for doc in corpus:
-        logger.info(
-            f"[Step A]   '{doc.filename}' | {doc.char_count:,} chars | ocr={doc.is_ocr_sourced}"
-        )
 
     prompt_template = _load_prompt_a()
     corpus_text = format_corpus_for_prompt(corpus)
-    logger.info(f"[Step A] Formatted corpus_text: {len(corpus_text):,} chars")
 
     if not corpus_text.strip() or corpus_text == "[No readable content extracted from company documents]":
         raise ValueError("[Step A] Document corpus is empty. Cannot extract evidence.")
 
-    # Save a corpus snippet as an artifact so failures are inspectable
-    save_text_artifact(
-        job_id,
-        "step_a_corpus_snippet.txt",
-        f"[Step A corpus — first 5000 chars]\n\n{corpus_text[:5000]}",
-    )
-
-    prompt = _build_prompt(prompt_template, corpus_text, standard, stage)
+    prompt = _build_prompt(prompt_template, corpus_text, standards, stage)
 
     # --- Retry loop ---
     last_error: Exception | None = None
@@ -126,12 +112,6 @@ def run_step_a(
         logger.info(f"[Step A] Calling Claude (attempt {attempt}/{MAX_RETRIES + 1})")
         try:
             raw_output = _call_claude(prompt)
-            logger.info(
-                f"[Step A] Claude response received: {len(raw_output):,} chars | "
-                f"first 200: {raw_output[:200]!r}"
-            )
-            # Persist raw output every attempt so we can inspect even on retry failures
-            save_text_artifact(job_id, "step_a_raw_output.txt", raw_output)
             evidence = parse_evidence_output(raw_output, job_id)
             warnings = validate_evidence(evidence)
             if warnings:

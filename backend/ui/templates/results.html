@@ -46,7 +46,10 @@
   </div>
 
   <div class="stats-grid">
-    <div class="stat-card"><div class="stat-label">Standard</div><div class="stat-value">{{ summary.standard }}</div></div>
+    <div class="stat-card">
+      <div class="stat-label">Standard{{ 's' if summary.standards|length > 1 else '' }}</div>
+      <div class="stat-value">{{ summary.standards | join(' + ') if summary.standards else summary.standard }}</div>
+    </div>
     <div class="stat-card"><div class="stat-label">Audit Stage</div><div class="stat-value">{{ summary.stage }}</div></div>
     <div class="stat-card">
       <div class="stat-label">AI Corrections</div>

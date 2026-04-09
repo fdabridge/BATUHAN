@@ -29,7 +29,7 @@
 {% block content %}
 <div style="margin-bottom: 2rem;">
   <p class="page-title">New Audit Job</p>
-  <p class="page-subtitle">Upload your documents, select the ISO standard and audit stage, then submit.</p>
+  <p class="page-subtitle">Upload your documents, select one or more ISO standards and the audit stage, then submit.</p>
 </div>
 
 <div class="page-layout">
@@ -78,46 +78,38 @@
       </div>
 
       <div class="divider"></div>
-      <div class="section-label">Step 4 — Organisation Details</div>
-      <div class="field">
-        <label for="org_name">Organisation / Auditee Name <span style="color:var(--danger)">*</span></label>
-        <input type="text" id="org_name" name="org_name" placeholder="e.g. Acme Manufacturing Ltd" required />
-        <p class="hint">The exact legal name of the organisation being audited. This appears in the Organisation Information block of the report.</p>
-      </div>
-      <div class="form-grid-2">
-        <div class="field">
-          <label for="org_address">Address / Site</label>
-          <input type="text" id="org_address" name="org_address" placeholder="e.g. 42 Industrial Park, London, UK" />
-          <p class="hint">Primary site address for the audit.</p>
+      <div class="section-label">Step 4 — Audit Settings</div>
+
+      <!-- Standards (checkboxes — one or more) -->
+      <div class="field" style="margin-bottom:1rem;">
+        <label>ISO Standard(s) <span style="color:var(--danger)">*</span>
+          <span class="hint" style="display:inline; margin-left:.4rem;">Select one for a single-standard audit, or multiple for an integrated audit.</span>
+        </label>
+        <div id="standards-grid" style="display:flex; flex-wrap:wrap; gap:.5rem .75rem; margin-top:.5rem;">
+          {% for s in standards %}
+          <label class="std-checkbox-label">
+            <input type="checkbox" name="standards" value="{{ s }}" onchange="onStandardChange()"> {{ s }}
+          </label>
+          {% endfor %}
         </div>
-        <div class="field">
-          <label for="org_phone">Phone Number</label>
-          <input type="text" id="org_phone" name="org_phone" placeholder="e.g. +44 20 1234 5678" />
-          <p class="hint">Main contact number for the organisation.</p>
+        <div id="std-error" style="display:none; color:var(--danger); font-size:.8rem; margin-top:.35rem;">⚠ Please select at least one standard.</div>
+
+        <!-- Integrated-audit hint — shown when 2+ standards are ticked -->
+        <div id="integrated-hint" style="display:none; margin-top:.75rem; padding:.65rem .85rem; background:var(--primary-light,#eff6ff); border:1px solid var(--primary,#2563eb); border-radius:6px; font-size:.82rem; color:var(--primary,#2563eb);">
+          <strong>Integrated audit selected.</strong>
+          Your sample report(s) and blank template <strong>must</strong> be the integrated version covering all selected standards.
         </div>
       </div>
 
-      <div class="divider"></div>
-      <div class="section-label">Step 5 — Audit Settings</div>
-      <div class="form-grid-2">
-        <div class="field">
-          <label for="standard">ISO Standard <span style="color:var(--danger)">*</span></label>
-          <select id="standard" name="standard" required>
-            <option value="" disabled selected>Select standard…</option>
-            {% for s in standards %}
-            <option value="{{ s }}">{{ s }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="field">
-          <label for="stage">Audit Stage <span style="color:var(--danger)">*</span></label>
-          <select id="stage" name="stage" required>
-            <option value="" disabled selected>Select stage…</option>
-            {% for st in stages %}
-            <option value="{{ st }}">{{ st }}</option>
-            {% endfor %}
-          </select>
-        </div>
+      <!-- Stage -->
+      <div class="field" style="margin-bottom:0;">
+        <label for="stage">Audit Stage <span style="color:var(--danger)">*</span></label>
+        <select id="stage" name="stage" required>
+          <option value="" disabled selected>Select stage…</option>
+          {% for st in stages %}
+          <option value="{{ st }}">{{ st }}</option>
+          {% endfor %}
+        </select>
       </div>
 
       <div class="submit-row">
@@ -161,13 +153,48 @@
 
 </div>
 
+<style>
+.std-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .35rem .7rem;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 6px;
+  font-size: .85rem;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color .15s, background .15s;
+}
+.std-checkbox-label:has(input:checked) {
+  border-color: var(--primary, #2563eb);
+  background: var(--primary-light, #eff6ff);
+  font-weight: 600;
+}
+.std-checkbox-label input { accent-color: var(--primary, #2563eb); }
+</style>
+
 <script>
+  function onStandardChange() {
+    const checked = document.querySelectorAll('input[name="standards"]:checked');
+    document.getElementById('integrated-hint').style.display = checked.length > 1 ? 'block' : 'none';
+    if (checked.length > 0) document.getElementById('std-error').style.display = 'none';
+  }
+
   document.getElementById('submitForm').addEventListener('submit', async function(e) {
     e.preventDefault();
 
     const btn = document.getElementById('submitBtn');
     const loadingMsg = document.getElementById('loadingMsg');
     const alertBox = document.getElementById('alertBox');
+
+    // Validate: at least one standard checked
+    const checkedStds = document.querySelectorAll('input[name="standards"]:checked');
+    if (checkedStds.length === 0) {
+      document.getElementById('std-error').style.display = 'block';
+      return;
+    }
+    document.getElementById('std-error').style.display = 'none';
 
     // Clear previous errors
     alertBox.style.display = 'none';

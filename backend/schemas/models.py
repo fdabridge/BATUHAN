@@ -48,7 +48,7 @@ class JobState(str, Enum):
 class UploadBundle(BaseModel):
     """Everything submitted by the user to start a job."""
     job_id: str
-    standard: ISOStandard
+    standards: list[ISOStandard]   # One or more — integrated audit when len > 1
     stage: AuditStage
     company_document_paths: list[str] = Field(
         description="Paths to uploaded company documents"
@@ -147,7 +147,7 @@ class ReportSection(BaseModel):
 class GeneratedReport(BaseModel):
     """Full structured output of Prompt B."""
     job_id: str
-    standard: ISOStandard
+    standards: list[ISOStandard]   # One or more selected standards
     stage: AuditStage
     sections: list[ReportSection]
     raw_output: str = Field(description="Raw Claude response for audit trail")
@@ -190,7 +190,7 @@ class JobResult(BaseModel):
     job_id: str
     final_docx_path: str
     correction_log_path: str
-    standard: ISOStandard
+    standards: list[ISOStandard]   # One or more selected standards
     stage: AuditStage
     files_used: list[str]
     correction_count: int

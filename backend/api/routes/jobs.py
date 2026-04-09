@@ -15,6 +15,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
 from schemas.models import ISOStandard, AuditStage, JobStatus, JobState
+from typing import List
 from storage.file_store import (
     generate_job_id, validate_extension, save_text_artifact,
     job_exists, read_text_artifact, read_binary_artifact,
@@ -37,7 +38,7 @@ async def _encode_file(upload: UploadFile) -> dict:
 
 @router.post("/create")
 async def create_job(
-    standard: ISOStandard = Form(..., description="ISO standard (e.g. QMS, EMS)"),
+    standards: List[str] = Form(..., description="One or more ISO standard codes (e.g. QMS, EMS). Repeat field for multiple."),
     stage: AuditStage = Form(..., description="Audit stage: 'Stage 1' or 'Stage 2'"),
     company_documents: list[UploadFile] = File(
         ..., description="Company documents (PDF, DOCX, TXT, PNG, JPG)"
@@ -57,12 +58,22 @@ async def create_job(
     File contents are read into memory, base64-encoded, and passed directly
     to the Celery task through Redis — no shared filesystem is required.
     """
+    # Validate and deduplicate standard codes
+    try:
+        parsed_standards = list(dict.fromkeys(ISOStandard(s) for s in standards))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid standard code: {exc}")
+    if not parsed_standards:
+        raise HTTPException(status_code=400, detail="At least one standard must be selected.")
+
     job_id = generate_job_id()
-    logger.info(f"Creating job {job_id} | standard={standard} | stage={stage}")
+    logger.info(f"Creating job {job_id} | standards={[s.value for s in parsed_standards]} | stage={stage}")
 
     # --- Validate template extension ---
     if not (template.filename or "").lower().endswith((".docx", ".doc")):
         raise HTTPException(status_code=400, detail="Template must be a .docx file.")
+
+    standard_values = [s.value for s in parsed_standards]
 
     # --- Validate and encode company documents ---
     company_files: list[dict] = []
@@ -105,21 +116,21 @@ async def create_job(
             company_files,
             sample_files,
             template_file,
-            standard.value,
+            standard_values,
             stage.value,
             org_name or "",
             org_address or "",
             org_phone or "",
         )
         logger.info(f"Job {job_id} queued with {len(company_files)} company docs, "
-                    f"{len(sample_files)} sample reports.")
+                    f"{len(sample_files)} sample reports, standards={standard_values}.")
     except Exception as e:
         logger.warning(f"Could not queue job {job_id} via Celery: {e}.")
 
     return {
         "job_id": job_id,
         "status": JobState.QUEUED,
-        "standard": standard,
+        "standards": standard_values,
         "stage": stage,
         "company_documents_received": len(company_files),
         "sample_reports_received": len(sample_files),

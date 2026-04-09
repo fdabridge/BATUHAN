@@ -115,8 +115,24 @@ ISO 50001 — Energy Management System:
 
 
 def get_standard_instructions(standard: ISOStandard) -> str:
-    """Return the standard-specific instruction block for Prompt B."""
+    """Return the standard-specific instruction block for a single standard."""
     return _STANDARD_INSTRUCTIONS.get(standard.value, f"Standard: {standard.value}")
+
+
+def get_combined_standard_instructions(standards: list[ISOStandard]) -> str:
+    """
+    Return combined instruction blocks for all selected standards.
+    For integrated audits this concatenates each standard's block so Claude
+    knows the requirements of every selected standard simultaneously.
+    """
+    blocks = [get_standard_instructions(s) for s in standards]
+    if len(blocks) == 1:
+        return blocks[0]
+    # Prefix each block with a clear separator so Claude distinguishes them
+    labelled = []
+    for s, block in zip(standards, blocks):
+        labelled.append(f"--- {s.value} ---\n{block}")
+    return "\n\n".join(labelled)
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +140,7 @@ def get_standard_instructions(standard: ISOStandard) -> str:
 # ---------------------------------------------------------------------------
 
 def build_prompt_b_context(
-    standard: ISOStandard,
+    standards: list[ISOStandard],
     stage: AuditStage,
     template_map: TemplateMap,
     style_guidance: StyleGuidance,
@@ -134,15 +150,20 @@ def build_prompt_b_context(
     Return a dict of all template variable substitutions for prompt_b.txt:
         {standard}, {stage}, {stage_instructions}, {standard_instructions},
         {template_sections}, {extracted_evidence}, {style_guidance}
+
+    For integrated audits, {standard} is "QMS + EMS" and
+    {standard_instructions} contains the blocks for ALL selected standards.
     """
     from parsers.template_parser import format_sections_for_prompt
     from parsers.style_extractor import format_style_guidance_for_prompt
 
+    standards_label = " + ".join(s.value for s in standards)
+
     return {
-        "standard": standard.value,
+        "standard": standards_label,
         "stage": stage.value,
         "stage_instructions": get_stage_instructions(stage),
-        "standard_instructions": get_standard_instructions(standard),
+        "standard_instructions": get_combined_standard_instructions(standards),
         "template_sections": format_sections_for_prompt(template_map),
         "extracted_evidence": evidence_text,
         "style_guidance": format_style_guidance_for_prompt(style_guidance),

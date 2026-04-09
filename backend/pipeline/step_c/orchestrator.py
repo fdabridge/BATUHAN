@@ -105,8 +105,9 @@ def run_step_c(
     report_text = format_report_for_prompt(generated_report)
     evidence_text = format_evidence_for_prompt(evidence)
 
+    standards_label = " + ".join(s.value for s in generated_report.standards)
     ctx = {
-        "standard": generated_report.standard.value,
+        "standard": standards_label,
         "stage": generated_report.stage.value,
         "generated_report": report_text,
         "extracted_evidence": evidence_text,
@@ -130,7 +131,7 @@ def run_step_c(
             raw_output = _call_claude(prompt_text)
             validated_report, correction_log = parse_validation_output(
                 raw_output, job_id,
-                generated_report.standard, generated_report.stage,
+                generated_report.standards, generated_report.stage,
                 expected_titles,
             )
             break

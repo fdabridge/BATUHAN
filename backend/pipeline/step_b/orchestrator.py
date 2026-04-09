@@ -69,19 +69,19 @@ def run_step_b(
     evidence: ExtractedEvidence,
     template_map: TemplateMap,
     style_guidance: StyleGuidance,
-    standard: ISOStandard,
+    standards: list[ISOStandard],
     stage: AuditStage,
 ) -> GeneratedReport:
     """
     Execute Step B: Report Generation.
 
     Args:
-        job_id:        Current job ID.
-        evidence:      Validated ExtractedEvidence from Step A.
-        template_map:  Ordered section map from the blank .docx template.
+        job_id:         Current job ID.
+        evidence:       Validated ExtractedEvidence from Step A.
+        template_map:   Ordered section map from the blank .docx template.
         style_guidance: Safe style/tone extracted from sample reports.
-        standard:      Selected ISO standard.
-        stage:         Audit stage.
+        standards:      Selected ISO standard(s). Multiple = integrated audit.
+        stage:          Audit stage.
 
     Returns:
         GeneratedReport with all sections filled and safety-checked.
@@ -96,7 +96,7 @@ def run_step_b(
     evidence_text = format_evidence_for_prompt(evidence)
     expected_titles = [s.title for s in sorted(template_map.sections, key=lambda x: x.order_index)]
 
-    ctx = build_prompt_b_context(standard, stage, template_map, style_guidance, evidence_text)
+    ctx = build_prompt_b_context(standards, stage, template_map, style_guidance, evidence_text)
     prompt = _build_prompt(prompt_template, ctx)
 
     last_error: Exception | None = None
@@ -106,7 +106,7 @@ def run_step_b(
         logger.info(f"[Step B] Calling Claude (attempt {attempt}/{MAX_RETRIES + 1})")
         try:
             raw_output = _call_claude(prompt)
-            report = parse_report_output(raw_output, job_id, standard, stage, expected_titles)
+            report = parse_report_output(raw_output, job_id, standards, stage, expected_titles)
             break
         except ValueError as e:
             last_error = e
