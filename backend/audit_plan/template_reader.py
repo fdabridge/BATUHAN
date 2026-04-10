@@ -170,14 +170,17 @@ def read_template(docx_bytes: bytes) -> AuditPlanContext:
     in_team_section = False
     for row in tbl1.rows:
         cells = _unique_cells(row)
-        if not cells or not cells[0]:
-            continue
-        first = cells[0].lower().strip()
 
-        # Detect transition to team section (separator row has empty first cell + "Name Surname" header)
+        # Detect transition to team section BEFORE any empty-cell guard.
+        # The header row that contains "Name Surname" may have an empty cells[0]
+        # (it is a merged/spanned header), so checking it first is critical.
         if "name surname" in " ".join(cells).lower():
             in_team_section = True
             continue
+
+        if not cells or not cells[0]:
+            continue
+        first = cells[0].lower().strip()
 
         if in_team_section:
             if any(role in first for role in TEAM_ROLES):
