@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Audit Plan Generator{% endblock %}
+{% block content %}
+<style>
+.ap-card   { background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:2rem;box-shadow:var(--shadow);max-width:680px;margin:0 auto; }
+.ap-title  { font-size:1.45rem;font-weight:700;color:var(--text);margin-bottom:.35rem; }
+.ap-sub    { color:var(--muted);font-size:.9rem;margin-bottom:1.75rem; }
+.drop-zone { border:2px dashed var(--border);border-radius:var(--radius);padding:2.5rem 1.5rem;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;background:var(--bg); }
+.drop-zone.dragover,.drop-zone:hover { border-color:var(--primary);background:var(--primary-light,#eff6ff); }
+.drop-icon { font-size:2.2rem;margin-bottom:.6rem; }
+.drop-hint { color:var(--muted);font-size:.82rem;margin-top:.4rem; }
+.file-chip { display:inline-flex;align-items:center;gap:.45rem;background:var(--primary-light,#eff6ff);border:1px solid var(--primary);border-radius:20px;padding:.3rem .8rem;font-size:.82rem;font-weight:500;color:var(--primary);margin-top:.85rem; }
+.file-chip button { background:none;border:none;cursor:pointer;color:var(--primary);font-size:.9rem;padding:0;line-height:1; }
+.btn-generate { display:flex;align-items:center;gap:.5rem;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);padding:.75rem 1.6rem;font-size:.95rem;font-weight:600;cursor:pointer;transition:background .15s;margin-top:1.5rem; }
+.btn-generate:hover { background:var(--primary-hover,#1d4ed8); }
+.btn-generate:disabled { background:#94a3b8;cursor:not-allowed; }
+.info-box  { background:#f0fdf4;border:1px solid #86efac;border-radius:var(--radius-sm);padding:.85rem 1rem;font-size:.82rem;color:#166534;margin-bottom:1.5rem;line-height:1.6; }
+.info-box strong { display:block;margin-bottom:.25rem; }
+.overlay   { display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:200;align-items:center;justify-content:center; }
+.overlay.show { display:flex; }
+.overlay-box { background:#fff;border-radius:var(--radius);padding:2rem 2.5rem;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.25);max-width:320px; }
+.spinner { display:inline-block;width:2rem;height:2rem;border:3px solid #e2e8f0;border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:1rem; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.error-banner { display:none;background:#fef2f2;border:1px solid #fca5a5;border-radius:var(--radius-sm);padding:.75rem 1rem;color:#991b1b;font-size:.85rem;margin-top:1rem; }
+</style>
+
+<div class="ap-card">
+  <div class="ap-title">📋 Audit Plan Generator</div>
+  <div class="ap-sub">Upload your pre-filled FR.223 blank template. BATUHAN reads the company info and audit team, then uses Claude to generate and fill in the complete hourly schedule.</div>
+
+  <div class="info-box">
+    <strong>What to upload</strong>
+    Your FR.223 template with <strong>Tables 0 and 1 already filled</strong> (organisation details, audit type, dates, audit team).
+    Leave the schedule table (Table 2) empty — BATUHAN fills it automatically.<br><br>
+    The standard(s) and audit type in the template determine which clauses are scheduled.
+    Supported: ISO 9001, 14001, 45001, 22000, 27001, 50001, 13485, 37001 — single or integrated.
+  </div>
+
+  <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+    <div class="drop-icon">📄</div>
+    <div style="font-weight:600;color:var(--text);">Drop your audit plan template here</div>
+    <div class="drop-hint">or click to browse — .docx only, max 20 MB</div>
+    <input type="file" id="fileInput" accept=".docx,.doc" style="display:none" onchange="onFileSelected(this)">
+  </div>
+
+  <div id="fileChip" style="display:none">
+    <div class="file-chip">
+      <span>📄</span>
+      <span id="fileName"></span>
+      <button onclick="clearFile()" title="Remove">✕</button>
+    </div>
+  </div>
+
+  <div class="error-banner" id="errorBanner"></div>
+
+  <button class="btn-generate" id="generateBtn" onclick="generate()" disabled>
+    <span>⚡</span> Generate Audit Plan
+  </button>
+</div>
+
+<!-- Loading overlay -->
+<div class="overlay" id="overlay">
+  <div class="overlay-box">
+    <div class="spinner"></div>
+    <div style="font-weight:600;color:var(--text);margin-bottom:.4rem;" id="overlayMsg">Reading template…</div>
+    <div style="font-size:.8rem;color:var(--muted);">Claude is building the schedule. This takes ~15–30 seconds.</div>
+  </div>
+</div>
+
+<script>
+let selectedFile = null;
+
+// Drag-and-drop
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('dragover'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('dragover');
+  const f = e.dataTransfer.files[0];
+  if (f) attachFile(f);
+});
+
+function onFileSelected(input) {
+  if (input.files[0]) attachFile(input.files[0]);
+}
+
+function attachFile(f) {
+  if (!f.name.match(/\.(docx|doc)$/i)) {
+    showError('Only .docx files are accepted. Please upload your FR.223 template.');
+    return;
+  }
+  selectedFile = f;
+  document.getElementById('fileName').textContent = f.name;
+  document.getElementById('fileChip').style.display = 'block';
+  document.getElementById('generateBtn').disabled = false;
+  hideError();
+}
+
+function clearFile() {
+  selectedFile = null;
+  document.getElementById('fileChip').style.display = 'none';
+  document.getElementById('fileInput').value = '';
+  document.getElementById('generateBtn').disabled = true;
+}
+
+async function generate() {
+  if (!selectedFile) return;
+  hideError();
+  showOverlay('Reading template…');
+
+  const form = new FormData();
+  form.append('template', selectedFile);
+
+  try {
+    const resp = await fetch('/audit-plan/generate', { method: 'POST', body: form });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+      throw new Error(err.detail || `Server error ${resp.status}`);
+    }
+
+    // Trigger download
+    const blob = await resp.blob();
+    const cd   = resp.headers.get('Content-Disposition') || '';
+    const match = cd.match(/filename="?([^"]+)"?/);
+    const fname = match ? match[1] : 'AuditPlan.docx';
+
+    const url = URL.createObjectURL(blob);
+    const a   = document.createElement('a');
+    a.href = url; a.download = fname; a.click();
+    URL.revokeObjectURL(url);
+
+  } catch (e) {
+    showError(e.message || 'An unexpected error occurred. Check the server logs.');
+  } finally {
+    hideOverlay();
+  }
+}
+
+function showOverlay(msg) {
+  document.getElementById('overlayMsg').textContent = msg;
+  document.getElementById('overlay').classList.add('show');
+}
+function hideOverlay() { document.getElementById('overlay').classList.remove('show'); }
+function showError(msg) {
+  const el = document.getElementById('errorBanner');
+  el.textContent = '⚠ ' + msg;
+  el.style.display = 'block';
+}
+function hideError() { document.getElementById('errorBanner').style.display = 'none'; }
+</script>
+{% endblock %}

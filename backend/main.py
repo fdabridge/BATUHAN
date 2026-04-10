@@ -12,6 +12,7 @@ from config.settings import get_settings
 from api.routes import jobs
 from ui import router as ui_router
 from calculator.routes import router as calculator_router
+from audit_plan.routes import router as audit_plan_router
 
 settings = get_settings()
 
@@ -46,6 +47,7 @@ app.add_middleware(
 app.include_router(jobs.router)
 app.include_router(ui_router.router)
 app.include_router(calculator_router)
+app.include_router(audit_plan_router)
 
 
 # --- Global error handler ---

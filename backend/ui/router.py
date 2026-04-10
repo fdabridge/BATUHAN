@@ -84,6 +84,12 @@ def ui_calculator(request: Request):
     return templates.TemplateResponse("calculator.html", {"request": request})
 
 
+@router.get("/audit-plan", response_class=HTMLResponse)
+def ui_audit_plan(request: Request):
+    """Render the Audit Plan Generator page."""
+    return templates.TemplateResponse("audit_plan.html", {"request": request})
+
+
 @router.get("/guide", response_class=HTMLResponse)
 def ui_guide(request: Request):
     """Render the comprehensive user guide page."""
