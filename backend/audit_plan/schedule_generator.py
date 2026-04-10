@@ -41,25 +41,53 @@ class DaySchedule:
 
 
 # ---------------------------------------------------------------------------
+# Role → abbreviation map (used when building the auditor reference block)
+# ---------------------------------------------------------------------------
+
+_ROLE_ABBREV: dict[str, str] = {
+    "lead auditor":     "LA",
+    "auditor":          "A",
+    "trainee auditor":  "TA",
+    "technical expert": "TE",
+    "technical experts":"TE",
+    "observer":         "Obs",
+}
+
+
+# ---------------------------------------------------------------------------
 # System prompt
 # ---------------------------------------------------------------------------
 
 _SYSTEM_PROMPT = """You are an ISO audit planning expert. You generate precise, realistic
 hourly audit schedules for ISO management system audits.
 
-RULES — READ CAREFULLY:
-1. Time format: use "HHMM – HHMM" (no colon, en-dash, 24-hour). Example: "0800 – 0900".
-2. Working day: 0800 to approximately 1600. Include a lunch break "Break (1200 – 1230)".
-3. Every audit day starts with an Opening Meeting (0800 – 0830) ONLY on Day 1.
-4. Every intermediate day ends with a Wash-up Meeting (~30 min).
-5. The LAST day ends with: Write Draft Report (~30 min) then Closing Meeting (~30 min).
-6. Use parallel rows when two auditors audit different clauses simultaneously (same time slot).
-7. Distribute ALL required clauses across the available days. Do NOT skip any clause.
-8. For integrated audits (multiple standards), interleave both standards per day logically.
-9. Auditor abbreviations: Lead Auditor = LA, Auditor = A, Trainee Auditor = TA,
-   Technical Expert = TE, Observer = Obs.
-10. For Opening/Closing/Wash-up/Site Tour/Report writing rows: standard="" clauses="".
-11. For break rows: set is_break=true, standard="" clauses="" activity="Lunch Break" auditors="".
+RULES — FOLLOW EXACTLY:
+1. Time format: "HHMM – HHMM" (no colon, en-dash, 24-hour). Example: "0900 – 1000".
+2. Working day: 0900 to approximately 1700.
+   Every day MUST include one lunch break slot:
+     time="1300 – 1330", is_break=true, standard="", clauses="", activity="Lunch Break", auditors="".
+3. Day 1 ONLY starts with an Opening Meeting: time="0900 – 0930", standard="", clauses="",
+   activity="Opening Meeting", auditors="ALL".
+4. The LAST day ends with ONLY a Closing Meeting (~30 min), standard="", clauses="",
+   activity="Closing Meeting", auditors="ALL".
+   DO NOT add "Write Draft Report", "Wash-up Meeting", or any similar internal slot.
+   The 20% reporting deduction already accounts for report-writing time.
+5. Intermediate days (not the last day): end with the last audit clause slot.
+   No Wash-up Meeting, no extra slots.
+6. Use parallel rows when 2+ auditors audit different clauses simultaneously (same time, different row).
+7. Distribute ALL listed clauses. Do NOT skip any clause group.
+8. CLAUSE GROUPING — critical: always group related sub-clauses of the same section into
+   one slot. Target 2–4 clauses per slot. NEVER put a single sub-clause alone in a slot
+   unless it genuinely requires a full slot (e.g. a complex operational clause).
+   CORRECT:   slot → clauses="7.3-7.4", next slot → clauses="7.5-7.6"
+   WRONG:     slot → clauses="7.3", next slot → clauses="7.4", next → clauses="7.5"
+9. For integrated audits (multiple standards), interleave the standards logically per day.
+10. AUDITOR FIELD — critical: always write "Full Name (ABBREV)" — use the exact names and
+    abbreviations from the AUDIT TEAM list provided. Example: "Hasan Eryılmaz (LA)".
+    For whole-team rows (Opening/Closing Meeting, Site Tour): write "ALL".
+    NEVER write only the abbreviation alone (e.g. never just "LA").
+11. For Opening Meeting, Closing Meeting, Site Tour rows: standard="", clauses="".
+12. For break rows (is_break=true): standard="", clauses="", activity="Lunch Break", auditors="".
 
 OUTPUT: Return ONLY valid JSON — no markdown fences, no explanation.
 
@@ -72,9 +100,9 @@ Schema:
       "site": "full site address",
       "slots": [
         {
-          "time": "0800 – 0830",
+          "time": "0900 – 0930",
           "is_break": false,
-          "standard": "ISO 9001:2015",
+          "standard": "",
           "clauses": "",
           "activity": "Opening Meeting",
           "auditors": "ALL"
@@ -114,9 +142,14 @@ def generate_schedule(ctx: AuditPlanContext) -> list[DaySchedule]:
             clause_blocks.append(f"  {std} ({ctx.audit_type}): {clauses}")
     clause_summary = "\n".join(clause_blocks) if clause_blocks else "  (no matching clauses found)"
 
-    # Build auditor list
-    auditor_lines = [f"  {a.role}: {a.name}" for a in ctx.auditors if a.name]
-    auditor_summary = "\n".join(auditor_lines) if auditor_lines else "  Lead Auditor: (unknown)"
+    # Build auditor list in "Full Name (ABBREV)" format so Claude copies it verbatim
+    auditor_lines: list[str] = []
+    for a in ctx.auditors:
+        if not a.name:
+            continue
+        abbrev = _ROLE_ABBREV.get(a.role.lower().strip(), "A")
+        auditor_lines.append(f"  {a.name} ({abbrev})")
+    auditor_summary = "\n".join(auditor_lines) if auditor_lines else "  (unknown) (LA)"
 
     # Build site list
     site_lines = [f"  Day site option: {s.address} — {s.process}" for s in ctx.sites]
@@ -146,12 +179,16 @@ CLAUSES TO AUDIT (from FR.222 — do not change):
 {clause_summary}
 
 INSTRUCTIONS:
-- Parse the audit date(s) string "{ctx.audit_dates}" to determine how many calendar days there are.
-- Create one "days" entry per calendar day.
-- Distribute all clauses evenly. Cover every listed clause at least once.
-- If there are 2+ auditors, create parallel rows (same time, different clauses, different auditors).
-- The site address for each day: use HQ address unless additional sites are listed above.
-- Return ONLY the JSON schedule as specified."""
+- Parse "{ctx.audit_dates}" to count calendar days; create one "days" entry per day.
+- Day 1: first slot = Opening Meeting (0900–0930, auditors="ALL").
+- Every day: include a Lunch Break slot (is_break=true, time="1300 – 1330", activity="Lunch Break").
+- Last day: final slot = Closing Meeting (~30 min, auditors="ALL"). NO Write Draft Report. NO Wash-up Meeting.
+- Intermediate days: end with the last audit clause slot only.
+- Distribute all clauses. Group sub-clauses: never one sub-clause alone in a slot.
+- If 2+ auditors: create parallel rows (same time, different clauses, different auditors).
+- Site for each day: use HQ address unless additional sites are listed above.
+- Auditor field: ALWAYS "Full Name (ABBREV)" from the AUDIT TEAM list. NEVER abbreviation alone.
+- Return ONLY valid JSON."""
 
     logger.info(
         f"[AuditPlan] Calling Claude for schedule | org='{ctx.org_name}' "

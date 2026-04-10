@@ -16,12 +16,16 @@ Column widths (DXA units, total = 9883):
 
 from __future__ import annotations
 from io import BytesIO
+from typing import TYPE_CHECKING
 from lxml import etree
 
 from docx import Document
 from docx.oxml.ns import qn
 
 from .schedule_generator import DaySchedule, Slot
+
+if TYPE_CHECKING:
+    from .template_reader import AuditPlanContext
 
 # ---------------------------------------------------------------------------
 # Column widths in DXA (1/20th of a point)
@@ -105,20 +109,78 @@ def _make_trpr(height: int = 397) -> etree._Element:
 # Row builders
 # ---------------------------------------------------------------------------
 
+def _unique_row_cells(row) -> list:
+    """Return deduplicated cell objects for a row (handles merged cells)."""
+    seen: set[int] = set()
+    cells = []
+    for cell in row.cells:
+        if id(cell) not in seen:
+            seen.add(id(cell))
+            cells.append(cell)
+    return cells
+
+
+def _write_cell(cell, text: str) -> None:
+    """Clear a table cell and write plain text, preserving the cell element itself."""
+    tc = cell._tc
+    # Remove all existing paragraphs
+    for p in tc.findall(qn("w:p")):
+        tc.remove(p)
+    # Add a single paragraph with the new text
+    p = etree.SubElement(tc, qn("w:p"))
+    if text:
+        r = etree.SubElement(p, qn("w:r"))
+        t = etree.SubElement(r, qn("w:t"))
+        t.text = text
+        t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+
+
+def _fill_sites(doc: Document, ctx: "AuditPlanContext") -> None:
+    """
+    Populate the three site data rows in Table 1 from ctx.
+    If no additional sites are defined, fills row 1 with the HQ address/scope/employees.
+    Table 1 layout (fixed):
+      R0 — header (Site/s | Address | Process/Activity | Number of Employees)
+      R1-R3 — site data rows (we write to unique cells [1], [2], [3] of each)
+      R4+ — empty separator and audit team rows (leave untouched)
+    """
+    if len(doc.tables) < 2:
+        return
+
+    tbl = doc.tables[1]
+    if len(tbl.rows) < 4:
+        return  # Template doesn't have the expected structure
+
+    # Build site records: use ctx.sites if available, otherwise HQ as site 1
+    records = []
+    if ctx.sites:
+        for s in ctx.sites:
+            records.append((s.address, s.process, s.employees))
+    else:
+        records.append((ctx.address, ctx.scope[:80] if ctx.scope else "", ctx.num_employees))
+
+    # Fill rows 1, 2, 3 (up to available records)
+    site_row_indices = [1, 2, 3]
+    for i, rec in enumerate(records):
+        if i >= len(site_row_indices):
+            break
+        row = tbl.rows[site_row_indices[i]]
+        cells = _unique_row_cells(row)
+        # cells[0] = "Site/s" label — do NOT modify (may be vertically merged)
+        if len(cells) > 1:
+            _write_cell(cells[1], str(rec[0]))   # Address
+        if len(cells) > 2:
+            _write_cell(cells[2], str(rec[1]))   # Process/Activity
+        if len(cells) > 3:
+            _write_cell(cells[3], str(rec[2]))   # Number of Employees
+
+
 def _day_header_row(day_number: int, date: str, site: str) -> etree._Element:
     """Full-width merged row for a new day."""
     label = f"{day_number}. Day ({date})   {site}"
     tr = etree.Element(qn("w:tr"))
     tr.append(_make_trpr())
     tr.append(_make_tc(_TABLE_WIDTH, label, bold=True, grid_span=5))
-    return tr
-
-
-def _break_row(time_range: str) -> etree._Element:
-    """Full-width merged break row."""
-    tr = etree.Element(qn("w:tr"))
-    tr.append(_make_trpr())
-    tr.append(_make_tc(_TABLE_WIDTH, time_range, bold=False, center=True, grid_span=5))
     return tr
 
 
@@ -138,19 +200,24 @@ def _data_row(slot: Slot) -> etree._Element:
 # Public API
 # ---------------------------------------------------------------------------
 
-def fill_schedule(docx_bytes: bytes, days: list[DaySchedule]) -> bytes:
+def fill_schedule(
+    docx_bytes: bytes,
+    days: list[DaySchedule],
+    ctx: "AuditPlanContext | None" = None,
+) -> bytes:
     """
-    Fill Table 2 of the uploaded template with the generated schedule.
+    Fill Table 1 (sites) and Table 2 (schedule) of the uploaded template.
 
     Args:
         docx_bytes: Raw bytes of the uploaded pre-filled FR.223 template.
         days:       Generated schedule (list of DaySchedule).
+        ctx:        Full AuditPlanContext; when provided, Table 1 site rows are populated.
 
     Returns:
         Bytes of the completed .docx file ready for download.
 
     Raises:
-        ValueError: If the template lacks a schedule table.
+        ValueError: If the template lacks the expected tables.
     """
     doc = Document(BytesIO(docx_bytes))
 
@@ -160,6 +227,11 @@ def fill_schedule(docx_bytes: bytes, days: list[DaySchedule]) -> bytes:
             "Ensure you uploaded the correct FR.223 audit plan template."
         )
 
+    # ---- Table 1: fill site rows ----
+    if ctx is not None:
+        _fill_sites(doc, ctx)
+
+    # ---- Table 2: fill schedule ----
     tbl = doc.tables[2]
     tbl_elem = tbl._tbl
 
@@ -168,15 +240,13 @@ def fill_schedule(docx_bytes: bytes, days: list[DaySchedule]) -> bytes:
     for row in rows_to_remove:
         tbl_elem.remove(row)
 
-    # Insert generated rows
+    # Insert generated rows.
+    # Break slots (is_break=True) are rendered as normal 5-cell rows so the
+    # Activity column displays "Lunch Break" rather than a merged cell.
     for day in days:
         tbl_elem.append(_day_header_row(day.day_number, day.date, day.site))
         for slot in day.slots:
-            if slot.is_break:
-                label = slot.time if slot.time else f"Break ({slot.activity})"
-                tbl_elem.append(_break_row(label))
-            else:
-                tbl_elem.append(_data_row(slot))
+            tbl_elem.append(_data_row(slot))
 
     buf = BytesIO()
     doc.save(buf)

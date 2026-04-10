@@ -98,9 +98,9 @@ async def audit_plan_generate(
             detail=f"Claude schedule generation error: {exc}",
         )
 
-    # ---- Step 3: Fill Table 2 in the template ----
+    # ---- Step 3: Fill Table 1 (sites) + Table 2 (schedule) in the template ----
     try:
-        filled_bytes = fill_schedule(content, days)
+        filled_bytes = fill_schedule(content, days, ctx)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except Exception as exc:
