@@ -41,20 +41,6 @@ class DaySchedule:
 
 
 # ---------------------------------------------------------------------------
-# Role → abbreviation map (used when building the auditor reference block)
-# ---------------------------------------------------------------------------
-
-_ROLE_ABBREV: dict[str, str] = {
-    "lead auditor":     "LA",
-    "auditor":          "A",
-    "trainee auditor":  "TA",
-    "technical expert": "TE",
-    "technical experts":"TE",
-    "observer":         "Obs",
-}
-
-
-# ---------------------------------------------------------------------------
 # System prompt
 # ---------------------------------------------------------------------------
 
@@ -70,16 +56,16 @@ RULES — FOLLOW EXACTLY:
      time="13.00 – 14.00", is_break=true, standard="", clauses="", activity="Lunch Break", auditors="".
    Lunch is ALWAYS exactly 60 minutes. The slot immediately after lunch MUST start at 14.00.
 3. Day 1 ONLY starts with an Opening Meeting:
-     time="09.00 – 09.30", is_break=false, standard="", clauses="", activity="Opening Meeting", auditors="ALL".
+     time="09.00 – 09.30", is_break=false, standard="", clauses="", activity="Opening Meeting", auditors=<whole-team string>.
 4. The LAST day ends with ONLY a Closing Meeting (~30 min):
-     standard="", clauses="", activity="Closing Meeting", auditors="ALL".
+     standard="", clauses="", activity="Closing Meeting", auditors=<whole-team string>.
    DO NOT add "Write Draft Report", "Wash-up Meeting", or any similar internal slot.
    The 20% reporting deduction already accounts for report-writing time.
 5. Intermediate days (not the last day): end with the last audit clause slot only.
    No Wash-up Meeting, no extra slots.
 6. CONTINUITY — critical: the schedule must be fully continuous with NO gaps.
-   The start time of every slot must exactly equal the end time of the preceding slot.
-   Every minute from the Opening Meeting to the Closing Meeting must belong to a named slot.
+   The start time of every slot must exactly equal the end time of the preceding slot
+   within each auditor's own track. Every minute of each auditor's day must be accounted for.
 7. CLAUSE NON-REPETITION — critical: every clause must appear EXACTLY ONCE across the
    entire schedule. NEVER re-audit a clause that has already been scheduled.
    If all required clauses are covered before the final day ends, fill remaining audit time
@@ -92,14 +78,32 @@ RULES — FOLLOW EXACTLY:
    unless it genuinely requires a full slot (e.g. a complex operational clause).
    CORRECT:   slot → clauses="7.3-7.4", next slot → clauses="7.5-7.6"
    WRONG:     slot → clauses="7.3", next slot → clauses="7.4", next → clauses="7.5"
-9. For integrated audits (multiple standards), interleave the standards logically per day.
-10. AUDITOR FIELD — critical: always write "Full Name (ABBREV)" using the exact names and
-    abbreviations from the AUDIT TEAM list provided. Example: "Hasan Eryılmaz (LA)".
-    For whole-team rows (Opening/Closing Meeting, Site Tour): write "ALL".
-    NEVER write only the abbreviation alone (e.g. never just "LA").
-11. For Opening Meeting, Closing Meeting, Site Tour, walkthrough rows: standard="", clauses="".
+9. INTEGRATED AUDIT STRATEGY — two modes, chosen by the INSTRUCTIONS block:
+   a) SIMULTANEOUS MODE (few days): audit shared clause numbers once for ALL standards
+      in the same slot. The Standard field must list every applicable standard
+      (e.g. "ISO 14001:2015\nISO 45001:2018"). Standard-specific clauses get their own
+      slot with only that standard in the Standard field.
+   b) BLOCK MODE (many days): dedicate consecutive day blocks to each standard.
+      Complete all of Standard A's clauses first, then Standard B's, etc.
+      The first day of each NEW standard block gets its own Opening Meeting + Site Tour,
+      just like Day 1. Auditors field on those meetings = <whole-team string>.
+10. AUDITOR TRACKS — critical:
+    a) Each auditor runs their OWN independent track. Parallel tracks do NOT need to share
+       the same time boundaries — each track's slots are continuous within themselves.
+    b) Trainee Auditor (TA) is ALWAYS on the Lead Auditor's (LA) track — never alone.
+    c) Auditor (A) always runs an independent track.
+    d) Whole-team slots (Opening/Closing Meeting, Site Tour, block-transition Opening Meeting):
+       all auditors appear together using the WHOLE-TEAM STRING provided in INSTRUCTIONS.
+    e) Per-track auditor strings:
+       - LA alone or LA+TA: use exactly the TRACK STRING provided in INSTRUCTIONS.
+       - A alone: use exactly the TRACK STRING provided in INSTRUCTIONS.
+    f) NEVER write only the abbreviation alone (e.g. never just "LA" or "A").
+11. STANDARD FIELD in slots:
+    - Single-standard audit: always that standard's name.
+    - Integrated audit, simultaneous mode: list all standards that apply to the clause(s)
+      in that slot, separated by newline (e.g. "ISO 14001:2015\nISO 45001:2018").
+    - Opening Meeting, Closing Meeting, Site Tour, walkthroughs: standard="" clauses="".
 12. For break rows (is_break=true): standard="", clauses="", activity="Lunch Break", auditors="".
-13. Use parallel rows when 2+ auditors audit different clauses simultaneously (same time, different row).
 
 OUTPUT: Return ONLY valid JSON — no markdown fences, no explanation.
 
@@ -117,13 +121,110 @@ Schema:
           "standard": "",
           "clauses": "",
           "activity": "Opening Meeting",
-          "auditors": "ALL"
+          "auditors": "<whole-team string>"
         }
       ]
     }
   ]
 }
 """
+
+
+# ---------------------------------------------------------------------------
+# Day-count helper
+# ---------------------------------------------------------------------------
+
+def _count_audit_days(dates_str: str) -> int:
+    """
+    Estimate the number of calendar audit days from the raw date string.
+
+    Handles formats like:
+      "27-28.09.2025"               → 2
+      "08-09.10.2025"               → 2
+      "18,20,21,22,23.12.2025"      → 5
+      "13,14.12.2025"               → 2
+      "04-05.09.2025"               → 2
+    """
+    # Comma-separated list: count tokens
+    parts = [p.strip() for p in re.split(r"[,;]", dates_str) if p.strip()]
+    if len(parts) > 1:
+        return len(parts)
+    # Day range like "27-28": second number minus first + 1
+    m = re.search(r"\b(\d{1,2})-(\d{1,2})\b", dates_str)
+    if m:
+        d1, d2 = int(m.group(1)), int(m.group(2))
+        if d2 > d1:
+            return d2 - d1 + 1
+    return 1
+
+
+# ---------------------------------------------------------------------------
+# Auditor track builder
+# ---------------------------------------------------------------------------
+
+def _build_auditor_tracks(ctx: AuditPlanContext) -> tuple[str, str, str]:
+    """
+    Derive three strings consumed by the Claude prompt:
+
+    Returns:
+        track_summary  — one line per parallel track, describing who runs it
+        whole_team_str — the string to use in Opening/Closing/whole-team slots
+        strategy_note  — additional note for Claude about LA+TA pairing
+    """
+    la_list  = [a for a in ctx.auditors if a.name and "lead"     in a.role.lower()]
+    a_list   = [a for a in ctx.auditors if a.name and a.role.lower().strip() == "auditor"]
+    ta_list  = [a for a in ctx.auditors if a.name and "trainee"  in a.role.lower()]
+    te_list  = [a for a in ctx.auditors if a.name and "technical" in a.role.lower()]
+
+    tracks: list[str] = []
+
+    # LA track (TA always joins LA if present)
+    for la in la_list:
+        la_str = f"{la.name} (LA)"
+        if ta_list:
+            ta_part = " & ".join(f"{ta.name} (TA)" for ta in ta_list)
+            tracks.append(f"  LA track: {la_str} & {ta_part}")
+        else:
+            tracks.append(f"  LA track: {la_str}")
+
+    # Independent A tracks
+    for a in a_list:
+        tracks.append(f"  A track:  {a.name} (A)")
+
+    # TE tracks (independent)
+    for te in te_list:
+        tracks.append(f"  TE track: {te.name} (TE)")
+
+    track_summary = "\n".join(tracks) if tracks else "  (single auditor — no parallel tracks)"
+
+    # Whole-team string — format differs by team size
+    all_parts: list[str] = []
+    for la in la_list:
+        all_parts.append(f"{la.name} (LA)")
+    for a in a_list:
+        all_parts.append(f"{a.name} (A)")
+    for ta in ta_list:
+        all_parts.append(f"{ta.name} (TA)")
+    for te in te_list:
+        all_parts.append(f"{te.name} (TE)")
+
+    if len(all_parts) == 0:
+        whole_team_str = "(unknown) (LA)"
+    elif len(all_parts) == 1:
+        whole_team_str = all_parts[0]
+    elif len(all_parts) == 2:
+        # "Name (LA)\n& Name (A)"
+        whole_team_str = f"{all_parts[0]}\\n& {all_parts[1]}"
+    else:
+        # "Name (LA),\nName (A) & Name (TA)"
+        whole_team_str = f"{all_parts[0]},\\n{' & '.join(all_parts[1:])}"
+
+    strategy_note = (
+        "TA is always on the same track as LA — never assign TA to a slot alone. "
+        "Each A runs their own independent parallel track."
+    )
+
+    return track_summary, whole_team_str, strategy_note
 
 
 # ---------------------------------------------------------------------------
@@ -177,14 +278,33 @@ def generate_schedule(ctx: AuditPlanContext) -> list[DaySchedule]:
             clause_blocks.append(f"  {std} ({ctx.audit_type}): {clauses}")
     clause_summary = "\n".join(clause_blocks) if clause_blocks else "  (no matching clauses found)"
 
-    # Build auditor list in "Full Name (ABBREV)" format so Claude copies it verbatim
-    auditor_lines: list[str] = []
-    for a in ctx.auditors:
-        if not a.name:
-            continue
-        abbrev = _ROLE_ABBREV.get(a.role.lower().strip(), "A")
-        auditor_lines.append(f"  {a.name} ({abbrev})")
-    auditor_summary = "\n".join(auditor_lines) if auditor_lines else "  (unknown) (LA)"
+    # Build auditor tracks and whole-team string
+    track_summary, whole_team_str, strategy_note = _build_auditor_tracks(ctx)
+
+    # Determine integrated audit strategy (block vs simultaneous)
+    total_days   = _count_audit_days(ctx.audit_dates)
+    num_stds     = len(ctx.standards)
+    if num_stds >= 2 and total_days > 0:
+        days_per_std = total_days / num_stds
+        int_mode     = "BLOCK" if days_per_std > 2 else "SIMULTANEOUS"
+    else:
+        int_mode     = "SINGLE"  # not an integrated audit
+
+    int_mode_instruction = {
+        "SIMULTANEOUS": (
+            "INTEGRATED MODE: SIMULTANEOUS — audit shared clause numbers together for all "
+            "standards in the same slot. Standard field = all applicable standards, newline-separated. "
+            "Standard-specific clauses get their own slot showing only that standard."
+        ),
+        "BLOCK": (
+            f"INTEGRATED MODE: BLOCK — cover each standard in its own day block. "
+            f"Complete ALL clauses for {ctx.standards[0] if ctx.standards else 'Standard A'} first, "
+            f"then ALL clauses for the remaining standard(s). "
+            "The FIRST day of each new standard block gets its own Opening Meeting (09.00–09.30) "
+            f"and Site Tour (09.30–10.00), auditors=\"{whole_team_str}\", standard=\"\", clauses=\"\"."
+        ),
+        "SINGLE": "Single standard audit — no integration strategy needed.",
+    }[int_mode]
 
     # Build site list
     site_lines = [f"  Day site option: {s.address} — {s.process}" for s in ctx.sites]
@@ -196,7 +316,7 @@ ORGANISATION: {ctx.org_name}
 ADDRESS / HQ: {ctx.address}
 STANDARD(S): {ctx.standards_raw}
 AUDIT TYPE: {ctx.audit_type_raw} (mapped to: {ctx.audit_type})
-AUDIT DATE(S): {ctx.audit_dates}
+AUDIT DATE(S): {ctx.audit_dates}  [{total_days} day(s) total]
 EFFECTIVE EMPLOYEES: {ctx.num_employees}
 AUDIT DURATION: {ctx.audit_time}
 SHIFT NUMBER: {ctx.shift_number}
@@ -204,8 +324,10 @@ LANGUAGE: {ctx.language}
 SCOPE: {ctx.scope}
 NOT APPLICABLE CLAUSES: {ctx.not_applicable}
 
-AUDIT TEAM:
-{auditor_summary}
+AUDIT TEAM TRACKS (use EXACTLY these strings in auditor fields):
+{track_summary}
+  Whole-team string (Opening/Closing/Site Tour): "{whole_team_str}"
+  Note: {strategy_note}
 
 SITES:
 {site_summary}
@@ -214,20 +336,22 @@ CLAUSES TO AUDIT (from FR.222 — do not change):
 {clause_summary}
 
 INSTRUCTIONS:
-- Parse "{ctx.audit_dates}" to count calendar days; create one "days" entry per day.
-- Day 1: first slot = Opening Meeting (09.00–09.30, auditors="ALL").
-- Every day: one Lunch Break slot — is_break=true, time="13.00 – 14.00" (60 min), activity="Lunch Break".
+- Parse "{ctx.audit_dates}" → {total_days} day(s). Create one "days" entry per calendar day.
+- Day 1: first slot = Opening Meeting (09.00–09.30, auditors="{whole_team_str}").
+- Every day: one Lunch Break — is_break=true, time="13.00 – 14.00" (60 min), activity="Lunch Break".
   The slot after lunch MUST start at 14.00.
-- Last day: final slot = Closing Meeting (~30 min, auditors="ALL"). NO Write Draft Report. NO Wash-up Meeting.
+- Last day: final slot = Closing Meeting (~30 min, auditors="{whole_team_str}").
+  NO Write Draft Report. NO Wash-up Meeting.
 - Intermediate days: end with the last audit clause slot only.
-- Schedule must be CONTINUOUS — no gaps. Each slot's start = previous slot's end.
-- Every clause must appear EXACTLY ONCE. If all clauses are covered before the day ends,
-  fill remaining time with "Production Floor Walkthrough" or "Document Review and Records Verification".
+- {int_mode_instruction}
+- Each auditor track is INDEPENDENT — tracks do not have to share time boundaries.
+  Slots within each track must be continuous (each slot's start = that track's previous slot's end).
+  Only whole-team slots (Opening/Closing Meeting, Site Tour) synchronise all tracks.
+- Every clause must appear EXACTLY ONCE. Fill spare time with "Production Floor Walkthrough"
+  or "Document Review and Records Verification" — never re-audit a covered clause.
 - Group sub-clauses: never one sub-clause alone in a slot unless it genuinely needs a full slot.
-- If 2+ auditors: create parallel rows (same time, different clauses, different auditors).
 - Site for each day: use HQ address unless additional sites are listed above.
 - Time format: "HH.MM – HH.MM" (dot separator). Example: "09.00 – 10.30".
-- Auditor field: ALWAYS "Full Name (ABBREV)" from the AUDIT TEAM list. NEVER abbreviation alone.
 - Return ONLY valid JSON."""
 
     logger.info(
