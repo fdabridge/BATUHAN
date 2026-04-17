@@ -107,9 +107,25 @@ ISO 37001 — Anti-Bribery Management System:
     ISOStandard.ENMS.value: """
 ISO 50001 — Energy Management System:
 - Focus on energy performance indicators, energy baseline, and energy objectives.
-- Reference energy review, significant energy uses, and energy action plans.
+- Reference energy review, significant energy uses (SEUs), and energy action plans.
 - Address metering, monitoring, and measurement of energy consumption.
 - Highlight procurement of energy-efficient products and services.
+
+REQUIRED STRUCTURED DATA — you MUST include a section titled "EnMS Additional Requirements"
+with the following fields clearly stated so they can be placed in the report table.
+Use the exact labels below and extract real values from the evidence:
+  Sources of energy: <list all energy types, e.g. "Electrical energy, natural gas">
+  Significant number of energy uses (SEU): <number or list, e.g. "3 SEUs">
+  Annual energy consumption: <total with unit, e.g. "1,250 MWh/year">
+  Energy management team size: <number, e.g. "5">
+  Audit date(s): <extracted audit date(s), e.g. "15.03.2026, 16.03.2026">
+  Stage 2 planned date: <if mentioned in documents, otherwise "To be agreed">
+  Audit man-days: <total man-days, e.g. "1.5 man/days">
+  Employee count: <total employees>
+  Effective employee count: <employees covered by EnMS scope>
+  Subcontractor employee count: <if applicable, otherwise "-">
+  Audit criteria: <document types reviewed, e.g. "Manual, Procedure and work instruction.">
+These fields are critical for filling the report template correctly. Do not omit them.
 """.strip(),
 }
 

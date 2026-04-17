@@ -307,18 +307,43 @@ def template_to_structure_text(template_path: str, selected_standard: ISOStandar
         lines.append(label)
 
         rows = tbl.findall(_wtag("tr"))
-        for row_idx, tr in enumerate(rows, 1):
-            tcs = tr.findall(_wtag("tc"))
+        all_rows_tcs: list[list] = [tr.findall(_wtag("tc")) for tr in rows]
+
+        for row_idx, (_, tcs) in enumerate(zip(rows, all_rows_tcs), 1):
+            # Detect whether this row is a column-sub-header row:
+            # A column sub-header row has ≥2 distinct non-empty cells (i.e. it's a
+            # column header line, not a data row).  In such rows all cells are [LABEL].
+            non_empty_cells = [_get_cell_text(tc) for tc in tcs]
+            distinct_non_empty = len([t for t in non_empty_cells if t])
+            is_col_header_row = distinct_non_empty >= 2
+
             for col_idx, tc in enumerate(tcs, 1):
                 cell_text = _get_cell_text(tc)
                 coord = f"T{tbl_num}_R{row_idx}_C{col_idx}"
+
                 # Mask editorial instructions so Claude never outputs them.
-                # Exception: protect cells with legitimate audit content (e.g. audit
-                # objectives a/b/c/d) — show them as-is so Claude preserves them.
                 if cell_text and _INSTRUCTION_CELL_RE.search(cell_text) and not _AUDIT_CONTENT_RE.search(cell_text):
                     display = "[TEMPLATE INSTRUCTION — DO NOT OUTPUT]"
+                elif cell_text:
+                    # Annotate pre-printed label cells so Claude knows not to overwrite them.
+                    # A cell is treated as a label when:
+                    #  a) This is a column-sub-header row (multiple non-empty cells = headers), OR
+                    #  b) The cell has content but the NEXT cell in the same row is the empty
+                    #     value cell (classic two-column label→value pattern).
+                    is_label = False
+                    if is_col_header_row:
+                        is_label = True
+                    elif col_idx < len(tcs):
+                        # Check if next sibling cell is empty (label→value pattern)
+                        next_text = _get_cell_text(tcs[col_idx])  # col_idx is 0-based next
+                        if not next_text:
+                            is_label = True
+                    if is_label:
+                        display = f"{cell_text[:200]} [LABEL — DO NOT MODIFY]"
+                    else:
+                        display = cell_text[:300]
                 else:
-                    display = cell_text[:300] if cell_text else "[EMPTY]"
+                    display = "[EMPTY]"
                 lines.append(f"  {coord}: {display}")
         lines.append("")
 

@@ -42,6 +42,11 @@ B. NON-SELECTED STANDARD TABLES
 C. DO NOT TOUCH:
    - Cells that are headings, labels, or column/row header text (bold, ALL CAPS, short labels).
    - Cells in neutral/general tables that do not need AI-generated content.
+   - Any cell whose current content in the TEMPLATE STRUCTURE shows non-empty text that
+     appears to be a PRE-PRINTED LABEL (e.g. "Employee number", "Clause No", "No",
+     "Standard/Clause No", "Site Address", "Sources of energy", "Audit Criteria",
+     "Audit Objectives", "Date specified for stage 2").  These cells are static labels —
+     NEVER overwrite them.  Always fill the paired EMPTY cell next to or below the label.
 
 D. NONCONFORMITY (NC) TABLE ROWS
    - If the report confirms no nonconformities were identified, leave ALL data rows in the
@@ -106,6 +111,69 @@ H. PERSON / ROLE / SIGNATURE FIELDS — LEAVE BLANK
      output an empty CONTENT block if you must reference it).
    - The "Evaluated" field in any summary row refers to a person, not the
      company. Leave it blank.
+
+I. TWO-COLUMN LABEL → VALUE TABLES
+   Many tables use two-column rows where column 1 has a PRE-PRINTED LABEL and
+   column 2 is the empty VALUE cell you must fill.  The rule is simple:
+   - If a row shows  C1=<label text>  C2=[EMPTY]  → fill ONLY C2 with the value.
+   - NEVER write to C1 (the label).  Examples:
+     • "Employee number | [EMPTY]"        → write the employee count in C2
+     • "Subcontractor employee number | [EMPTY]" → write the count in C2
+     • "Effective employee number | [EMPTY]"     → write the count in C2
+     • "Date specified for stage 2 | [EMPTY]"   → write the Stage 2 date in C2
+     • "Audit Criteria | [EMPTY]"               → write the criteria in C2
+     • "Audit Date/s | [EMPTY]"                 → write the audit date(s) in C2
+     • "Audit/Day Number | [EMPTY]"             → write the man-days in C2
+   - Always write the VALUE only — no "Organization Name:", "Site Name:", or
+     any other field-label prefix.  Never add such prefixes to cell content.
+
+J. COLUMN SUB-HEADER ROWS — DO NOT FILL
+   Some tables have a structure like:
+     Row 1: SECTION HEADER (merged, one wide cell, e.g. "SITE(S)", "GENERAL",
+             "FINDINGS", "NOT-APPLICABLE CLAUSES")
+     Row 2: column sub-headers (e.g. "No | Standard/Clause No | Non-Conformity
+             Statement", or "Clause No | Reasons | Result", or
+             "Employee number | -").
+     Row 3+: data rows.
+   NEVER write content into row 2 (the column sub-header row) of such tables.
+   Data always belongs in row 3 or later.
+
+K. NOT-APPLICABLE CLAUSES TABLE
+   - This table usually contains a column sub-header row (row 2) with labels like
+     "Clause No", "Reasons", "Result".  DO NOT touch row 2.
+   - If all clauses are applicable, fill the first DATA row (row 3, col 1) with:
+     "All clauses of [Standard name] are applicable to this audit."
+   - If specific clauses are excluded, fill one row per clause with the clause
+     number, reason, and result.
+
+L. EnMS ADDITIONAL REQUIREMENTS TABLE (ISO 50001)
+   - This table has a sub-header row (R1) with "EnMS Additional Requirements",
+     "ISO 50001:2018" already pre-filled.  DO NOT touch R1 at all.
+   - Each DATA row (R2, R3, ...) has a pre-printed row-label in C2 (e.g.
+     "Sources of energy", "Significant number of energy uses",
+     "Annual energy consumption", "Energy management team size").  NEVER touch C2.
+   - Fill ONLY the empty VALUE cell in each row (C3 or C4, whichever is [EMPTY]).
+   - Values to extract from the report content and place in the correct C3 cell:
+     • "Sources of energy" → list all energy sources (e.g. "Electrical energy, natural gas")
+     • "Significant number of energy uses (SEU)" → number or list of SEUs
+     • "Annual energy consumption" → total annual energy figure with unit
+     • "Energy management team size" or similar → number of team members
+   - If a value is not mentioned in the report, write "-" (a dash) in the value cell.
+
+M. NC COUNT CELLS ("Total Major NC", "Total Minor NC", "Total Critical NC")
+   - These cells must always be filled.  If no nonconformities were found, write
+     "-" (a single dash) in each count cell — NEVER leave them empty.
+   - If NCs were found, write the numeric count.
+
+N. AUDIT CRITERIA CELL
+   - The "Audit Criteria" cell must always be filled.  Write the document types
+     reviewed (e.g. "Manual, Procedure and work instruction.").  Extract this
+     from the report content or use the standard value for the selected standard.
+
+O. STAGE 2 DATE CELL
+   - The "Date specified for stage 2" cell must always be filled with the planned
+     Stage 2 audit date from the report content.  If not explicitly stated, write
+     the recommended timeframe (e.g. "To be determined by agreement").
 
 OUTPUT FORMAT — strictly follow this for every cell you fill:
 

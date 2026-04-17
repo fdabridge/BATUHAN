@@ -27,6 +27,66 @@ from storage.file_store import save_text_artifact, save_binary_artifact
 logger = logging.getLogger(__name__)
 
 
+def _has_tables(template_path: str) -> bool:
+    """Return True if the template contains at least one table (table-based layout)."""
+    from docx import Document
+    _WNS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    doc = Document(template_path)
+    return bool(doc.element.body.findall(f"{{{_WNS}}}tbl"))
+
+
+def _assemble_with_llm_mapper(
+    template_path: str,
+    validated_report,
+    output_path: str,
+    standards,
+    org_info: dict | None = None,
+    job_id: str | None = None,
+) -> None:
+    """
+    Assemble a DOCX report using the coordinate-based LLM mapper.
+    Replaces the heuristic heading-detection for complex table-based templates.
+    """
+    from docx import Document
+    from assembly.llm_mapper import (
+        get_cell_mapping,
+        apply_cell_mapping,
+        strip_template_instruction_cells,
+    )
+    from schemas.models import ISOStandard
+
+    # For integrated audits, use the first standard; the prompt covers all.
+    primary_standard: ISOStandard = standards[0] if standards else ISOStandard.QMS
+
+    logger.info(
+        "[Packager] Using LLM-mapper assembly | job=%s | standard=%s",
+        job_id, primary_standard.value,
+    )
+
+    mapping = get_cell_mapping(
+        template_path=template_path,
+        validated_report=validated_report,
+        selected_standard=primary_standard,
+        job_id=job_id,
+        org_info=org_info,
+    )
+
+    doc = Document(template_path)
+    body = doc.element.body
+
+    filled = apply_cell_mapping(body, mapping)
+    cleared = strip_template_instruction_cells(body)
+
+    logger.info(
+        "[Packager] LLM-mapper assembly done | %d cells filled | %d instruction cells cleared | job=%s",
+        filled, cleared, job_id,
+    )
+
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(str(out))
+
+
 def _format_correction_log_txt(correction_log: CorrectionLog) -> str:
     """Render the correction log as a human-readable plain-text document."""
     lines = [
@@ -79,6 +139,7 @@ def package_results(
     standards: list[ISOStandard],
     stage: AuditStage,
     files_used: list[str],
+    org_info: dict | None = None,
 ) -> JobResult:
     """
     Assemble all deliverables and return a JobResult.
@@ -88,9 +149,10 @@ def package_results(
         validated_report:  Step C output (corrected sections).
         correction_log:    Step C correction log.
         template_path:     Path to the blank .docx template.
-        standard:          ISO standard for this job.
+        standards:         ISO standard(s) for this job.
         stage:             Audit stage for this job.
         files_used:        List of source filenames used in the job.
+        org_info:          Organisation metadata (name, address, phone, scope).
 
     Returns:
         JobResult with paths to final_docx and correction_log.
@@ -101,17 +163,44 @@ def package_results(
     logger.info(f"[Packager] Assembling deliverables | job={job_id}")
 
     # --- 1. Assemble final DOCX into a temp file, then push bytes to Redis ---
-    import tempfile
-    import os
+    import tempfile, os
     tmp_fd, tmp_docx_path = tempfile.mkstemp(suffix=".docx", prefix=f"batuhan_{job_id}_")
     os.close(tmp_fd)
+
+    # Prefer coordinate-based LLM mapper for complex table-based templates;
+    # fall back to the heuristic heading-detection assembler for plain heading templates.
+    use_llm_mapper = _has_tables(template_path)
     try:
-        assemble_docx(
-            template_path=template_path,
-            validated_report=validated_report,
-            output_path=tmp_docx_path,
-            standards=standards,
-        )
+        if use_llm_mapper:
+            logger.info("[Packager] Table-based template detected → LLM mapper | job=%s", job_id)
+            try:
+                _assemble_with_llm_mapper(
+                    template_path=template_path,
+                    validated_report=validated_report,
+                    output_path=tmp_docx_path,
+                    standards=standards,
+                    org_info=org_info,
+                    job_id=job_id,
+                )
+            except Exception as llm_err:
+                logger.warning(
+                    "[Packager] LLM mapper failed (%s), falling back to heuristic | job=%s",
+                    llm_err, job_id,
+                )
+                assemble_docx(
+                    template_path=template_path,
+                    validated_report=validated_report,
+                    output_path=tmp_docx_path,
+                    standards=standards,
+                )
+        else:
+            logger.info("[Packager] Heading-based template → heuristic assembler | job=%s", job_id)
+            assemble_docx(
+                template_path=template_path,
+                validated_report=validated_report,
+                output_path=tmp_docx_path,
+                standards=standards,
+            )
         docx_bytes = Path(tmp_docx_path).read_bytes()
     finally:
         try:
