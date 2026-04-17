@@ -12,6 +12,13 @@ from parsers.ocr_pipeline import run_ocr_pipeline
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Size limits — keep the prompt within Claude's practical sweet spot.
+# Very large inputs slow inference without improving evidence quality.
+# ---------------------------------------------------------------------------
+_MAX_CHARS_PER_DOC   = 40_000   # ~10 k tokens per document
+_MAX_CHARS_TOTAL     = 120_000  # ~30 k tokens total corpus cap
+
 
 def build_corpus(file_paths: list[str]) -> list[ParsedDocument]:
     """
@@ -59,19 +66,35 @@ def format_corpus_for_prompt(corpus: list[ParsedDocument]) -> str:
     """
     Format the document corpus as a string for injection into Prompt A.
     Each document is clearly labelled with its filename and OCR flag.
+
+    Size limits (_MAX_CHARS_PER_DOC / _MAX_CHARS_TOTAL) prevent the prompt
+    from growing so large that Claude inference times out or becomes very slow.
+    Each document is truncated individually first, then the combined corpus
+    is hard-capped to _MAX_CHARS_TOTAL.
     """
     parts: list[str] = []
     for doc in corpus:
         if not doc.text.strip():
             logger.warning(f"[CorpusBuilder] Skipping empty document: {doc.filename}")
             continue
+
         source_label = "[OCR-sourced]" if doc.is_ocr_sourced else "[Text-extracted]"
+        text = doc.text.strip()
+
+        # Per-document cap
+        if len(text) > _MAX_CHARS_PER_DOC:
+            logger.warning(
+                f"[CorpusBuilder] '{doc.filename}' truncated: "
+                f"{len(text):,} → {_MAX_CHARS_PER_DOC:,} chars"
+            )
+            text = text[:_MAX_CHARS_PER_DOC] + "\n[... truncated for prompt size ...]"
+
         logger.info(
-            f"[CorpusBuilder] Including '{doc.filename}' {source_label} | {doc.char_count:,} chars"
+            f"[CorpusBuilder] Including '{doc.filename}' {source_label} | {len(text):,} chars"
         )
         parts.append(
             f"=== DOCUMENT: {doc.filename} {source_label} ===\n"
-            f"{doc.text.strip()}\n"
+            f"{text}\n"
             f"=== END OF DOCUMENT: {doc.filename} ==="
         )
 
@@ -79,9 +102,19 @@ def format_corpus_for_prompt(corpus: list[ParsedDocument]) -> str:
         logger.error("[CorpusBuilder] format_corpus_for_prompt: NO documents included — corpus will be empty!")
         return "[No readable content extracted from company documents]"
 
-    total_chars = sum(len(p) for p in parts)
+    combined = "\n\n".join(parts)
+
+    # Total corpus cap
+    if len(combined) > _MAX_CHARS_TOTAL:
+        logger.warning(
+            f"[CorpusBuilder] Total corpus truncated: "
+            f"{len(combined):,} → {_MAX_CHARS_TOTAL:,} chars"
+        )
+        combined = combined[:_MAX_CHARS_TOTAL] + "\n\n[... corpus truncated for prompt size ...]"
+
     logger.info(
-        f"[CorpusBuilder] Formatted corpus: {len(parts)} document(s) | ~{total_chars:,} chars total"
+        f"[CorpusBuilder] Formatted corpus: {len(parts)} document(s) | "
+        f"{len(combined):,} chars total (cap: {_MAX_CHARS_TOTAL:,})"
     )
-    return "\n\n".join(parts)
+    return combined
 

@@ -13,6 +13,11 @@ logger = logging.getLogger(__name__)
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp"}
 
+# Tesseract language string — English + Turkish.
+# tesseract-ocr-tur must be installed in the Docker image (it is, see Dockerfile).
+# Using both avoids garbled output for Turkish characters (ş, ı, ğ, ü, ö, ç).
+_OCR_LANG = "eng+tur"
+
 
 def _ocr_image_file(path: str) -> str:
     """Run Tesseract OCR on a single image file."""
@@ -20,7 +25,7 @@ def _ocr_image_file(path: str) -> str:
         import pytesseract
         from PIL import Image
         img = Image.open(path)
-        text = pytesseract.image_to_string(img, lang="eng")
+        text = pytesseract.image_to_string(img, lang=_OCR_LANG)
         return text.strip()
     except ImportError:
         logger.error("pytesseract or Pillow not installed. OCR unavailable.")
@@ -69,7 +74,7 @@ def _ocr_scanned_pdf(path: str) -> str:
             pix = page.get_pixmap(dpi=200)
             img_bytes = pix.tobytes("png")
             img = Image.open(io.BytesIO(img_bytes))
-            text = pytesseract.image_to_string(img, lang="eng")
+            text = pytesseract.image_to_string(img, lang=_OCR_LANG)
             if text.strip():
                 texts.append(text.strip())
         doc.close()
