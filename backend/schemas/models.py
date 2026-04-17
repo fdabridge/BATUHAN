@@ -30,6 +30,11 @@ class AuditStage(str, Enum):
     STAGE_2 = "Stage 2"
 
 
+class ReportLanguage(str, Enum):
+    EN = "EN"   # English (default)
+    TR = "TR"   # Turkish
+
+
 class JobState(str, Enum):
     QUEUED = "QUEUED"
     PREPROCESSING = "PREPROCESSING"

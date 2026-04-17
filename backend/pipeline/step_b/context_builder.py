@@ -5,7 +5,26 @@ injected into Prompt B before sending to Claude.
 """
 
 from __future__ import annotations
-from schemas.models import ISOStandard, AuditStage, StyleGuidance, TemplateMap
+from schemas.models import ISOStandard, AuditStage, ReportLanguage, StyleGuidance, TemplateMap
+
+_LANGUAGE_INSTRUCTIONS: dict[str, str] = {
+    ReportLanguage.EN.value: "",  # English is default — no special instruction needed
+    ReportLanguage.TR.value: """
+RAPOR DİLİ — ZORUNLU / REPORT LANGUAGE — MANDATORY
+Oluşturulan raporun TÜM içeriğini TÜRKÇE olarak yazın.
+Her bölüm, her bulgu, her özet ve her öneri Türkçe olmalıdır.
+Raporda İngilizce ifade kullanmayın.
+Resmi, profesyonel Türkçe denetim dili kullanın.
+Teknik terimler Türkçe karşılıklarıyla (veya yaygın kullanılıyorsa orijinal haliyle) yazılabilir.
+""".strip(),
+}
+
+
+def get_language_instruction(language: ReportLanguage | None) -> str:
+    """Return the language instruction block to inject into prompts."""
+    if language is None:
+        return ""
+    return _LANGUAGE_INSTRUCTIONS.get(language.value, "")
 
 # ---------------------------------------------------------------------------
 # T16 — Stage-Specific Instructions
@@ -161,11 +180,13 @@ def build_prompt_b_context(
     template_map: TemplateMap,
     style_guidance: StyleGuidance,
     evidence_text: str,
+    language: ReportLanguage | None = None,
 ) -> dict[str, str]:
     """
     Return a dict of all template variable substitutions for prompt_b.txt:
         {standard}, {stage}, {stage_instructions}, {standard_instructions},
-        {template_sections}, {extracted_evidence}, {style_guidance}
+        {template_sections}, {extracted_evidence}, {style_guidance},
+        {language_instruction}
 
     For integrated audits, {standard} is "QMS + EMS" and
     {standard_instructions} contains the blocks for ALL selected standards.
@@ -183,5 +204,6 @@ def build_prompt_b_context(
         "template_sections": format_sections_for_prompt(template_map),
         "extracted_evidence": evidence_text,
         "style_guidance": format_style_guidance_for_prompt(style_guidance),
+        "language_instruction": get_language_instruction(language),
     }
 

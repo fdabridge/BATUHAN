@@ -21,7 +21,7 @@ from pathlib import Path
 from config.settings import get_settings
 from schemas.models import (
     ExtractedEvidence, GeneratedReport, TemplateMap, StyleGuidance,
-    ISOStandard, AuditStage,
+    ISOStandard, AuditStage, ReportLanguage,
 )
 from pipeline.step_a.evidence_parser import format_evidence_for_prompt
 from pipeline.step_b.context_builder import build_prompt_b_context
@@ -71,6 +71,7 @@ def run_step_b(
     style_guidance: StyleGuidance,
     standards: list[ISOStandard],
     stage: AuditStage,
+    language: ReportLanguage | None = None,
 ) -> GeneratedReport:
     """
     Execute Step B: Report Generation.
@@ -82,6 +83,7 @@ def run_step_b(
         style_guidance: Safe style/tone extracted from sample reports.
         standards:      Selected ISO standard(s). Multiple = integrated audit.
         stage:          Audit stage.
+        language:       Report output language (EN or TR). Defaults to EN.
 
     Returns:
         GeneratedReport with all sections filled and safety-checked.
@@ -90,13 +92,16 @@ def run_step_b(
         ValueError: If Claude returns unusable output after all retries.
         FileNotFoundError: If prompt_b.txt is missing.
     """
-    logger.info(f"[Step B] Starting report generation | job={job_id}")
+    logger.info(
+        "[Step B] Starting report generation | job=%s | language=%s",
+        job_id, (language.value if language else "EN"),
+    )
 
     prompt_template = _load_prompt_b()
     evidence_text = format_evidence_for_prompt(evidence)
     expected_titles = [s.title for s in sorted(template_map.sections, key=lambda x: x.order_index)]
 
-    ctx = build_prompt_b_context(standards, stage, template_map, style_guidance, evidence_text)
+    ctx = build_prompt_b_context(standards, stage, template_map, style_guidance, evidence_text, language=language)
     prompt = _build_prompt(prompt_template, ctx)
 
     last_error: Exception | None = None

@@ -42,6 +42,7 @@ def _assemble_with_llm_mapper(
     standards,
     org_info: dict | None = None,
     job_id: str | None = None,
+    language=None,
 ) -> None:
     """
     Assemble a DOCX report using the coordinate-based LLM mapper.
@@ -69,6 +70,7 @@ def _assemble_with_llm_mapper(
         selected_standard=primary_standard,
         job_id=job_id,
         org_info=org_info,
+        language=language,
     )
 
     doc = Document(template_path)
@@ -140,6 +142,7 @@ def package_results(
     stage: AuditStage,
     files_used: list[str],
     org_info: dict | None = None,
+    language=None,
 ) -> JobResult:
     """
     Assemble all deliverables and return a JobResult.
@@ -181,6 +184,7 @@ def package_results(
                     standards=standards,
                     org_info=org_info,
                     job_id=job_id,
+                    language=language,
                 )
             except Exception as llm_err:
                 logger.warning(

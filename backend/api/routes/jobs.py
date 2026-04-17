@@ -14,7 +14,7 @@ from datetime import datetime
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
-from schemas.models import ISOStandard, AuditStage, JobStatus, JobState
+from schemas.models import ISOStandard, AuditStage, JobStatus, JobState, ReportLanguage
 from typing import List
 from storage.file_store import (
     generate_job_id, validate_extension, save_text_artifact,
@@ -52,6 +52,7 @@ async def create_job(
     org_name: str | None = Form(None, description="Auditee / organisation name"),
     org_address: str | None = Form(None, description="Organisation address or site"),
     org_phone: str | None = Form(None, description="Organisation phone number"),
+    language: ReportLanguage = Form(ReportLanguage.EN, description="Report writing language: EN (English) or TR (Turkish)"),
 ):
     """
     Create a new BATUHAN audit job.
@@ -121,9 +122,13 @@ async def create_job(
             org_name or "",
             org_address or "",
             org_phone or "",
+            language.value,
         )
-        logger.info(f"Job {job_id} queued with {len(company_files)} company docs, "
-                    f"{len(sample_files)} sample reports, standards={standard_values}.")
+        logger.info(
+            f"Job {job_id} queued with {len(company_files)} company docs, "
+            f"{len(sample_files)} sample reports, standards={standard_values}, "
+            f"language={language.value}."
+        )
     except Exception as e:
         logger.warning(f"Could not queue job {job_id} via Celery: {e}.")
 
@@ -132,6 +137,7 @@ async def create_job(
         "status": JobState.QUEUED,
         "standards": standard_values,
         "stage": stage,
+        "language": language.value,
         "company_documents_received": len(company_files),
         "sample_reports_received": len(sample_files),
         "template_received": True,

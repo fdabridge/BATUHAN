@@ -3,6 +3,8 @@
 # Purpose: Map generated report sections to exact table cells in the Word template.
 # DO NOT modify without bumping PROMPT_VERSION in settings.
 
+{language_instruction}
+
 You are assembling a professional ISO audit report by filling in the correct cells of a
 Word document template.  You will be given the full template structure (with cell coordinates)
 and the generated report content.  Your job is to decide exactly which cell gets which content.

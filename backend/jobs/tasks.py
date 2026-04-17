@@ -101,6 +101,7 @@ def run_pipeline(
     org_name: str | None = None,
     org_address: str | None = None,
     org_phone: str | None = None,
+    language_value: str = "EN",   # "EN" or "TR"
 ) -> dict:
     """
     Execute the full BATUHAN pipeline for a job:
@@ -118,8 +119,10 @@ def run_pipeline(
     tmp_root = Path(tempfile.gettempdir()) / "batuhan_jobs" / job_id
 
     try:
+        from schemas.models import ReportLanguage
         standards = [ISOStandard(v) for v in standard_values]
         stage = AuditStage(stage_value)
+        language = ReportLanguage(language_value) if language_value else ReportLanguage.EN
 
         # -----------------------------------------------------------
         # Write uploaded file data to the worker's local temp dir
@@ -178,6 +181,7 @@ def run_pipeline(
             style_guidance=style_guidance,
             standards=standards,
             stage=stage,
+            language=language,
         )
 
         # -----------------------------------------------------------
@@ -193,6 +197,7 @@ def run_pipeline(
                 evidence=evidence,
                 template_map=template_map,
                 style_guidance=style_guidance,
+                language=language,
             )
         except Exception as step_c_exc:
             # T31: revert to Step B output rather than fail entirely
@@ -233,6 +238,7 @@ def run_pipeline(
             stage=stage,
             files_used=files_used,
             org_info=_org_info,
+            language=language,
         )
 
         # -----------------------------------------------------------

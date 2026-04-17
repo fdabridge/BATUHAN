@@ -384,7 +384,10 @@ def _build_prompt(
     report_content: str,
     selected_standard: ISOStandard,
     org_info: dict | None = None,
+    language=None,
 ) -> str:
+    from pipeline.step_b.context_builder import get_language_instruction
+
     template = _load_assembly_prompt()
     non_applicable_lines = [
         f"  - {std}: {_STANDARD_FULL_NAMES.get(std, std)}"
@@ -408,11 +411,14 @@ def _build_prompt(
     else:
         org_block = "(No explicit organisation details submitted — infer from report content.)"
 
+    lang_instruction = get_language_instruction(language) if language else ""
+
     return (
         template
         .replace("{selected_standard}", selected_full)
         .replace("{non_applicable_standards}", "\n".join(non_applicable_lines))
         .replace("{org_info}", org_block)
+        .replace("{language_instruction}", lang_instruction)
         .replace("{template_structure}", template_structure)
         .replace("{report_content}", report_content)
     )
@@ -513,6 +519,7 @@ def get_cell_mapping(
     selected_standard: ISOStandard,
     job_id: str | None = None,
     org_info: dict | None = None,
+    language=None,
 ) -> dict[str, str]:
     """
     Full LLM-guided mapping flow:
@@ -545,7 +552,7 @@ def get_cell_mapping(
         from storage.file_store import save_text_artifact
         save_text_artifact(job_id, "assembly_template_structure.txt", structure_text)
 
-    prompt = _build_prompt(structure_text, report_text, selected_standard, org_info=org_info)
+    prompt = _build_prompt(structure_text, report_text, selected_standard, org_info=org_info, language=language)
     logger.info("[LLM Mapper] Calling Claude for cell-by-cell assembly mapping | job=%s", job_id)
     raw_response = _call_claude(prompt)
 

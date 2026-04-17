@@ -21,8 +21,9 @@ from config.settings import get_settings
 from schemas.models import (
     ExtractedEvidence, GeneratedReport, ValidatedReport,
     CorrectionLog, TemplateMap, StyleGuidance,
-    ISOStandard, AuditStage,
+    ISOStandard, AuditStage, ReportLanguage,
 )
+from pipeline.step_b.context_builder import get_language_instruction
 from pipeline.step_a.evidence_parser import format_evidence_for_prompt
 from pipeline.step_c.pre_validator import (
     run_pre_validation, format_issues_for_prompt, format_report_for_prompt,
@@ -70,6 +71,7 @@ def run_step_c(
     evidence: ExtractedEvidence,
     template_map: TemplateMap,
     style_guidance: StyleGuidance,
+    language: ReportLanguage | None = None,
 ) -> tuple[ValidatedReport, CorrectionLog]:
     """
     Execute Step C: Validation & Correction.
@@ -80,6 +82,7 @@ def run_step_c(
         evidence:          Step A ExtractedEvidence (ground truth).
         template_map:      Section map from blank template.
         style_guidance:    Style/blocked-name guidance.
+        language:          Report output language (EN or TR). Defaults to EN.
 
     Returns:
         (ValidatedReport, CorrectionLog) — both persisted as artifacts.
@@ -89,7 +92,10 @@ def run_step_c(
         PostValidationError: If the corrected report fails structural checks.
         FileNotFoundError: If prompt_c.txt is missing.
     """
-    logger.info(f"[Step C] Starting validation & correction | job={job_id}")
+    logger.info(
+        "[Step C] Starting validation & correction | job=%s | language=%s",
+        job_id, (language.value if language else "EN"),
+    )
 
     # --- T20: Pre-validation ---
     pre_issues = run_pre_validation(generated_report, template_map, style_guidance)
@@ -111,6 +117,7 @@ def run_step_c(
         "stage": generated_report.stage.value,
         "generated_report": report_text,
         "extracted_evidence": evidence_text,
+        "language_instruction": get_language_instruction(language),
     }
 
     # Append pre-validation issues as a note at the end of the prompt
