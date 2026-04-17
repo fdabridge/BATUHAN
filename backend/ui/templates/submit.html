@@ -102,7 +102,7 @@
       </div>
 
       <!-- Stage -->
-      <div class="field" style="margin-bottom:0;">
+      <div class="field">
         <label for="stage">Audit Stage <span style="color:var(--danger)">*</span></label>
         <select id="stage" name="stage" required>
           <option value="" disabled selected>Select stage…</option>
@@ -110,6 +110,16 @@
           <option value="{{ st }}">{{ st }}</option>
           {% endfor %}
         </select>
+      </div>
+
+      <!-- Report Language -->
+      <div class="field" style="margin-bottom:0;">
+        <label for="language">Report Language</label>
+        <select id="language" name="language">
+          <option value="EN" selected>🇬🇧 English</option>
+          <option value="TR">🇹🇷 Türkçe (Turkish)</option>
+        </select>
+        <p class="hint">The language in which the report body will be written. The template structure is always preserved as-is.</p>
       </div>
 
       <div class="submit-row">
