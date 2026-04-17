@@ -219,11 +219,6 @@ def run_pipeline(
 
         from assembly.result_packager import package_results
         files_used = [item["filename"] for item in company_files]
-        org_info = {
-            "name":    org_name    or "",
-            "address": org_address or "",
-            "phone":   org_phone   or "",
-        }
         package_results(
             job_id=job_id,
             validated_report=validated_report,
@@ -232,7 +227,6 @@ def run_pipeline(
             standards=standards,
             stage=stage,
             files_used=files_used,
-            org_info=org_info,
         )
 
         # -----------------------------------------------------------
