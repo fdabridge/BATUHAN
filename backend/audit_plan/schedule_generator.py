@@ -359,25 +359,36 @@ INSTRUCTIONS:
         f"standards={ctx.standards} type='{ctx.audit_type}' dates='{ctx.audit_dates}'"
     )
 
-    response = client.messages.create(
-        model=settings.claude_model,
-        max_tokens=8192,
-        system=_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_message}],
-    )
+    _MAX_ATTEMPTS = 2
+    payload: dict = {}
+    for attempt in range(1, _MAX_ATTEMPTS + 1):
+        response = client.messages.create(
+            model=settings.claude_model,
+            max_tokens=8192,
+            system=_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_message}],
+        )
 
-    raw = response.content[0].text.strip()
-    logger.debug(f"[AuditPlan] Claude raw response ({len(raw)} chars): {raw[:400]}")
+        raw = response.content[0].text.strip()
+        logger.debug(
+            f"[AuditPlan] Claude raw response attempt {attempt} ({len(raw)} chars): {raw[:400]}"
+        )
 
-    # Strip markdown fences if present
-    raw_clean = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
-    raw_clean = re.sub(r"\s*```$", "", raw_clean, flags=re.IGNORECASE).strip()
+        # Strip markdown fences if present
+        raw_clean = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
+        raw_clean = re.sub(r"\s*```$", "", raw_clean, flags=re.IGNORECASE).strip()
 
-    try:
-        payload = json.loads(raw_clean)
-    except json.JSONDecodeError as exc:
-        logger.error(f"[AuditPlan] Claude returned invalid JSON: {exc}\nRaw: {raw[:600]}")
-        raise ValueError(f"Claude returned invalid JSON: {exc}") from exc
+        try:
+            payload = json.loads(raw_clean)
+            break  # success
+        except json.JSONDecodeError as exc:
+            logger.error(
+                f"[AuditPlan] Claude returned invalid JSON (attempt {attempt}/{_MAX_ATTEMPTS}): "
+                f"{exc}\nRaw: {raw[:600]}"
+            )
+            if attempt == _MAX_ATTEMPTS:
+                raise ValueError(f"Claude returned invalid JSON after {_MAX_ATTEMPTS} attempts: {exc}") from exc
+            logger.info("[AuditPlan] Retrying Claude call...")
 
     days_raw = payload.get("days", [])
     if not days_raw:

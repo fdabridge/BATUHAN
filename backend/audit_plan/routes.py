@@ -110,7 +110,12 @@ async def audit_plan_generate(
 
     # ---- Step 4: Return filled .docx ----
     safe_org = "".join(c if c.isalnum() or c in " _-" else "_" for c in ctx.org_name)[:40]
-    filename = f"AuditPlan_{safe_org}_{ctx.audit_type.replace(' ', '')}_{ctx.audit_dates.replace('/', '-')}.docx"
+    # Sanitize audit_dates: strip newlines/tabs, then collapse any non-alphanumeric
+    # (except dots and dashes) to underscores so the header value is always valid.
+    safe_dates = "".join(c if c not in "\r\n\t" else " " for c in ctx.audit_dates)
+    safe_dates = "".join(c if c.isalnum() or c in "._- " else "_" for c in safe_dates)
+    safe_dates = safe_dates.strip(" _")[:60]
+    filename = f"AuditPlan_{safe_org}_{ctx.audit_type.replace(' ', '')}_{safe_dates}.docx"
 
     logger.info(f"[AuditPlan] Returning filled .docx: '{filename}' ({len(filled_bytes)} bytes)")
 
