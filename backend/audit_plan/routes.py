@@ -7,6 +7,7 @@ POST /audit-plan/generate
 """
 
 from __future__ import annotations
+import asyncio
 import logging
 from pathlib import Path
 
@@ -62,9 +63,9 @@ async def audit_plan_generate(
     if not content:
         raise HTTPException(status_code=422, detail="Uploaded file is empty.")
 
-    # ---- Step 1: Read template context ----
+    # ---- Step 1: Read template context (CPU-bound — run in thread pool) ----
     try:
-        ctx = read_template(content)
+        ctx = await asyncio.to_thread(read_template, content)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except Exception as exc:
@@ -86,9 +87,9 @@ async def audit_plan_generate(
         f"standards={ctx.standards} type='{ctx.audit_type}' dates='{ctx.audit_dates}'"
     )
 
-    # ---- Step 2: Generate schedule with Claude ----
+    # ---- Step 2: Generate schedule with Claude (blocking I/O — run in thread pool) ----
     try:
-        days = generate_schedule(ctx)
+        days = await asyncio.to_thread(generate_schedule, ctx)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except Exception as exc:
@@ -100,7 +101,7 @@ async def audit_plan_generate(
 
     # ---- Step 3: Fill Table 1 (sites) + Table 2 (schedule) in the template ----
     try:
-        filled_bytes = fill_schedule(content, days, ctx)
+        filled_bytes = await asyncio.to_thread(fill_schedule, content, days, ctx)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except Exception as exc:

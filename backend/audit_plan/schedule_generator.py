@@ -361,7 +361,7 @@ INSTRUCTIONS:
 
     response = client.messages.create(
         model=settings.claude_model,
-        max_tokens=4096,
+        max_tokens=8192,
         system=_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_message}],
     )
