@@ -91,11 +91,18 @@ def _extract_structure_notes(text: str) -> list[str]:
 
 
 def _extract_blocked_names(text: str) -> list[str]:
-    """Extract company names from sample to add to the block list."""
+    """Extract company names from sample to add to the block list.
+
+    Uses a non-capturing group so re.findall returns the FULL match
+    (e.g. 'IFC Global LLC') rather than just the suffix ('LLC').
+    Blocking a bare suffix like 'LLC' would cause false positives on
+    any client whose own name contains that suffix.
+    """
     blocked: list[str] = []
-    for pattern in [r"\b[A-Z][a-z]+ (Ltd|LLC|GmbH|Inc|Corp|S\.A\.|A\.Ş\.)\b"]:
-        matches = re.findall(pattern, text)
-        blocked.extend(matches)
+    # 1-4 Title-Case words followed by a legal entity suffix — no capturing group.
+    pattern = r"\b(?:[A-Z][A-Za-z&.]*\s+){1,4}(?:Ltd\.?|LLC|GmbH|Inc\.?|Corp\.?|S\.A\.|A\.Ş\.)\b"
+    matches = re.findall(pattern, text)
+    blocked.extend(m.strip() for m in matches)
     return list(set(blocked))
 
 
