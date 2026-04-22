@@ -27,15 +27,37 @@ logger = logging.getLogger(__name__)
 
 # Placeholder patterns that must never appear in final output
 _PLACEHOLDER_PATTERNS: list[re.Pattern] = [
-    re.compile(r"\[.*?\]"),           # [Section Placeholder]
-    re.compile(r"\{.*?\}"),           # {variable}
-    re.compile(r"<.*?>"),             # <insert here>
-    re.compile(r"INSERT\s+HERE", re.IGNORECASE),
-    re.compile(r"TODO", re.IGNORECASE),
-    re.compile(r"TBD", re.IGNORECASE),
-    re.compile(r"PLACEHOLDER", re.IGNORECASE),
-    re.compile(r"lorem ipsum", re.IGNORECASE),
+    # [brackets] — scanned with per-match filtering; see _scan_placeholders below.
+    re.compile(r"\[[^\]]{2,}\]"),
+    # {curly braces} — genuine unfilled template variables
+    re.compile(r"\{[a-z_]{2,}\}"),
+    # <angle brackets> with imperative-style content
+    re.compile(r"<(?:insert|add|enter|specify|describe|type)[^>]{0,60}>", re.IGNORECASE),
+    re.compile(r"\bINSERT\s+HERE\b", re.IGNORECASE),
+    re.compile(r"\bTODO\b", re.IGNORECASE),
+    re.compile(r"\bTBD\b", re.IGNORECASE),
+    re.compile(r"\bPLACEHOLDER\b", re.IGNORECASE),
+    re.compile(r"\blorem ipsum\b", re.IGNORECASE),
 ]
+
+# Bracket content that is a legitimate ISO/audit reference, NOT a placeholder.
+# Examples: [A.5.1], [ISO 9001:2015], [Annex A], [Clause 4.1], [4.1.2], [2015]
+_LEGITIMATE_BRACKET = re.compile(
+    r"""^\s*(?:
+        [A-Z]?\d+(?:\.\d+)*\s*$          # clause/annex refs: 4.1, A.5.1, A.12.1.2
+        | ISO\s                            # ISO standard refs
+        | IEC\s                            # IEC refs
+        | EN\s                             # EN refs
+        | Annex\s                          # Annex A, Annex SL
+        | Clause\s+\d                      # Clause 4.1
+        | Section\s+\d                     # Section 4
+        | Ref:                             # Ref: document
+        | Note:                            # Note: ...
+        | \d{4}\s*$                        # years like [2015]
+        | p\.\s*\d+                        # page refs like [p. 12]
+    )""",
+    re.VERBOSE | re.IGNORECASE,
+)
 
 _PHRASE_MIN_LEN = 80   # chars — shorter matches are too common to flag
 
@@ -67,14 +89,30 @@ class LeakageReport:
 
 def _scan_placeholders(section_title: str, content: str) -> list[LeakageViolation]:
     violations = []
+    bracket_pattern = _PLACEHOLDER_PATTERNS[0]   # the [brackets] pattern
+    seen: set[str] = set()
+
     for pattern in _PLACEHOLDER_PATTERNS:
-        match = pattern.search(content)
-        if match:
+        for match in pattern.finditer(content):
+            matched_text = match.group()
+
+            # For [bracket] matches: skip legitimate ISO clause / standard references.
+            if pattern is bracket_pattern:
+                inner = matched_text[1:-1]        # strip the [ and ]
+                if _LEGITIMATE_BRACKET.match(inner):
+                    continue
+
+            # Deduplicate: same matched text in the same section → one violation.
+            key = f"{section_title}::{matched_text}"
+            if key in seen:
+                continue
+            seen.add(key)
+
             violations.append(LeakageViolation(
                 section_title=section_title,
                 category="PLACEHOLDER",
                 severity="CRITICAL",
-                detail=f"Placeholder pattern detected: '{match.group()[:60]}'",
+                detail=f"Placeholder pattern detected: '{matched_text[:60]}'",
             ))
     return violations
 
