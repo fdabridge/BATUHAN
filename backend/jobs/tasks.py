@@ -153,6 +153,28 @@ def run_pipeline(
 
         style_guidance = build_style_guidance(sample_paths)
 
+        # Filter out any "blocked" company names that already appear in the
+        # blank template (e.g. the certifier's own letterhead — IFC GLOBAL LLC).
+        # Those names belong in every report and must never be treated as leakage.
+        if style_guidance.blocked_company_names:
+            from parsers.text_extractor import extract_text
+            try:
+                template_text_lower = extract_text(template_path).lower()
+                before = len(style_guidance.blocked_company_names)
+                style_guidance.blocked_company_names = [
+                    name for name in style_guidance.blocked_company_names
+                    if name.lower() not in template_text_lower
+                ]
+                removed = before - len(style_guidance.blocked_company_names)
+                if removed:
+                    logger.info(
+                        "[Pipeline] Removed %d certifier name(s) from blocked list "
+                        "(found in template — these are the certifier's own names): job=%s",
+                        removed, job_id,
+                    )
+            except Exception as exc:
+                logger.warning("[Pipeline] Could not filter certifier names from blocked list: %s", exc)
+
         # -----------------------------------------------------------
         # STEP A — Evidence Extraction
         # -----------------------------------------------------------
