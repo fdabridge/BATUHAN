@@ -56,18 +56,17 @@ def _assemble_with_llm_mapper(
     )
     from schemas.models import ISOStandard
 
-    # For integrated audits, use the first standard; the prompt covers all.
-    primary_standard: ISOStandard = standards[0] if standards else ISOStandard.QMS
+    selected_standards: list[ISOStandard] = list(standards) if standards else [ISOStandard.QMS]
 
     logger.info(
-        "[Packager] Using LLM-mapper assembly | job=%s | standard=%s",
-        job_id, primary_standard.value,
+        "[Packager] Using LLM-mapper assembly | job=%s | standards=%s",
+        job_id, [s.value for s in selected_standards],
     )
 
     mapping = get_cell_mapping(
         template_path=template_path,
         validated_report=validated_report,
-        selected_standard=primary_standard,
+        selected_standards=selected_standards,
         job_id=job_id,
         org_info=org_info,
         language=language,

@@ -273,7 +273,7 @@ def _tbl_belongs_to_standard(tbl_elem) -> str | None:
 # Template → text representation
 # ---------------------------------------------------------------------------
 
-def template_to_structure_text(template_path: str, selected_standard: ISOStandard) -> str:
+def template_to_structure_text(template_path: str, selected_standards: list[ISOStandard]) -> str:
     """
     Convert a .docx template's table structure to a coordinate-tagged text
     representation suitable for inclusion in an LLM prompt.
@@ -281,9 +281,11 @@ def template_to_structure_text(template_path: str, selected_standard: ISOStandar
     Each cell is labelled T<table>_R<row>_C<col> (all 1-based).
     Tables belonging to non-selected standards are annotated so Claude
     knows to write "Not applicable" messages for them.
+    For integrated audits, ALL selected standards are treated as active.
     """
     doc = Document(template_path)
     body = doc.element.body
+    selected_values = {s.value for s in selected_standards}
 
     lines = [
         "DOCUMENT TEMPLATE STRUCTURE",
@@ -296,7 +298,7 @@ def template_to_structure_text(template_path: str, selected_standard: ISOStandar
     for tbl in body.findall(_wtag("tbl")):
         tbl_num += 1
         belongs_to = _tbl_belongs_to_standard(tbl)
-        is_other = belongs_to is not None and belongs_to != selected_standard.value
+        is_other = belongs_to is not None and belongs_to not in selected_values
 
         label = f"TABLE {tbl_num}"
         if is_other:
@@ -382,21 +384,22 @@ def _load_assembly_prompt() -> str:
 def _build_prompt(
     template_structure: str,
     report_content: str,
-    selected_standard: ISOStandard,
+    selected_standards: list[ISOStandard],
     org_info: dict | None = None,
     language=None,
 ) -> str:
     from pipeline.step_b.context_builder import get_language_instruction
 
     template = _load_assembly_prompt()
+    selected_values = {s.value for s in selected_standards}
     non_applicable_lines = [
         f"  - {std}: {_STANDARD_FULL_NAMES.get(std, std)}"
         for std in _STANDARD_FULL_NAMES
-        if std != selected_standard.value
+        if std not in selected_values
     ]
-    selected_full = (
-        f"{selected_standard.value} — "
-        f"{_STANDARD_FULL_NAMES.get(selected_standard.value, selected_standard.value)}"
+    selected_full = " + ".join(
+        f"{s.value} — {_STANDARD_FULL_NAMES.get(s.value, s.value)}"
+        for s in selected_standards
     )
     # Build the org_info block injected into the prompt
     if org_info and any(org_info.get(k) for k in ("name", "address", "phone")):
@@ -516,7 +519,7 @@ def apply_cell_mapping(body, mapping: dict[str, str]) -> int:
 def get_cell_mapping(
     template_path: str,
     validated_report: ValidatedReport,
-    selected_standard: ISOStandard,
+    selected_standards: list[ISOStandard],
     job_id: str | None = None,
     org_info: dict | None = None,
     language=None,
@@ -533,7 +536,7 @@ def get_cell_mapping(
 
     Raises ValueError if Claude returns no parseable cell mappings.
     """
-    structure_text = template_to_structure_text(template_path, selected_standard)
+    structure_text = template_to_structure_text(template_path, selected_standards)
 
     # Guard: template_to_structure_text must always return a non-empty string.
     # If it somehow returns None or "" (e.g. template has no tables), bail early
@@ -552,7 +555,7 @@ def get_cell_mapping(
         from storage.file_store import save_text_artifact
         save_text_artifact(job_id, "assembly_template_structure.txt", structure_text)
 
-    prompt = _build_prompt(structure_text, report_text, selected_standard, org_info=org_info, language=language)
+    prompt = _build_prompt(structure_text, report_text, selected_standards, org_info=org_info, language=language)
     logger.info("[LLM Mapper] Calling Claude for cell-by-cell assembly mapping | job=%s", job_id)
     raw_response = _call_claude(prompt)
 
