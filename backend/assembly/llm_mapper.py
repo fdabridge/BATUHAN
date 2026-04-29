@@ -62,6 +62,20 @@ _AUDIT_CONTENT_RE = re.compile(
 # Tick symbols that signal "check this checkbox cell"
 _TICK_SYMBOLS = {"√", "☑", "✓", "✔", "x", "X"}
 
+# ---------------------------------------------------------------------------
+# Chunking thresholds for large-table assembly
+# ---------------------------------------------------------------------------
+# Tables with more empty cells than this get their own Claude call instead of
+# being bundled with other small tables.
+_LARGE_TABLE_THRESHOLD = 40
+# When a single table's empty cells exceed this further, it is split into
+# row-range sub-chunks so no single call exceeds the token limit.
+_ROW_CHUNK_SIZE = 35
+
+# Column-type detection for auto-tick post-processing
+_CONCLUSION_COL_RE = re.compile(r"conclusion|result|\u2713|tick|\bnc\b|\bobs\b", re.IGNORECASE)
+_FINDINGS_COL_RE   = re.compile(r"finding|observation|remark",                re.IGNORECASE)
+
 
 def _wtag(name: str) -> str:
     return f"{{{_WNS}}}{name}"
@@ -273,6 +287,68 @@ def _tbl_belongs_to_standard(tbl_elem) -> str | None:
 # Template → text representation
 # ---------------------------------------------------------------------------
 
+def _build_table_structure_lines(
+    tbl,
+    tbl_num: int,
+    selected_values: set[str],
+    row_start: int = 1,
+    row_end: int | None = None,
+) -> tuple[list[str], int]:
+    """
+    Build coordinate-tagged structure lines for ONE table (or a row-range slice).
+
+    Returns (lines, empty_count).
+      • lines        — list of strings ready for "\n".join(); ends with a blank string.
+      • empty_count  — number of [EMPTY] cells in the requested row range.
+
+    row_start / row_end are 1-based inclusive; row_end=None means the last row.
+    The returned lines do NOT include the global header block — callers
+    must prepend that before passing the text to Claude.
+    """
+    belongs_to = _tbl_belongs_to_standard(tbl)
+    is_other = belongs_to is not None and belongs_to not in selected_values
+    label = f"TABLE {tbl_num}"
+    if row_end is not None:
+        label += f" (rows {row_start}–{row_end})"
+    if is_other:
+        label += f" [NON-SELECTED STANDARD — {_STANDARD_FULL_NAMES.get(belongs_to, belongs_to)}]"
+    elif belongs_to:
+        label += f" [SELECTED STANDARD — {_STANDARD_FULL_NAMES.get(belongs_to, belongs_to)}]"
+    lines = [label]
+
+    rows = tbl.findall(_wtag("tr"))
+    all_rows_tcs: list[list] = [tr.findall(_wtag("tc")) for tr in rows]
+    total_rows = len(rows)
+    effective_end = min(row_end if row_end is not None else total_rows, total_rows)
+
+    empty_count = 0
+    for row_idx in range(row_start, effective_end + 1):
+        tcs = all_rows_tcs[row_idx - 1]
+        non_empty_texts = [_get_cell_text(tc) for tc in tcs]
+        distinct_non_empty = sum(1 for t in non_empty_texts if t)
+        is_col_header_row = distinct_non_empty >= 2
+
+        for col_idx, tc in enumerate(tcs, 1):
+            cell_text = _get_cell_text(tc)
+            coord = f"T{tbl_num}_R{row_idx}_C{col_idx}"
+
+            if cell_text and _INSTRUCTION_CELL_RE.search(cell_text) and not _AUDIT_CONTENT_RE.search(cell_text):
+                display = "[TEMPLATE INSTRUCTION — DO NOT OUTPUT]"
+            elif cell_text:
+                is_label = is_col_header_row
+                if not is_label and col_idx < len(tcs):
+                    # label→value pattern: next sibling cell is empty
+                    if not _get_cell_text(tcs[col_idx]):
+                        is_label = True
+                display = f"{cell_text[:200]} [LABEL — DO NOT MODIFY]" if is_label else cell_text[:300]
+            else:
+                display = "[EMPTY]"
+                empty_count += 1
+            lines.append(f"  {coord}: {display}")
+    lines.append("")
+    return lines, empty_count
+
+
 def template_to_structure_text(template_path: str, selected_standards: list[ISOStandard]) -> str:
     """
     Convert a .docx template's table structure to a coordinate-tagged text
@@ -286,7 +362,6 @@ def template_to_structure_text(template_path: str, selected_standards: list[ISOS
     doc = Document(template_path)
     body = doc.element.body
     selected_values = {s.value for s in selected_standards}
-
     lines = [
         "DOCUMENT TEMPLATE STRUCTURE",
         "=" * 50,
@@ -297,59 +372,115 @@ def template_to_structure_text(template_path: str, selected_standards: list[ISOS
     tbl_num = 0
     for tbl in body.findall(_wtag("tbl")):
         tbl_num += 1
-        belongs_to = _tbl_belongs_to_standard(tbl)
-        is_other = belongs_to is not None and belongs_to not in selected_values
+        tbl_lines, _ = _build_table_structure_lines(tbl, tbl_num, selected_values)
+        lines.extend(tbl_lines)
+    return "\n".join(lines)
 
-        label = f"TABLE {tbl_num}"
-        if is_other:
-            full_name = _STANDARD_FULL_NAMES.get(belongs_to, belongs_to)
-            label += f" [NON-SELECTED STANDARD — {full_name}]"
-        elif belongs_to:
-            label += f" [SELECTED STANDARD — {_STANDARD_FULL_NAMES.get(belongs_to, belongs_to)}]"
-        lines.append(label)
+
+# ---------------------------------------------------------------------------
+# Chunked call planner
+# ---------------------------------------------------------------------------
+
+_STRUCT_HEADER = (
+    "DOCUMENT TEMPLATE STRUCTURE\n"
+    + "=" * 50 + "\n"
+    + "Cell coordinates: T<table>_R<row>_C<col>  (all 1-based)\n"
+    + "Empty content cells are shown as [EMPTY] — these need to be filled.\n\n"
+)
+
+
+def _plan_call_chunks(
+    template_path: str,
+    selected_standards: list[ISOStandard],
+) -> list[dict]:
+    """
+    Analyse the template and group tables into Claude call chunks so that
+    no single call is overwhelmed by too many empty cells.
+
+    Rules
+    -----
+    • Tables with ≤ _LARGE_TABLE_THRESHOLD empty cells are buffered together.
+    • Tables with > _LARGE_TABLE_THRESHOLD empty cells flush the buffer and
+      get their own chunk.
+    • Tables with > _LARGE_TABLE_THRESHOLD * 2 empty cells are further split
+      into row-range sub-chunks of _ROW_CHUNK_SIZE rows each; the first sub-
+      chunk starts at row 1 (includes the header row naturally), subsequent
+      sub-chunks repeat row 1 as context.
+
+    Returns list of dicts:
+        {"label": str, "structure_text": str, "empty_count": int}
+    """
+    doc = Document(template_path)
+    body = doc.element.body
+    selected_values = {s.value for s in selected_standards}
+
+    chunks: list[dict] = []
+    buf_lines: list[str] = []
+    buf_empty = 0
+
+    def _flush_buffer(label: str = "general_tables") -> None:
+        nonlocal buf_lines, buf_empty
+        if buf_lines:
+            chunks.append({
+                "label": label,
+                "structure_text": _STRUCT_HEADER + "\n".join(buf_lines),
+                "empty_count": buf_empty,
+            })
+        buf_lines.clear()
+        buf_empty = 0
+
+    tbl_num = 0
+    for tbl in body.findall(_wtag("tbl")):
+        tbl_num += 1
+        all_lines, total_empty = _build_table_structure_lines(tbl, tbl_num, selected_values)
+
+        if total_empty <= _LARGE_TABLE_THRESHOLD:
+            buf_lines.extend(all_lines)
+            buf_empty += total_empty
+            continue
+
+        # Large table — flush the accumulated small-table buffer first
+        _flush_buffer()
 
         rows = tbl.findall(_wtag("tr"))
-        all_rows_tcs: list[list] = [tr.findall(_wtag("tc")) for tr in rows]
+        total_rows = len(rows)
 
-        for row_idx, (_, tcs) in enumerate(zip(rows, all_rows_tcs), 1):
-            # Detect whether this row is a column-sub-header row:
-            # A column sub-header row has ≥2 distinct non-empty cells (i.e. it's a
-            # column header line, not a data row).  In such rows all cells are [LABEL].
-            non_empty_cells = [_get_cell_text(tc) for tc in tcs]
-            distinct_non_empty = len([t for t in non_empty_cells if t])
-            is_col_header_row = distinct_non_empty >= 2
+        if total_empty <= _LARGE_TABLE_THRESHOLD * 2:
+            # Medium-large: give it its own chunk, no row splitting needed
+            chunks.append({
+                "label": f"T{tbl_num}",
+                "structure_text": _STRUCT_HEADER + "\n".join(all_lines),
+                "empty_count": total_empty,
+            })
+            continue
 
-            for col_idx, tc in enumerate(tcs, 1):
-                cell_text = _get_cell_text(tc)
-                coord = f"T{tbl_num}_R{row_idx}_C{col_idx}"
+        # Very large (e.g. Annex A with 90+ controls): split into row-range sub-chunks.
+        # The first sub-chunk starts at row 1 so the column header row is included.
+        # Subsequent sub-chunks prepend the header row again for Claude's context.
+        hdr_lines, _ = _build_table_structure_lines(tbl, tbl_num, selected_values, 1, 1)
+        chunk_start = 1
+        while chunk_start <= total_rows:
+            chunk_end = min(chunk_start + _ROW_CHUNK_SIZE - 1, total_rows)
+            c_lines, c_empty = _build_table_structure_lines(
+                tbl, tbl_num, selected_values, chunk_start, chunk_end,
+            )
+            if chunk_start > 1 and c_empty > 0:
+                # Repeat header row so Claude knows column layout in every sub-chunk
+                c_lines = (
+                    hdr_lines[:-1]
+                    + [f"  ... (continuing — rows {chunk_start}–{chunk_end}) ..."]
+                    + c_lines
+                )
+            if c_empty > 0:
+                chunks.append({
+                    "label": f"T{tbl_num}_rows{chunk_start}-{chunk_end}",
+                    "structure_text": _STRUCT_HEADER + "\n".join(c_lines),
+                    "empty_count": c_empty,
+                })
+            chunk_start = chunk_end + 1
 
-                # Mask editorial instructions so Claude never outputs them.
-                if cell_text and _INSTRUCTION_CELL_RE.search(cell_text) and not _AUDIT_CONTENT_RE.search(cell_text):
-                    display = "[TEMPLATE INSTRUCTION — DO NOT OUTPUT]"
-                elif cell_text:
-                    # Annotate pre-printed label cells so Claude knows not to overwrite them.
-                    # A cell is treated as a label when:
-                    #  a) This is a column-sub-header row (multiple non-empty cells = headers), OR
-                    #  b) The cell has content but the NEXT cell in the same row is the empty
-                    #     value cell (classic two-column label→value pattern).
-                    is_label = False
-                    if is_col_header_row:
-                        is_label = True
-                    elif col_idx < len(tcs):
-                        # Check if next sibling cell is empty (label→value pattern)
-                        next_text = _get_cell_text(tcs[col_idx])  # col_idx is 0-based next
-                        if not next_text:
-                            is_label = True
-                    if is_label:
-                        display = f"{cell_text[:200]} [LABEL — DO NOT MODIFY]"
-                    else:
-                        display = cell_text[:300]
-                else:
-                    display = "[EMPTY]"
-                lines.append(f"  {coord}: {display}")
-        lines.append("")
-
-    return "\n".join(lines)
+    _flush_buffer("general_tables_tail")
+    return chunks
 
 
 # ---------------------------------------------------------------------------
@@ -473,6 +604,68 @@ def parse_cell_mapping(response: str) -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
+# Auto-tick helper — post-fills Conclusion cells when Claude missed them
+# ---------------------------------------------------------------------------
+
+def _auto_tick_conclusion_cells(body, mapping: dict[str, str]) -> int:
+    """
+    For each table, detect the Findings column and the Conclusion/Result column
+    from the header row, then add √ to any Conclusion cell that is:
+      • empty in the template, AND
+      • not already assigned by Claude in *mapping*, AND
+      • in the same row as a Findings cell that *is* in the mapping.
+
+    Modifies *mapping* in-place.  Returns the count of ticks added.
+    """
+    added = 0
+    tbl_num = 0
+    for tbl in body.findall(_wtag("tbl")):
+        tbl_num += 1
+        rows = tbl.findall(_wtag("tr"))
+        if not rows:
+            continue
+
+        # Scan the first 3 rows to find the column-header row
+        findings_col: int | None = None
+        conclusion_col: int | None = None
+        header_row_idx = 0
+
+        for ri, tr in enumerate(rows[:3], 1):
+            tcs = tr.findall(_wtag("tc"))
+            non_empty = [(ci + 1, _get_cell_text(tc)) for ci, tc in enumerate(tcs) if _get_cell_text(tc)]
+            if len(non_empty) < 2:
+                continue
+            for col_idx, col_text in non_empty:
+                if _FINDINGS_COL_RE.search(col_text):
+                    findings_col = col_idx
+                if _CONCLUSION_COL_RE.search(col_text):
+                    conclusion_col = col_idx
+            if findings_col and conclusion_col:
+                header_row_idx = ri
+                break
+
+        if not findings_col or not conclusion_col:
+            continue  # table has no Findings/Conclusion column pair
+
+        # Walk data rows after the header
+        for ri, tr in enumerate(rows, 1):
+            if ri <= header_row_idx:
+                continue
+            tcs = tr.findall(_wtag("tc"))
+            f_coord = f"T{tbl_num}_R{ri}_C{findings_col}"
+            c_coord = f"T{tbl_num}_R{ri}_C{conclusion_col}"
+
+            if f_coord in mapping and c_coord not in mapping:
+                # Only auto-tick if the template cell is actually empty
+                if conclusion_col <= len(tcs) and not _get_cell_text(tcs[conclusion_col - 1]):
+                    mapping[c_coord] = "√"
+                    added += 1
+
+    logger.info("[LLM Mapper] _auto_tick_conclusion_cells: %d ticks auto-added.", added)
+    return added
+
+
+# ---------------------------------------------------------------------------
 # Cell filler
 # ---------------------------------------------------------------------------
 
@@ -480,9 +673,14 @@ def apply_cell_mapping(body, mapping: dict[str, str]) -> int:
     """
     Apply coordinate→content mapping to the document body XML.
 
-    Builds an index of all table cells by their T_R_C coordinate, then
-    fills matched cells.  Returns the number of cells modified.
+    First runs _auto_tick_conclusion_cells to guarantee that every row with
+    a Findings entry also gets a Conclusion tick (in case Claude omitted it).
+    Then builds an index of all table cells by their T_R_C coordinate and
+    fills matched cells.  Returns the total number of cells modified.
     """
+    # Post-process: auto-fill √ in Conclusion cells adjacent to filled Findings cells
+    _auto_tick_conclusion_cells(body, mapping)
+
     coord_index: dict[str, object] = {}
     tbl_num = 0
     for tbl in body.findall(_wtag("tbl")):
@@ -525,49 +723,65 @@ def get_cell_mapping(
     language=None,
 ) -> dict[str, str]:
     """
-    Full LLM-guided mapping flow:
-      1. Convert template to coordinate-tagged structure text.
-      2. Format validated report sections as plain text.
-      3. Build prompt and call Claude.
-      4. Parse Claude's response into a {coordinate: content} dict.
+    Full LLM-guided mapping flow using chunked Claude calls:
+      1. Plan chunks — group tables by empty-cell count to avoid token-limit
+         truncation.  Large tables (e.g. ISO 27001 Annex A) are automatically
+         split into row-range sub-chunks of _ROW_CHUNK_SIZE rows each.
+      2. For each active chunk: build prompt → call Claude → parse response.
+      3. Merge all partial mappings into one {coordinate: content} dict.
 
-    Intermediate artifacts (template structure, raw Claude response) are
-    saved to Redis when job_id is provided — useful for debugging.
-
-    Raises ValueError if Claude returns no parseable cell mappings.
+    Chunks with zero empty cells are skipped.
+    Intermediate artifacts are saved to Redis when job_id is provided.
+    Raises ValueError if no mappings are parsed from any chunk.
     """
-    structure_text = template_to_structure_text(template_path, selected_standards)
+    chunks = _plan_call_chunks(template_path, selected_standards)
+    active_chunks = [c for c in chunks if c["empty_count"] > 0]
 
-    # Guard: template_to_structure_text must always return a non-empty string.
-    # If it somehow returns None or "" (e.g. template has no tables), bail early
-    # with a warning rather than crashing inside _build_prompt or the Claude call.
-    if not structure_text:
-        logger.warning(
-            "[LLM Mapper] template_to_structure_text returned empty/None for job=%s — "
-            "template may have no tables. Returning empty mapping.",
-            job_id,
-        )
+    if not active_chunks:
+        logger.warning("[LLM Mapper] No chunks with empty cells found | job=%s", job_id)
         return {}
 
     report_text = _format_report_sections(validated_report)
+    all_mappings: dict[str, str] = {}
 
-    if job_id:
-        from storage.file_store import save_text_artifact
-        save_text_artifact(job_id, "assembly_template_structure.txt", structure_text)
-
-    prompt = _build_prompt(structure_text, report_text, selected_standards, org_info=org_info, language=language)
-    logger.info("[LLM Mapper] Calling Claude for cell-by-cell assembly mapping | job=%s", job_id)
-    raw_response = _call_claude(prompt)
-
-    if job_id:
-        from storage.file_store import save_text_artifact
-        save_text_artifact(job_id, "assembly_cell_mapping_raw.txt", raw_response)
-
-    mapping = parse_cell_mapping(raw_response)
-    if not mapping:
-        raise ValueError(
-            "[LLM Mapper] No cell mappings parsed from Claude's assembly response. "
-            "Check assembly_cell_mapping_raw.txt artifact for raw output."
+    for idx, chunk in enumerate(active_chunks, 1):
+        logger.info(
+            "[LLM Mapper] Chunk %d/%d label=%s empty=%d | job=%s",
+            idx, len(active_chunks), chunk["label"], chunk["empty_count"], job_id,
         )
-    return mapping
+        prompt = _build_prompt(
+            chunk["structure_text"],
+            report_text,
+            selected_standards,
+            org_info=org_info,
+            language=language,
+        )
+        if job_id:
+            from storage.file_store import save_text_artifact
+            save_text_artifact(
+                job_id,
+                f"assembly_template_structure_chunk{idx}.txt",
+                chunk["structure_text"],
+            )
+
+        raw_response = _call_claude(prompt)
+
+        if job_id:
+            from storage.file_store import save_text_artifact
+            save_text_artifact(
+                job_id,
+                f"assembly_cell_mapping_raw_chunk{idx}.txt",
+                raw_response,
+            )
+
+        chunk_mapping = parse_cell_mapping(raw_response)
+        logger.info("[LLM Mapper] Chunk %d → %d mappings.", idx, len(chunk_mapping))
+        all_mappings.update(chunk_mapping)
+
+    if not all_mappings:
+        raise ValueError(
+            "[LLM Mapper] No cell mappings parsed from any assembly chunk. "
+            "Check assembly_cell_mapping_raw_chunk*.txt artifacts for raw output."
+        )
+    return all_mappings
 

@@ -28,13 +28,22 @@ RULES FOR DECIDING WHAT TO FILL:
 
 A. SELECTED STANDARD TABLES
    - Look at column header rows to understand what each column is for.
-     Example: if row 1 shows "Audit Area | Findings | Result", then:
-       - The "Findings" column cells receive detailed findings text.
-       - The "Result" column cells receive the literal tick symbol: √
-         Use only √ — do NOT write the word "Conforming" or any other word.
-   - Match report section titles to the corresponding row's subject or audit area.
+     Column naming conventions and what to write:
+       "Findings"                           → detailed audit finding text
+       "Result"                             → tick symbol: √, NC, or OBS
+       "Conclusion"                         → tick symbol: √, NC, or OBS
+       "Conclusion(✓ / NC / OBS)"           → tick symbol: √, NC, or OBS
+       Any column whose header contains "✓" → tick symbol: √, NC, or OBS
+   - Match report section titles / clause numbers to the corresponding data row.
    - Use the report content to write the findings; derive the result from the content.
-   - Fill EVERY empty content cell in the selected standard's tables.
+   - Fill EVERY empty content cell in the selected standard's tables — this means
+     BOTH the Findings column AND the Conclusion/Result column for every data row.
+   - For the Conclusion/Result column:
+       √   → the clause/control is conforming (write this for every compliant item)
+       NC  → a nonconformity was raised for this clause
+       OBS → an observation was noted for this clause
+     NEVER leave a Conclusion/Result cell empty when the Findings cell is filled.
+     NEVER write words like "Conforming", "Compliant", or "Passed" — use only √, NC, OBS.
 
 B. NON-SELECTED STANDARD TABLES
    - For the FIRST empty content cell in each such table, write exactly:
