@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     # Anthropic / Claude
     # -----------------------------------------------------------------------
     anthropic_api_key: str
-    claude_model: str = "claude-sonnet-4-5"  # Claude Sonnet 4.6 Extended
+    claude_model: str = "claude-sonnet-4-6"  # Claude Sonnet 4.6 Extended
     claude_max_tokens: int = 8192
     claude_temperature: float = 0.2  # Low temp for factual audit writing
 
