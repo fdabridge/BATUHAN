@@ -25,6 +25,7 @@ from auditors.service import (
 )
 from auditors.extractor import extract_auditor_from_document
 from auditors.eligibility import check_eligibility
+from auditors.clause_assignment import suggest_clause_assignment, ClauseAssignmentRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -58,6 +59,34 @@ def create(payload: AuditorCreateSchema, db: Session = Depends(get_db)):
 def list_all(active_only: bool = True, db: Session = Depends(get_db)):
     """List auditors. Pass ?active_only=false to include soft-deleted."""
     return list_auditors(db, active_only=active_only)
+
+
+@router.post("/assign-clauses")
+def assign_clauses(body: ClauseAssignmentRequest, db: Session = Depends(get_db)):
+    """
+    Suggest which auditor covers which clauses for a given standard.
+
+    Auditors are ranked by role seniority, technical depth, and experience years.
+    Higher-ranked auditors receive the operationally complex sections (8.x, 9.x, 10.x).
+
+    Returns HTTP 200 always when valid. Never persists anything.
+    HTTP 404 — one or more auditor_ids not found in the DB.
+    HTTP 422 — no clause config exists for the given standard_code.
+    """
+    missing = [aid for aid in body.auditor_ids if not get_auditor(db, aid)]
+    if missing:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Auditor(s) not found: {missing}",
+        )
+
+    try:
+        return suggest_clause_assignment(db, body.auditor_ids, body.standard_code)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"No clause config found for standard '{body.standard_code}': {exc}",
+        )
 
 
 @router.get("/{auditor_id}", response_model=AuditorResponseSchema)
