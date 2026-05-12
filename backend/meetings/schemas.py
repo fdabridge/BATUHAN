@@ -7,6 +7,11 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict
 
 
+class ParseRequest(BaseModel):
+    """Input for natural-language meeting parsing."""
+    text: str
+
+
 class MeetingCreate(BaseModel):
     """Input schema for creating a meeting."""
     title:            str

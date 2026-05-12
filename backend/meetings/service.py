@@ -78,6 +78,60 @@ def format_meeting_out(m: Meeting) -> dict:
 # Query helpers
 # ---------------------------------------------------------------------------
 
+def parse_nl_meeting(text: str) -> dict:
+    """
+    Parse a natural-language meeting description (Turkish/English) using Claude.
+    Returns a dict with keys: title, start_date, start_time, duration_minutes, description.
+    Raises ValueError if Claude returns unparseable output.
+    """
+    import json as _json
+    import anthropic
+    from config.settings import get_settings
+
+    now_trt = datetime.now(TRT)
+    today_str = now_trt.strftime("%Y-%m-%d")
+    day_name = now_trt.strftime("%A")   # e.g. "Monday"
+
+    prompt = f"""You are a meeting parser. Today is {today_str} ({day_name}). The user is in Istanbul (TRT, UTC+3).
+
+Parse the following meeting description and return ONLY a JSON object — no markdown, no explanation:
+
+Input: "{text}"
+
+Required JSON format:
+{{
+  "title": "concise meeting title (Turkish or English, match input language)",
+  "start_date": "YYYY-MM-DD",
+  "start_time": "HH:MM",
+  "duration_minutes": 60,
+  "description": null
+}}
+
+Rules:
+- yarın / yarin = tomorrow  |  bugün / bugun = today
+- Day names: Pazartesi=Mon, Salı=Tue, Çarşamba=Wed, Perşembe=Thu, Cuma=Fri, Cumartesi=Sat, Pazar=Sun (next occurrence)
+- Time: "15.00" or "15:00" → "15:00"  |  No time mentioned → "09:00"
+- Duration: "1 saat"=60, "2 saat"=120, "30 dakika"/"30 dk"=30  |  Default=60
+- Title: strip filler words (toplantı, meeting, görüşme are OK to keep if meaningful)
+- description: any extra context not in the title, otherwise null"""
+
+    settings = get_settings()
+    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    msg = client.messages.create(
+        model=settings.claude_model,
+        max_tokens=256,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    raw = msg.content[0].text.strip()
+    # Strip markdown code fences if Claude wraps the JSON
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+    return _json.loads(raw)
+
+
 def get_meetings_for_trt_date(db, d: date) -> list[Meeting]:
     """Return all meetings whose start time falls on the given TRT calendar date."""
     day_start = (

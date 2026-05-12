@@ -131,32 +131,46 @@
     </form>
   </div>
 
-  <!-- RIGHT: Guide -->
+  <!-- RIGHT: Meetings widget -->
   <div class="guide-panel">
     <div class="card" style="padding:1.5rem;">
-      <h3 style="font-size:.95rem; margin-bottom:1.25rem;">📖 How It Works</h3>
-      <div class="guide-step">
-        <div class="step-num">1</div>
-        <div class="step-content"><h4>Upload Company Docs</h4><p>All your management system documents — policies, procedures, records, training logs, risk assessments. More content = richer report.</p></div>
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1.1rem;">
+        <h3 style="font-size:.95rem; margin:0;">📅 Meetings</h3>
+        <span id="mtg-clock" style="font-size:.75rem; color:var(--muted); font-variant-numeric:tabular-nums;"></span>
       </div>
-      <div class="guide-step">
-        <div class="step-num">2</div>
-        <div class="step-content"><h4>Upload Sample Reports</h4><p>Completed ISO audit reports from any auditor. Used only for writing style — company data is auto-blocked. 2–3 reports recommended.</p></div>
+
+      <!-- NL input -->
+      <div style="position:relative; margin-bottom:1.1rem;">
+        <input
+          id="nlInput"
+          type="text"
+          placeholder="Yarın 15:00 Şebnem Hanım ile UAF toplantısı…"
+          style="width:100%; padding:.6rem 2.6rem .6rem .85rem; border:1.5px solid var(--border); border-radius:var(--radius-sm); font-size:.85rem; font-family:inherit; color:var(--text); background:var(--bg); outline:none; transition:border-color .15s, box-shadow .15s;"
+          onfocus="this.style.borderColor='var(--primary)'; this.style.boxShadow='0 0 0 3px rgba(37,99,235,.1)';"
+          onblur="this.style.borderColor='var(--border)'; this.style.boxShadow='none';"
+        />
+        <button id="nlBtn" onclick="submitNL()" title="Add meeting"
+          style="position:absolute; right:.4rem; top:50%; transform:translateY(-50%); background:var(--primary); border:none; border-radius:4px; width:26px; height:26px; cursor:pointer; display:flex; align-items:center; justify-content:center; color:#fff; font-size:.8rem;">
+          ↵
+        </button>
       </div>
-      <div class="guide-step">
-        <div class="step-num">3</div>
-        <div class="step-content"><h4>Prepare Your Template</h4><p>A blank .docx with sections formatted as <strong>Heading 1/2/3</strong> in Word — not just bold text. This exact structure is preserved in the final report.</p></div>
+      <div id="nlStatus" style="font-size:.78rem; min-height:1.2em; margin-bottom:.9rem; color:var(--muted);"></div>
+
+      <!-- Today -->
+      <div class="section-label" style="margin-bottom:.6rem;">Today</div>
+      <div id="mtg-today" style="margin-bottom:1rem;">
+        <p style="font-size:.8rem; color:var(--muted-light); margin:0;">Loading…</p>
       </div>
-      <div class="guide-step">
-        <div class="step-num">4</div>
-        <div class="step-content"><h4>AI Processes in 3 Stages</h4><p>Evidence extraction → Report generation → Validation & correction. Typically takes <strong>10–15 minutes</strong>.</p></div>
+
+      <!-- Tomorrow -->
+      <div class="section-label" style="margin-bottom:.6rem;">Tomorrow</div>
+      <div id="mtg-tomorrow">
+        <p style="font-size:.8rem; color:var(--muted-light); margin:0;">Loading…</p>
       </div>
-      <div class="guide-step">
-        <div class="step-num">5</div>
-        <div class="step-content"><h4>Download Final Report</h4><p>A complete .docx audit report ready to review and sign off, plus a correction log showing all AI changes.</p></div>
-      </div>
-      <div style="margin-top:1.25rem; padding-top:1rem; border-top:1px solid var(--border);">
-        <a href="/ui/guide" style="font-size:.8rem; color:var(--primary); text-decoration:none; font-weight:600;">Full user guide & file requirements →</a>
+
+      <div style="margin-top:1.1rem; padding-top:.9rem; border-top:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+        <a href="/meetings/ui" style="font-size:.8rem; color:var(--primary); text-decoration:none; font-weight:600;">All meetings →</a>
+        <a href="/ui/guide" style="font-size:.78rem; color:var(--muted); text-decoration:none;">📖 Guide</a>
       </div>
     </div>
   </div>
@@ -245,6 +259,91 @@
     btn.innerHTML = '▶ Submit Job';
     loadingMsg.style.display = 'none';
   });
+
+  // ── Meetings widget ──────────────────────────────────────────
+  function renderMtgList(containerId, meetings) {
+    const el = document.getElementById(containerId);
+    if (!meetings || meetings.length === 0) {
+      el.innerHTML = '<p style="font-size:.8rem;color:var(--muted-light);margin:0;">No meetings scheduled.</p>';
+      return;
+    }
+    el.innerHTML = meetings.map(m => {
+      const timePart = m.start_trt ? m.start_trt.split(' ')[1] : '';
+      return `<div style="display:flex;align-items:center;gap:.65rem;padding:.5rem 0;border-bottom:1px solid var(--border);">
+        <span style="flex-shrink:0;background:var(--primary-light);color:var(--primary);font-size:.72rem;font-weight:700;padding:.2rem .5rem;border-radius:4px;min-width:42px;text-align:center;">${timePart}</span>
+        <span style="font-size:.82rem;color:var(--text);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${m.title}">${m.title}</span>
+        <button onclick="deleteMeeting(${m.id})" title="Delete" style="background:none;border:none;cursor:pointer;color:var(--muted-light);font-size:.85rem;padding:0 .2rem;line-height:1;">×</button>
+      </div>`;
+    }).join('');
+  }
+
+  async function loadMeetings() {
+    try {
+      const [todayRes, tomorrowRes] = await Promise.all([
+        fetch('/meetings/today'), fetch('/meetings/tomorrow')
+      ]);
+      renderMtgList('mtg-today', todayRes.ok ? await todayRes.json() : []);
+      renderMtgList('mtg-tomorrow', tomorrowRes.ok ? await tomorrowRes.json() : []);
+    } catch(_) {}
+  }
+
+  async function deleteMeeting(id) {
+    await fetch(`/meetings/${id}`, { method: 'DELETE' });
+    loadMeetings();
+  }
+
+  async function submitNL() {
+    const input = document.getElementById('nlInput');
+    const status = document.getElementById('nlStatus');
+    const btn = document.getElementById('nlBtn');
+    const text = input.value.trim();
+    if (!text) return;
+    btn.disabled = true;
+    btn.textContent = '…';
+    status.style.color = 'var(--muted)';
+    status.textContent = 'Parsing with AI…';
+    try {
+      const res = await fetch('/meetings/parse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+      if (res.ok) {
+        const m = await res.json();
+        status.style.color = 'var(--success)';
+        status.textContent = `✓ Added: ${m.title} @ ${m.start_trt ? m.start_trt.split(' ').slice(0,2).join(' ') : ''}`;
+        input.value = '';
+        loadMeetings();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        status.style.color = 'var(--danger)';
+        status.textContent = '⚠ ' + (err.detail || `Error ${res.status}`);
+      }
+    } catch(_) {
+      status.style.color = 'var(--danger)';
+      status.textContent = '⚠ Network error.';
+    }
+    btn.disabled = false;
+    btn.textContent = '↵';
+  }
+
+  document.getElementById('nlInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') submitNL();
+  });
+
+  // Live TRT clock
+  function updateClock() {
+    const now = new Date();
+    const trt = new Intl.DateTimeFormat('tr-TR', {
+      timeZone: 'Europe/Istanbul', hour: '2-digit', minute: '2-digit',
+      weekday: 'short', day: 'numeric', month: 'short'
+    }).format(now);
+    document.getElementById('mtg-clock').textContent = trt;
+  }
+  updateClock();
+  setInterval(updateClock, 60000);
+  loadMeetings();
+  setInterval(loadMeetings, 120000);
 </script>
 {% endblock %}
 

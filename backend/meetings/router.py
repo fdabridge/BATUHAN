@@ -20,11 +20,12 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from meetings.models import Meeting, get_db
-from meetings.schemas import MeetingCreate, MeetingOut
+from meetings.schemas import MeetingCreate, MeetingOut, ParseRequest
 from meetings.service import (
     format_meeting_out,
     get_meetings_for_trt_date,
     parse_input_time,
+    parse_nl_meeting,
     trt_today,
     trt_tomorrow,
 )
@@ -101,3 +102,34 @@ def delete_meeting(meeting_id: int, db: Session = Depends(get_db)):
     db.delete(m)
     db.commit()
     logger.info("[Meetings] Deleted id=%d", meeting_id)
+
+
+@router.post("/parse", response_model=MeetingOut, status_code=201)
+def parse_and_create(payload: ParseRequest, db: Session = Depends(get_db)):
+    """
+    Parse a natural-language meeting description with Claude, then immediately
+    create and return the meeting. Accepts Turkish or English input.
+    Example: "Yarın 15:00 Şebnem Hanım ile UAF toplantısı"
+    """
+    try:
+        parsed = parse_nl_meeting(payload.text)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Could not parse meeting: {exc}")
+
+    start_str = f"{parsed['start_date']}T{parsed['start_time']}"
+    try:
+        start_utc = parse_input_time(start_str, "TRT")
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid date/time from parser: {exc}")
+
+    meeting = Meeting(
+        title=parsed.get("title", payload.text[:80]),
+        description=parsed.get("description"),
+        start_utc=start_utc,
+        duration_minutes=int(parsed.get("duration_minutes", 60)),
+    )
+    db.add(meeting)
+    db.commit()
+    db.refresh(meeting)
+    logger.info("[Meetings] NL-parsed & created id=%d title='%s'", meeting.id, meeting.title)
+    return format_meeting_out(meeting)
