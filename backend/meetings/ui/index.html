@@ -1,141 +1,432 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BATUHAN — Meetings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{background:#0d0d0d;color:#e0e0e0;font-family:'Courier New',monospace;padding:24px;max-width:960px;margin:0 auto}
-    h1{color:#00ff88;font-size:1.3rem;letter-spacing:.05em;margin-bottom:4px}
-    #clock{color:#555;font-size:.82rem;margin-bottom:20px;letter-spacing:.03em}
-    .card{background:#141414;border:1px solid #242424;border-radius:6px;padding:16px;margin-bottom:16px}
-    .card h2{color:#00ff88;font-size:.85rem;text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px}
-    .row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px}
-    input,select{background:#0d0d0d;border:1px solid #2e2e2e;color:#e0e0e0;padding:7px 10px;border-radius:4px;font-family:inherit;font-size:.83rem}
-    input:focus,select:focus{outline:none;border-color:#00ff88}
-    #f-title{flex:2;min-width:160px}
-    #f-start{flex:1;min-width:180px}
-    #f-desc{flex:3;min-width:200px}
-    #f-dur{width:75px}
-    #f-tz{width:78px}
-    button{background:#00ff88;color:#000;border:none;padding:7px 16px;border-radius:4px;cursor:pointer;font-family:inherit;font-weight:700;font-size:.83rem;white-space:nowrap}
-    button:hover{background:#00cc6a}
-    button.sec{background:#1e1e1e;color:#aaa;font-weight:400}
-    button.sec:hover{background:#2a2a2a;color:#e0e0e0}
-    button.del{background:transparent;color:#ff5555;border:1px solid #3a1a1a;padding:3px 9px;font-weight:400}
-    button.del:hover{background:#ff5555;color:#000}
-    table{width:100%;border-collapse:collapse;font-size:.82rem}
-    th{color:#555;text-align:left;padding:5px 8px;border-bottom:1px solid #1e1e1e;font-weight:400;white-space:nowrap}
-    td{padding:7px 8px;border-bottom:1px solid #1a1a1a;vertical-align:middle}
-    tr:hover td{background:#181818}
-    td.trt{color:#00ff88;white-space:nowrap}
-    td.et{color:#88aaff;white-space:nowrap}
-    td.dur{color:#666;text-align:center}
-    .desc-sm{color:#555;font-size:.76rem;margin-top:2px}
-    #briefing{background:#0d0d0d;border:1px solid #222;border-radius:4px;padding:12px;white-space:pre-wrap;font-size:.82rem;color:#aaa;margin-top:10px;display:none;line-height:1.6}
-    .empty{color:#444;text-align:center;padding:24px;font-style:italic}
-    #msg{color:#00ff88;font-size:.78rem;margin-top:6px;min-height:16px}
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #F8FAFC; --surface: #FFFFFF; --border: #E2E8F0; --border-hover: #CBD5E1;
+      --primary: #2563EB; --primary-hover: #1D4ED8; --primary-light: #EFF6FF;
+      --success: #10B981; --success-light: #ECFDF5;
+      --danger: #EF4444; --danger-light: #FEF2F2;
+      --text: #0F172A; --text-secondary: #334155; --muted: #64748B; --muted-light: #94A3B8;
+      --purple: #7C3AED; --purple-light: #F5F3FF;
+      --radius: 10px; --radius-sm: 6px;
+      --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px -1px rgba(0,0,0,.05);
+      --shadow-md: 0 4px 6px -1px rgba(0,0,0,.07), 0 2px 4px -2px rgba(0,0,0,.05);
+    }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; -webkit-font-smoothing: antialiased; }
+
+    /* Header */
+    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 1.5rem; position: sticky; top: 0; z-index: 100; }
+    .header-inner { max-width: 1020px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; height: 60px; }
+    .logo { display: flex; align-items: center; gap: .6rem; font-weight: 700; font-size: 1.05rem; color: var(--text); text-decoration: none; }
+    .logo-icon { width: 30px; height: 30px; background: var(--primary); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; color: #fff; font-size: .85rem; }
+    .nav-back { color: var(--muted); text-decoration: none; font-size: .875rem; font-weight: 500; padding: .4rem .85rem; border-radius: var(--radius-sm); border: 1px solid var(--border); transition: all .15s; }
+    .nav-back:hover { color: var(--text); border-color: var(--border-hover); background: var(--bg); }
+
+    /* Clock strip */
+    .clock-strip { background: var(--surface); border-bottom: 1px solid var(--border); padding: .9rem 1.5rem; }
+    .clock-inner { max-width: 1020px; margin: 0 auto; display: flex; align-items: center; gap: 2rem; }
+    .clock-zone { display: flex; flex-direction: column; align-items: center; min-width: 100px; }
+    .clock-label { font-size: .65rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted-light); margin-bottom: 2px; }
+    .clock-time { font-size: 1.55rem; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1; }
+    .clock-time.trt { color: var(--primary); }
+    .clock-time.et  { color: var(--purple); }
+    .clock-sep { color: var(--border); font-size: 1.8rem; font-weight: 200; }
+    .clock-date { flex: 1; text-align: right; }
+    .clock-date-main { font-size: .95rem; font-weight: 600; color: var(--text-secondary); }
+    .clock-date-sub  { font-size: .75rem; color: var(--muted); margin-top: 2px; }
+
+    /* Stats */
+    .stats-bar { max-width: 1020px; margin: 1.75rem auto 1.25rem; padding: 0 1.5rem; display: flex; gap: 1rem; }
+    .stat-chip { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: .9rem 1.25rem; flex: 1; display: flex; align-items: center; gap: .85rem; box-shadow: var(--shadow); }
+    .stat-icon { width: 38px; height: 38px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0; }
+    .stat-icon.blue   { background: var(--primary-light); }
+    .stat-icon.purple { background: var(--purple-light); }
+    .stat-icon.green  { background: var(--success-light); }
+    .stat-num   { font-size: 1.5rem; font-weight: 700; color: var(--text); line-height: 1; }
+    .stat-label { font-size: .72rem; color: var(--muted); margin-top: 2px; }
+
+    /* Layout */
+    .main { max-width: 1020px; margin: 0 auto; padding: 0 1.5rem 3rem; display: grid; grid-template-columns: 1fr 340px; gap: 1.5rem; align-items: start; }
+    @media (max-width: 760px) { .main { grid-template-columns: 1fr; } .sidebar { order: -1; } }
+
+    /* Card */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+    .card-header { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .card-title { font-size: .9rem; font-weight: 700; color: var(--text); }
+    .card-body { padding: 1.25rem; }
+
+    /* NL input */
+    .nl-wrap { position: relative; margin-bottom: .65rem; }
+    .nl-input { width: 100%; padding: .85rem 3.2rem .85rem 1rem; border: 2px solid var(--border); border-radius: var(--radius-sm); font-size: .9rem; font-family: inherit; color: var(--text); background: var(--bg); outline: none; transition: border-color .15s, box-shadow .15s; }
+    .nl-input::placeholder { color: var(--muted-light); }
+    .nl-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,.1); background: var(--surface); }
+    .nl-send { position: absolute; right: .55rem; top: 50%; transform: translateY(-50%); background: var(--primary); border: none; border-radius: 6px; width: 32px; height: 32px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 1rem; transition: background .15s; }
+    .nl-send:hover { background: var(--primary-hover); }
+    .nl-send:disabled { opacity: .5; cursor: not-allowed; }
+    .nl-hint { font-size: .74rem; color: var(--muted); line-height: 1.55; }
+    .nl-status { font-size: .8rem; min-height: 1.4em; margin-top: .5rem; transition: color .2s; }
+
+    /* Form toggle */
+    .form-toggle { font-size: .78rem; color: var(--primary); cursor: pointer; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: .3rem; margin-top: .85rem; }
+    .form-toggle:hover { color: var(--primary-hover); }
+    .struct-form { display: none; margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1rem; }
+    .struct-form.open { display: block; }
+    .sf-label { font-size: .7rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: .3rem; display: block; }
+    .sf-field { margin-bottom: .8rem; }
+    .sf-input { width: 100%; padding: .55rem .8rem; border: 1.5px solid var(--border); border-radius: var(--radius-sm); font-size: .85rem; font-family: inherit; color: var(--text); background: var(--surface); outline: none; transition: border-color .15s; }
+    .sf-input:focus { border-color: var(--primary); }
+    .sf-row { display: grid; grid-template-columns: 1fr 68px 62px; gap: .5rem; }
+    .btn-add { width: 100%; padding: .65rem; background: var(--primary); color: #fff; border: none; border-radius: var(--radius-sm); font-size: .875rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: background .15s; }
+    .btn-add:hover { background: var(--primary-hover); }
+
+    /* Meeting list */
+    .day-group { margin-bottom: 1.5rem; }
+    .day-header { display: flex; align-items: center; gap: .75rem; margin-bottom: .75rem; }
+    .day-label { font-size: .7rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+    .day-line { flex: 1; height: 1px; background: var(--border); }
+    .day-count { font-size: .7rem; color: var(--muted-light); font-weight: 500; white-space: nowrap; }
+    .mtg-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: .9rem 1rem; margin-bottom: .55rem; display: flex; align-items: flex-start; gap: .9rem; transition: box-shadow .15s, border-color .15s; animation: fadeIn .22s ease; }
+    .mtg-card:hover { border-color: var(--border-hover); box-shadow: var(--shadow-md); }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(-5px); } to { opacity:1; transform:translateY(0); } }
+    .mtg-time-col { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; gap: 3px; min-width: 52px; }
+    .mtg-trt { font-size: .88rem; font-weight: 700; color: var(--primary); font-variant-numeric: tabular-nums; }
+    .mtg-et  { font-size: .72rem; color: var(--purple); font-variant-numeric: tabular-nums; }
+    .mtg-body { flex: 1; min-width: 0; }
+    .mtg-title { font-size: .9rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mtg-desc { font-size: .77rem; color: var(--muted); margin-top: 2px; }
+    .mtg-dur { display: inline-flex; align-items: center; gap: .25rem; font-size: .7rem; background: var(--bg); border: 1px solid var(--border); border-radius: 99px; padding: .15rem .5rem; color: var(--muted); margin-top: .4rem; }
+    .mtg-del { background: none; border: 1px solid transparent; border-radius: var(--radius-sm); padding: .3rem .5rem; cursor: pointer; color: var(--muted-light); font-size: .82rem; transition: all .15s; flex-shrink: 0; }
+    .mtg-del:hover { background: var(--danger-light); border-color: #FCA5A5; color: var(--danger); }
+
+    /* Empty state */
+    .empty-state { text-align: center; padding: 3rem 1rem; }
+    .empty-icon { font-size: 2.5rem; margin-bottom: .85rem; opacity: .35; }
+    .empty-text { font-size: .875rem; color: var(--muted); line-height: 1.6; }
+
+    /* Briefing */
+    .briefing-btn { width: 100%; padding: .65rem; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text-secondary); font-size: .85rem; font-weight: 500; cursor: pointer; font-family: inherit; transition: all .15s; display: flex; align-items: center; justify-content: center; gap: .5rem; }
+    .briefing-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+    .briefing-output { margin-top: .85rem; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; display: none; background: var(--bg); }
+    .briefing-item { padding: .65rem .9rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: .75rem; }
+    .briefing-item:last-child { border-bottom: none; }
+    .bi-time  { font-size: .8rem; font-weight: 700; color: var(--primary); min-width: 46px; font-variant-numeric: tabular-nums; }
+    .bi-title { font-size: .85rem; color: var(--text); flex: 1; }
+    .bi-dur   { font-size: .7rem; color: var(--muted); }
   </style>
 </head>
 <body>
-  <h1>📋 BATUHAN — Meetings</h1>
-  <div id="clock">—</div>
 
-  <div class="card">
-    <h2>+ Add Meeting</h2>
-    <div class="row">
-      <input id="f-title" type="text" placeholder="Meeting title" autocomplete="off">
-      <input id="f-start" type="datetime-local">
-      <select id="f-tz"><option value="TRT">TRT</option><option value="ET">ET</option></select>
-      <input id="f-dur" type="number" value="60" min="5" max="960" title="Duration (minutes)">
-      <button onclick="addMeeting()">Add Meeting</button>
+<header>
+  <div class="header-inner">
+    <a class="logo" href="/ui">
+      <div class="logo-icon">⚡</div>
+      <span>BATUHAN</span>
+    </a>
+    <a href="/ui" class="nav-back">← Dashboard</a>
+  </div>
+</header>
+
+<!-- Live dual-timezone clock -->
+<div class="clock-strip">
+  <div class="clock-inner">
+    <div class="clock-zone">
+      <div class="clock-label">Istanbul · TRT</div>
+      <div class="clock-time trt" id="c-trt">--:--:--</div>
     </div>
-    <div class="row">
-      <input id="f-desc" type="text" placeholder="Description (optional)" autocomplete="off">
+    <div class="clock-sep">|</div>
+    <div class="clock-zone">
+      <div class="clock-label">New York · ET</div>
+      <div class="clock-time et" id="c-et">--:--:--</div>
     </div>
-    <div id="msg"></div>
+    <div class="clock-date">
+      <div class="clock-date-main" id="c-date">—</div>
+      <div class="clock-date-sub"  id="c-week">—</div>
+    </div>
+  </div>
+</div>
+
+<!-- Stats strip -->
+<div class="stats-bar">
+  <div class="stat-chip">
+    <div class="stat-icon blue">📅</div>
+    <div><div class="stat-num" id="s-today">—</div><div class="stat-label">Today</div></div>
+  </div>
+  <div class="stat-chip">
+    <div class="stat-icon purple">🌅</div>
+    <div><div class="stat-num" id="s-tomorrow">—</div><div class="stat-label">Tomorrow</div></div>
+  </div>
+  <div class="stat-chip">
+    <div class="stat-icon green">📊</div>
+    <div><div class="stat-num" id="s-total">—</div><div class="stat-label">Upcoming</div></div>
+  </div>
+</div>
+
+<!-- Main 2-col layout -->
+<div class="main">
+
+  <!-- LEFT: Timeline -->
+  <div id="meeting-list">
+    <div class="empty-state">
+      <div class="empty-icon">📭</div>
+      <div class="empty-text">Loading meetings…</div>
+    </div>
   </div>
 
-  <div class="card">
-    <h2>📅 Upcoming Meetings</h2>
-    <table><thead><tr>
-      <th>Title</th><th>TRT</th><th>ET</th><th style="text-align:center">Min</th><th></th>
-    </tr></thead>
-    <tbody id="tbody"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody></table>
-  </div>
+  <!-- RIGHT: Sidebar -->
+  <div class="sidebar" style="display:flex; flex-direction:column; gap:1.25rem; position:sticky; top:76px;">
 
-  <div class="card">
-    <h2>🌙 Tonight's Briefing</h2>
-    <button class="sec" onclick="showBriefing()">Load Tomorrow's Agenda</button>
-    <div id="briefing"></div>
+    <!-- AI input card -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">✨ Add Meeting</span>
+        <span style="font-size:.7rem; color:var(--muted); background:var(--primary-light); color:var(--primary); padding:.15rem .5rem; border-radius:99px; font-weight:600;">AI</span>
+      </div>
+      <div class="card-body">
+        <div class="nl-wrap">
+          <input id="nl-input" class="nl-input" type="text"
+            placeholder="Yarın 15:00 Şebnem Hanım ile UAF toplantısı…"
+            autocomplete="off" />
+          <button id="nl-btn" class="nl-send" onclick="submitNL()" title="Add">↵</button>
+        </div>
+        <div class="nl-hint">Type naturally in Turkish or English — AI extracts everything.</div>
+        <div id="nl-status" class="nl-status"></div>
+
+        <a class="form-toggle" onclick="toggleForm(this)" href="#">⊞ Manual entry</a>
+        <div id="struct-form" class="struct-form">
+          <div class="sf-field">
+            <label class="sf-label">Title</label>
+            <input id="f-title" class="sf-input" type="text" placeholder="Meeting title" autocomplete="off" />
+          </div>
+          <div class="sf-field">
+            <label class="sf-label">Date &amp; Time · Timezone · Duration (min)</label>
+            <div class="sf-row">
+              <input id="f-start" class="sf-input" type="datetime-local" />
+              <select id="f-tz" class="sf-input" style="padding:.55rem .4rem;">
+                <option value="TRT">TRT</option>
+                <option value="ET">ET</option>
+              </select>
+              <input id="f-dur" class="sf-input" type="number" value="60" min="5" max="960" placeholder="min" />
+            </div>
+          </div>
+          <div class="sf-field" style="margin-bottom:1rem;">
+            <label class="sf-label">Description (optional)</label>
+            <input id="f-desc" class="sf-input" type="text" placeholder="Any extra context…" />
+          </div>
+          <button class="btn-add" onclick="addManual()">Add Meeting</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tomorrow's briefing -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">🌙 Tomorrow's Agenda</span>
+      </div>
+      <div class="card-body">
+        <button class="briefing-btn" onclick="loadBriefing()">📋 Load Tomorrow's Schedule</button>
+        <div id="briefing-output" class="briefing-output"></div>
+      </div>
+    </div>
+
   </div>
+</div>
 
 <script>
-function updateClock(){
-  const now=new Date();
-  const trt=now.toLocaleString('tr-TR',{timeZone:'Europe/Istanbul',hour:'2-digit',minute:'2-digit',second:'2-digit'});
-  const et=now.toLocaleString('en-US',{timeZone:'America/New_York',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
-  const d=now.toLocaleDateString('en-US',{timeZone:'Europe/Istanbul',weekday:'long',year:'numeric',month:'long',day:'numeric'});
-  document.getElementById('clock').textContent=`${d}  ·  TRT ${trt}  ·  ET ${et}`;
+// ── Clock ──────────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('c-trt').textContent = now.toLocaleTimeString('tr-TR', { timeZone: 'Europe/Istanbul', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  document.getElementById('c-et').textContent  = now.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  document.getElementById('c-date').textContent = now.toLocaleDateString('en-GB', { timeZone: 'Europe/Istanbul', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  document.getElementById('c-week').textContent = 'ISO Week ' + isoWeek(now);
 }
-setInterval(updateClock,1000);updateClock();
-
-function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-
-async function loadMeetings(){
-  try{
-    const r=await fetch('/meetings/');
-    const data=await r.json();
-    const tb=document.getElementById('tbody');
-    if(!data.length){tb.innerHTML='<tr><td colspan="5" class="empty">No upcoming meetings.</td></tr>';return;}
-    tb.innerHTML=data.map(m=>`<tr>
-      <td><strong>${esc(m.title)}</strong>${m.description?`<div class="desc-sm">${esc(m.description)}</div>`:''}</td>
-      <td class="trt">${esc(m.start_trt)}</td>
-      <td class="et">${esc(m.start_et)}</td>
-      <td class="dur">${m.duration_minutes}</td>
-      <td><button class="del" onclick="del(${m.id})">✕</button></td>
-    </tr>`).join('');
-  }catch(e){document.getElementById('tbody').innerHTML='<tr><td colspan="5" class="empty">Could not load meetings.</td></tr>';}
+function isoWeek(d) {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));
+  return Math.ceil((((t - new Date(Date.UTC(t.getUTCFullYear(),0,1))) / 86400000) + 1) / 7);
 }
+setInterval(updateClock, 1000); updateClock();
 
-async function addMeeting(){
-  const title=document.getElementById('f-title').value.trim();
-  const start=document.getElementById('f-start').value;
-  const tz=document.getElementById('f-tz').value;
-  const dur=parseInt(document.getElementById('f-dur').value)||60;
-  const desc=document.getElementById('f-desc').value.trim();
-  const msg=document.getElementById('msg');
-  if(!title||!start){msg.style.color='#ff5555';msg.textContent='Title and start time are required.';return;}
-  msg.style.color='#555';msg.textContent='Saving…';
-  try{
-    const r=await fetch('/meetings/',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({title,description:desc||null,start_time:start,duration_minutes:dur,timezone:tz})});
-    if(r.ok){
-      msg.style.color='#00ff88';msg.textContent='Meeting added ✓';
-      document.getElementById('f-title').value='';document.getElementById('f-desc').value='';document.getElementById('f-start').value='';
-      loadMeetings();
-    }else{const e=await r.json();msg.style.color='#ff5555';msg.textContent='Error: '+(e.detail||JSON.stringify(e));}
-  }catch(e){msg.style.color='#ff5555';msg.textContent='Network error.';}
+// ── Helpers ────────────────────────────────────────────────────
+const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+function timePart(s) { return s ? (s.split(' ')[1] || '') : ''; }
+function datePart(s) { return s ? s.split(' ')[0] : ''; }
+function etTimePart(s) {
+  if (!s) return '';
+  const parts = s.trim().split(/\s+/);
+  return parts.length >= 2 ? parts[parts.length - 2] + ' ' + parts[parts.length - 1] : s;
 }
 
-async function del(id){
-  if(!confirm('Delete this meeting?'))return;
-  await fetch(`/meetings/${id}`,{method:'DELETE'});
+function trtDayLabel(dateStr) {
+  const fmt = tz => new Date().toLocaleDateString('tr-TR', { timeZone: tz, day: '2-digit', month: '2-digit', year: 'numeric' });
+  const today    = fmt('Europe/Istanbul');
+  const tomorrow = (() => { const d = new Date(); d.setDate(d.getDate()+1); return d.toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul', day: '2-digit', month: '2-digit', year: 'numeric' }); })();
+  if (dateStr === today)    return 'Today';
+  if (dateStr === tomorrow) return 'Tomorrow';
+  const p = dateStr.split('.');
+  if (p.length === 3) {
+    const d = new Date(`${p[2]}-${p[1]}-${p[0]}`);
+    if (!isNaN(d)) return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+  }
+  return dateStr;
+}
+
+// ── Render timeline ────────────────────────────────────────────
+function renderMeetings(meetings) {
+  const container = document.getElementById('meeting-list');
+  // Stats
+  const trtToday    = new Date().toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul', day: '2-digit', month: '2-digit', year: 'numeric' });
+  const trtTomorrow = (() => { const d = new Date(); d.setDate(d.getDate()+1); return d.toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul', day: '2-digit', month: '2-digit', year: 'numeric' }); })();
+  document.getElementById('s-today').textContent    = meetings.filter(m => datePart(m.start_trt) === trtToday).length;
+  document.getElementById('s-tomorrow').textContent = meetings.filter(m => datePart(m.start_trt) === trtTomorrow).length;
+  document.getElementById('s-total').textContent    = meetings.length;
+
+  if (!meetings.length) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">No upcoming meetings.<br>Add one using the panel on the right.</div></div>`;
+    return;
+  }
+
+  // Group by TRT date
+  const groups = {};
+  meetings.forEach(m => { const d = datePart(m.start_trt); (groups[d] = groups[d] || []).push(m); });
+
+  container.innerHTML = Object.entries(groups).map(([day, items]) => `
+    <div class="day-group">
+      <div class="day-header">
+        <span class="day-label">${esc(trtDayLabel(day))}</span>
+        <span class="day-line"></span>
+        <span class="day-count">${items.length} meeting${items.length !== 1 ? 's' : ''}</span>
+      </div>
+      ${items.map(m => `
+        <div class="mtg-card" id="mtg-${m.id}">
+          <div class="mtg-time-col">
+            <div class="mtg-trt">${esc(timePart(m.start_trt))}</div>
+            <div class="mtg-et">${esc(etTimePart(m.start_et))}</div>
+          </div>
+          <div class="mtg-body">
+            <div class="mtg-title" title="${esc(m.title)}">${esc(m.title)}</div>
+            ${m.description ? `<div class="mtg-desc">${esc(m.description)}</div>` : ''}
+            <div class="mtg-dur">⏱ ${m.duration_minutes} min</div>
+          </div>
+          <button class="mtg-del" onclick="deleteMeeting(${m.id})" title="Delete">✕</button>
+        </div>`).join('')}
+    </div>`).join('');
+}
+
+async function loadMeetings() {
+  try {
+    const r = await fetch('/meetings/');
+    if (r.ok) renderMeetings(await r.json());
+  } catch(_) {}
+}
+
+async function deleteMeeting(id) {
+  const card = document.getElementById(`mtg-${id}`);
+  if (card) { card.style.opacity = '.35'; card.style.pointerEvents = 'none'; }
+  await fetch(`/meetings/${id}`, { method: 'DELETE' });
   loadMeetings();
 }
 
-async function showBriefing(){
-  const div=document.getElementById('briefing');
-  div.style.display='block';div.textContent='Loading…';
-  try{
-    const r=await fetch('/meetings/tomorrow');
-    const data=await r.json();
-    if(!data.length){div.textContent='No meetings tomorrow. 🎉';return;}
-    div.textContent='🌙 Yarın:\n'+data.map(m=>`  • ${m.title} — ${m.start_trt.split(' ').slice(3).join(' ')} / ${m.start_et}  (${m.duration_minutes} min)`).join('\n');
-  }catch(e){div.textContent='Could not load.';}
+// ── NL submit ─────────────────────────────────────────────────
+function setStatus(msg, color) {
+  const el = document.getElementById('nl-status');
+  el.textContent = msg;
+  el.style.color = color || 'var(--muted)';
+}
+
+async function submitNL() {
+  const input = document.getElementById('nl-input');
+  const btn   = document.getElementById('nl-btn');
+  const text  = input.value.trim();
+  if (!text) return;
+  btn.disabled = true; btn.textContent = '…';
+  setStatus('AI is parsing your input…', 'var(--muted)');
+  try {
+    const res = await fetch('/meetings/parse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    if (res.ok) {
+      const m = await res.json();
+      setStatus(`✓ Added: "${m.title}" — ${trtDayLabel(datePart(m.start_trt))} at ${timePart(m.start_trt)}`, 'var(--success)');
+      input.value = '';
+      loadMeetings();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      setStatus('⚠ ' + (err.detail || `Error ${res.status}`), 'var(--danger)');
+    }
+  } catch(_) { setStatus('⚠ Network error.', 'var(--danger)'); }
+  btn.disabled = false; btn.textContent = '↵';
+}
+
+document.getElementById('nl-input').addEventListener('keydown', e => { if (e.key === 'Enter') submitNL(); });
+
+// ── Manual form ───────────────────────────────────────────────
+let formOpen = false;
+function toggleForm(link) {
+  formOpen = !formOpen;
+  document.getElementById('struct-form').classList.toggle('open', formOpen);
+  link.textContent = formOpen ? '⊟ Manual entry' : '⊞ Manual entry';
+}
+
+async function addManual() {
+  const title = document.getElementById('f-title').value.trim();
+  const start = document.getElementById('f-start').value;
+  const tz    = document.getElementById('f-tz').value;
+  const dur   = parseInt(document.getElementById('f-dur').value) || 60;
+  const desc  = document.getElementById('f-desc').value.trim();
+  if (!title || !start) { setStatus('Title and start time are required.', 'var(--danger)'); return; }
+  setStatus('Saving…', 'var(--muted)');
+  try {
+    const res = await fetch('/meetings/', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, description: desc || null, start_time: start, duration_minutes: dur, timezone: tz })
+    });
+    if (res.ok) {
+      setStatus('✓ Meeting added!', 'var(--success)');
+      ['f-title','f-desc','f-start'].forEach(id => document.getElementById(id).value = '');
+      loadMeetings();
+    } else {
+      const e = await res.json().catch(()=>({}));
+      setStatus('⚠ ' + (e.detail || 'Error'), 'var(--danger)');
+    }
+  } catch(_) { setStatus('⚠ Network error.', 'var(--danger)'); }
+}
+
+// ── Briefing ──────────────────────────────────────────────────
+async function loadBriefing() {
+  const out = document.getElementById('briefing-output');
+  out.style.display = 'block';
+  out.innerHTML = '<div style="padding:.75rem 1rem; color:var(--muted); font-size:.83rem;">Loading…</div>';
+  try {
+    const r = await fetch('/meetings/tomorrow');
+    const data = await r.json();
+    if (!data.length) {
+      out.innerHTML = '<div style="padding:.9rem 1rem; color:var(--muted); font-size:.83rem; text-align:center;">🎉 No meetings tomorrow!</div>';
+      return;
+    }
+    out.innerHTML = data.map(m => `
+      <div class="briefing-item">
+        <span class="bi-time">${esc(timePart(m.start_trt))}</span>
+        <span class="bi-title">${esc(m.title)}</span>
+        <span class="bi-dur">${m.duration_minutes}m</span>
+      </div>`).join('');
+  } catch(_) {
+    out.innerHTML = '<div style="padding:.75rem 1rem; color:var(--danger); font-size:.83rem;">Could not load.</div>';
+  }
 }
 
 loadMeetings();
+setInterval(loadMeetings, 60000);
 </script>
 </body>
 </html>
