@@ -23,6 +23,18 @@ You are given:
 4. Selected standard: {standard}
 5. Audit stage: {stage}
 
+---
+CLAUSE APPLICABILITY FOR THIS JOB
+Write report content ONLY for applicable clauses listed below:
+{applicable_clauses}
+
+For any clause listed below as NOT applicable, write exactly this in
+the content field: "This clause is not applicable to the organization
+based on its defined scope of certification."
+NOT APPLICABLE CLAUSES:
+{excluded_clauses}
+---
+
 Your task is to WRITE THE COMPLETED REPORT reflecting a successful audit outcome.
 
 CRITICAL RULES
@@ -137,6 +149,12 @@ STRICT FORMATTING RULES:
 TEMPLATE SECTIONS TO COMPLETE:
 {template_sections}
 
+---
+
+ACCREDITATION BODY REQUIREMENTS
+The following requirements are set by the accreditation body and MUST be observed
+in every finding you write:
+{accreditation_instruction}
 ---
 
 NOTE ON READING THE EVIDENCE BELOW

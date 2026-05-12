@@ -57,5 +57,5 @@ EXPOSE 8000
 
 # Default command: start the FastAPI API server.
 # Override in docker-compose for the Celery worker.
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
 

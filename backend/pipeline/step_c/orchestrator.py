@@ -21,7 +21,7 @@ from config.settings import get_settings
 from schemas.models import (
     ExtractedEvidence, GeneratedReport, ValidatedReport,
     CorrectionLog, TemplateMap, StyleGuidance,
-    ISOStandard, AuditStage, ReportLanguage,
+    ISOStandard, AuditStage, ReportLanguage, ScopeAnalysisResult,
 )
 from pipeline.step_b.context_builder import get_language_instruction
 from pipeline.step_a.evidence_parser import format_evidence_for_prompt
@@ -72,6 +72,8 @@ def run_step_c(
     template_map: TemplateMap,
     style_guidance: StyleGuidance,
     language: ReportLanguage | None = None,
+    scope_analysis: ScopeAnalysisResult | None = None,
+    accreditation_instruction: str = "",
 ) -> tuple[ValidatedReport, CorrectionLog]:
     """
     Execute Step C: Validation & Correction.
@@ -83,6 +85,7 @@ def run_step_c(
         template_map:      Section map from blank template.
         style_guidance:    Style/blocked-name guidance.
         language:          Report output language (EN or TR). Defaults to EN.
+        scope_analysis:    Optional Step 0 result used to verify clause coverage.
 
     Returns:
         (ValidatedReport, CorrectionLog) — both persisted as artifacts.
@@ -96,6 +99,25 @@ def run_step_c(
         "[Step C] Starting validation & correction | job=%s | language=%s",
         job_id, (language.value if language else "EN"),
     )
+
+    # Build mandatory/excluded clause context from scope analysis
+    if scope_analysis:
+        mandatory_lines = []
+        excluded_lines = []
+        for std_code, std_result in scope_analysis.standards.items():
+            for cid in std_result.applicable_clause_ids:
+                mandatory_lines.append(f"  - [{std_code}] {cid}")
+            for cid in std_result.excluded_clause_ids:
+                excluded_lines.append(f"  - [{std_code}] {cid}")
+        mandatory_clause_text = "\n".join(mandatory_lines) if mandatory_lines else "All clauses mandatory"
+        excluded_clauses_text = "\n".join(excluded_lines) if excluded_lines else "None"
+        logger.info(
+            "[Step C] Scope analysis injected: %d mandatory, %d excluded clause entries",
+            len(mandatory_lines), len(excluded_lines),
+        )
+    else:
+        mandatory_clause_text = "All clauses mandatory — no scope analysis available"
+        excluded_clauses_text = "None"
 
     # --- T20: Pre-validation ---
     pre_issues = run_pre_validation(generated_report, template_map, style_guidance)
@@ -118,6 +140,9 @@ def run_step_c(
         "generated_report": report_text,
         "extracted_evidence": evidence_text,
         "language_instruction": get_language_instruction(language),
+        "mandatory_clauses": mandatory_clause_text,
+        "excluded_clauses": excluded_clauses_text,
+        "accreditation_instruction": accreditation_instruction or "",
     }
 
     # Append pre-validation issues as a note at the end of the prompt

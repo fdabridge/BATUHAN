@@ -38,6 +38,7 @@ class ReportLanguage(str, Enum):
 class JobState(str, Enum):
     QUEUED = "QUEUED"
     PREPROCESSING = "PREPROCESSING"
+    STEP_0 = "STEP_0"
     STEP_A = "STEP_A"
     STEP_B = "STEP_B"
     STEP_C = "STEP_C"
@@ -187,6 +188,29 @@ class ValidatedReport(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Step 0 — Scope Analysis Output
+# ---------------------------------------------------------------------------
+
+class ClauseApplicabilityDecision(BaseModel):
+    clause_id: str
+    title: str
+    decision: str        # "applicable" or "not_applicable"
+    reason: str
+
+
+class StandardScopeResult(BaseModel):
+    standard_code: str
+    scope_statement: str
+    applicable_clause_ids: list[str]
+    excluded_clause_ids: list[str]
+    decisions: list[ClauseApplicabilityDecision]
+
+
+class ScopeAnalysisResult(BaseModel):
+    standards: dict[str, StandardScopeResult]  # keyed by standard_code
+
+
+# ---------------------------------------------------------------------------
 # Final Delivery
 # ---------------------------------------------------------------------------
 
@@ -200,4 +224,78 @@ class JobResult(BaseModel):
     files_used: list[str]
     correction_count: int
     completed_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Review — Audit Report Review Models
+# ---------------------------------------------------------------------------
+
+class AccreditationBody(str, Enum):
+    UAF = "UAF"
+    TURKAK = "TURKAK"
+
+
+class ReviewJobState(str, Enum):
+    QUEUED = "QUEUED"
+    PREPROCESSING = "PREPROCESSING"
+    REVIEWING = "REVIEWING"
+    ANNOTATING = "ANNOTATING"
+    COMPLETE = "COMPLETE"
+    FAILED = "FAILED"
+
+
+class ReviewFindingType(str, Enum):
+    MISSING_SECTION = "MISSING_SECTION"
+    WEAK_EVIDENCE = "WEAK_EVIDENCE"
+    NC_MISCLASSIFICATION = "NC_MISCLASSIFICATION"
+    VAGUE_FINDING = "VAGUE_FINDING"
+    MISSING_NC_CLAUSE_REF = "MISSING_NC_CLAUSE_REF"
+    MISSING_NC_RATIONALE = "MISSING_NC_RATIONALE"
+    PLACEHOLDER = "PLACEHOLDER"
+    FORBIDDEN_PHRASE = "FORBIDDEN_PHRASE"
+    STANDARD_SPECIFIC_MISSING = "STANDARD_SPECIFIC_MISSING"
+    INSUFFICIENT_EVIDENCE_SPECIFICITY = "INSUFFICIENT_EVIDENCE_SPECIFICITY"
+    OK = "OK"
+
+
+class ReviewFindingSeverity(str, Enum):
+    CRITICAL = "CRITICAL"
+    MAJOR = "MAJOR"
+    MINOR = "MINOR"
+    WARNING = "WARNING"
+    OK = "OK"
+
+
+class ReviewFinding(BaseModel):
+    clause_id: str
+    clause_title: str
+    finding_type: ReviewFindingType
+    severity: ReviewFindingSeverity
+    description: str
+    suggestion: str
+    quote: str = ""       # verbatim excerpt from the report that triggered this finding
+
+
+class ReviewResult(BaseModel):
+    review_job_id: str
+    standard_code: str
+    stage: str
+    accreditation_body: str
+    total_findings: int
+    critical_count: int
+    major_count: int
+    minor_count: int
+    warning_count: int
+    findings: list[ReviewFinding]
+    overall_assessment: str   # one paragraph summary
+
+
+class ReviewJobStatus(BaseModel):
+    review_job_id: str
+    state: ReviewJobState
+    standard_code: str = ""
+    accreditation_body: str = ""
+    error_message: str = ""
+    created_at: str = ""
+    completed_at: str = ""
 

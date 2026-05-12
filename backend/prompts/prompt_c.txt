@@ -93,6 +93,24 @@ If no corrections were needed, write:
 
 ---
 
+---
+ACCREDITATION BODY REQUIREMENTS
+When reviewing findings, also check compliance with these requirements set by the
+accreditation body. Flag any finding that violates them as needing correction:
+{accreditation_instruction}
+---
+
+MANDATORY CLAUSE COVERAGE
+Every clause below MUST have substantive content in the report.
+Flag any that are empty, generic, or missing as requiring correction:
+{mandatory_clauses}
+
+The following clauses are NOT applicable to this organization.
+If they appear in the report with real content, flag them —
+they should only contain the not-applicable statement:
+{excluded_clauses}
+---
+
 GENERATED REPORT TO REVIEW:
 {generated_report}
 

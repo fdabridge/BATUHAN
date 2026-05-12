@@ -1,0 +1,134 @@
+{
+  "accreditation_body": "UAF",
+  "display_name": "UAF (United Accreditation Foundation)",
+  "governing_standard": "ISO/IEC 17021-1:2015",
+
+  "nc_classifications": {
+    "major": "A nonconformity that affects the ability of the management system to achieve its intended results.",
+    "minor": "A nonconformity that does not affect the ability of the management system to achieve its intended results.",
+    "critical": "A situation contrary to legislation or regulatory requirement that may endanger human health or safety.",
+    "observation": "A positive or negative opinion about the management system that does not constitute a nonconformity but may assist improvement or inform the next audit."
+  },
+
+  "required_report_elements": [
+    "audit_scope",
+    "audit_objectives",
+    "audit_criteria",
+    "audit_dates_and_sites",
+    "audit_team_members_and_roles",
+    "findings_per_clause",
+    "nc_list_with_classification",
+    "observations_list",
+    "certification_recommendation"
+  ],
+
+  "stage_requirements": {
+    "stage_1": {
+      "mandatory_coverage": [
+        "documented_information_status",
+        "readiness_for_stage_2_assessment",
+        "internal_audit_and_management_review_status",
+        "areas_likely_to_be_ncs_in_stage_2",
+        "scope_of_certification_confirmed"
+      ],
+      "nc_types_allowed": ["major", "minor", "observation"],
+      "site_visit_required": false,
+      "clause_coverage": "documentation_focused"
+    },
+    "stage_2": {
+      "mandatory_coverage": [
+        "all_clauses_of_selected_standard",
+        "operational_control_evidence",
+        "internal_audit_and_management_review_evidence",
+        "legal_regulatory_compliance_evidence",
+        "management_responsibility_evidence"
+      ],
+      "nc_types_allowed": ["major", "minor", "critical", "observation"],
+      "site_visit_required": true,
+      "clause_coverage": "all_clauses_mandatory"
+    }
+  },
+
+  "finding_depth_requirements": {
+    "minimum_finding_length_words": 20,
+    "must_reference_evidence": true,
+    "evidence_types_accepted": [
+      "document_reference",
+      "record_reference",
+      "interview_reference",
+      "observation_of_process",
+      "site_observation"
+    ],
+    "vague_finding_patterns": [
+      "satisfactory",
+      "adequate",
+      "good",
+      "acceptable",
+      "in order",
+      "found to be compliant",
+      "no issues found",
+      "meets requirements"
+    ]
+  },
+
+  "nc_rules": {
+    "major_nc_must_be_closed_before_certification": true,
+    "minor_nc_requires_corrective_action_plan": true,
+    "nc_must_reference_specific_clause": true,
+    "nc_must_state_objective_evidence": true,
+    "nc_must_not_be_vague": true
+  },
+
+  "standard_specific_rules": {
+    "ENMS": {
+      "required_statements": [
+        "Explicit statement that continuous improvement of the EnMS has been achieved with supporting audit evidence.",
+        "Explicit statement that continuous energy performance improvement has been achieved with supporting audit evidence."
+      ]
+    },
+    "ISMS": {
+      "required_elements": [
+        "Statement of Applicability referenced or reviewed",
+        "Risk treatment plan evidence",
+        "Annex A control coverage addressed"
+      ]
+    },
+    "FSMS": {
+      "required_elements": [
+        "HACCP plan review evidence",
+        "PRP verification evidence",
+        "Traceability system evidence"
+      ]
+    }
+  },
+
+  "multisite_rules": {
+    "sampling_plan_required": true,
+    "all_sites_same_scope_required": true,
+    "central_function_audit_required": true
+  },
+
+  "forbidden_in_findings": [
+    "satisfactory",
+    "adequate",
+    "good system",
+    "no issues",
+    "meets all requirements",
+    "fully compliant",
+    "everything is in order"
+  ],
+
+  "severity_levels": ["CRITICAL", "MAJOR", "MINOR", "WARNING", "OK"],
+
+  "review_check_types": [
+    "MISSING_SECTION",
+    "WEAK_EVIDENCE",
+    "NC_MISCLASSIFICATION",
+    "VAGUE_FINDING",
+    "MISSING_NC_CLAUSE_REF",
+    "PLACEHOLDER",
+    "FORBIDDEN_PHRASE",
+    "STANDARD_SPECIFIC_MISSING",
+    "OK"
+  ]
+}

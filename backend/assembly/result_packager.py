@@ -53,8 +53,12 @@ def _assemble_with_llm_mapper(
         get_cell_mapping,
         apply_cell_mapping,
         strip_template_instruction_cells,
+        template_to_structure_text,
     )
+    from assembly.column_semantics import build_column_semantic_map
     from schemas.models import ISOStandard
+    from config.settings import get_settings
+    import anthropic as _anthropic
 
     selected_standards: list[ISOStandard] = list(standards) if standards else [ISOStandard.QMS]
 
@@ -63,6 +67,26 @@ def _assemble_with_llm_mapper(
         job_id, [s.value for s in selected_standards],
     )
 
+    # Build semantic column map once — used by _auto_tick_conclusion_cells
+    # to determine Findings/Conclusion columns without relying on regex alone.
+    _settings = get_settings()
+    _client = _anthropic.Anthropic(api_key=_settings.anthropic_api_key)
+
+    template_structure_text = template_to_structure_text(template_path, selected_standards)
+
+    semantic_map = None
+    try:
+        semantic_map = build_column_semantic_map(
+            template_structure_text=template_structure_text,
+            client=_client,
+            model=_settings.claude_model,
+        )
+    except Exception as e:
+        logger.warning(
+            "[Packager] Could not build semantic column map: %s. Using regex fallback. | job=%s",
+            e, job_id,
+        )
+
     mapping = get_cell_mapping(
         template_path=template_path,
         validated_report=validated_report,
@@ -70,12 +94,13 @@ def _assemble_with_llm_mapper(
         job_id=job_id,
         org_info=org_info,
         language=language,
+        semantic_map=semantic_map,
     )
 
     doc = Document(template_path)
     body = doc.element.body
 
-    filled = apply_cell_mapping(body, mapping)
+    filled = apply_cell_mapping(body, mapping, semantic_map=semantic_map)
     cleared = strip_template_instruction_cells(body)
 
     logger.info(

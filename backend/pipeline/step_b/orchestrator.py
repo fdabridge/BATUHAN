@@ -21,7 +21,7 @@ from pathlib import Path
 from config.settings import get_settings
 from schemas.models import (
     ExtractedEvidence, GeneratedReport, TemplateMap, StyleGuidance,
-    ISOStandard, AuditStage, ReportLanguage,
+    ISOStandard, AuditStage, ReportLanguage, ScopeAnalysisResult,
 )
 from pipeline.step_a.evidence_parser import format_evidence_for_prompt
 from pipeline.step_b.context_builder import build_prompt_b_context
@@ -72,6 +72,8 @@ def run_step_b(
     standards: list[ISOStandard],
     stage: AuditStage,
     language: ReportLanguage | None = None,
+    scope_analysis: ScopeAnalysisResult | None = None,
+    accreditation_instruction: str = "",
 ) -> GeneratedReport:
     """
     Execute Step B: Report Generation.
@@ -84,6 +86,7 @@ def run_step_b(
         standards:      Selected ISO standard(s). Multiple = integrated audit.
         stage:          Audit stage.
         language:       Report output language (EN or TR). Defaults to EN.
+        scope_analysis: Optional Step 0 result used to filter clause coverage.
 
     Returns:
         GeneratedReport with all sections filled and safety-checked.
@@ -97,11 +100,33 @@ def run_step_b(
         job_id, (language.value if language else "EN"),
     )
 
+    # Build applicable/excluded clause context from scope analysis
+    if scope_analysis:
+        applicable_lines = []
+        excluded_lines = []
+        for std_code, std_result in scope_analysis.standards.items():
+            for cid in std_result.applicable_clause_ids:
+                applicable_lines.append(f"  - [{std_code}] {cid}")
+            for cid in std_result.excluded_clause_ids:
+                excluded_lines.append(f"  - [{std_code}] {cid}")
+        applicable_clauses_text = "\n".join(applicable_lines) if applicable_lines else "All clauses applicable"
+        excluded_clauses_text = "\n".join(excluded_lines) if excluded_lines else "None"
+        logger.info(
+            "[Step B] Scope analysis injected: %d applicable, %d excluded clause entries",
+            len(applicable_lines), len(excluded_lines),
+        )
+    else:
+        applicable_clauses_text = "All clauses applicable — no scope analysis available"
+        excluded_clauses_text = "None"
+
     prompt_template = _load_prompt_b()
     evidence_text = format_evidence_for_prompt(evidence)
     expected_titles = [s.title for s in sorted(template_map.sections, key=lambda x: x.order_index)]
 
     ctx = build_prompt_b_context(standards, stage, template_map, style_guidance, evidence_text, language=language)
+    ctx["applicable_clauses"] = applicable_clauses_text
+    ctx["excluded_clauses"] = excluded_clauses_text
+    ctx["accreditation_instruction"] = accreditation_instruction or ""
     prompt = _build_prompt(prompt_template, ctx)
 
     last_error: Exception | None = None

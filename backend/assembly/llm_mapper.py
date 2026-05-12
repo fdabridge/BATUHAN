@@ -22,6 +22,9 @@ from lxml import etree
 from docx import Document
 from config.settings import get_settings
 from schemas.models import ValidatedReport, ISOStandard
+from assembly.column_semantics import (
+    ColumnSemanticMap, build_column_semantic_map, extract_table_col,
+)
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -73,6 +76,7 @@ _LARGE_TABLE_THRESHOLD = 40
 _ROW_CHUNK_SIZE = 35
 
 # Column-type detection for auto-tick post-processing
+# Legacy regex fallback — used when semantic map has no entry for a column
 _CONCLUSION_COL_RE = re.compile(r"conclusion|result|\u2713|tick|\bnc\b|\bobs\b", re.IGNORECASE)
 _FINDINGS_COL_RE   = re.compile(r"finding|observation|remark",                re.IGNORECASE)
 
@@ -607,7 +611,11 @@ def parse_cell_mapping(response: str) -> dict[str, str]:
 # Auto-tick helper — post-fills Conclusion cells when Claude missed them
 # ---------------------------------------------------------------------------
 
-def _auto_tick_conclusion_cells(body, mapping: dict[str, str]) -> int:
+def _auto_tick_conclusion_cells(
+    body,
+    mapping: dict[str, str],
+    semantic_map: "ColumnSemanticMap | None" = None,
+) -> int:
     """
     For each table, detect the Findings column and the Conclusion/Result column
     from the header row, then add √ to any Conclusion cell that is:
@@ -615,8 +623,27 @@ def _auto_tick_conclusion_cells(body, mapping: dict[str, str]) -> int:
       • not already assigned by Claude in *mapping*, AND
       • in the same row as a Findings cell that *is* in the mapping.
 
+    Uses semantic_map for column-role detection when available;
+    falls back to _CONCLUSION_COL_RE / _FINDINGS_COL_RE otherwise.
     Modifies *mapping* in-place.  Returns the count of ticks added.
     """
+
+    def _is_conclusion_col(header_text: str, tbl_num: int, col_num: int) -> bool:
+        if semantic_map and semantic_map.table_col_roles:
+            role = semantic_map.get_role(tbl_num, col_num)
+            if role != "other":
+                return role == "conclusion"
+        # Fallback to regex
+        return bool(_CONCLUSION_COL_RE.search(header_text))
+
+    def _is_findings_col(header_text: str, tbl_num: int, col_num: int) -> bool:
+        if semantic_map and semantic_map.table_col_roles:
+            role = semantic_map.get_role(tbl_num, col_num)
+            if role != "other":
+                return role == "findings"
+        # Fallback to regex
+        return bool(_FINDINGS_COL_RE.search(header_text))
+
     added = 0
     tbl_num = 0
     for tbl in body.findall(_wtag("tbl")):
@@ -636,9 +663,9 @@ def _auto_tick_conclusion_cells(body, mapping: dict[str, str]) -> int:
             if len(non_empty) < 2:
                 continue
             for col_idx, col_text in non_empty:
-                if _FINDINGS_COL_RE.search(col_text):
+                if _is_findings_col(col_text, tbl_num, col_idx):
                     findings_col = col_idx
-                if _CONCLUSION_COL_RE.search(col_text):
+                if _is_conclusion_col(col_text, tbl_num, col_idx):
                     conclusion_col = col_idx
             if findings_col and conclusion_col:
                 header_row_idx = ri
@@ -669,7 +696,11 @@ def _auto_tick_conclusion_cells(body, mapping: dict[str, str]) -> int:
 # Cell filler
 # ---------------------------------------------------------------------------
 
-def apply_cell_mapping(body, mapping: dict[str, str]) -> int:
+def apply_cell_mapping(
+    body,
+    mapping: dict[str, str],
+    semantic_map: "ColumnSemanticMap | None" = None,
+) -> int:
     """
     Apply coordinate→content mapping to the document body XML.
 
@@ -677,9 +708,12 @@ def apply_cell_mapping(body, mapping: dict[str, str]) -> int:
     a Findings entry also gets a Conclusion tick (in case Claude omitted it).
     Then builds an index of all table cells by their T_R_C coordinate and
     fills matched cells.  Returns the total number of cells modified.
+
+    semantic_map is forwarded to _auto_tick_conclusion_cells for improved
+    column-role detection (falls back to regex when None or empty).
     """
     # Post-process: auto-fill √ in Conclusion cells adjacent to filled Findings cells
-    _auto_tick_conclusion_cells(body, mapping)
+    _auto_tick_conclusion_cells(body, mapping, semantic_map=semantic_map)
 
     coord_index: dict[str, object] = {}
     tbl_num = 0
@@ -721,6 +755,7 @@ def get_cell_mapping(
     job_id: str | None = None,
     org_info: dict | None = None,
     language=None,
+    semantic_map: "ColumnSemanticMap | None" = None,
 ) -> dict[str, str]:
     """
     Full LLM-guided mapping flow using chunked Claude calls:
@@ -733,6 +768,7 @@ def get_cell_mapping(
     Chunks with zero empty cells are skipped.
     Intermediate artifacts are saved to Redis when job_id is provided.
     Raises ValueError if no mappings are parsed from any chunk.
+    semantic_map is stored for use by apply_cell_mapping / _auto_tick_conclusion_cells.
     """
     chunks = _plan_call_chunks(template_path, selected_standards)
     active_chunks = [c for c in chunks if c["empty_count"] > 0]

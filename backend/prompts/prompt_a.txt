@@ -16,6 +16,16 @@ You are given:
 - Selected ISO Standard: {standard}
 - Audit Stage: {stage}
 
+---
+CLAUSE APPLICABILITY FOR THIS JOB
+The following clauses have been confirmed applicable based on the company scope:
+{applicable_clauses}
+
+The following clauses are NOT applicable to this company and must be EXCLUDED
+from evidence extraction entirely. Do not generate evidence items for these:
+{excluded_clauses}
+---
+
 Your job is NOT to write a report.
 Your job is to EXTRACT structured audit evidence.
 

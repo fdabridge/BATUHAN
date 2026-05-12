@@ -10,9 +10,11 @@ import logging
 
 from config.settings import get_settings
 from api.routes import jobs
+from api.routes import review
 from ui import router as ui_router
 from calculator.routes import router as calculator_router
 from audit_plan.routes import router as audit_plan_router
+from meetings.router import router as meetings_router
 
 settings = get_settings()
 
@@ -39,15 +41,25 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins_list,
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["*"],
 )
 
 # --- Routers ---
 app.include_router(jobs.router)
+app.include_router(review.router)
 app.include_router(ui_router.router)
 app.include_router(calculator_router)
 app.include_router(audit_plan_router)
+app.include_router(meetings_router, prefix="/meetings", tags=["meetings"])
+
+
+# --- Startup: create DB tables for meetings module ---
+@app.on_event("startup")
+def on_startup():
+    from meetings.models import create_tables
+    create_tables()
+    logger.info("Meetings tables initialised.")
 
 
 # --- Global error handler ---

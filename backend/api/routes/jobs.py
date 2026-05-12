@@ -53,6 +53,8 @@ async def create_job(
     org_address: str | None = Form(None, description="Organisation address or site"),
     org_phone: str | None = Form(None, description="Organisation phone number"),
     language: ReportLanguage = Form(ReportLanguage.EN, description="Report writing language: EN (English) or TR (Turkish)"),
+    accreditation_body: str = Form(default="UAF",
+        description="Accreditation body: UAF or TURKAK"),
 ):
     """
     Create a new BATUHAN audit job.
@@ -66,6 +68,13 @@ async def create_job(
         raise HTTPException(status_code=400, detail=f"Invalid standard code: {exc}")
     if not parsed_standards:
         raise HTTPException(status_code=400, detail="At least one standard must be selected.")
+
+    valid_bodies = ["UAF", "TURKAK"]
+    if accreditation_body.upper() not in valid_bodies:
+        raise HTTPException(
+            status_code=400,
+            detail=f"accreditation_body must be one of {valid_bodies}",
+        )
 
     job_id = generate_job_id()
     logger.info(f"Creating job {job_id} | standards={[s.value for s in parsed_standards]} | stage={stage}")
@@ -123,6 +132,7 @@ async def create_job(
             org_address or "",
             org_phone or "",
             language.value,
+            accreditation_body.upper(),
         )
         logger.info(
             f"Job {job_id} queued with {len(company_files)} company docs, "
@@ -196,4 +206,24 @@ def download_corrections(job_id: str):
         return PlainTextResponse(content=content, media_type="text/plain")
     except Exception:
         raise HTTPException(status_code=404, detail="Correction log not ready yet.")
+
+
+@router.get("/{job_id}/download/coverage-report")
+def download_coverage_report(job_id: str):
+    """Download the clause coverage validation report as a text file."""
+    if not job_exists(job_id):
+        raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+    try:
+        data = read_text_artifact(job_id, "coverage_validation_report.txt")
+        if not data:
+            raise HTTPException(status_code=404, detail="Coverage report not found")
+        return Response(
+            content=data,
+            media_type="text/plain",
+            headers={"Content-Disposition": f"attachment; filename=coverage_report_{job_id}.txt"},
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=404, detail="Coverage report not found")
 

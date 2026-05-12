@@ -1,0 +1,29 @@
+{
+  "standard_code": "MDQMS",
+  "standard_name": "ISO 13485:2016",
+  "clauses": [
+    {"clause_id": "4.1", "title": "General requirements", "applicability": "always_applicable"},
+    {"clause_id": "4.2", "title": "Documentation requirements", "applicability": "always_applicable"},
+    {"clause_id": "5.1", "title": "Management commitment", "applicability": "always_applicable"},
+    {"clause_id": "5.2", "title": "Customer focus", "applicability": "always_applicable"},
+    {"clause_id": "5.3", "title": "Quality policy", "applicability": "always_applicable"},
+    {"clause_id": "5.4", "title": "Planning", "applicability": "always_applicable"},
+    {"clause_id": "5.5", "title": "Responsibility, authority and communication", "applicability": "always_applicable"},
+    {"clause_id": "5.6", "title": "Management review", "applicability": "always_applicable"},
+    {"clause_id": "6.1", "title": "Provision of resources", "applicability": "always_applicable"},
+    {"clause_id": "6.2", "title": "Human resources", "applicability": "always_applicable"},
+    {"clause_id": "6.3", "title": "Infrastructure", "applicability": "always_applicable"},
+    {"clause_id": "6.4", "title": "Work environment and contamination control", "applicability": "always_applicable"},
+    {"clause_id": "7.1", "title": "Planning of product realization", "applicability": "always_applicable"},
+    {"clause_id": "7.2", "title": "Customer-related processes", "applicability": "always_applicable"},
+    {"clause_id": "7.3", "title": "Design and development", "applicability": "scope_conditional", "condition": "Applicable only if the organization performs design and development of medical devices. Not applicable if design and development is fully excluded from the defined scope and justified per regulatory requirements."},
+    {"clause_id": "7.4", "title": "Purchasing", "applicability": "scope_conditional", "condition": "Applicable if the organization purchases any products or services that affect product conformity. Not applicable only if no external purchasing exists."},
+    {"clause_id": "7.5", "title": "Production and service provision", "applicability": "always_applicable"},
+    {"clause_id": "7.6", "title": "Control of monitoring and measuring equipment", "applicability": "scope_conditional", "condition": "Applicable if the organization uses monitoring or measuring equipment to verify product conformity. Not applicable only if no such equipment is used."},
+    {"clause_id": "8.1", "title": "Measurement, analysis and improvement — General", "applicability": "always_applicable"},
+    {"clause_id": "8.2", "title": "Monitoring and measurement", "applicability": "always_applicable"},
+    {"clause_id": "8.3", "title": "Control of nonconforming product", "applicability": "always_applicable"},
+    {"clause_id": "8.4", "title": "Analysis of data", "applicability": "always_applicable"},
+    {"clause_id": "8.5", "title": "Improvement", "applicability": "always_applicable"}
+  ]
+}

@@ -1,0 +1,164 @@
+{
+  "accreditation_body": "TURKAK",
+  "display_name": "TÜRKAK (Turkish Accreditation Agency)",
+  "governing_standard": "ISO/IEC 17021-1:2015",
+
+  "nc_classifications": {
+    "major": "A nonconformity that affects the ability of the management system to achieve its intended results. Must be classified with reference to the specific clause breached.",
+    "minor": "A nonconformity that does not affect the ability of the management system to achieve its intended results. Must state objective evidence and specific clause.",
+    "critical": "A situation contrary to legislation or regulatory requirement that may endanger human health or safety. Requires immediate notification.",
+    "observation": "A positive or negative opinion that may assist improvement. Must be clearly distinguished from nonconformities."
+  },
+
+  "required_report_elements": [
+    "audit_scope",
+    "audit_objectives",
+    "audit_criteria",
+    "audit_dates_and_sites",
+    "audit_team_members_and_roles",
+    "auditor_clause_assignments",
+    "findings_per_clause_with_evidence",
+    "nc_list_with_classification_and_clause",
+    "observations_list",
+    "certification_recommendation",
+    "evidence_references_per_finding"
+  ],
+
+  "stage_requirements": {
+    "stage_1": {
+      "mandatory_coverage": [
+        "documented_information_status",
+        "readiness_for_stage_2_assessment",
+        "internal_audit_and_management_review_status",
+        "areas_likely_to_be_ncs_in_stage_2",
+        "scope_of_certification_confirmed",
+        "legal_and_regulatory_requirements_identified"
+      ],
+      "nc_types_allowed": ["major", "minor", "observation"],
+      "site_visit_required": false,
+      "clause_coverage": "documentation_focused",
+      "language_requirements": "Findings must be written in objective, evidence-based language. No opinion statements without evidence reference."
+    },
+    "stage_2": {
+      "mandatory_coverage": [
+        "all_clauses_of_selected_standard",
+        "operational_control_evidence",
+        "internal_audit_and_management_review_evidence",
+        "legal_regulatory_compliance_evidence",
+        "management_responsibility_evidence",
+        "process_effectiveness_evidence"
+      ],
+      "nc_types_allowed": ["major", "minor", "critical", "observation"],
+      "site_visit_required": true,
+      "clause_coverage": "all_clauses_mandatory",
+      "language_requirements": "Every finding must cite specific document numbers, record identifiers, or named interviewees as objective evidence. General statements not accepted."
+    }
+  },
+
+  "finding_depth_requirements": {
+    "minimum_finding_length_words": 30,
+    "must_reference_evidence": true,
+    "evidence_must_be_specific": true,
+    "evidence_types_accepted": [
+      "named_document_with_version",
+      "record_with_identifier",
+      "named_interviewee_with_role",
+      "observation_of_specific_process_step",
+      "measurement_or_test_result"
+    ],
+    "vague_finding_patterns": [
+      "satisfactory",
+      "adequate",
+      "good",
+      "acceptable",
+      "in order",
+      "found to be compliant",
+      "no issues found",
+      "meets requirements",
+      "generally conforming",
+      "appears to be",
+      "seems to be",
+      "it was noted that"
+    ]
+  },
+
+  "nc_rules": {
+    "major_nc_must_be_closed_before_certification": true,
+    "minor_nc_requires_corrective_action_plan": true,
+    "nc_must_reference_specific_clause": true,
+    "nc_must_state_objective_evidence": true,
+    "nc_must_not_be_vague": true,
+    "nc_must_state_why_it_is_major_or_minor": true,
+    "nc_objective_evidence_must_be_specific": true
+  },
+
+  "standard_specific_rules": {
+    "ENMS": {
+      "required_statements": [
+        "Explicit statement that continuous improvement of the EnMS has been achieved with supporting audit evidence.",
+        "Explicit statement that continuous energy performance improvement has been achieved with supporting audit evidence.",
+        "EnPI values reviewed and compared against EnB baseline.",
+        "SEUs audited with evidence of controls."
+      ]
+    },
+    "ISMS": {
+      "required_elements": [
+        "Statement of Applicability referenced and reviewed with version",
+        "Risk treatment plan evidence with named controls",
+        "Annex A control coverage addressed with applicability justification",
+        "Incident management records reviewed"
+      ]
+    },
+    "FSMS": {
+      "required_elements": [
+        "HACCP plan review with CCP evidence",
+        "PRP verification with objective evidence",
+        "Traceability system tested with specific example",
+        "Food safety team records reviewed"
+      ]
+    },
+    "MDQMS": {
+      "required_elements": [
+        "Design and development exclusion justified if claimed",
+        "Post-market surveillance evidence if applicable",
+        "Regulatory compliance evidence (MDR/IVDR if applicable)"
+      ]
+    }
+  },
+
+  "multisite_rules": {
+    "sampling_plan_required": true,
+    "sampling_rationale_must_be_documented": true,
+    "all_sites_same_scope_required": true,
+    "central_function_audit_required": true
+  },
+
+  "forbidden_in_findings": [
+    "satisfactory",
+    "adequate",
+    "good system",
+    "no issues",
+    "meets all requirements",
+    "fully compliant",
+    "everything is in order",
+    "appears compliant",
+    "generally conforming",
+    "it was noted that"
+  ],
+
+  "severity_levels": ["CRITICAL", "MAJOR", "MINOR", "WARNING", "OK"],
+
+  "review_check_types": [
+    "MISSING_SECTION",
+    "WEAK_EVIDENCE",
+    "NC_MISCLASSIFICATION",
+    "VAGUE_FINDING",
+    "MISSING_NC_CLAUSE_REF",
+    "MISSING_NC_RATIONALE",
+    "PLACEHOLDER",
+    "FORBIDDEN_PHRASE",
+    "STANDARD_SPECIFIC_MISSING",
+    "INSUFFICIENT_EVIDENCE_SPECIFICITY",
+    "OK"
+  ]
+}
