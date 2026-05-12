@@ -1,0 +1,85 @@
+"""
+BATUHAN — Auditor Profile: FastAPI router.
+Registered in main.py at prefix="/auditors".
+
+Routes:
+  POST /auditors/ingest          — extract fields from PDF/DOCX (preview, no DB save)
+  POST /auditors/                — create auditor from JSON body
+  GET  /auditors/                — list auditors (?active_only=true)
+  GET  /auditors/{auditor_id}    — get single auditor
+  PUT  /auditors/{auditor_id}    — full replace update
+"""
+from __future__ import annotations
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from sqlalchemy.orm import Session
+
+from auditors.models import get_db
+from auditors.schemas import AuditorCreateSchema, AuditorResponseSchema, AuditorSummarySchema
+from auditors.service import (
+    create_auditor, get_auditor, list_auditors, update_auditor, delete_auditor,
+)
+from auditors.extractor import extract_auditor_from_document
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+
+@router.post("/ingest")
+async def ingest_document(file: UploadFile = File(...)):
+    """
+    Upload a PDF or DOCX auditor CV / FR.201 form.
+    Returns the Claude-extracted profile as JSON — nothing is saved to the DB.
+    Use POST / afterwards to persist the (possibly corrected) data.
+    """
+    file_bytes = await file.read()
+    result = extract_auditor_from_document(file_bytes, file.filename or "upload")
+
+    if "error" in result:
+        raise HTTPException(status_code=422, detail=result["error"])
+
+    logger.info("[Auditors/API] Ingested document '%s'", file.filename)
+    return result
+
+
+@router.post("/", response_model=AuditorResponseSchema, status_code=201)
+def create(payload: AuditorCreateSchema, db: Session = Depends(get_db)):
+    """Create a new auditor profile from a JSON body."""
+    auditor = create_auditor(db, payload)
+    return auditor
+
+
+@router.get("/", response_model=list[AuditorSummarySchema])
+def list_all(active_only: bool = True, db: Session = Depends(get_db)):
+    """List auditors. Pass ?active_only=false to include soft-deleted."""
+    return list_auditors(db, active_only=active_only)
+
+
+@router.get("/{auditor_id}", response_model=AuditorResponseSchema)
+def get_one(auditor_id: str, db: Session = Depends(get_db)):
+    """Return full auditor profile by ID."""
+    auditor = get_auditor(db, auditor_id)
+    if not auditor:
+        raise HTTPException(status_code=404, detail=f"Auditor '{auditor_id}' not found.")
+    return auditor
+
+
+@router.put("/{auditor_id}", response_model=AuditorResponseSchema)
+def update(auditor_id: str, payload: AuditorCreateSchema, db: Session = Depends(get_db)):
+    """
+    Full replace update. All child rows (EA codes, qualifications, training, etc.)
+    are deleted and re-inserted from the request body.
+    """
+    auditor = update_auditor(db, auditor_id, payload)
+    if not auditor:
+        raise HTTPException(status_code=404, detail=f"Auditor '{auditor_id}' not found.")
+    return auditor
+
+
+@router.delete("/{auditor_id}", status_code=204)
+def soft_delete(auditor_id: str, db: Session = Depends(get_db)):
+    """Soft-delete an auditor (sets is_active=False)."""
+    found = delete_auditor(db, auditor_id)
+    if not found:
+        raise HTTPException(status_code=404, detail=f"Auditor '{auditor_id}' not found.")

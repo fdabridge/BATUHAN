@@ -1,0 +1,108 @@
+"""
+BATUHAN — Auditor Profile: Pydantic v2 schemas.
+"""
+from __future__ import annotations
+from datetime import datetime
+from typing import Optional
+from pydantic import BaseModel, ConfigDict
+
+
+# ── Nested child schemas ───────────────────────────────────────
+
+class EducationItem(BaseModel):
+    degree: Optional[str] = None
+    institution: Optional[str] = None
+    year: Optional[str] = None
+
+class LanguageItem(BaseModel):
+    language: Optional[str] = None
+    level: Optional[str] = None     # Native, C1, B2 …
+
+class StandardQualificationItem(BaseModel):
+    standard_code: Optional[str] = None
+    technical_depth: Optional[str] = None  # Lead Auditor, Team Auditor …
+    experience_years: Optional[int] = None
+
+class WorkExperienceItem(BaseModel):
+    employer: Optional[str] = None
+    position: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    description: Optional[str] = None
+
+class TrainingRecordItem(BaseModel):
+    training_date: Optional[str] = None
+    institution: Optional[str] = None
+    subject: Optional[str] = None
+    duration_days: Optional[int] = None
+    standard_code: Optional[str] = None
+    certificate_available: Optional[bool] = False
+
+class AuditLogItem(BaseModel):
+    audit_date: Optional[str] = None
+    client_name: Optional[str] = None
+    standard_code: Optional[str] = None
+    role: Optional[str] = None      # Lead Auditor / Team Auditor / Witness
+    notes: Optional[str] = None
+
+
+# ── Create / Update ────────────────────────────────────────────
+
+class AuditorCreateSchema(BaseModel):
+    name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    mobile: Optional[str] = None
+    role: Optional[str] = None
+    field_of_expertise: Optional[str] = None
+    ea_codes: Optional[list[str]] = None
+    accreditation_bodies: Optional[list[str]] = None
+
+    education: list[EducationItem] = []
+    languages: list[LanguageItem] = []
+    standard_qualifications: list[StandardQualificationItem] = []
+    work_experience: list[WorkExperienceItem] = []
+    training_records: list[TrainingRecordItem] = []
+    audit_log: list[AuditLogItem] = []
+
+
+# ── Full response ──────────────────────────────────────────────
+
+class AuditorResponseSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    mobile: Optional[str] = None
+    role: Optional[str] = None
+    field_of_expertise: Optional[str] = None
+    ea_codes: Optional[list[str]] = None
+    accreditation_bodies: Optional[list[str]] = None
+    is_active: bool
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    education: list[EducationItem] = []
+    languages: list[LanguageItem] = []
+    standard_qualifications: list[StandardQualificationItem] = []
+    work_experience: list[WorkExperienceItem] = []
+    training_records: list[TrainingRecordItem] = []
+    audit_log: list[AuditLogItem] = []
+
+
+# ── Summary (list endpoint) ────────────────────────────────────
+
+class AuditorSummarySchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    email: Optional[str] = None
+    role: Optional[str] = None
+    field_of_expertise: Optional[str] = None
+    ea_codes: Optional[list[str]] = None
+    accreditation_bodies: Optional[list[str]] = None
+    is_active: bool
+    created_at: Optional[datetime] = None

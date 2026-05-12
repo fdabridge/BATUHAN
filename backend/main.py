@@ -15,6 +15,7 @@ from ui import router as ui_router
 from calculator.routes import router as calculator_router
 from audit_plan.routes import router as audit_plan_router
 from meetings.router import router as meetings_router
+from api.routes.auditors import router as auditors_router
 
 settings = get_settings()
 
@@ -52,6 +53,7 @@ app.include_router(ui_router.router)
 app.include_router(calculator_router)
 app.include_router(audit_plan_router)
 app.include_router(meetings_router, prefix="/meetings", tags=["meetings"])
+app.include_router(auditors_router, prefix="/auditors", tags=["auditors"])
 
 
 # --- Startup: create DB tables for meetings module ---
@@ -59,6 +61,8 @@ app.include_router(meetings_router, prefix="/meetings", tags=["meetings"])
 def on_startup():
     from meetings.models import create_tables
     create_tables()
+    from auditors.models import create_tables as auditors_create_tables
+    auditors_create_tables()
     logger.info("Meetings tables initialised.")
 
 
