@@ -16,11 +16,15 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 
 from auditors.models import get_db
-from auditors.schemas import AuditorCreateSchema, AuditorResponseSchema, AuditorSummarySchema
+from auditors.schemas import (
+    AuditorCreateSchema, AuditorResponseSchema, AuditorSummarySchema,
+    EligibilityCheckSchema, EligibilityResultSchema,
+)
 from auditors.service import (
     create_auditor, get_auditor, list_auditors, update_auditor, delete_auditor,
 )
 from auditors.extractor import extract_auditor_from_document
+from auditors.eligibility import check_eligibility
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -83,3 +87,32 @@ def soft_delete(auditor_id: str, db: Session = Depends(get_db)):
     found = delete_auditor(db, auditor_id)
     if not found:
         raise HTTPException(status_code=404, detail=f"Auditor '{auditor_id}' not found.")
+
+
+@router.post("/{auditor_id}/check-eligibility", response_model=EligibilityResultSchema)
+def eligibility_check(
+    auditor_id: str,
+    body: EligibilityCheckSchema,
+    db: Session = Depends(get_db),
+):
+    """
+    Evaluate whether an auditor is eligible to conduct an audit.
+
+    Returns HTTP 200 always — an ineligible result is NOT an HTTP error.
+    HTTP 404 only when the auditor row itself does not exist.
+
+    eligible=True  → no hard blocks found
+    eligible=False → blocking_reasons contains IAF/accreditation body violations
+    warnings       → items that must be manually verified before signing off
+    """
+    if not get_auditor(db, auditor_id):
+        raise HTTPException(status_code=404, detail=f"Auditor '{auditor_id}' not found.")
+
+    return check_eligibility(
+        db=db,
+        auditor_id=auditor_id,
+        standard_code=body.standard_code,
+        company_ea_code=body.company_ea_code,
+        accreditation_body=body.accreditation_body,
+        role=body.role,
+    )

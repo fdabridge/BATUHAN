@@ -20,8 +20,11 @@ class LanguageItem(BaseModel):
 
 class StandardQualificationItem(BaseModel):
     standard_code: Optional[str] = None
-    technical_depth: Optional[str] = None  # Lead Auditor, Team Auditor …
+    technical_depth: Optional[str] = None   # Lead Auditor, Team Auditor …
     experience_years: Optional[int] = None
+    is_qualified: Optional[bool] = True
+    last_training_date: Optional[str] = None  # "YYYY-MM-DD"
+    last_verified_date: Optional[str] = None  # "YYYY-MM-DD" — TURKAK annual check
 
 class WorkExperienceItem(BaseModel):
     employer: Optional[str] = None
@@ -90,6 +93,20 @@ class AuditorResponseSchema(BaseModel):
     work_experience: list[WorkExperienceItem] = []
     training_records: list[TrainingRecordItem] = []
     audit_log: list[AuditLogItem] = []
+
+
+# ── Eligibility ───────────────────────────────────────────────
+
+class EligibilityCheckSchema(BaseModel):
+    standard_code: str
+    company_ea_code: str
+    accreditation_body: str
+    role: str   # "lead_auditor" | "team_auditor" | "technical_expert"
+
+class EligibilityResultSchema(BaseModel):
+    eligible: bool
+    blocking_reasons: list[str]
+    warnings: list[str]
 
 
 # ── Summary (list endpoint) ────────────────────────────────────

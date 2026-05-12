@@ -77,12 +77,15 @@ class AuditorLanguage(Base):
 
 class AuditorStandardQualification(Base):
     __tablename__ = "auditor_standard_qualifications"
-    id              = Column(Integer, primary_key=True, autoincrement=True)
-    auditor_id      = Column(String, ForeignKey("auditors.id"), nullable=False)
-    standard_code   = Column(String)   # e.g. "ISO 9001", "ISO 27001"
-    technical_depth = Column(String)   # e.g. "Lead Auditor", "Team Auditor", "Technical Expert"
-    experience_years= Column(Integer)
-    auditor         = relationship("Auditor", back_populates="standard_qualifications")
+    id                = Column(Integer, primary_key=True, autoincrement=True)
+    auditor_id        = Column(String, ForeignKey("auditors.id"), nullable=False)
+    standard_code     = Column(String)   # e.g. "ISO 9001", "ISO 27001"
+    technical_depth   = Column(String)   # e.g. "Lead Auditor", "Team Auditor", "Technical Expert"
+    experience_years  = Column(Integer)
+    is_qualified      = Column(Boolean, default=True, nullable=False)
+    last_training_date= Column(String)   # ISO date "YYYY-MM-DD"
+    last_verified_date= Column(String)   # ISO date "YYYY-MM-DD" — used by TURKAK annual check
+    auditor           = relationship("Auditor", back_populates="standard_qualifications")
 
 
 class AuditorWorkExperience(Base):
