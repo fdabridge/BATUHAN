@@ -95,9 +95,13 @@
     .mtg-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: .9rem 1rem; margin-bottom: .55rem; display: flex; align-items: flex-start; gap: .9rem; transition: box-shadow .15s, border-color .15s; animation: fadeIn .22s ease; }
     .mtg-card:hover { border-color: var(--border-hover); box-shadow: var(--shadow-md); }
     @keyframes fadeIn { from { opacity:0; transform:translateY(-5px); } to { opacity:1; transform:translateY(0); } }
-    .mtg-time-col { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; gap: 3px; min-width: 52px; }
-    .mtg-trt { font-size: .88rem; font-weight: 700; color: var(--primary); font-variant-numeric: tabular-nums; }
-    .mtg-et  { font-size: .72rem; color: var(--purple); font-variant-numeric: tabular-nums; }
+    .mtg-time-col { display: flex; flex-direction: column; align-items: flex-start; flex-shrink: 0; gap: 4px; min-width: 90px; }
+    .mtg-tz-row { display: flex; align-items: baseline; gap: .35rem; }
+    .mtg-tz-badge { font-size: .6rem; font-weight: 700; letter-spacing: .05em; padding: .1rem .35rem; border-radius: 3px; line-height: 1; flex-shrink: 0; }
+    .mtg-tz-badge.trt { background: var(--primary-light); color: var(--primary); }
+    .mtg-tz-badge.et  { background: var(--purple-light);  color: var(--purple); }
+    .mtg-trt { font-size: .9rem; font-weight: 700; color: var(--primary); font-variant-numeric: tabular-nums; }
+    .mtg-et  { font-size: .85rem; font-weight: 600; color: var(--purple); font-variant-numeric: tabular-nums; }
     .mtg-body { flex: 1; min-width: 0; }
     .mtg-title { font-size: .9rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .mtg-desc { font-size: .77rem; color: var(--muted); margin-top: 2px; }
@@ -308,8 +312,14 @@ function renderMeetings(meetings) {
       ${items.map(m => `
         <div class="mtg-card" id="mtg-${m.id}">
           <div class="mtg-time-col">
-            <div class="mtg-trt">${esc(timePart(m.start_trt))}</div>
-            <div class="mtg-et">${esc(etTimePart(m.start_et))}</div>
+            <div class="mtg-tz-row">
+              <span class="mtg-tz-badge trt">TRT</span>
+              <span class="mtg-trt">${esc(timePart(m.start_trt))}</span>
+            </div>
+            <div class="mtg-tz-row">
+              <span class="mtg-tz-badge et">ET</span>
+              <span class="mtg-et">${esc(etTimePart(m.start_et))}</span>
+            </div>
           </div>
           <div class="mtg-body">
             <div class="mtg-title" title="${esc(m.title)}">${esc(m.title)}</div>

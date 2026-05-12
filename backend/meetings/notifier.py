@@ -20,6 +20,18 @@ API_KEY = os.getenv("CALLMEBOT_API_KEY", "")
 
 _CALLMEBOT_URL = "https://api.callmebot.com/whatsapp.php"
 
+# Log once at import time so Railway logs confirm the env vars are present
+if PHONE and API_KEY:
+    logger.info(
+        "[Meetings/Notifier] ✅ WhatsApp ready — phone=%s key=***%s",
+        PHONE, API_KEY[-3:],
+    )
+else:
+    logger.warning(
+        "[Meetings/Notifier] ⚠️  CALLMEBOT_PHONE or CALLMEBOT_API_KEY not set — "
+        "WhatsApp notifications are DISABLED. Set both env vars on the worker service."
+    )
+
 
 def send_whatsapp(message: str) -> None:
     """

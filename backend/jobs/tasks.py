@@ -61,20 +61,20 @@ celery_app.conf.update(
 # ---------------------------------------------------------------------------
 
 celery_app.conf.beat_schedule = {
-    # Meetings: check every 5 min for meetings starting in ~30 min
+    # Meetings: check every 5 min for meetings starting in ~30 min (TRT-based)
     "meetings-30min-checker": {
         "task": "meetings.tasks.check_upcoming_meetings",
         "schedule": crontab(minute="*/5"),
     },
-    # Meetings: nightly digest at 21:00 TRT = 18:00 UTC
+    # Meetings: nightly digest at 23:00 TRT = 20:00 UTC
     "meetings-nightly": {
         "task": "meetings.tasks.send_nightly_digest",
-        "schedule": crontab(hour=18, minute=0),
+        "schedule": crontab(hour=20, minute=0),
     },
-    # Meetings: weekly summary every Sunday 21:00 TRT = 18:00 UTC
+    # Meetings: weekly summary every Sunday 23:00 TRT = 20:00 UTC
     "meetings-weekly": {
         "task": "meetings.tasks.send_weekly_summary",
-        "schedule": crontab(hour=18, minute=0, day_of_week=0),
+        "schedule": crontab(hour=20, minute=0, day_of_week=0),
     },
 }
 

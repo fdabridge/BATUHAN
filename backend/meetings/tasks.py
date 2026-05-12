@@ -1,8 +1,8 @@
 """
 BATUHAN — Meetings Module: Celery Tasks
   check_upcoming_meetings — every 5 min: 30-min pre-meeting WhatsApp alert
-  send_nightly_digest     — 21:00 TRT (18:00 UTC): tomorrow's agenda
-  send_weekly_summary     — Sunday 21:00 TRT (18:00 UTC): full week ahead
+  send_nightly_digest     — 23:00 TRT (20:00 UTC): tomorrow's agenda
+  send_weekly_summary     — Sunday 23:00 TRT (20:00 UTC): full week ahead
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ def check_upcoming_meetings() -> None:
 
 @celery_app.task(name="meetings.tasks.send_nightly_digest")
 def send_nightly_digest() -> None:
-    """Send tomorrow's meeting agenda at 21:00 TRT."""
+    """Send tomorrow's meeting agenda at 23:00 TRT (20:00 UTC)."""
     from meetings.models import SessionLocal
     from meetings.service import trt_tomorrow, get_meetings_for_trt_date, to_trt, to_et
     from meetings.notifier import send_whatsapp
@@ -86,7 +86,7 @@ def send_nightly_digest() -> None:
 
 @celery_app.task(name="meetings.tasks.send_weekly_summary")
 def send_weekly_summary() -> None:
-    """Send the full coming-week agenda every Sunday at 21:00 TRT."""
+    """Send the full coming-week agenda every Sunday at 23:00 TRT (20:00 UTC)."""
     from meetings.models import SessionLocal
     from meetings.service import get_meetings_for_trt_date, to_trt, to_et
     from meetings.notifier import send_whatsapp
