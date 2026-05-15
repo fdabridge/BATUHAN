@@ -16,6 +16,11 @@ from calculator.routes import router as calculator_router
 from audit_plan.routes import router as audit_plan_router
 from meetings.router import router as meetings_router
 from api.routes.auditors import router as auditors_router
+from api.routes.audit_sets import router as audit_sets_router
+from api.routes.auth import router as auth_router
+from api.routes.admin_users import router as admin_users_router
+from api.routes.dashboard import router as dashboard_router
+from api.routes.config import router as config_router
 
 settings = get_settings()
 
@@ -42,7 +47,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins_list,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "DELETE"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
@@ -54,16 +59,44 @@ app.include_router(calculator_router)
 app.include_router(audit_plan_router)
 app.include_router(meetings_router, prefix="/meetings", tags=["meetings"])
 app.include_router(auditors_router, prefix="/auditors", tags=["auditors"])
+app.include_router(audit_sets_router, prefix="/audit-sets", tags=["audit-sets"])
+app.include_router(auth_router, prefix="/auth", tags=["auth"])
+app.include_router(admin_users_router, prefix="/admin", tags=["admin"])
+app.include_router(dashboard_router, prefix="/dashboard", tags=["dashboard"])
+app.include_router(config_router, prefix="/config", tags=["config"])
 
 
-# --- Startup: create DB tables for meetings module ---
+# --- Startup: create DB tables + first-admin bootstrap ---
 @app.on_event("startup")
 def on_startup():
     from meetings.models import create_tables
     create_tables()
     from auditors.models import create_tables as auditors_create_tables
     auditors_create_tables()
-    logger.info("Meetings tables initialised.")
+    from audit_set.db_models import create_tables as audit_set_create_tables
+    audit_set_create_tables()
+    from auth.db_models import create_tables as auth_create_tables, get_db as auth_get_db
+    auth_create_tables()
+
+    # First-admin bootstrap — only runs if both env vars are set
+    startup_settings = get_settings()
+    if startup_settings.admin_email and startup_settings.admin_password:
+        from auth.service import create_user, get_user_by_email
+        db = next(auth_get_db())
+        try:
+            if not get_user_by_email(db, startup_settings.admin_email):
+                create_user(
+                    db,
+                    startup_settings.admin_email,
+                    startup_settings.admin_password,
+                    "Administrator",
+                    "admin",
+                )
+                logger.info("[BATUHAN] First admin created: %s", startup_settings.admin_email)
+        finally:
+            db.close()
+
+    logger.info("All DB tables initialised.")
 
 
 # --- Global error handler ---

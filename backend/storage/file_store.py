@@ -132,6 +132,20 @@ def job_exists(job_id: str) -> bool:
     return _redis().exists(_exists_key(job_id)) > 0
 
 
+def list_job_ids() -> list[str]:
+    """Return all known job IDs by scanning Redis for `:exists` marker keys."""
+    r = _redis()
+    pattern = b"batuhan:job:*:exists"
+    ids: list[str] = []
+    for key in r.scan_iter(match=pattern, count=500):
+        k = key.decode("utf-8") if isinstance(key, bytes) else key
+        parts = k.split(":")
+        # batuhan : job : {job_id} : exists
+        if len(parts) == 4:
+            ids.append(parts[2])
+    return ids
+
+
 def delete_job(job_id: str) -> None:
     """Remove all Redis keys for a job."""
     r = _redis()

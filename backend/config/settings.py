@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     debug: bool = False
     internal_api_key: str = "change-me-in-production"
     # CORS — comma-separated in env: ALLOWED_ORIGINS=http://a.com,http://b.com
-    allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001"
     log_level: str = "INFO"
 
     @property
@@ -72,6 +72,45 @@ class Settings(BaseSettings):
     # Prompts
     # -----------------------------------------------------------------------
     prompts_dir: str = "./prompts"
+
+    # -----------------------------------------------------------------------
+    # Audit Set — blank document templates
+    # -----------------------------------------------------------------------
+    blank_set_path: str = "/Users/batuhan/BATUHAN/uaf_blank_set"
+    # On Railway set env var BLANK_SET_PATH to the deployed templates directory.
+
+    # -----------------------------------------------------------------------
+    # Branding (set per CB deployment via environment variables)
+    # -----------------------------------------------------------------------
+    cb_name: str = "IFC Global LLC"
+    cb_short_name: str = "IFC"
+    cb_logo_url: str = ""
+    cb_primary_color: str = "#1F4E79"
+    cb_website: str = "https://www.ifcglobal.us"
+    cb_email: str = "application@ifcglobal.us"
+    cb_phone: str = ""
+    cb_address: str = ""
+    cb_accreditation_bodies: str = "UAF,TURKAK"
+    cb_supported_standards: str = "QMS,EMS,OHSMS,FSMS,ISMS,MDQMS,ABMS,ENMS"
+
+    @property
+    def accreditation_bodies_list(self) -> list[str]:
+        return [x.strip() for x in self.cb_accreditation_bodies.split(",") if x.strip()]
+
+    @property
+    def supported_standards_list(self) -> list[str]:
+        return [x.strip() for x in self.cb_supported_standards.split(",") if x.strip()]
+
+    # -----------------------------------------------------------------------
+    # Auth — JWT & first-admin bootstrap
+    # -----------------------------------------------------------------------
+    secret_key: str = "change-this-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_expiry_hours: int = 8
+
+    # Set both to bootstrap the first admin on startup (leave empty to skip).
+    admin_email: str = ""
+    admin_password: str = ""
 
 
 @lru_cache()

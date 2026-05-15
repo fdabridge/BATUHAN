@@ -112,6 +112,38 @@ def _write_files(file_list: list[dict], dest_dir: Path) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Auditor instruction builder
+# ---------------------------------------------------------------------------
+
+def _build_auditor_instruction(auditor_config: dict | None) -> str:
+    """
+    Convert a JobAuditorConfig dict into a prompt instruction block.
+    Returns an empty string when no config is supplied — callers can
+    inject it directly into the prompt without extra guard checks.
+    """
+    if not auditor_config or not auditor_config.get("assignments"):
+        return ""
+
+    lines = ["The following auditors conducted this audit:"]
+    for a in auditor_config["assignments"]:
+        prefix_str = (
+            ", ".join(a["clause_prefixes"]) if a.get("clause_prefixes") else "all clauses"
+        )
+        lines.append(
+            f"- {a['auditor_name']} ({a['role'].replace('_', ' ').title()}) "
+            f"— responsible for clauses: {prefix_str}"
+        )
+
+    lines.append("")
+    lines.append(
+        "In the report, begin each clause group's findings section with "
+        "'Auditor: [Name]' on its own line, indicating who conducted that "
+        "portion of the audit."
+    )
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Pipeline task
 # ---------------------------------------------------------------------------
 
@@ -129,6 +161,7 @@ def run_pipeline(
     org_phone: str | None = None,
     language_value: str = "EN",   # "EN" or "TR"
     accreditation_body: str = "UAF",  # "UAF" or "TURKAK"
+    auditor_config: dict | None = None,
 ) -> dict:
     """
     Execute the full BATUHAN pipeline for a job:
@@ -235,7 +268,7 @@ def run_pipeline(
         style_guidance = build_style_guidance(sample_paths)
 
         # Filter out any "blocked" company names that already appear in the
-        # blank template (e.g. the certifier's own letterhead — IFC GLOBAL LLC).
+        # blank template (e.g. the certifier's own letterhead — the CB name from settings).
         # Those names belong in every report and must never be treated as leakage.
         if style_guidance.blocked_company_names:
             from parsers.text_extractor import extract_text
@@ -318,6 +351,7 @@ def run_pipeline(
             language=language,
             scope_analysis=scope_analysis,
             accreditation_instruction=accreditation_instruction,
+            auditor_instruction=_build_auditor_instruction(auditor_config),
         )
 
         # -----------------------------------------------------------

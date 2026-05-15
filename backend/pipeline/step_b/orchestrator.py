@@ -74,6 +74,7 @@ def run_step_b(
     language: ReportLanguage | None = None,
     scope_analysis: ScopeAnalysisResult | None = None,
     accreditation_instruction: str = "",
+    auditor_instruction: str = "",
 ) -> GeneratedReport:
     """
     Execute Step B: Report Generation.
@@ -127,6 +128,7 @@ def run_step_b(
     ctx["applicable_clauses"] = applicable_clauses_text
     ctx["excluded_clauses"] = excluded_clauses_text
     ctx["accreditation_instruction"] = accreditation_instruction or ""
+    ctx["auditor_instruction"] = auditor_instruction or ""
     prompt = _build_prompt(prompt_template, ctx)
 
     last_error: Exception | None = None

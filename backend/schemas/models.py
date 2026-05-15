@@ -299,3 +299,18 @@ class ReviewJobStatus(BaseModel):
     created_at: str = ""
     completed_at: str = ""
 
+
+# ---------------------------------------------------------------------------
+# Auditor Assignment (optional per-job clause attribution)
+# ---------------------------------------------------------------------------
+
+class AuditorAssignment(BaseModel):
+    auditor_id: str
+    auditor_name: str
+    role: str                   # "lead_auditor" or "auditor"
+    clause_prefixes: list[str]  # e.g. ["8.", "9.", "10."]
+
+
+class JobAuditorConfig(BaseModel):
+    assignments: list[AuditorAssignment]
+

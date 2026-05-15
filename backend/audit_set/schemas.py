@@ -1,0 +1,205 @@
+"""
+BATUHAN — Audit Set: Pydantic v2 schemas.
+Input schemas (API receives) and output schemas (API returns).
+"""
+from __future__ import annotations
+from datetime import date, datetime
+from typing import Optional
+from pydantic import BaseModel
+
+
+# ── Nested input types ─────────────────────────────────────────────────────
+
+class RepetitiveRole(BaseModel):
+    activity: str
+    employee_count: int
+
+
+class PersonnelData(BaseModel):
+    full_time: int = 0
+    part_time: int = 0
+    subcontractors: int = 0
+    seasonal: int = 0
+    unskilled: int = 0
+    shift_count: int = 1
+    shift_same_process: bool = False
+    shift_1_count: int = 0
+    shift_2_count: int = 0
+    shift_3_count: int = 0
+    repetitive_roles: list[RepetitiveRole] = []
+
+
+class SiteData(BaseModel):
+    address: str
+    process: str = ""
+    employee_count: int = 0
+    energy_tj: Optional[float] = None
+    energy_types: Optional[int] = None
+    seu_count: Optional[int] = None
+
+
+class IntegrationLevel(BaseModel):
+    document_management: bool = False
+    management_review: bool = False
+    internal_audit: bool = False
+    policy_objectives: bool = False
+    process_approach: bool = False
+    improvement_mechanism: bool = False
+    management_support: bool = False
+    risk_based_thinking: bool = False
+
+
+class AuditorAssignment(BaseModel):
+    id: Optional[str] = None
+    name: str
+    ea_code: Optional[str] = None
+    standard: Optional[str] = None
+
+
+class StageInput(BaseModel):
+    stage_type: str        # "stage_1" | "stage_2" | "surveillance"
+    stage_order: int
+    notification_date: Optional[date] = None
+    audit_date_start: Optional[date] = None
+    audit_date_end: Optional[date] = None
+    lead_auditor_id: Optional[str] = None
+    lead_auditor_name: Optional[str] = None
+    auditors: list[AuditorAssignment] = []
+    technical_experts: list[AuditorAssignment] = []
+    observers: list[AuditorAssignment] = []
+    ik_experts: list[AuditorAssignment] = []
+    evaluators: list[AuditorAssignment] = []
+    audit_days: Optional[float] = None
+    status: str = "pending"
+
+
+# ── Create / Update input schemas ──────────────────────────────────────────
+
+class AuditSetCreateSchema(BaseModel):
+    company_name: str
+    company_address: str = ""
+    country: str = ""
+    city: str = ""
+    phone: str = ""
+    email: str = ""
+    website: str = ""
+    representative: str = ""
+    standards: list[str]           # e.g. ["QMS", "EMS", "OHSMS"]
+    audit_type: str                # "initial" | "surveillance" | "recertification"
+    cycle_number: int = 1
+    accreditation_body: str = "UAF"
+    scope_tr: str = ""
+    scope_en: str = ""
+    non_applicable_clauses: str = ""
+    personnel: PersonnelData = PersonnelData()
+    sites: list[SiteData] = []
+    integration_level: IntegrationLevel = IntegrationLevel()
+    certification_fee: Optional[float] = None
+    surveillance_fee: Optional[float] = None
+    ea_code: Optional[str] = None
+    ea_category: Optional[str] = None
+    ea_technical_area: Optional[str] = None
+
+
+class AuditSetUpdatePlanningSchema(BaseModel):
+    ea_code: Optional[str] = None
+    ea_category: Optional[str] = None
+    ea_technical_area: Optional[str] = None
+    certification_fee: Optional[float] = None
+    surveillance_fee: Optional[float] = None
+    stages: list[StageInput] = []
+
+
+# ── Output schemas ─────────────────────────────────────────────────────────
+
+class StageResponse(BaseModel):
+    id: str
+    stage_type: str
+    stage_order: int
+    notification_date: Optional[date]
+    audit_date_start: Optional[date]
+    audit_date_end: Optional[date]
+    lead_auditor_name: Optional[str]
+    auditors: Optional[list]
+    technical_experts: Optional[list]
+    observers: Optional[list]
+    audit_days: Optional[float]
+    status: str
+
+    class Config:
+        from_attributes = True
+
+
+class AuditSetResponse(BaseModel):
+    id: str
+    plan_number: int
+    status: str
+    company_name: str
+    company_address: Optional[str]
+    standards: Optional[list]
+    audit_type: str
+    cycle_number: int
+    accreditation_body: Optional[str]
+    scope_tr: Optional[str]
+    scope_en: Optional[str]
+    effective_employees: Optional[int]
+    man_day_result: Optional[dict]
+    ea_code: Optional[str]
+    ea_category: Optional[str]
+    certification_fee: Optional[float]
+    surveillance_fee: Optional[float]
+    stages: list[StageResponse]
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AuditSetSummarySchema(BaseModel):
+    id: str
+    plan_number: int
+    company_name: str
+    standards: Optional[list]
+    audit_type: str
+    status: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ── Certificate & Dashboard schemas ────────────────────────────────────────
+
+class AuditSetCertUpdateSchema(BaseModel):
+    cert_issued_date: date | None = None
+    cert_expiry_date: date | None = None
+
+
+class DashboardStatsSchema(BaseModel):
+    total_plans: int
+    active_certificates: int
+    approaching_expiry: int     # expiry within 90 days, not yet expired
+    expired: int
+    open_jobs: int              # pipeline jobs not yet COMPLETE or FAILED
+    pending_reviews: int        # review jobs not yet COMPLETE or FAILED
+
+
+class ClientSummarySchema(BaseModel):
+    id: str
+    plan_number: int
+    company_name: str
+    company_address: str
+    standards: list[str]
+    audit_type: str
+    status: str
+    cert_issued_date: date | None
+    cert_expiry_date: date | None
+    cert_status: str | None
+    stage_1_date: date | None       # audit_date_start of stage_type == "stage_1"
+    stage_2_date: date | None       # audit_date_start of stage_type == "stage_2"
+    lead_auditor_name: str | None   # stage_2 preferred, then stage_1
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

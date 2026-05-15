@@ -2,7 +2,7 @@
 BATUHAN — Auditor Profile: Pydantic v2 schemas.
 """
 from __future__ import annotations
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional
 from pydantic import BaseModel, ConfigDict
 
@@ -107,6 +107,36 @@ class EligibilityResultSchema(BaseModel):
     eligible: bool
     blocking_reasons: list[str]
     warnings: list[str]
+
+
+# ── Dashboard ──────────────────────────────────────────────────
+
+class QualificationSummary(BaseModel):
+    standard_code: str
+    is_qualified: bool
+    technical_depth: str | None
+    experience_years: int | None
+    last_training_date: date | None
+    last_verified_date: date | None
+    training_expiry_warning: bool   # True if last_training_date older than 3 years
+    verification_warning: bool      # True if last_verified_date older than 1 year
+
+
+class AuditorDashboardEntry(BaseModel):
+    auditor_id: str
+    name: str
+    email: str | None
+    role: str | None
+    is_active: bool
+    ea_codes: list[str]
+    accreditation_bodies: list[str]
+    qualifications: list[QualificationSummary]
+    total_audits: int
+    last_audit_date: date | None
+    days_since_last_audit: int | None
+
+    class Config:
+        from_attributes = True
 
 
 # ── Summary (list endpoint) ────────────────────────────────────

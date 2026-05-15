@@ -94,7 +94,7 @@ def _extract_blocked_names(text: str) -> list[str]:
     """Extract company names from sample to add to the block list.
 
     Uses a non-capturing group so re.findall returns the FULL match
-    (e.g. 'IFC Global LLC') rather than just the suffix ('LLC').
+    (e.g. 'Acme Certification LLC') rather than just the suffix ('LLC').
     Blocking a bare suffix like 'LLC' would cause false positives on
     any client whose own name contains that suffix.
     """

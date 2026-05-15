@@ -12,12 +12,14 @@ import logging
 import uuid
 import datetime
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
 from schemas.models import ReviewJobStatus, ReviewJobState, AccreditationBody
 from config.review_profiles.loader import load_review_profile, list_available_profiles
 from storage.file_store import save_text_artifact, read_text_artifact, read_binary_artifact
+from auth.db_models import PlatformUser
+from auth.dependencies import require_auditor, require_any
 
 router = APIRouter(prefix="/review", tags=["review"])
 logger = logging.getLogger(__name__)
@@ -31,6 +33,7 @@ async def submit_review(
     standard: str = Form(..., description="Standard code: QMS, EMS, OHSMS, FSMS, MDQMS, ISMS, ABMS, ENMS"),
     stage: str = Form(..., description="Stage 1 or Stage 2"),
     accreditation_body: str = Form(..., description="UAF or TURKAK"),
+    _: PlatformUser = Depends(require_auditor),
 ):
     """Submit a completed audit report DOCX for AI-powered review against accreditation rules."""
 
@@ -106,7 +109,7 @@ async def submit_review(
 
 
 @router.get("/{review_job_id}/status")
-async def get_review_status(review_job_id: str):
+async def get_review_status(review_job_id: str, _: PlatformUser = Depends(require_any)):
     """Return the current status of a review job."""
     data = read_text_artifact(review_job_id, "review_status.json")
     if not data:
@@ -115,7 +118,7 @@ async def get_review_status(review_job_id: str):
 
 
 @router.get("/{review_job_id}/download/annotated-report")
-async def download_annotated_report(review_job_id: str):
+async def download_annotated_report(review_job_id: str, _: PlatformUser = Depends(require_any)):
     """Download the annotated DOCX with inline Word comments for each finding."""
     try:
         data = read_binary_artifact(review_job_id, "annotated_report.docx")
@@ -133,7 +136,7 @@ async def download_annotated_report(review_job_id: str):
 
 
 @router.get("/{review_job_id}/download/review-summary")
-async def download_review_summary(review_job_id: str):
+async def download_review_summary(review_job_id: str, _: PlatformUser = Depends(require_any)):
     """Download the review findings summary as JSON."""
     data = read_text_artifact(review_job_id, "review_summary.json")
     if not data:
