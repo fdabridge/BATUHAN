@@ -45,22 +45,25 @@ def me(current_user=Depends(get_current_user)):
 @router.get("/bootstrap")
 def bootstrap_admin(
     key: str = Query(...),
+    email: str = Query(...),
+    password: str = Query(...),
     db: Session = Depends(get_db),
 ):
     """
-    One-time endpoint to force-create the admin user from ADMIN_EMAIL / ADMIN_PASSWORD env vars.
-    Protected by the INTERNAL_API_KEY env var (default: change-me-in-production).
-    Call once to seed the DB, then you can log in normally.
+    One-time endpoint to force-create an admin user.
+    Protected by INTERNAL_API_KEY (default: change-me-in-production).
     """
     s = get_settings()
     if key != s.internal_api_key:
         raise HTTPException(status_code=403, detail="Forbidden")
-    if not s.admin_email or not s.admin_password:
-        raise HTTPException(status_code=400, detail="ADMIN_EMAIL / ADMIN_PASSWORD env vars not set")
-    existing = get_user_by_email(db, s.admin_email)
+    existing = get_user_by_email(db, email)
     if existing:
-        return {"status": "already_exists", "email": existing.email, "role": existing.role}
-    user = create_user(db, s.admin_email, s.admin_password, "Administrator", "admin")
+        # Reset password in case user exists with wrong hash
+        from auth.service import hash_password
+        existing.password_hash = hash_password(password)
+        db.commit()
+        return {"status": "password_reset", "email": existing.email, "role": existing.role}
+    user = create_user(db, email, password, "Administrator", "admin")
     return {"status": "created", "email": user.email, "id": user.id}
 
 
