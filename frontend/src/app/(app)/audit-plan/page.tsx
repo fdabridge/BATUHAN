@@ -1,9 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { Loader2, Plus, X } from 'lucide-react'
+import { Loader2, Plus, Sparkles, X } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
-import type { AuditPlanAssignment, AuditPlanClauseRef, AuditPlanInput } from '@/types'
+import type {
+  AuditPlanAssignment, AuditPlanClauseRef, AuditPlanInput,
+  AuditorSummary, ClauseAssignmentEntry, ClauseAssignmentResponse,
+} from '@/types'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -43,7 +47,7 @@ const lblCls   = 'mb-1 block text-xs font-medium text-gray-500'
 
 // ── Form state ────────────────────────────────────────────────────────────────
 
-interface AuditorRow { name: string; role: Role }
+interface AuditorRow { auditor_id: string; role: Role }
 
 interface FormState {
   company_name:       string
@@ -65,41 +69,60 @@ const INITIAL_FORM: FormState = {
   stage:              '',
   accreditation_body: 'UAF',
   start_time:         '09:00',
-  auditors:           [{ name: '', role: 'Lead Auditor' }],
+  auditors:           [{ auditor_id: '', role: 'Lead Auditor' }],
   clauses:            Object.fromEntries(CLAUSE_GROUPS.map((g) => [g.key, true])),
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function buildAssignments(auditors: AuditorRow[], selectedKeys: string[]): AuditPlanAssignment[] {
-  // Expand selected groups into a flat list of clauses
+function lookupName(pool: AuditorSummary[], id: string): string {
+  return pool.find((a) => a.id === id)?.name.trim() ?? ''
+}
+
+function buildAssignmentsRoundRobin(
+  pool: AuditorSummary[], auditors: AuditorRow[], selectedKeys: string[],
+): AuditPlanAssignment[] {
   const flat: AuditPlanClauseRef[] = []
   for (const g of CLAUSE_GROUPS) {
     if (selectedKeys.includes(g.key)) flat.push(...g.clauses)
   }
 
-  const validAuditors = auditors.filter((a) => a.name.trim().length > 0)
-  if (validAuditors.length === 0 || flat.length === 0) {
-    return validAuditors.map((a) => ({ auditor_name: a.name.trim(), role: a.role, assigned_clauses: [] }))
+  const valid = auditors
+    .map((a) => ({ ...a, name: lookupName(pool, a.auditor_id) }))
+    .filter((a) => a.name.length > 0)
+
+  if (valid.length === 0 || flat.length === 0) {
+    return valid.map((a) => ({ auditor_name: a.name, role: a.role, assigned_clauses: [] }))
   }
 
-  // Round-robin distribution starting with the lead auditor (or first row)
-  const ordered = [...validAuditors].sort((a, b) => (a.role === 'Lead Auditor' ? -1 : b.role === 'Lead Auditor' ? 1 : 0))
+  const ordered = [...valid].sort((a, b) => (a.role === 'Lead Auditor' ? -1 : b.role === 'Lead Auditor' ? 1 : 0))
   const buckets: AuditPlanClauseRef[][] = ordered.map(() => [])
   flat.forEach((c, i) => buckets[i % ordered.length].push(c))
 
   return ordered.map((a, i) => ({
-    auditor_name:     a.name.trim(),
+    auditor_name:     a.name,
     role:             a.role,
     assigned_clauses: buckets[i],
   }))
 }
 
-function pickLeadName(auditors: AuditorRow[]): string {
-  const lead = auditors.find((a) => a.role === 'Lead Auditor' && a.name.trim().length > 0)
-  if (lead) return lead.name.trim()
-  const first = auditors.find((a) => a.name.trim().length > 0)
-  return first ? first.name.trim() : ''
+function buildAssignmentsFromSuggestion(
+  pool: AuditorSummary[], auditors: AuditorRow[], suggestion: ClauseAssignmentEntry[],
+): AuditPlanAssignment[] {
+  // Map auditor_id → role from form so the planner's role choice wins.
+  const roleById = new Map(auditors.map((a) => [a.auditor_id, a.role]))
+  return suggestion.map((s) => ({
+    auditor_name:     s.auditor_name || lookupName(pool, s.auditor_id),
+    role:             roleById.get(s.auditor_id) ?? (s.role || 'Auditor'),
+    assigned_clauses: s.assigned_clauses.map((c) => ({ clause_id: c.clause_id, title: c.title })),
+  }))
+}
+
+function pickLeadName(pool: AuditorSummary[], auditors: AuditorRow[]): string {
+  const lead = auditors.find((a) => a.role === 'Lead Auditor' && a.auditor_id)
+  if (lead) return lookupName(pool, lead.auditor_id)
+  const first = auditors.find((a) => a.auditor_id)
+  return first ? lookupName(pool, first.auditor_id) : ''
 }
 
 function stageToInt(s: string): number {
@@ -119,14 +142,24 @@ function downloadBlob(blob: Blob, filename: string) {
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function AuditPlanPage() {
-  const [form,    setForm]    = useState<FormState>(INITIAL_FORM)
-  const [errors,  setErrors]  = useState<Partial<Record<keyof FormState, string>>>({})
-  const [loading, setLoading] = useState(false)
-  const [apiErr,  setApiErr]  = useState<string | null>(null)
+  const [form,       setForm]       = useState<FormState>(INITIAL_FORM)
+  const [errors,     setErrors]     = useState<Partial<Record<keyof FormState, string>>>({})
+  const [loading,    setLoading]    = useState(false)
+  const [apiErr,     setApiErr]     = useState<string | null>(null)
+  const [suggestion, setSuggestion] = useState<ClauseAssignmentEntry[] | null>(null)
+  const [suggestLoading, setSuggestLoading] = useState(false)
+  const [suggestErr, setSuggestErr] = useState<string | null>(null)
+
+  const { data: auditorPool = [], isLoading: poolLoading } = useQuery<AuditorSummary[]>({
+    queryKey: ['auditors-active'],
+    queryFn:  () => api.get<AuditorSummary[]>('/auditors/?active_only=true').then((r) => r.data),
+  })
 
   function update<K extends keyof FormState>(k: K, v: FormState[K]) {
     setForm((f) => ({ ...f, [k]: v }))
     if (errors[k]) setErrors((e) => ({ ...e, [k]: undefined }))
+    // Clearing suggestion if the standard or team composition changes.
+    if (k === 'standard_code') setSuggestion(null)
   }
 
   function updateAuditor(i: number, patch: Partial<AuditorRow>) {
@@ -134,14 +167,17 @@ export default function AuditPlanPage() {
       const next = f.auditors.map((row, idx) => (idx === i ? { ...row, ...patch } : row))
       return { ...f, auditors: next }
     })
+    setSuggestion(null)
   }
 
   function addAuditor() {
-    setForm((f) => ({ ...f, auditors: [...f.auditors, { name: '', role: 'Auditor' }] }))
+    setForm((f) => ({ ...f, auditors: [...f.auditors, { auditor_id: '', role: 'Auditor' }] }))
+    setSuggestion(null)
   }
 
   function removeAuditor(i: number) {
     setForm((f) => (f.auditors.length <= 1 ? f : { ...f, auditors: f.auditors.filter((_, idx) => idx !== i) }))
+    setSuggestion(null)
   }
 
   function toggleClause(key: string) {
@@ -156,9 +192,31 @@ export default function AuditPlanPage() {
     if (!form.standard_code)             e.standard_code      = 'Required'
     if (!form.stage)                     e.stage              = 'Required'
     if (!form.accreditation_body)        e.accreditation_body = 'Required'
-    if (!form.auditors.some((a) => a.name.trim().length > 0)) e.auditors = 'At least one auditor name is required'
+    if (!form.auditors.some((a) => a.auditor_id)) e.auditors = 'Select at least one auditor'
     setErrors(e)
     return Object.keys(e).length === 0
+  }
+
+  async function handleSuggest() {
+    setSuggestErr(null)
+    const ids = form.auditors.map((a) => a.auditor_id).filter(Boolean)
+    if (ids.length === 0) { setSuggestErr('Select at least one auditor.'); return }
+    if (!form.standard_code) { setSuggestErr('Choose a standard first.'); return }
+
+    setSuggestLoading(true)
+    try {
+      const res = await api.post<ClauseAssignmentResponse>('/auditors/assign-clauses', {
+        auditor_ids:   ids,
+        standard_code: form.standard_code,
+      })
+      setSuggestion(res.data.assignments)
+    } catch (err) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const anyErr = err as any
+      setSuggestErr(String(anyErr?.response?.data?.detail ?? anyErr?.message ?? 'Failed to suggest assignment.'))
+    } finally {
+      setSuggestLoading(false)
+    }
   }
 
   async function handleSubmit(ev: React.FormEvent) {
@@ -167,6 +225,10 @@ export default function AuditPlanPage() {
     if (!validate()) return
 
     const selectedClauseKeys = Object.entries(form.clauses).filter(([, v]) => v).map(([k]) => k)
+    const assignments = suggestion
+      ? buildAssignmentsFromSuggestion(auditorPool, form.auditors, suggestion)
+      : buildAssignmentsRoundRobin(auditorPool, form.auditors, selectedClauseKeys)
+
     const payload: AuditPlanInput = {
       company_name:       form.company_name.trim(),
       company_address:    form.company_address.trim(),
@@ -174,8 +236,8 @@ export default function AuditPlanPage() {
       accreditation_body: form.accreditation_body,
       stage:              stageToInt(form.stage),
       audit_date:         form.audit_date,
-      lead_auditor_name:  pickLeadName(form.auditors),
-      assignments:        buildAssignments(form.auditors, selectedClauseKeys),
+      lead_auditor_name:  pickLeadName(auditorPool, form.auditors),
+      assignments,
       opening_time:       form.start_time || '09:00',
     }
 
@@ -290,39 +352,118 @@ export default function AuditPlanPage() {
         <div className="mt-6">
           <label className="mb-2 block text-sm font-medium text-gray-700">Audit team</label>
           <div className="space-y-2">
-            {form.auditors.map((a, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <input
-                  type="text" placeholder="Name" value={a.name}
-                  onChange={(e) => updateAuditor(i, { name: e.target.value })}
-                  className={`${inputCls} flex-1`}
-                />
-                <select
-                  value={a.role}
-                  onChange={(e) => updateAuditor(i, { role: e.target.value as Role })}
-                  className={`${inputCls} w-44`}
-                >
-                  {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => removeAuditor(i)}
-                  disabled={form.auditors.length <= 1}
-                  className="rounded p-2 text-gray-400 hover:bg-gray-50 hover:text-red-500 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400"
-                  aria-label="Remove auditor"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            ))}
+            {form.auditors.map((a, i) => {
+              const selectedElsewhere = new Set(
+                form.auditors.filter((_, idx) => idx !== i).map((x) => x.auditor_id).filter(Boolean),
+              )
+              return (
+                <div key={i} className="flex items-center gap-2">
+                  <select
+                    value={a.auditor_id}
+                    onChange={(e) => updateAuditor(i, { auditor_id: e.target.value })}
+                    disabled={poolLoading}
+                    className={`${inputCls} flex-1`}
+                  >
+                    <option value="">{poolLoading ? 'Loading…' : 'Select auditor…'}</option>
+                    {auditorPool.map((p) => (
+                      <option key={p.id} value={p.id} disabled={selectedElsewhere.has(p.id)}>
+                        {p.name}{p.role ? ` — ${p.role}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={a.role}
+                    onChange={(e) => updateAuditor(i, { role: e.target.value as Role })}
+                    className={`${inputCls} w-44`}
+                  >
+                    {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => removeAuditor(i)}
+                    disabled={form.auditors.length <= 1}
+                    className="rounded p-2 text-gray-400 hover:bg-gray-50 hover:text-red-500 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400"
+                    aria-label="Remove auditor"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )
+            })}
           </div>
           {errors.auditors && <p className="mt-1 text-xs text-red-500">{errors.auditors}</p>}
+          {auditorPool.length === 0 && !poolLoading && (
+            <p className="mt-2 text-xs text-gray-400">
+              No registered auditors yet. Add one from the Auditors page.
+            </p>
+          )}
           <button
             type="button" onClick={addAuditor}
             className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-certiva-primary hover:opacity-70"
           >
             <Plus size={13} /> Add auditor
           </button>
+        </div>
+
+        {/* Suggest clause assignment */}
+        <div className="mt-5 rounded-lg border border-gray-100 p-4" style={{ background: '#F0FAF4' }}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-700">Smart clause assignment</p>
+              <p className="text-xs text-gray-500">
+                Suggest a split based on each auditor&apos;s technical depth and experience.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleSuggest}
+              disabled={suggestLoading || !form.standard_code || !form.auditors.some((a) => a.auditor_id)}
+              className="flex items-center gap-1.5 rounded-lg border border-certiva-primary px-3 py-1.5 text-sm font-medium text-certiva-primary hover:bg-white disabled:opacity-50"
+            >
+              {suggestLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+              {suggestion ? 'Re-suggest' : 'Suggest assignment'}
+            </button>
+          </div>
+
+          {suggestErr && (
+            <p className="mt-2 text-xs text-red-600">{suggestErr}</p>
+          )}
+
+          {suggestion && (
+            <div className="mt-3 overflow-hidden rounded-md border border-gray-100 bg-white">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-medium uppercase tracking-wide text-gray-400">
+                    <th className="px-3 py-2">Auditor</th>
+                    <th className="px-3 py-2">Assigned clauses</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {suggestion.map((s) => (
+                    <tr key={s.auditor_id}>
+                      <td className="px-3 py-2 align-top">
+                        <div className="font-medium text-gray-800">{s.auditor_name}</div>
+                        {s.role && <div className="text-xs text-gray-400">{s.role}</div>}
+                      </td>
+                      <td className="px-3 py-2 text-gray-600">
+                        {s.assigned_clauses.length === 0
+                          ? <span className="text-gray-400">—</span>
+                          : (
+                            <div className="flex flex-wrap gap-1">
+                              {s.assigned_clauses.map((c) => (
+                                <span key={c.clause_id} className="rounded px-1.5 py-0.5 text-xs" style={{ background: '#F0FAF4', color: '#1A4731' }}>
+                                  {c.clause_id} {c.title}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         {/* Clauses */}

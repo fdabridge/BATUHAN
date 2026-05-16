@@ -204,6 +204,58 @@ export interface AuditorResponse {
   audit_log: AuditLogItem[]
 }
 
+// Mirrors backend AuditorSummarySchema — returned by GET /auditors/
+export interface AuditorSummary {
+  id: string
+  name: string
+  email?: string | null
+  role?: string | null
+  field_of_expertise?: string | null
+  ea_codes?: string[] | null
+  accreditation_bodies?: string[] | null
+  is_active: boolean
+  created_at?: string | null
+}
+
+// Shape returned by POST /auditors/ingest — matches AuditorCreateSchema fields
+export interface AuditorIngestResult {
+  name?: string | null
+  email?: string | null
+  phone?: string | null
+  mobile?: string | null
+  role?: string | null
+  field_of_expertise?: string | null
+  ea_codes?: string[] | null
+  accreditation_bodies?: string[] | null
+  education?: EducationItem[] | null
+  languages?: LanguageItem[] | null
+  standard_qualifications?: StandardQualificationItem[] | null
+  work_experience?: WorkExperienceItem[] | null
+  training_records?: TrainingRecordItem[] | null
+}
+
+// Returned by POST /auditors/assign-clauses
+export interface ClauseAssignmentClause {
+  clause_id: string
+  title: string
+  applicability?: string
+}
+
+export interface ClauseAssignmentEntry {
+  auditor_id: string
+  auditor_name: string
+  role: string | null
+  technical_depth?: string | null
+  experience_years?: number | null
+  assigned_clauses: ClauseAssignmentClause[]
+}
+
+export interface ClauseAssignmentResponse {
+  standard_code: string
+  assignments: ClauseAssignmentEntry[]
+  note?: string
+}
+
 export type EligibilityRoleValue = 'lead_auditor' | 'team_auditor' | 'technical_expert'
 
 export interface EligibilityCheckRequest {

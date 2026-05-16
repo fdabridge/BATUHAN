@@ -6,7 +6,7 @@ import { ArrowLeft, ChevronDown, ChevronRight, Download, Loader2, Pencil, Check 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { CertBadge } from '@/components/ui/CertBadge'
-import type { AuditSetResponse, StageResponse, ManDayEntry } from '@/types'
+import type { AuditSetResponse, StageResponse, ManDayEntry, AuditorSummary } from '@/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -188,13 +188,15 @@ function CertSection({
 // ── Stage card ────────────────────────────────────────────────────────────────
 
 function StageCard({
-  stage, label, allStages, auditSetId, onSuccess,
+  stage, label, allStages, auditSetId, onSuccess, auditors, auditorsLoading,
 }: {
   stage: StageResponse
   label: string
   allStages: StageResponse[]
   auditSetId: string
   onSuccess: () => void
+  auditors: AuditorSummary[]
+  auditorsLoading: boolean
 }) {
   const [edit, setEdit] = useState<StageEdit>(() => buildStageEdit(stage))
   const [saved, setSaved] = useState(false)
@@ -246,7 +248,23 @@ function StageCard({
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className={lblCls}>Lead auditor</label>
-          <input className={inputCls} value={edit.lead_auditor_name} onChange={(e) => patch({ lead_auditor_name: e.target.value })} placeholder="Name" />
+          <select
+            className={inputCls}
+            value={edit.lead_auditor_name}
+            onChange={(e) => patch({ lead_auditor_name: e.target.value })}
+            disabled={auditorsLoading}
+          >
+            <option value="">{auditorsLoading ? 'Loading…' : '— Select —'}</option>
+            {/* Preserve a free-text legacy value that doesn't match the current pool */}
+            {edit.lead_auditor_name && !auditors.some((a) => a.name === edit.lead_auditor_name) && (
+              <option value={edit.lead_auditor_name}>{edit.lead_auditor_name}</option>
+            )}
+            {auditors.map((a) => (
+              <option key={a.id} value={a.name}>
+                {a.name}{a.role ? ` — ${a.role}` : ''}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div>
@@ -353,6 +371,11 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
     queryFn: () => api.get<AuditSetResponse>(`/audit-sets/${id}`).then((r) => r.data),
   })
 
+  const { data: auditors = [], isLoading: auditorsLoading } = useQuery<AuditorSummary[]>({
+    queryKey: ['auditors-active'],
+    queryFn:  () => api.get<AuditorSummary[]>('/auditors/?active_only=true').then((r) => r.data),
+  })
+
   async function handleDownload() {
     if (!data) return
     setDownloading(true)
@@ -440,6 +463,8 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
                   allStages={data.stages}
                   auditSetId={id}
                   onSuccess={invalidate}
+                  auditors={auditors}
+                  auditorsLoading={auditorsLoading}
                 />
               )
             })}
