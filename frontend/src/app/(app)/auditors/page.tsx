@@ -704,22 +704,35 @@ function AuditorPreviewForm({
             <p className="text-xs text-gray-400">No qualifications yet. Click “Add” to add one.</p>
           )}
           {quals.map((q, i) => (
-            <div key={i} className="flex flex-col gap-1.5 py-2 border-b border-gray-100 last:border-0">
-              <div className="flex items-center gap-2">
-                <div className="w-28 shrink-0">
-                  <span className="font-medium text-sm text-gray-900">{q.standard_code || <span className="text-gray-400 font-normal">—</span>}</span>
-                </div>
+            <div key={i} className="rounded-lg border border-gray-100 p-3 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Editable standard code — drives ScopeInput below */}
+                <input
+                  list="std-codes-list"
+                  type="text" placeholder="ISO 9001" className={`${inputCls} w-32`}
+                  value={q.standard_code}
+                  onChange={(e) => patchQual(i, { standard_code: e.target.value })}
+                />
+                <datalist id="std-codes-list">
+                  {['ISO 9001','ISO 14001','ISO 45001','ISO 27001','ISO 22000','FSSC 22000','ISO 13485','ISO 50001','ISO 37001','ISO 37301'].map((s) => (
+                    <option key={s} value={s} />
+                  ))}
+                </datalist>
                 <select
                   className={`${inputCls} w-24`} value={q.accreditation_body}
                   onChange={(e) => patchQual(i, { accreditation_body: e.target.value })}
                 >
                   {BODY_OPTIONS.map((b) => <option key={b} value={b}>{b}</option>)}
                 </select>
-                <input
-                  type="text" placeholder="Depth" className={`${inputCls} flex-1`}
-                  value={q.technical_depth}
+                <select
+                  className={`${inputCls} w-36`} value={q.technical_depth}
                   onChange={(e) => patchQual(i, { technical_depth: e.target.value })}
-                />
+                >
+                  <option value="">— Role —</option>
+                  <option>Lead Auditor</option>
+                  <option>Team Auditor</option>
+                  <option>Technical Expert</option>
+                </select>
                 <input
                   type="number" min={0} placeholder="Yrs" className={`${inputCls} w-16`}
                   value={q.experience_years}
@@ -729,6 +742,7 @@ function AuditorPreviewForm({
                   <Trash2 size={13} />
                 </button>
               </div>
+              {/* Scope input — adapts based on the standard code typed above */}
               <ScopeInput
                 standardCode={q.standard_code}
                 eaCodes={q.ea_codes}

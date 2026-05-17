@@ -489,6 +489,7 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
                   const label = scopeLabel(q)
                   const type  = getStandardType(q.standard_code ?? '')
                   if (!label) return null
+
                   if (type === 'food') return (
                     <div className="mt-1 flex flex-wrap gap-1">
                       {label.split(',').map((s) => s.trim()).filter(Boolean).map((cat) => (
@@ -499,6 +500,7 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
                       ))}
                     </div>
                   )
+
                   if (type === 'medical') return (
                     <div className="mt-1 flex flex-wrap gap-1">
                       {label.split(',').map((s) => s.trim()).filter(Boolean).map((ta) => (
@@ -509,11 +511,34 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
                       ))}
                     </div>
                   )
-                  // ea + sector: show as single line
+
+                  if (type === 'sector') return (
+                    <div className="mt-1">
+                      <span className="rounded px-1.5 py-0.5 text-xs font-medium"
+                        style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}>
+                        {label}
+                      </span>
+                    </div>
+                  )
+
+                  // EA standard — ea_codes + optional risk/complexity badge
+                  const [eaPart, riskPart] = label.includes('[')
+                    ? [label.slice(0, label.lastIndexOf('[')).trim(), label.slice(label.lastIndexOf('[') + 1, label.lastIndexOf(']'))]
+                    : [label, null]
                   return (
-                    <p className="mt-1 text-gray-500 font-mono" style={{ fontSize: 11 }}>
-                      {label}
-                    </p>
+                    <div className="mt-1 space-y-0.5">
+                      {eaPart && <p className="text-gray-500 font-mono" style={{ fontSize: 11 }}>{eaPart}</p>}
+                      {riskPart && (
+                        <span className="rounded px-1.5 py-0.5 text-xs font-medium"
+                          style={{
+                            background: riskPart === 'High' ? '#FEF2F2' : riskPart === 'Medium' ? '#FEF3C7' : '#F0FDF4',
+                            color:      riskPart === 'High' ? '#991B1B' : riskPart === 'Medium' ? '#92400E' : '#166534',
+                            border:     riskPart === 'High' ? '1px solid #FECACA' : riskPart === 'Medium' ? '1px solid #FDE68A' : '1px solid #BBF7D0',
+                          }}>
+                          {riskPart}
+                        </span>
+                      )}
+                    </div>
                   )
                 })()}
                 {q.accreditation_body && (
