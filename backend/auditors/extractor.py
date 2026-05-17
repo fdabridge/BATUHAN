@@ -101,16 +101,9 @@ def extract_auditor_from_document(file_bytes: bytes, filename: str) -> dict:
         if raw.endswith("```"):
             raw = raw[:-3].strip()
 
-        # Extract just the JSON object (first { to last })
-        import re
-        m = re.search(r'\{.*\}', raw, re.DOTALL)
-        if m:
-            raw = m.group(0)
-
-        # Fix trailing commas before } or ] (invalid JSON, valid JS)
-        raw = re.sub(r',\s*([}\]])', r'\1', raw)
-
-        result = json.loads(raw)
+        # Use json_repair to handle any malformed JSON from Claude
+        from json_repair import repair_json
+        result = json.loads(repair_json(raw))
         logger.info("[Auditors/Extractor] Parsed '%s' — name=%s", filename, result.get("name"))
         return result
 

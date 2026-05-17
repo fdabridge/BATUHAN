@@ -162,6 +162,7 @@ export interface EducationItem      { degree?: string | null; institution?: stri
 export interface LanguageItem       { language?: string | null; level?: string | null }
 export interface StandardQualificationItem {
   standard_code?: string | null
+  accreditation_body?: string | null
   technical_depth?: string | null
   experience_years?: number | null
   is_qualified?: boolean | null
@@ -225,6 +226,7 @@ export interface AuditorIngestResult {
   mobile?: string | null
   role?: string | null
   field_of_expertise?: string | null
+  active_since?: string | null              // "YYYY-MM-DD" — when the auditor joined the CB
   ea_codes?: string[] | null
   accreditation_bodies?: string[] | null
   education?: EducationItem[] | null
