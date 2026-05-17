@@ -68,26 +68,148 @@ EA 37 - Education
 EA 38 - Health and social work
 EA 39 - Other social services
 
+ACCREDITATION BODIES RULE:
+- accreditation_bodies (top-level field) must ONLY contain the names of national or international
+  accreditation bodies — regulatory/governmental bodies that accredit certification bodies.
+  Valid examples: "UAF", "TURKAK", "TÜRKAK", "DAkkS", "UKAS", "ANAB", "SCC", "JAS-ANZ",
+  "INAB", "COFRAC", "NAB", "RvA", "ILAC", "EA", "SWEDAC", "FINAS".
+  NEVER include: company names, employer names, CB (certification body) names, client names,
+  or any organization that issues certificates to end clients. If a name looks like a company
+  (e.g. "Certification Partner Global FZ LLC", "Bureau Veritas", "SGS", "TÜV SÜD") it is a CB,
+  NOT an accreditation body — exclude it entirely from accreditation_bodies.
+  If unsure, omit it.
+
 STANDARD QUALIFICATIONS RULES:
-- standard_code must be the ISO standard reference, e.g. "ISO 9001", "ISO 14001", "ISO 45001", "ISO 27001".
-- For each qualification, include accreditation_body if mentioned (e.g. "UAF", "TURKAK", "DAkkS").
-- For standards ISO 9001, ISO 14001, ISO 45001, and ISO 27001 only: include "ea_codes" as a list
-  of IAF EA codes (from the official EA 1–39 list) for which the auditor has documented auditing
-  experience specifically for THAT standard.
-  Example: auditor who did ISO 9001 audits in food factories (EA 3) and printing (EA 9):
-    {"standard_code": "ISO 9001", "ea_codes": ["EA 3", "EA 9"], ...}
-  If the CV does not specify sectors per standard, fall back to the auditor's overall ea_codes list
-  as a default. Apply the same validation: only use codes from EA 1–EA 39.
-- For ISO 22000, FSSC 22000, ISO 13485, ISO 50001, ISO 37001, ISO 37301: do NOT include ea_codes.
-  These standards do not use EA codes for scope classification. Their scope is captured in
-  "scope_category" (food chain categories, medical device areas, energy complexity, sector type).
-  Set "ea_codes": [] for these standards.
-- scope_category: for category-based standards (ISO 22000, FSSC 22000, ISO 13485, ISO 50001,
-  ISO 37001, ISO 37301), capture the specific category/scope as a string. For EA-code standards,
-  set scope_category to null.
+- standard_code must be the ISO standard reference, e.g. "ISO 9001", "ISO 14001", "ISO 45001".
+- For each qualification, include accreditation_body only if it is a genuine AB (see rule above).
 - technical_depth: one of "Lead Auditor", "Team Auditor", "Technical Expert".
 - experience_years: total years of documented auditing experience for that standard (integer).
-- A qualification must ONLY be included if there is evidence of BOTH: (a) relevant training/certification AND (b) documented auditing experience for that standard. If only training is mentioned with no documented auditing experience, DO NOT include it in standard_qualifications at all. It can always be added manually by the user later.
+- A qualification must ONLY be included if there is evidence of BOTH: (a) relevant
+  training/certification AND (b) documented auditing experience. Training alone → exclude.
+
+EA CODES PER STANDARD (ISO 9001, ISO 14001, ISO 45001, ISO 27001 only):
+- Include "ea_codes" as a list of IAF EA codes the auditor has audited in for THAT standard.
+- If the CV does not specify sectors per standard, use the auditor's overall ea_codes as default.
+- For all other standards: set "ea_codes": [] — do not use EA codes for these.
+
+SCOPE CATEGORY — mandatory for category-based standards. Use the exact mapping below.
+
+━━━ ISO 22000 and FSSC 22000 — Food Chain Categories ━━━
+Set "scope_category" to a comma-separated list of applicable codes from this table.
+Read the auditor's documented food industry experience and map each sector to its category:
+
+  BIII — Pre-process handling of plant products: cleaning, sorting, cooling, packing of whole
+         harvested plant products (grains, fruits, vegetables before further processing).
+         Keywords: grain handling, fresh produce packing, crop storage, primary plant handling.
+
+  C0   — Animal primary conversion: slaughterhouses, abattoirs, lairage, evisceration,
+         bulk chilling/freezing of animal carcasses.
+         Keywords: slaughter, abattoir, animal primary processing.
+
+  CI   — Processing of perishable animal products: meat processing (sausages, deli meats,
+         cured meats), dairy (milk, cheese, yogurt, butter, ice cream), fish and seafood
+         processing, egg products.
+         Keywords: meat processing, dairy, fish processing, seafood, chilled animal products.
+
+  CII  — Processing of perishable plant products: fresh-cut vegetables/fruits, juices,
+         chilled plant-based products, minimally processed vegetables.
+         Keywords: fresh-cut, fruit juice, vegetable processing, chilled plant.
+
+  CIII — Processing of perishable mixed products (animal + plant): ready meals, sandwiches,
+         salads with mixed ingredients, meal kits, chilled prepared foods.
+         Keywords: ready meals, mixed perishable, prepared foods, sandwiches.
+
+  CIV  — Processing of ambient stable products: confectionery (chocolate, candy, gum,
+         biscuits, cookies, snacks, chips, crackers), canned goods, dried products,
+         cereals, flour, rice, pasta, edible oils, sauces, condiments, frozen foods
+         (products frozen after processing), beverages (ambient stable: juices in cartons,
+         soft drinks, bottled water).
+         Keywords: confectionery, chocolate, candy, gum, snacks, biscuits, canned, ambient,
+         dried, cereal, edible oil, beverage, frozen.
+
+  D    — Production of feed and pet food: animal feed manufacturing, pet food (dry, wet,
+         treats), aquafeed.
+         Keywords: animal feed, pet food, livestock feed.
+
+  E    — Catering: food delivered directly to consumers on-site or off-site — restaurants,
+         hotel kitchens, school/hospital canteens, catering companies, take-away.
+         Keywords: catering, restaurant, hotel kitchen, canteen, food service.
+
+  FI   — Wholesale, retail, e-commerce of food products: supermarkets, food wholesalers,
+         online food retail, food distributors who also take physical possession of products.
+         Keywords: retail, wholesale, supermarket, food distribution, e-commerce food.
+
+  FII  — Food brokering and trading: food traders, brokers, importers/exporters who never
+         take physical possession of the product.
+         Keywords: food broker, food trader, food import/export (no physical handling).
+
+  G    — Storage, distribution, transport: cold chain logistics, temperature-controlled
+         warehousing, food transport, third-party logistics for food.
+         Keywords: cold storage, food logistics, food transport, warehousing, distribution.
+
+  I    — Production of food packaging and packaging materials: manufacturers of food-contact
+         packaging (films, containers, cans, bottles, cartons, labels).
+         Keywords: food packaging, packaging materials, food-contact materials.
+
+  K    — Production of (bio)chemicals, bio-cultures, food ingredients, processing aids:
+         food additives, flavors, colors, preservatives, enzymes, starter cultures,
+         cleaning/disinfection agents for food industry, food-grade chemicals.
+         Keywords: food additives, flavors, enzymes, food ingredients, processing aids,
+         food-grade chemicals, bio-cultures.
+
+Example for an auditor with experience in confectionery, processed meats, beverages, and packaging:
+  "scope_category": "CI, CIV, I"
+  (CI = processed meats; CIV = confectionery + beverages; I = packaging)
+
+━━━ ISO 13485 — Medical Device Technical Areas ━━━
+Set "scope_category" to a comma-separated list from:
+
+  A1.1 — Non-active medical devices (general): bandages, wound care, catheters, surgical
+          instruments, syringes, dental devices (non-electronic), diagnostic test strips,
+          non-implantable orthopedic devices.
+  A1.2 — Non-active implantable: hip/knee replacements, dental implants, bone screws/plates,
+          vascular stents, hernia mesh, non-electronic implants.
+  A1.3 — Active (non-implantable): diagnostic imaging (X-ray, ultrasound, MRI, CT),
+          patient monitoring, surgical energy devices, infusion pumps, ventilators,
+          external defibrillators, electrosurgical equipment.
+  A1.4 — Active implantable: pacemakers, implantable defibrillators, cochlear implants,
+          neurostimulators, implantable drug delivery.
+  A1.5 — Sterilization: EtO sterilization, steam/autoclave, radiation, hydrogen peroxide,
+          dry heat, aseptic processing, LTSF sterilization.
+  A1.6 — Special technologies: software as medical device (SaMD), nanomaterials, devices
+          incorporating human blood/tissue derivatives, biologically active coatings.
+  A1.7 — Parts, components, raw materials, services: raw material suppliers, contract
+          manufacturers, calibration services, testing labs for medical device industry.
+  A2.1 — IVD instruments and software: in-vitro diagnostic analyzers, laboratory instruments.
+  A2.2 — IVD reagents, calibrators, controls.
+  A2.3 — IVD specimen receptacles: blood collection tubes, sample containers.
+  A2.4 — Companion diagnostic devices.
+
+━━━ ISO 50001 — Energy Complexity ━━━
+Set "scope_category" to one of: "Low", "Medium", "High"
+This reflects the complexity of the energy management systems the auditor has audited:
+  High = large industrial sites, multiple energy types, many significant energy uses (>6 SEUs)
+  Medium = mid-size manufacturing, 2-3 energy types, moderate SEUs
+  Low = small facilities, simple energy profile, 1-2 energy types
+If the CV does not provide enough information to determine complexity, set scope_category to null.
+
+━━━ ISO 37001 and ISO 37301 — Sector Type ━━━
+Set "scope_category" to one of: "Public", "Private", "Third sector/NGO"
+  Public = government agencies, public institutions, state-owned enterprises, municipalities
+  Private = commercial companies, corporations, banks, manufacturing firms, consulting firms
+  Third sector/NGO = non-profit organizations, NGOs, charities, associations, foundations
+Default to "Private" if the auditor's documented experience is primarily with commercial
+organizations and no public/NGO context is mentioned.
+
+━━━ ISO 9001, ISO 14001, ISO 45001 — Risk/Complexity Category ━━━
+Set "scope_category" to one of: "High", "Medium", "Low" (ISO 14001 also allows "Limited")
+Based on the typical risk/complexity of sectors the auditor has audited:
+  High risk sectors (ISO 9001): food (EA 3), pharma (EA 13), aerospace (EA 21), nuclear (EA 11),
+    medical devices (EA 13), construction (EA 28), healthcare (EA 38)
+  Medium: most manufacturing, general services
+  Low: simple service organizations, low-complexity office environments
+For ISO 14001, "Limited" applies to organizations with very minimal environmental aspects.
+Default to "Medium" if unclear.
 """
 
 
@@ -182,6 +304,37 @@ def extract_auditor_from_document(file_bytes: bytes, filename: str) -> dict:
                 except ValueError:
                     logger.warning("[Auditors/Extractor] Could not parse EA code: %s", code)
         result["ea_codes"] = cleaned_ea
+
+        # Validate per-qualification ea_codes against official IAF list
+        KNOWN_AB_KEYWORDS = {"UAF", "TURKAK", "TÜRKAK", "DAKKS", "UKAS", "ANAB", "SCC",
+                             "JAS-ANZ", "INAB", "COFRAC", "NAB", "RVA", "ILAC", "SWEDAC", "FINAS"}
+        for q in result.get("standard_qualifications") or []:
+            raw_qual_ea = q.get("ea_codes") or []
+            cleaned_qual_ea = []
+            for code in raw_qual_ea:
+                if isinstance(code, str):
+                    normalized = code.strip().upper()
+                    num_part = normalized[2:].strip() if normalized.startswith("EA") else normalized
+                    try:
+                        num = int(num_part)
+                        if num in VALID_EA_NUMBERS:
+                            cleaned_qual_ea.append(f"EA {num}")
+                    except ValueError:
+                        pass
+            q["ea_codes"] = cleaned_qual_ea
+
+            # Strip CB names from per-qualification accreditation_body
+            ab = q.get("accreditation_body") or ""
+            if ab and not any(kw in ab.upper() for kw in KNOWN_AB_KEYWORDS):
+                q["accreditation_body"] = None
+                q["_needs_review"] = True
+
+        # Also strip CB names from top-level accreditation_bodies
+        raw_abs = result.get("accreditation_bodies") or []
+        result["accreditation_bodies"] = [
+            ab for ab in raw_abs
+            if any(kw in ab.upper() for kw in KNOWN_AB_KEYWORDS)
+        ]
 
         # Flag qualifications missing accreditation_body for human review
         for q in result.get("standard_qualifications") or []:
