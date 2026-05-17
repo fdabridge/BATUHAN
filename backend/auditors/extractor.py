@@ -213,6 +213,128 @@ Default to "Medium" if unclear.
 """
 
 
+# ── Keyword maps for Python-side scope_category fallback ──────────────────────
+# Runs after Claude extraction: if Claude leaves scope_category empty for a
+# category-based standard, we infer it from the CV text using these maps.
+
+_FOOD_CHAIN_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "CI":   ("meat", "poultry", "fish", "seafood", "dairy", "milk", "yogurt", "cheese",
+             "ice cream", "egg", "perishable animal"),
+    "CII":  ("fresh juice", "cut vegetable", "fresh produce", "perishable plant",
+             "fresh fruit", "salad"),
+    "CIII": ("ready meal", "sandwich", "mixed perishable", "prepared food",
+             "ready-to-eat"),
+    "CIV":  ("confection", "chocolate", "candy", "gum", "biscuit", "cookie", "snack",
+             "chip", "cracker", "canned", "dried", "cereal", "flour", "rice", "pasta",
+             "edible oil", "sauce", "condiment", "frozen", "beverage", "juice in carton",
+             "soft drink", "bottled water", "coffee", "tea"),
+    "D":    ("animal feed", "pet food", "feedstuff"),
+    "E":    ("catering", "restaurant", "food service", "canteen", "hospitality kitchen"),
+    "FI":   ("food retail", "food wholesale", "supermarket", "grocer"),
+    "FII":  ("food broker", "food distribution", "food trader"),
+    "G":    ("food storage", "food logistics", "cold chain", "food warehousing",
+             "food transport"),
+    "I":    ("food packaging", "packaging material", "food contact material"),
+    "K":    ("food chemical", "food additive", "ingredient manufacture", "food enzyme",
+             "vitamin", "culture", "biocultures"),
+    "BIII": ("plant pre-process", "cleaning of plant", "sorting plant",
+             "packing whole plant"),
+    "C0":   ("animal slaughter", "slaughterhouse", "abattoir", "primary animal"),
+}
+
+_MEDICAL_TA_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "A1.1": ("bandage", "wound care", "catheter", "surgical instrument", "syringe",
+             "non-active medical"),
+    "A1.2": ("hip replacement", "dental implant", "non-active implant",
+             "orthopaedic implant"),
+    "A1.3": ("imaging equipment", "monitoring equipment", "ventilator",
+             "active non-implant"),
+    "A1.4": ("pacemaker", "active implant", "defibrillator"),
+    "A1.5": ("sterilization", "sterilisation", "ethylene oxide", "gamma sterilization"),
+    "A1.6": ("software as medical device", "samd", "medical software", "ai medical"),
+    "A1.7": ("medical device component", "medical parts supplier"),
+    "A2.1": ("in-vitro diagnostic", "ivd reagent", "ivd general"),
+    "A2.2": ("ivd self-test", "self-testing diagnostic"),
+    "A2.3": ("ivd professional", "professional diagnostic"),
+    "A2.4": ("companion diagnostic",),
+}
+
+_SECTOR_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "Public":           ("government", "ministry", "municipality", "public authority",
+                         "state-owned", "public agency", "public sector"),
+    "Third sector/NGO": ("ngo", "non-profit", "nonprofit", "charity", "foundation",
+                         "association", "third sector"),
+}
+
+
+def _infer_food_categories(text: str) -> str | None:
+    """Return comma-separated food chain codes whose keywords appear in `text`, or None."""
+    text_lower = text.lower()
+    hits = [code for code, kws in _FOOD_CHAIN_KEYWORDS.items()
+            if any(kw in text_lower for kw in kws)]
+    return ", ".join(hits) if hits else None
+
+
+def _infer_medical_areas(text: str) -> str | None:
+    text_lower = text.lower()
+    hits = [code for code, kws in _MEDICAL_TA_KEYWORDS.items()
+            if any(kw in text_lower for kw in kws)]
+    return ", ".join(hits) if hits else None
+
+
+def _infer_sector(text: str) -> str:
+    """Return Public / Third sector/NGO / Private (default)."""
+    text_lower = text.lower()
+    for sector, kws in _SECTOR_KEYWORDS.items():
+        if any(kw in text_lower for kw in kws):
+            return sector
+    return "Private"
+
+
+def _backfill_scope_categories(result: dict) -> None:
+    """For each qualification missing scope_category, infer from the CV text."""
+    # Build a haystack of all CV-derived text for keyword search.
+    text_parts: list[str] = []
+    if result.get("field_of_expertise"):
+        text_parts.append(str(result["field_of_expertise"]))
+    for w in result.get("work_experience") or []:
+        if isinstance(w, dict):
+            for k in ("position", "employer", "description"):
+                if w.get(k):
+                    text_parts.append(str(w[k]))
+    haystack = "\n".join(text_parts)
+
+    for q in result.get("standard_qualifications") or []:
+        code = (q.get("standard_code") or "").lower()
+        if q.get("scope_category"):
+            continue  # Claude already populated it; trust Claude.
+
+        if "22000" in code or "fssc" in code:
+            inferred = _infer_food_categories(haystack)
+            if inferred:
+                q["scope_category"] = inferred
+                logger.info("[Auditors/Extractor] Backfilled %s scope_category=%s",
+                            q.get("standard_code"), inferred)
+        elif "13485" in code:
+            inferred = _infer_medical_areas(haystack)
+            if inferred:
+                q["scope_category"] = inferred
+                logger.info("[Auditors/Extractor] Backfilled %s scope_category=%s",
+                            q.get("standard_code"), inferred)
+        elif "37001" in code or "37301" in code:
+            q["scope_category"] = _infer_sector(haystack)
+            logger.info("[Auditors/Extractor] Backfilled %s scope_category=%s",
+                        q.get("standard_code"), q["scope_category"])
+        elif "50001" in code:
+            q["scope_category"] = "Medium"  # conservative default per prompt
+            logger.info("[Auditors/Extractor] Backfilled %s scope_category=Medium (default)",
+                        q.get("standard_code"))
+        elif any(s in code for s in ("9001", "14001", "45001")):
+            q["scope_category"] = "Medium"  # conservative default per prompt
+            logger.info("[Auditors/Extractor] Backfilled %s scope_category=Medium (default)",
+                        q.get("standard_code"))
+
+
 def _extract_text_docx(file_bytes: bytes) -> str:
     import docx  # python-docx
     doc = docx.Document(io.BytesIO(file_bytes))
@@ -340,6 +462,14 @@ def extract_auditor_from_document(file_bytes: bytes, filename: str) -> dict:
         for q in result.get("standard_qualifications") or []:
             if not q.get("accreditation_body"):
                 q["_needs_review"] = True
+
+        # Log what Claude returned per qualification before backfill (debug visibility)
+        for q in result.get("standard_qualifications") or []:
+            logger.info("[Auditors/Extractor] Claude returned: standard=%s scope_category=%r ea_codes=%s",
+                        q.get("standard_code"), q.get("scope_category"), q.get("ea_codes"))
+
+        # Backfill scope_category from CV text for any qualification Claude left empty
+        _backfill_scope_categories(result)
 
         logger.info("[Auditors/Extractor] Parsed '%s' — name=%s", filename, result.get("name"))
         return result
