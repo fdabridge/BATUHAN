@@ -186,9 +186,10 @@ function ScopeInput({ standardCode, eaCodes, scopeCategory, onChangeEA, onChange
             const active = selected.includes(cat)
             return (
               <button key={cat} type="button"
-                className="rounded px-2 py-0.5 text-xs border transition-colors"
-                style={active ? { background: '#1A4731', color: 'white', borderColor: '#1A4731' }
-                  : { background: 'white', color: '#374151', borderColor: '#D1D5DB' }}
+                className="rounded px-2 py-0.5 text-xs font-mono border transition-colors"
+                style={active
+                  ? { background: '#FEF3C7', color: '#92400E', borderColor: '#FDE68A' }
+                  : { background: 'white', color: '#9CA3AF', borderColor: '#E5E7EB' }}
                 onClick={() => {
                   const next = active ? selected.filter((x) => x !== cat) : [...selected, cat]
                   onChangeScope(next.join(', '))
@@ -212,9 +213,10 @@ function ScopeInput({ standardCode, eaCodes, scopeCategory, onChangeEA, onChange
             const active = selected.includes(ta)
             return (
               <button key={ta} type="button"
-                className="rounded px-2 py-0.5 text-xs border transition-colors"
-                style={active ? { background: '#5B21B6', color: 'white', borderColor: '#5B21B6' }
-                  : { background: 'white', color: '#374151', borderColor: '#D1D5DB' }}
+                className="rounded px-2 py-0.5 text-xs font-mono border transition-colors"
+                style={active
+                  ? { background: '#EDE9FE', color: '#5B21B6', borderColor: '#DDD6FE' }
+                  : { background: 'white', color: '#9CA3AF', borderColor: '#E5E7EB' }}
                 onClick={() => {
                   const next = active ? selected.filter((x) => x !== ta) : [...selected, ta]
                   onChangeScope(next.join(', '))
