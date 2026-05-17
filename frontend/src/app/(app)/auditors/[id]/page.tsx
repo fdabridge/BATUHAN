@@ -134,11 +134,144 @@ function ProfileOverview({ a }: { a: AuditorResponse }) {
 
 const TECH_DEPTH_OPTIONS = ['Lead Auditor', 'Team Auditor', 'Technical Expert'] as const
 
+// ── Scope input helpers ───────────────────────────────────────────────────────
+
+const FOOD_CHAIN_CATEGORIES = ['BIII','C0','CI','CII','CIII','CIV','D','E','FI','FII','G','I','K']
+const MEDICAL_DEVICE_TAS    = ['A1.1','A1.2','A1.3','A1.4','A1.5','A1.6','A1.7','A2.1','A2.2','A2.3','A2.4']
+
+function getStandardType(code: string): 'ea' | 'food' | 'medical' | 'sector' {
+  const c = code.toLowerCase()
+  if (['22000','fssc'].some((s) => c.includes(s)))  return 'food'
+  if (['13485'].some((s) => c.includes(s)))         return 'medical'
+  if (['37001','37301'].some((s) => c.includes(s))) return 'sector'
+  return 'ea'
+}
+
+function scopeLabel(q: { standard_code?: string | null; ea_codes?: string[] | null; scope_category?: string | null }): string | null {
+  const type = getStandardType(q.standard_code ?? '')
+  if (type === 'food' || type === 'medical') return q.scope_category || null
+  if (type === 'sector') return q.scope_category || null
+  // EA standard — combine ea_codes + risk level
+  const parts: string[] = []
+  if (q.ea_codes && q.ea_codes.length) parts.push(q.ea_codes.join(', '))
+  if (q.scope_category) parts.push(`[${q.scope_category}]`)
+  return parts.length ? parts.join(' ') : null
+}
+
+function ScopeInput({ standardCode, eaCodes, scopeCategory, onChangeEA, onChangeScope }: {
+  standardCode:  string
+  eaCodes:       string[]
+  scopeCategory: string
+  onChangeEA:    (v: string[]) => void
+  onChangeScope: (v: string) => void
+}) {
+  const type = getStandardType(standardCode)
+  const c    = standardCode.toLowerCase()
+
+  const riskLabel   = c.includes('14001') ? 'EMS complexity'
+    : c.includes('45001') ? 'OH&S risk level'
+    : c.includes('50001') ? 'Energy complexity'
+    : 'Risk category'
+  const riskOptions = c.includes('14001') ? ['High','Medium','Low','Limited'] : ['High','Medium','Low']
+
+  const inputCls = 'w-full rounded border border-gray-200 px-2 py-1.5 text-sm'
+
+  if (type === 'food') {
+    const selected = scopeCategory.split(',').map((s) => s.trim()).filter(Boolean)
+    return (
+      <div className="mt-2">
+        <label className="block text-xs text-gray-400 mb-1">Food chain categories</label>
+        <div className="flex flex-wrap gap-1">
+          {FOOD_CHAIN_CATEGORIES.map((cat) => {
+            const active = selected.includes(cat)
+            return (
+              <button key={cat} type="button"
+                className="rounded px-2 py-0.5 text-xs border transition-colors"
+                style={active ? { background: '#1A4731', color: 'white', borderColor: '#1A4731' }
+                  : { background: 'white', color: '#374151', borderColor: '#D1D5DB' }}
+                onClick={() => {
+                  const next = active ? selected.filter((x) => x !== cat) : [...selected, cat]
+                  onChangeScope(next.join(', '))
+                }}>
+                {cat}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  if (type === 'medical') {
+    const selected = scopeCategory.split(',').map((s) => s.trim()).filter(Boolean)
+    return (
+      <div className="mt-2">
+        <label className="block text-xs text-gray-400 mb-1">Technical areas (MD)</label>
+        <div className="flex flex-wrap gap-1">
+          {MEDICAL_DEVICE_TAS.map((ta) => {
+            const active = selected.includes(ta)
+            return (
+              <button key={ta} type="button"
+                className="rounded px-2 py-0.5 text-xs border transition-colors"
+                style={active ? { background: '#5B21B6', color: 'white', borderColor: '#5B21B6' }
+                  : { background: 'white', color: '#374151', borderColor: '#D1D5DB' }}
+                onClick={() => {
+                  const next = active ? selected.filter((x) => x !== ta) : [...selected, ta]
+                  onChangeScope(next.join(', '))
+                }}>
+                {ta}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  if (type === 'sector') {
+    return (
+      <div className="mt-2">
+        <label className="block text-xs text-gray-400 mb-1">Sector type</label>
+        <select className={inputCls} value={scopeCategory} onChange={(e) => onChangeScope(e.target.value)}>
+          <option value="">— Select —</option>
+          <option>Public</option>
+          <option>Private</option>
+          <option>Third sector/NGO</option>
+        </select>
+      </div>
+    )
+  }
+
+  // EA-code standards (ISO 9001, 14001, 45001, 27001, 50001)
+  return (
+    <div className="mt-2 space-y-2">
+      <div>
+        <label className="block text-xs text-gray-400 mb-1">EA codes (comma-separated)</label>
+        <input type="text" className={inputCls} placeholder="e.g. EA 3, EA 9"
+          value={eaCodes.join(', ')}
+          onChange={(e) => onChangeEA(e.target.value.split(',').map((s) => s.trim()).filter(Boolean))}
+        />
+      </div>
+      {!c.includes('27001') && (
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">{riskLabel}</label>
+          <select className={inputCls} value={scopeCategory} onChange={(e) => onChangeScope(e.target.value)}>
+            <option value="">— Select —</option>
+            {riskOptions.map((o) => <option key={o}>{o}</option>)}
+          </select>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 interface QualEditRow {
   standard_code:      string
   accreditation_body: string
-  scope_category:     string   // for category-based standards (ISO 22000, FSSC, etc.)
-  ea_codes:           string   // comma-separated per-standard EA codes (ISO 9001/14001/45001/27001)
+  scope_category:     string   // food categories / TA codes / sector / risk level
+  ea_codes:           string[] // EA codes array (for EA-code standards)
   technical_depth:    string
   experience_years:   string   // kept as string for the input; parsed on save
 }
@@ -149,7 +282,7 @@ function rowsFromAuditor(a: AuditorResponse): QualEditRow[] {
     .map((q) => ({
       standard_code:      q.standard_code ?? '',
       accreditation_body: q.accreditation_body ?? '',
-      ea_codes:           (q.ea_codes ?? []).join(', '),
+      ea_codes:           q.ea_codes ?? [],
       scope_category:     q.scope_category ?? '',
       technical_depth:    q.technical_depth ?? '',
       experience_years:   q.experience_years != null ? String(q.experience_years) : '',
@@ -193,8 +326,8 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
         ...a,
         ea_codes: eaCodes.length ? eaCodes : null,
         standard_qualifications: rows.map((r) => {
-          const yrs = parseInt(r.experience_years, 10)
-          const eaCodes = r.ea_codes.split(',').map((s) => s.trim()).filter(Boolean)
+          const yrs     = parseInt(r.experience_years, 10)
+          const eaCodes = r.ea_codes.map((s) => s.trim()).filter(Boolean)
           return {
             standard_code:      r.standard_code.trim(),
             accreditation_body: r.accreditation_body.trim() || null,
@@ -282,48 +415,47 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
                 <p className="text-xs text-gray-400">No qualifications yet. Click “Add standard” to add one.</p>
               )}
               {rows.map((r, i) => (
-                <div key={i} className="flex flex-wrap items-center gap-2">
-                  <input
-                    type="text" placeholder="ISO 9001" className={`${inputCls} w-28`}
-                    value={r.standard_code}
-                    onChange={(e) => patchRow(i, { standard_code: e.target.value })}
+                <div key={i} className="rounded-lg border border-gray-100 p-3 space-y-2">
+                  {/* Row header: standard code / AB / depth / years / remove */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="text" placeholder="ISO 9001" className={`${inputCls} w-28`}
+                      value={r.standard_code}
+                      onChange={(e) => patchRow(i, { standard_code: e.target.value })}
+                    />
+                    <input
+                      type="text" placeholder="UAF" className={`${inputCls} w-20`}
+                      value={r.accreditation_body}
+                      onChange={(e) => patchRow(i, { accreditation_body: e.target.value })}
+                    />
+                    <select
+                      className={`${inputCls} w-36`} value={r.technical_depth}
+                      onChange={(e) => patchRow(i, { technical_depth: e.target.value })}
+                    >
+                      <option value="">—</option>
+                      {TECH_DEPTH_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                    <input
+                      type="number" min={0} placeholder="Yrs" className={`${inputCls} w-14`}
+                      value={r.experience_years}
+                      onChange={(e) => patchRow(i, { experience_years: e.target.value })}
+                    />
+                    <button
+                      type="button" onClick={() => removeRow(i)}
+                      className="ml-auto rounded p-2 text-gray-400 hover:bg-gray-50 hover:text-red-500"
+                      aria-label="Remove row"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                  {/* Scope input — adapts to the standard type */}
+                  <ScopeInput
+                    standardCode={r.standard_code}
+                    eaCodes={r.ea_codes}
+                    scopeCategory={r.scope_category}
+                    onChangeEA={(v) => patchRow(i, { ea_codes: v })}
+                    onChangeScope={(v) => patchRow(i, { scope_category: v })}
                   />
-                  <input
-                    type="text" placeholder="UAF" className={`${inputCls} w-20`}
-                    value={r.accreditation_body}
-                    onChange={(e) => patchRow(i, { accreditation_body: e.target.value })}
-                  />
-                  <input
-                    type="text" placeholder="EA 3, EA 9" className={`${inputCls} w-28`}
-                    value={r.ea_codes}
-                    onChange={(e) => patchRow(i, { ea_codes: e.target.value })}
-                    title="Per-standard EA codes (ISO 9001/14001/45001/27001 only)"
-                  />
-                  <input
-                    type="text" placeholder="scope category" className={`${inputCls} flex-1 min-w-[7rem]`}
-                    value={r.scope_category}
-                    onChange={(e) => patchRow(i, { scope_category: e.target.value })}
-                    title="Scope category for category-based standards (ISO 22000, FSSC, etc.)"
-                  />
-                  <select
-                    className={`${inputCls} w-36`} value={r.technical_depth}
-                    onChange={(e) => patchRow(i, { technical_depth: e.target.value })}
-                  >
-                    <option value="">—</option>
-                    {TECH_DEPTH_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
-                  </select>
-                  <input
-                    type="number" min={0} placeholder="Yrs" className={`${inputCls} w-14`}
-                    value={r.experience_years}
-                    onChange={(e) => patchRow(i, { experience_years: e.target.value })}
-                  />
-                  <button
-                    type="button" onClick={() => removeRow(i)}
-                    className="rounded p-2 text-gray-400 hover:bg-gray-50 hover:text-red-500"
-                    aria-label="Remove row"
-                  >
-                    <Trash2 size={14} />
-                  </button>
                 </div>
               ))}
             </div>
@@ -353,22 +485,37 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
                     {q.technical_depth}
                   </span>
                 )}
-                {q.ea_codes && q.ea_codes.length > 0 && (
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {q.ea_codes.map((code: string) => (
-                      <span key={code}
-                        className="rounded px-1.5 py-0.5 text-xs font-mono"
-                        style={{ background: '#F3F4F6', color: '#374151', border: '1px solid #E5E7EB' }}>
-                        {code}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {q.scope_category && (
-                  <p className="mt-1 text-gray-500" style={{ fontSize: 11 }} title="Scope category">
-                    🏭 {q.scope_category}
-                  </p>
-                )}
+                {(() => {
+                  const label = scopeLabel(q)
+                  const type  = getStandardType(q.standard_code ?? '')
+                  if (!label) return null
+                  if (type === 'food') return (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {label.split(',').map((s) => s.trim()).filter(Boolean).map((cat) => (
+                        <span key={cat} className="rounded px-1.5 py-0.5 text-xs font-mono"
+                          style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' }}>
+                          {cat}
+                        </span>
+                      ))}
+                    </div>
+                  )
+                  if (type === 'medical') return (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {label.split(',').map((s) => s.trim()).filter(Boolean).map((ta) => (
+                        <span key={ta} className="rounded px-1.5 py-0.5 text-xs font-mono"
+                          style={{ background: '#EDE9FE', color: '#5B21B6', border: '1px solid #DDD6FE' }}>
+                          {ta}
+                        </span>
+                      ))}
+                    </div>
+                  )
+                  // ea + sector: show as single line
+                  return (
+                    <p className="mt-1 text-gray-500 font-mono" style={{ fontSize: 11 }}>
+                      {label}
+                    </p>
+                  )
+                })()}
                 {q.accreditation_body && (
                   <p className="mt-0.5 text-gray-400" style={{ fontSize: 11 }}>{q.accreditation_body}</p>
                 )}

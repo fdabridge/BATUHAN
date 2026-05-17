@@ -146,10 +146,14 @@ interface QualRow {
   accreditation_body: string
   technical_depth:    string
   experience_years:   string   // kept as string for the input; parsed on save
-  ea_codes:           string[] // per-standard EA codes (comma-separated on input, stored as array)
+  ea_codes:           string[] // per-standard EA codes — used only for EA-code standards
+  scope_category:     string   // food categories / TA codes / sector / risk level
 }
 
-const BLANK_QUAL: QualRow = { standard_code: '', accreditation_body: 'UAF', technical_depth: '', experience_years: '', ea_codes: [] }
+const BLANK_QUAL: QualRow = {
+  standard_code: '', accreditation_body: 'UAF', technical_depth: '',
+  experience_years: '', ea_codes: [], scope_category: '',
+}
 
 function toQualRows(p: AuditorIngestResult): QualRow[] {
   return (p.standard_qualifications ?? []).map((q) => ({
@@ -158,7 +162,140 @@ function toQualRows(p: AuditorIngestResult): QualRow[] {
     technical_depth:    q.technical_depth ?? '',
     experience_years:   q.experience_years != null ? String(q.experience_years) : '',
     ea_codes:           q.ea_codes ?? [],
+    scope_category:     q.scope_category ?? '',
   }))
+}
+
+// ── Scope input helpers (shared by modal and detail edit) ─────────────────────
+
+const FOOD_CHAIN_CATEGORIES = ['BIII','C0','CI','CII','CIII','CIV','D','E','FI','FII','G','I','K']
+const MEDICAL_DEVICE_TAS    = ['A1.1','A1.2','A1.3','A1.4','A1.5','A1.6','A1.7','A2.1','A2.2','A2.3','A2.4']
+const FOOD_STANDARDS    = ['22000','fssc']
+const MEDICAL_STANDARDS = ['13485']
+const SECTOR_STANDARDS  = ['37001','37301']
+
+function getStandardType(code: string): 'ea' | 'food' | 'medical' | 'sector' {
+  const c = code.toLowerCase()
+  if (FOOD_STANDARDS.some((s) => c.includes(s)))    return 'food'
+  if (MEDICAL_STANDARDS.some((s) => c.includes(s))) return 'medical'
+  if (SECTOR_STANDARDS.some((s) => c.includes(s)))  return 'sector'
+  return 'ea'
+}
+
+function ScopeInput({ standardCode, eaCodes, scopeCategory, onChangeEA, onChangeScope }: {
+  standardCode:  string
+  eaCodes:       string[]
+  scopeCategory: string
+  onChangeEA:    (v: string[]) => void
+  onChangeScope: (v: string) => void
+}) {
+  const type = getStandardType(standardCode)
+  const c    = standardCode.toLowerCase()
+
+  const riskLabel = c.includes('14001') ? 'EMS complexity'
+    : c.includes('45001') ? 'OH&S risk level'
+    : c.includes('50001') ? 'Energy complexity'
+    : 'Risk category'
+  const riskOptions = c.includes('14001') ? ['High','Medium','Low','Limited'] : ['High','Medium','Low']
+
+  if (type === 'food') {
+    const selected = scopeCategory.split(',').map((s) => s.trim()).filter(Boolean)
+    return (
+      <div className="mt-2">
+        <label className="block text-xs text-gray-400 mb-1">Food chain categories</label>
+        <div className="flex flex-wrap gap-1">
+          {FOOD_CHAIN_CATEGORIES.map((cat) => {
+            const active = selected.includes(cat)
+            return (
+              <button key={cat} type="button"
+                className="rounded px-2 py-0.5 text-xs border transition-colors"
+                style={active
+                  ? { background: '#1A4731', color: 'white', borderColor: '#1A4731' }
+                  : { background: 'white', color: '#374151', borderColor: '#D1D5DB' }}
+                onClick={() => {
+                  const next = active ? selected.filter((x) => x !== cat) : [...selected, cat]
+                  onChangeScope(next.join(', '))
+                }}>
+                {cat}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  if (type === 'medical') {
+    const selected = scopeCategory.split(',').map((s) => s.trim()).filter(Boolean)
+    return (
+      <div className="mt-2">
+        <label className="block text-xs text-gray-400 mb-1">Technical areas (MD)</label>
+        <div className="flex flex-wrap gap-1">
+          {MEDICAL_DEVICE_TAS.map((ta) => {
+            const active = selected.includes(ta)
+            return (
+              <button key={ta} type="button"
+                className="rounded px-2 py-0.5 text-xs border transition-colors"
+                style={active
+                  ? { background: '#5B21B6', color: 'white', borderColor: '#5B21B6' }
+                  : { background: 'white', color: '#374151', borderColor: '#D1D5DB' }}
+                onClick={() => {
+                  const next = active ? selected.filter((x) => x !== ta) : [...selected, ta]
+                  onChangeScope(next.join(', '))
+                }}>
+                {ta}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  if (type === 'sector') {
+    return (
+      <div className="mt-2">
+        <label className="block text-xs text-gray-400 mb-1">Sector type</label>
+        <select
+          className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm"
+          value={scopeCategory}
+          onChange={(e) => onChangeScope(e.target.value)}>
+          <option value="">— Select —</option>
+          <option>Public</option>
+          <option>Private</option>
+          <option>Third sector/NGO</option>
+        </select>
+      </div>
+    )
+  }
+
+  // EA-code standards (ISO 9001, 14001, 45001, 27001, 50001)
+  return (
+    <div className="mt-2 space-y-2">
+      <div>
+        <label className="block text-xs text-gray-400 mb-1">EA codes for {standardCode || 'this standard'} (comma-separated)</label>
+        <input
+          type="text"
+          className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm"
+          placeholder="e.g. EA 3, EA 9"
+          value={eaCodes.join(', ')}
+          onChange={(e) => onChangeEA(e.target.value.split(',').map((s) => s.trim()).filter(Boolean))}
+        />
+      </div>
+      {!c.includes('27001') && (
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">{riskLabel}</label>
+          <select
+            className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm"
+            value={scopeCategory}
+            onChange={(e) => onChangeScope(e.target.value)}>
+            <option value="">— Select —</option>
+            {riskOptions.map((o) => <option key={o}>{o}</option>)}
+          </select>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function AddAuditorPanel({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
@@ -234,6 +371,7 @@ function AddAuditorPanel({ onClose, onCreated }: { onClose: () => void; onCreate
             technical_depth:    q.technical_depth || null,
             experience_years:   Number.isFinite(yrs) ? yrs : null,
             ea_codes:           q.ea_codes.length ? q.ea_codes : [],
+            scope_category:     q.scope_category || null,
             is_qualified:       true,
           }
         }),
@@ -591,16 +729,13 @@ function AuditorPreviewForm({
                   <Trash2 size={13} />
                 </button>
               </div>
-              <div>
-                <label className="text-xs text-gray-400">EA codes for {q.standard_code || 'this standard'} (comma-separated)</label>
-                <input
-                  type="text"
-                  className={inputCls}
-                  value={(q.ea_codes ?? []).join(', ')}
-                  onChange={(e) => patchQual(i, { ea_codes: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
-                  placeholder="e.g. EA 3, EA 9"
-                />
-              </div>
+              <ScopeInput
+                standardCode={q.standard_code}
+                eaCodes={q.ea_codes}
+                scopeCategory={q.scope_category}
+                onChangeEA={(v) => patchQual(i, { ea_codes: v })}
+                onChangeScope={(v) => patchQual(i, { scope_category: v })}
+              />
             </div>
           ))}
         </div>
