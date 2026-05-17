@@ -17,9 +17,12 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-DATABASE_URL = "sqlite:///./auth.db"
+from config.settings import get_settings
+
+_settings = get_settings()
+_connect_args = {"check_same_thread": False} if _settings.database_url.startswith("sqlite") else {}
 Base = declarative_base()
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+engine = create_engine(_settings.database_url, connect_args=_connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

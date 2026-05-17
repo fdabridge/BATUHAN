@@ -44,7 +44,8 @@ redis==5.1.0
 # Database
 # -----------------------------------------------------------------------
 sqlalchemy==2.0.35
-aiosqlite==0.20.0              # async SQLite support
+psycopg2-binary==2.9.10        # PostgreSQL driver for Railway Postgres
+aiosqlite==0.20.0              # async SQLite support (local dev)
 
 # -----------------------------------------------------------------------
 # Utilities
