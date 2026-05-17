@@ -291,9 +291,15 @@ def _infer_sector(text: str) -> str:
     return "Private"
 
 
-def _backfill_scope_categories(result: dict) -> None:
-    """For each qualification missing scope_category, infer from the CV text."""
-    # Build a haystack of all CV-derived text for keyword search.
+def _backfill_scope_categories(result: dict, raw_document_text: str = "") -> None:
+    """For each qualification missing scope_category, infer from the CV text.
+
+    raw_document_text is the full source text extracted from the PDF/DOCX.
+    It is always included in the keyword-search haystack so that even if Claude
+    summarises or truncates field_of_expertise, the backfill still has the
+    complete document to search through.
+    """
+    # Build a haystack: Claude-extracted structured fields + full raw source text.
     text_parts: list[str] = []
     if result.get("field_of_expertise"):
         text_parts.append(str(result["field_of_expertise"]))
@@ -302,6 +308,9 @@ def _backfill_scope_categories(result: dict) -> None:
             for k in ("position", "employer", "description"):
                 if w.get(k):
                     text_parts.append(str(w[k]))
+    # Always append the raw document text as the most complete source of truth.
+    if raw_document_text:
+        text_parts.append(raw_document_text)
     haystack = "\n".join(text_parts)
 
     for q in result.get("standard_qualifications") or []:
@@ -386,7 +395,7 @@ def extract_auditor_from_document(file_bytes: bytes, filename: str) -> dict:
 
         msg = client.messages.create(
             model=settings.claude_model,
-            max_tokens=2048,
+            max_tokens=8192,
             system=_SYSTEM_PROMPT,
             messages=[{
                 "role": "user",
@@ -468,8 +477,10 @@ def extract_auditor_from_document(file_bytes: bytes, filename: str) -> dict:
             logger.info("[Auditors/Extractor] Claude returned: standard=%s scope_category=%r ea_codes=%s",
                         q.get("standard_code"), q.get("scope_category"), q.get("ea_codes"))
 
-        # Backfill scope_category from CV text for any qualification Claude left empty
-        _backfill_scope_categories(result)
+        # Backfill scope_category from CV text for any qualification Claude left empty.
+        # Pass the full raw document text so the haystack is never empty even if
+        # Claude's extracted fields were truncated.
+        _backfill_scope_categories(result, raw_document_text=text)
 
         logger.info("[Auditors/Extractor] Parsed '%s' — name=%s", filename, result.get("name"))
         return result
