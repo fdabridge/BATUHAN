@@ -11,6 +11,7 @@ Routes:
 """
 from __future__ import annotations
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
@@ -18,10 +19,12 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from auditors.models import get_db
+
 from auditors.schemas import (
     AuditorCreateSchema, AuditorResponseSchema, AuditorSummarySchema,
     EligibilityCheckSchema, EligibilityResultSchema,
     WitnessRecordCreateSchema, WitnessStatusSchema, WitnessRecordItem,
+    AuditorAvailabilityItem,
 )
 from auditors.service import (
     create_auditor, get_auditor, list_auditors, update_auditor, delete_auditor,
@@ -207,6 +210,112 @@ def witness_summary(
             total_witness_count=len(records),
             records=[],  # omit full records in summary view
         ))
+    return result
+
+
+@router.get("/available", response_model=list[AuditorAvailabilityItem])
+def get_available_auditors(
+    date_start: str,
+    date_end: str,
+    standard_code: Optional[str] = None,
+    ea_code: Optional[str] = None,
+    db: Session = Depends(get_db),
+    _: PlatformUser = Depends(require_any),
+):
+    """
+    Return auditors who are qualified for the given standard/EA code AND have no
+    overlapping bookings in the audit_sets DB for the requested date range.
+
+    Query params:
+      date_start    — ISO date string YYYY-MM-DD (inclusive)
+      date_end      — ISO date string YYYY-MM-DD (inclusive)
+      standard_code — optional; e.g. "ISO 9001" (partial case-insensitive match)
+      ea_code       — optional; e.g. "EA 3" (numeric part compared)
+
+    Returns list sorted: available auditors first, then unavailable.
+    """
+    from auditors.models import Auditor
+    from audit_set.db_models import get_db as get_sets_db, AuditSetStage, AuditSet
+
+    # 1. Fetch all active auditors
+    all_auditors = db.query(Auditor).filter(Auditor.is_active == True).all()
+
+    # 2. Filter by standard_code (partial, case-insensitive)
+    if standard_code:
+        sc_lower = standard_code.lower()
+        all_auditors = [
+            a for a in all_auditors
+            if any(
+                q.is_qualified is not False and sc_lower in (q.standard_code or '').lower()
+                for q in a.standard_qualifications
+            )
+        ]
+
+    # 3. Filter by ea_code (normalize to integer)
+    if ea_code:
+        def _ea_int(code: str) -> Optional[int]:
+            try:
+                return int(code.strip().upper().replace('EA', '').replace(' ', ''))
+            except (ValueError, AttributeError):
+                return None
+        target_ea = _ea_int(ea_code)
+        if target_ea is not None:
+            all_auditors = [
+                a for a in all_auditors
+                if any(_ea_int(c) == target_ea for c in (a.ea_codes or []))
+            ]
+
+    # 4. Check bookings in audit_sets DB
+    sets_db_gen = get_sets_db()
+    sets_db = next(sets_db_gen)
+    result: list[AuditorAvailabilityItem] = []
+    try:
+        # Find all stages that overlap the requested date range and are not cancelled
+        overlapping_stages = (
+            sets_db.query(AuditSetStage, AuditSet.company_name)
+            .join(AuditSet, AuditSetStage.audit_set_id == AuditSet.id)
+            .filter(
+                AuditSetStage.audit_date_start != None,
+                AuditSetStage.audit_date_end != None,
+                AuditSetStage.audit_date_start <= date_end,
+                AuditSetStage.audit_date_end >= date_start,
+                AuditSetStage.status != "cancelled",
+            )
+            .all()
+        )
+
+        for auditor in all_auditors:
+            conflict_detail: Optional[str] = None
+            for stage, company_name in overlapping_stages:
+                # Check if this auditor is the lead or in the auditors JSON list
+                is_lead = stage.lead_auditor_id == auditor.id
+                stage_auditors = stage.auditors or []
+                is_team = any(str(a.get("id", "")) == auditor.id for a in stage_auditors)
+                if is_lead or is_team:
+                    start_str = str(stage.audit_date_start)
+                    end_str   = str(stage.audit_date_end)
+                    client    = company_name or "a client"
+                    conflict_detail = f"Booked {start_str} to {end_str} ({client})"
+                    break
+
+            result.append(AuditorAvailabilityItem(
+                id=auditor.id,
+                name=auditor.name,
+                role=auditor.role,
+                ea_codes=auditor.ea_codes or [],
+                standard_qualifications=[
+                    {"standard_code": q.standard_code, "technical_depth": q.technical_depth}
+                    for q in auditor.standard_qualifications
+                    if q.is_qualified is not False
+                ],
+                available=conflict_detail is None,
+                conflict_detail=conflict_detail,
+            ))
+    finally:
+        sets_db.close()
+
+    # Sort: available first, then by name
+    result.sort(key=lambda a: (0 if a.available else 1, a.name))
     return result
 
 

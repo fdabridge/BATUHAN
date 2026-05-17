@@ -374,6 +374,18 @@ export interface WitnessStatus {
   records: WitnessRecord[]
 }
 
+// ── Auditor availability (GET /auditors/available) ────────────────────────────
+
+export interface AuditorAvailabilityItem {
+  id: string
+  name: string
+  role: string | null
+  ea_codes: string[]
+  standard_qualifications: { standard_code: string; technical_depth: string }[]
+  available: boolean
+  conflict_detail: string | null
+}
+
 
 
 

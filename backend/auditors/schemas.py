@@ -175,6 +175,18 @@ class AuditorDashboardEntry(BaseModel):
         from_attributes = True
 
 
+# ── Availability (filtered by date + qualification) ────────────
+
+class AuditorAvailabilityItem(BaseModel):
+    id: str
+    name: str
+    role: Optional[str] = None
+    ea_codes: list[str] = []
+    standard_qualifications: list[dict] = []   # [{standard_code, technical_depth}]
+    available: bool
+    conflict_detail: Optional[str] = None      # e.g. "Booked 2026-06-10 to 2026-06-12 (Client ABC)"
+
+
 # ── Summary (list endpoint) ────────────────────────────────────
 
 class AuditorSummarySchema(BaseModel):

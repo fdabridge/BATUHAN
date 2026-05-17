@@ -6,7 +6,7 @@ import { ArrowLeft, ChevronDown, ChevronRight, Download, Loader2, Pencil, Check 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { CertBadge } from '@/components/ui/CertBadge'
-import type { AuditSetResponse, StageResponse, ManDayEntry, AuditorSummary } from '@/types'
+import type { AuditSetResponse, StageResponse, ManDayEntry, AuditorSummary, AuditorAvailabilityItem } from '@/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -56,6 +56,43 @@ function buildStageEdit(s: StageResponse): StageEdit {
 
 const inputCls = 'w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 placeholder-gray-400 outline-none focus:border-certiva-primary focus:ring-2 focus:ring-certiva-primary/20'
 const lblCls   = 'mb-1 block text-xs font-medium text-gray-500'
+
+// ── Man-day helpers ───────────────────────────────────────────────────────────
+
+function recommendedDays(
+  stageType: string,
+  manDayResult: Record<string, number> | null,
+  auditType: string | null,
+): number | null {
+  if (!manDayResult) return null
+  const t = (auditType ?? '').toLowerCase()
+  if (t === 'initial') {
+    if (stageType === 'stage_1') return manDayResult.final_ph1 ?? null
+    if (stageType === 'stage_2') return manDayResult.final_ph2 ?? null
+  }
+  if (t === 'surveillance') {
+    return manDayResult.final_surv1 ?? null
+  }
+  if (t === 'recertification') {
+    if (stageType === 'stage_1') return manDayResult.final_recert_ph1 ?? null
+    if (stageType === 'stage_2') return manDayResult.final_recert_ph2 ?? null
+    return manDayResult.final_recert ?? null
+  }
+  return null
+}
+
+function workingDaysBetween(start: string, end: string): number {
+  const s = new Date(start)
+  const e = new Date(end)
+  let count = 0
+  const d = new Date(s)
+  while (d <= e) {
+    const day = d.getDay()
+    if (day !== 0 && day !== 6) count++
+    d.setDate(d.getDate() + 1)
+  }
+  return count
+}
 
 function LabeledField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -188,7 +225,9 @@ function CertSection({
 // ── Stage card ────────────────────────────────────────────────────────────────
 
 function StageCard({
-  stage, label, allStages, auditSetId, onSuccess, auditors, auditorsLoading,
+  stage, label, allStages, auditSetId, onSuccess,
+  auditors, auditorsLoading,
+  manDayResult, auditType, eaCode, standards,
 }: {
   stage: StageResponse
   label: string
@@ -197,9 +236,36 @@ function StageCard({
   onSuccess: () => void
   auditors: AuditorSummary[]
   auditorsLoading: boolean
+  manDayResult: Record<string, number> | null
+  auditType: string | null
+  eaCode: string | null
+  standards: string[]
 }) {
   const [edit, setEdit] = useState<StageEdit>(() => buildStageEdit(stage))
   const [saved, setSaved] = useState(false)
+
+  const recommended = recommendedDays(stage.stage_type, manDayResult, auditType)
+  const primaryStandard = standards[0] ?? null
+
+  // Availability query — fires only when both dates are filled
+  const datesReady = !!edit.audit_date_start && !!edit.audit_date_end
+  const { data: availableAuditors, isFetching: loadingAvailability } = useQuery<AuditorAvailabilityItem[]>({
+    queryKey: ['auditor-availability', edit.audit_date_start, edit.audit_date_end, primaryStandard, eaCode],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        date_start: edit.audit_date_start,
+        date_end:   edit.audit_date_end,
+      })
+      if (primaryStandard) params.set('standard_code', primaryStandard)
+      if (eaCode)          params.set('ea_code', eaCode)
+      return api.get<AuditorAvailabilityItem[]>(`/auditors/available?${params}`).then((r) => r.data)
+    },
+    enabled: datesReady,
+    staleTime: 30_000,
+  })
+
+  const workingDays = datesReady ? workingDaysBetween(edit.audit_date_start, edit.audit_date_end) : null
+  const dateMismatch = recommended != null && workingDays != null && Math.abs(workingDays - recommended) > 0.5
 
   const { mutate, isPending } = useMutation({
     mutationFn: () => {
@@ -232,40 +298,99 @@ function StageCard({
 
   function patch(p: Partial<StageEdit>) { setEdit((prev) => ({ ...prev, ...p })) }
 
+  // Determine the auditor list to render in dropdown
+  const dropdownList: (AuditorSummary | AuditorAvailabilityItem)[] = availableAuditors ?? auditors
+
   return (
     <div className="rounded-lg border border-gray-100 p-4">
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
         <span className="text-sm font-medium text-gray-700">{label}</span>
-        {stage.audit_days != null && (
-          <span className="rounded px-2 py-0.5 text-xs font-medium" style={{ background: '#F0FAF4', color: '#1A4731' }}>
-            {stage.audit_days} days
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {stage.audit_days != null && (
+            <span className="rounded px-2 py-0.5 text-xs font-medium" style={{ background: '#F0FAF4', color: '#1A4731' }}>
+              {stage.audit_days} days audited
+              {recommended != null && stage.audit_days !== recommended && (
+                <span className="ml-1" style={{ color: '#92400E' }}>(recommended: {recommended})</span>
+              )}
+            </span>
+          )}
+          {stage.audit_days == null && recommended != null && (
+            <span className="rounded px-2 py-0.5 text-xs font-medium" style={{ background: '#FEF3C7', color: '#92400E' }}>
+              {recommended} days recommended — not yet scheduled
+            </span>
+          )}
+        </div>
       </div>
+
+      {/* IAF MD 5 banner */}
+      {recommended != null && (
+        <div className="mb-3 rounded-md px-3 py-2 text-sm" style={{ background: '#F0FAF4', color: '#1A4731' }}>
+          <span className="font-medium">IAF MD 5 calculated:</span> {recommended} audit days recommended for this stage.
+          {stage.audit_days != null && stage.audit_days !== recommended && (
+            <span className="ml-2" style={{ color: '#92400E' }}>
+              (Currently saved: {stage.audit_days} days)
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Date range mismatch warning */}
+      {dateMismatch && workingDays != null && (
+        <div className="mb-3 rounded-md px-3 py-2 text-sm" style={{ background: '#FEF3C7', color: '#92400E' }}>
+          ⚠ Date range covers {workingDays} working day(s), but IAF MD 5 recommends {recommended}.
+          {workingDays > recommended!
+            ? ' This exceeds the recommended duration.'
+            : ' This is shorter than the recommended duration.'}
+        </div>
+      )}
 
       {/* 2-col grid of fields */}
       <div className="grid grid-cols-2 gap-4">
+        {/* Lead auditor with availability */}
         <div>
           <label className={lblCls}>Lead auditor</label>
+          {loadingAvailability && (
+            <p className="mb-1 text-xs text-gray-400">Checking availability…</p>
+          )}
+          {availableAuditors && (
+            <p className="mb-1 text-xs text-gray-500">
+              {availableAuditors.filter((a) => a.available).length} of {availableAuditors.length} auditors
+              qualified &amp; available for {primaryStandard ?? 'this standard'} on selected dates.
+            </p>
+          )}
           <select
             className={inputCls}
             value={edit.lead_auditor_name}
             onChange={(e) => patch({ lead_auditor_name: e.target.value })}
-            disabled={auditorsLoading}
+            disabled={!availableAuditors && auditorsLoading}
           >
-            <option value="">{auditorsLoading ? 'Loading…' : '— Select —'}</option>
+            <option value="">{!availableAuditors && auditorsLoading ? 'Loading…' : '— Select —'}</option>
             {/* Preserve a free-text legacy value that doesn't match the current pool */}
-            {edit.lead_auditor_name && !auditors.some((a) => a.name === edit.lead_auditor_name) && (
+            {edit.lead_auditor_name && !dropdownList.some((a) => a.name === edit.lead_auditor_name) && (
               <option value={edit.lead_auditor_name}>{edit.lead_auditor_name}</option>
             )}
-            {auditors.map((a) => (
-              <option key={a.id} value={a.name}>
-                {a.name}{a.role ? ` — ${a.role}` : ''}
-              </option>
-            ))}
+            {dropdownList.map((a) => {
+              const avail = availableAuditors?.find((x) => x.name === a.name)
+              const isUnavailable = avail && !avail.available
+              return (
+                <option key={a.id ?? a.name} value={a.name} disabled={!!isUnavailable}>
+                  {a.name}{'role' in a && a.role ? ` — ${a.role}` : ''}
+                  {isUnavailable ? ' — Unavailable' : ''}
+                </option>
+              )
+            })}
           </select>
+          {availableAuditors && (() => {
+            const selected = availableAuditors.find((a) => a.name === edit.lead_auditor_name)
+            if (selected?.conflict_detail) {
+              return <p className="mt-1 text-xs text-red-500">{selected.conflict_detail}</p>
+            }
+            return null
+          })()}
         </div>
+
+        {/* Date range */}
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className={lblCls}>Start date</label>
@@ -465,6 +590,10 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
                   onSuccess={invalidate}
                   auditors={auditors}
                   auditorsLoading={auditorsLoading}
+                  manDayResult={data.man_day_result as Record<string, number> | null}
+                  auditType={data.audit_type ?? null}
+                  eaCode={data.ea_code ?? null}
+                  standards={(data.standards ?? []) as string[]}
                 />
               )
             })}
