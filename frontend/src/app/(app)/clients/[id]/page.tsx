@@ -23,32 +23,53 @@ function auditTypeLabel(t: string): string {
   return t
 }
 
-function nameList(arr: unknown[] | null | undefined): string {
-  if (!arr || !arr.length) return ''
-  return (arr as { name?: string }[]).map((a) => a.name ?? '').filter(Boolean).join(', ')
+// ── Standard code resolver ────────────────────────────────────────────────────
+
+const ISO_LABEL_MAP: Record<string, string> = {
+  'QMS':        'ISO 9001',
+  'EMS':        'ISO 14001',
+  'OHSMS':      'ISO 45001',
+  'FSMS':       'ISO 22000',
+  'FSSC 22000': 'FSSC 22000',
+  'ISMS':       'ISO 27001',
+  'EnMS':       'ISO 50001',
+  'ABMS':       'ISO 37001',
+  'MDMS':       'ISO 13485',
+  'CMS':        'ISO 37301',
 }
 
-function textToAuditors(text: string) {
-  return text.split(',').map((n) => n.trim()).filter(Boolean).map((name) => ({ name }))
+function resolveStandards(raw: string[]): string[] {
+  return raw.map((s) => ISO_LABEL_MAP[s] ?? s)
 }
 
 // ── Local stage-edit state ────────────────────────────────────────────────────
 
+interface TeamMember { id: string; name: string }
+
 interface StageEdit {
+  lead_auditor_id:   string
   lead_auditor_name: string
   audit_date_start:  string
   audit_date_end:    string
-  auditors_text:     string
-  tech_experts_text: string
+  auditors:          TeamMember[]
+  technical_experts: TeamMember[]
+}
+
+function parseTeamMembers(arr: unknown[] | null | undefined): TeamMember[] {
+  if (!arr || !arr.length) return []
+  return (arr as { id?: string; name?: string }[])
+    .filter((a) => a.name)
+    .map((a) => ({ id: a.id ?? '', name: a.name! }))
 }
 
 function buildStageEdit(s: StageResponse): StageEdit {
   return {
+    lead_auditor_id:   '',
     lead_auditor_name: s.lead_auditor_name ?? '',
     audit_date_start:  s.audit_date_start  ?? '',
     audit_date_end:    s.audit_date_end    ?? '',
-    auditors_text:     nameList(s.auditors),
-    tech_experts_text: nameList(s.technical_experts),
+    auditors:          parseTeamMembers(s.auditors as unknown[]),
+    technical_experts: parseTeamMembers(s.technical_experts as unknown[]),
   }
 }
 
@@ -130,6 +151,73 @@ function workingDaysBetween(start: string, end: string): number {
     d.setDate(d.getDate() + 1)
   }
   return count
+}
+
+// ── Coverage check helpers ────────────────────────────────────────────────────
+
+const EA_CODE_STANDARDS = ['9001', '14001', '45001', '27001']
+const CATEGORY_STANDARDS = ['22000', 'fssc', '13485', '50001', '37001', '37301']
+
+function standardUsesCodes(std: string): 'ea' | 'category' | 'unknown' {
+  const n = std.toLowerCase().replace('iso ', '').replace(/\s/g, '')
+  if (EA_CODE_STANDARDS.some((s) => n.includes(s))) return 'ea'
+  if (CATEGORY_STANDARDS.some((s) => n.includes(s))) return 'category'
+  return 'unknown'
+}
+
+interface CoverageResult {
+  standard: string
+  covered: boolean
+  coveredBy: string | null
+  reason: string | null
+}
+
+function computeCoverage(
+  requiredStandards: string[],
+  clientEACode: string | null,
+  teamMembers: TeamMember[],
+  allAuditors: AuditorAvailabilityItem[],
+): CoverageResult[] {
+  return requiredStandards.map((std) => {
+    const stdNorm = std.toLowerCase().replace('iso ', '').replace(/\s/g, '')
+    const scopeType = standardUsesCodes(std)
+
+    const cover = allAuditors
+      .filter((a) => teamMembers.some((m) => m.id ? m.id === a.id : m.name === a.name))
+      .find((a) => {
+        const qual = a.standard_qualifications.find((q) => {
+          const qNorm = q.standard_code.toLowerCase().replace('iso ', '').replace(/\s/g, '')
+          return qNorm === stdNorm || qNorm.startsWith(stdNorm) || stdNorm.startsWith(qNorm)
+        })
+        if (!qual) return false
+
+        if (scopeType === 'ea') {
+          if (!clientEACode) return true
+          const qualEA = qual.ea_codes
+          if (!qualEA || qualEA.length === 0) return true  // no ea_codes stored — don't block old records
+          const clientNum = clientEACode.replace(/[^0-9]/g, '')
+          return qualEA.some((c) => c.replace(/[^0-9]/g, '') === clientNum)
+        }
+
+        return true  // category-based or unknown — just verify qualification exists
+      })
+
+    let reason: string | null = null
+    if (!cover) {
+      if (scopeType === 'ea' && clientEACode) {
+        reason = `needs qualification + ${clientEACode}`
+      } else {
+        reason = 'no qualified team member'
+      }
+    }
+
+    return {
+      standard: std,
+      covered: !!cover,
+      coveredBy: cover?.name ?? null,
+      reason,
+    }
+  })
 }
 
 function LabeledField({ label, children }: { label: string; children: React.ReactNode }) {
@@ -283,7 +371,8 @@ function StageCard({
   const [saved, setSaved] = useState(false)
 
   const recommended = recommendedDays(stage.stage_type, manDayResult, auditType)
-  const primaryStandard = standards[0] ?? null
+  const resolvedStds = resolveStandards(standards ?? [])
+  const primaryStandard = resolvedStds[0] ?? null
 
   // Availability query — fires only when both dates are filled
   const datesReady = !!edit.audit_date_start && !!edit.audit_date_end
@@ -306,8 +395,27 @@ function StageCard({
   const dateMismatch = recommended != null && workingDays != null && Math.abs(workingDays - recommended) > 0.5
   const stageOrderErr = validateStageOrder(stage, allStages, edit.audit_date_start, edit.audit_date_end)
 
+  const [coverageError, setCoverageError] = useState<string | null>(null)
+
+  const resolvedStandards = resolvedStds
+
+  // Coverage computation
+  const teamMembers: TeamMember[] = [
+    ...(edit.lead_auditor_name ? [{ id: edit.lead_auditor_id, name: edit.lead_auditor_name }] : []),
+    ...edit.auditors,
+    ...edit.technical_experts,
+  ]
+  const coverageResults = (resolvedStandards.length > 0 && (availableAuditors ?? []).length > 0)
+    ? computeCoverage(resolvedStandards, eaCode, teamMembers, availableAuditors ?? [])
+    : []
+  const allCovered = coverageResults.length === 0 || coverageResults.every((r) => r.covered)
+
   const { mutate, isPending } = useMutation({
     mutationFn: () => {
+      if (coverageResults.length > 0 && !allCovered) {
+        const missing = coverageResults.filter((r) => !r.covered).map((r) => r.standard).join(', ')
+        throw new Error(`Cannot save: ${missing} ${missing.includes(',') ? 'are' : 'is'} not covered by any qualified team member.`)
+      }
       const stages = allStages.map((s) => {
         const isThis = s.id === stage.id
         return {
@@ -317,8 +425,8 @@ function StageCard({
           lead_auditor_name: isThis ? (edit.lead_auditor_name || null) : s.lead_auditor_name,
           audit_date_start:  isThis ? (edit.audit_date_start  || null) : s.audit_date_start,
           audit_date_end:    isThis ? (edit.audit_date_end    || null) : s.audit_date_end,
-          auditors:          isThis ? textToAuditors(edit.auditors_text)     : ((s.auditors as { name: string }[]) ?? []),
-          technical_experts: isThis ? textToAuditors(edit.tech_experts_text) : ((s.technical_experts as { name: string }[]) ?? []),
+          auditors:          isThis ? edit.auditors          : ((s.auditors as TeamMember[]) ?? []),
+          technical_experts: isThis ? edit.technical_experts : ((s.technical_experts as TeamMember[]) ?? []),
           observers:         (s.observers as { name: string }[]) ?? [],
           ik_experts:        [],
           evaluators:        [],
@@ -329,15 +437,20 @@ function StageCard({
     onSuccess: (res) => {
       const updated = res.data.stages.find((s) => s.id === stage.id)
       if (updated) setEdit(buildStageEdit(updated))
+      setCoverageError(null)
       onSuccess()
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : 'Failed to save.'
+      setCoverageError(msg)
     },
   })
 
   function patch(p: Partial<StageEdit>) { setEdit((prev) => ({ ...prev, ...p })) }
 
-  // Determine the auditor list to render in dropdown
+  // Determine the auditor list to render in dropdowns
   const dropdownList: (AuditorSummary | AuditorAvailabilityItem)[] = availableAuditors ?? auditors
 
   return (
@@ -401,11 +514,13 @@ function StageCard({
           <select
             className={inputCls}
             value={edit.lead_auditor_name}
-            onChange={(e) => patch({ lead_auditor_name: e.target.value })}
+            onChange={(e) => {
+              const found = dropdownList.find((a) => a.name === e.target.value)
+              patch({ lead_auditor_name: e.target.value, lead_auditor_id: found?.id ?? '' })
+            }}
             disabled={!availableAuditors && auditorsLoading}
           >
             <option value="">{!availableAuditors && auditorsLoading ? 'Loading…' : '— Select —'}</option>
-            {/* Preserve a free-text legacy value that doesn't match the current pool */}
             {edit.lead_auditor_name && !dropdownList.some((a) => a.name === edit.lead_auditor_name) && (
               <option value={edit.lead_auditor_name}>{edit.lead_auditor_name}</option>
             )}
@@ -441,7 +556,6 @@ function StageCard({
               <input type="date" className={inputCls} value={edit.audit_date_end} onChange={(e) => patch({ audit_date_end: e.target.value })} />
             </div>
           </div>
-          {/* Suggest end date from IAF recommended days */}
           {recommended != null && edit.audit_date_start && (
             <button
               type="button"
@@ -452,20 +566,103 @@ function StageCard({
             </button>
           )}
         </div>
+
+        {/* Auditors multi-select */}
         <div>
-          <label className={lblCls}>Auditors <span className="font-normal text-gray-300">(comma-separated)</span></label>
-          <input className={inputCls} value={edit.auditors_text} onChange={(e) => patch({ auditors_text: e.target.value })} placeholder="Name A, Name B" />
+          <label className={lblCls}>Auditors</label>
+          <div className="flex flex-wrap gap-1 mb-1 min-h-[24px]">
+            {edit.auditors.map((a) => (
+              <span key={a.id || a.name}
+                className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
+                style={{ background: '#F0FAF4', color: '#1A4731', border: '1px solid #BBF7D0' }}>
+                {a.name}
+                <button type="button"
+                  className="ml-1 text-gray-400 hover:text-red-500"
+                  onClick={() => patch({ auditors: edit.auditors.filter((x) => (x.id || x.name) !== (a.id || a.name)) })}>
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+          <select className={inputCls} value=""
+            onChange={(e) => {
+              const found = dropdownList.find((a) => (a.id ?? a.name) === e.target.value)
+              if (found && !edit.auditors.find((x) => (x.id || x.name) === (found.id || found.name))) {
+                patch({ auditors: [...edit.auditors, { id: found.id ?? '', name: found.name }] })
+              }
+            }}>
+            <option value="">+ Add auditor…</option>
+            {dropdownList
+              .filter((a) => !edit.auditors.find((x) => (x.id || x.name) === (a.id || a.name)))
+              .filter((a) => a.name !== edit.lead_auditor_name)
+              .map((a) => (
+                <option key={a.id ?? a.name} value={a.id ?? a.name}>{a.name}</option>
+              ))}
+          </select>
         </div>
+
+        {/* Technical experts multi-select */}
         <div>
-          <label className={lblCls}>Technical experts <span className="font-normal text-gray-300">(comma-separated)</span></label>
-          <input className={inputCls} value={edit.tech_experts_text} onChange={(e) => patch({ tech_experts_text: e.target.value })} placeholder="Name A, Name B" />
+          <label className={lblCls}>Technical experts</label>
+          <div className="flex flex-wrap gap-1 mb-1 min-h-[24px]">
+            {edit.technical_experts.map((a) => (
+              <span key={a.id || a.name}
+                className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
+                style={{ background: '#F0FAF4', color: '#1A4731', border: '1px solid #BBF7D0' }}>
+                {a.name}
+                <button type="button"
+                  className="ml-1 text-gray-400 hover:text-red-500"
+                  onClick={() => patch({ technical_experts: edit.technical_experts.filter((x) => (x.id || x.name) !== (a.id || a.name)) })}>
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+          <select className={inputCls} value=""
+            onChange={(e) => {
+              const found = dropdownList.find((a) => (a.id ?? a.name) === e.target.value)
+              if (found && !edit.technical_experts.find((x) => (x.id || x.name) === (found.id || found.name))) {
+                patch({ technical_experts: [...edit.technical_experts, { id: found.id ?? '', name: found.name }] })
+              }
+            }}>
+            <option value="">+ Add technical expert…</option>
+            {dropdownList
+              .filter((a) => !edit.technical_experts.find((x) => (x.id || x.name) === (a.id || a.name)))
+              .filter((a) => a.name !== edit.lead_auditor_name)
+              .map((a) => (
+                <option key={a.id ?? a.name} value={a.id ?? a.name}>{a.name}</option>
+              ))}
+          </select>
         </div>
       </div>
 
-      {/* Stage order validation error */}
+      {/* Coverage summary */}
+      {coverageResults.length > 0 && (
+        <div className={`mt-3 rounded-md p-3 text-sm ${allCovered ? 'border border-green-200' : 'border border-red-200'}`}
+          style={{ background: allCovered ? '#F0FAF4' : '#FEF2F2' }}>
+          <p className="font-medium mb-1" style={{ color: allCovered ? '#1A4731' : '#991B1B' }}>
+            {allCovered ? '✓ All standards covered' : '✗ Coverage incomplete — cannot save'}
+          </p>
+          {coverageResults.map((r) => (
+            <div key={r.standard} className="flex items-center gap-2 text-xs mt-0.5">
+              <span style={{ color: r.covered ? '#1A4731' : '#991B1B' }}>
+                {r.covered ? '✓' : '✗'} {r.standard}
+                {r.coveredBy ? ` — ${r.coveredBy}` : r.reason ? ` — ${r.reason}` : ' — no qualified team member'}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Stage order / coverage errors */}
       {stageOrderErr && (
         <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
           ⛔ {stageOrderErr}
+        </div>
+      )}
+      {coverageError && !stageOrderErr && (
+        <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+          {coverageError}
         </div>
       )}
 
@@ -473,7 +670,7 @@ function StageCard({
       <div className="mt-4 flex items-center gap-2">
         <button
           type="button"
-          disabled={isPending || !!stageOrderErr}
+          disabled={isPending || !!stageOrderErr || !allCovered}
           onClick={() => mutate()}
           className="flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium text-white disabled:opacity-60 hover:opacity-90"
           style={{ background: '#1A4731' }}

@@ -45,6 +45,7 @@ def create_tables():
     # Safe migrations: add columns introduced after initial deployment
     _safe_add_column("auditor_standard_qualifications", "accreditation_body TEXT")
     _safe_add_column("auditor_standard_qualifications", "scope_category TEXT")
+    _safe_add_column("auditor_standard_qualifications", "ea_codes JSON")
 
 
 class Auditor(Base):
@@ -97,7 +98,8 @@ class AuditorStandardQualification(Base):
     auditor_id         = Column(String, ForeignKey("auditors.id"), nullable=False)
     standard_code      = Column(String)   # e.g. "ISO 9001", "ISO 27001"
     accreditation_body = Column(String)   # e.g. "UAF", "TURKAK" — per-standard accreditation
-    scope_category     = Column(String)   # EA code(s) qualified for this standard, e.g. "EA 3, EA 18"
+    scope_category     = Column(String)   # for category-based standards (ISO 22000, FSSC, etc.)
+    ea_codes           = Column(JSON)     # per-standard EA codes for ISO 9001/14001/45001/27001, e.g. ["EA 3", "EA 9"]
     technical_depth    = Column(String)   # "Lead Auditor" | "Team Auditor" | "Technical Expert"
     experience_years   = Column(Integer)
     is_qualified       = Column(Boolean, default=True, nullable=False)

@@ -304,7 +304,12 @@ def get_available_auditors(
                 role=auditor.role,
                 ea_codes=auditor.ea_codes or [],
                 standard_qualifications=[
-                    {"standard_code": q.standard_code, "technical_depth": q.technical_depth}
+                    {
+                        "standard_code": q.standard_code,
+                        "technical_depth": q.technical_depth,
+                        "ea_codes": q.ea_codes or [],
+                        "scope_category": q.scope_category,
+                    }
                     for q in auditor.standard_qualifications
                     if q.is_qualified is not False
                 ],

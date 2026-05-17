@@ -146,9 +146,10 @@ interface QualRow {
   accreditation_body: string
   technical_depth:    string
   experience_years:   string   // kept as string for the input; parsed on save
+  ea_codes:           string[] // per-standard EA codes (comma-separated on input, stored as array)
 }
 
-const BLANK_QUAL: QualRow = { standard_code: '', accreditation_body: 'UAF', technical_depth: '', experience_years: '' }
+const BLANK_QUAL: QualRow = { standard_code: '', accreditation_body: 'UAF', technical_depth: '', experience_years: '', ea_codes: [] }
 
 function toQualRows(p: AuditorIngestResult): QualRow[] {
   return (p.standard_qualifications ?? []).map((q) => ({
@@ -156,6 +157,7 @@ function toQualRows(p: AuditorIngestResult): QualRow[] {
     accreditation_body: q.accreditation_body ?? (p.accreditation_bodies?.[0]) ?? 'UAF',
     technical_depth:    q.technical_depth ?? '',
     experience_years:   q.experience_years != null ? String(q.experience_years) : '',
+    ea_codes:           q.ea_codes ?? [],
   }))
 }
 
@@ -231,6 +233,7 @@ function AddAuditorPanel({ onClose, onCreated }: { onClose: () => void; onCreate
             accreditation_body: q.accreditation_body.trim() || null,
             technical_depth:    q.technical_depth || null,
             experience_years:   Number.isFinite(yrs) ? yrs : null,
+            ea_codes:           q.ea_codes.length ? q.ea_codes : [],
             is_qualified:       true,
           }
         }),
@@ -563,31 +566,41 @@ function AuditorPreviewForm({
             <p className="text-xs text-gray-400">No qualifications yet. Click “Add” to add one.</p>
           )}
           {quals.map((q, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <input
-                type="text" placeholder="Standard (QMS, EMS…)"
-                className={`${inputCls} flex-1`} value={q.standard_code}
-                onChange={(e) => patchQual(i, { standard_code: e.target.value })}
-              />
-              <select
-                className={`${inputCls} w-24`} value={q.accreditation_body}
-                onChange={(e) => patchQual(i, { accreditation_body: e.target.value })}
-              >
-                {BODY_OPTIONS.map((b) => <option key={b} value={b}>{b}</option>)}
-              </select>
-              <input
-                type="text" placeholder="Depth" className={`${inputCls} w-28`}
-                value={q.technical_depth}
-                onChange={(e) => patchQual(i, { technical_depth: e.target.value })}
-              />
-              <input
-                type="number" min={0} placeholder="Yrs" className={`${inputCls} w-16`}
-                value={q.experience_years}
-                onChange={(e) => patchQual(i, { experience_years: e.target.value })}
-              />
-              <button type="button" onClick={() => removeQual(i)} className="rounded p-2 text-gray-400 hover:bg-gray-50 hover:text-red-500" aria-label="Remove qualification">
-                <Trash2 size={13} />
-              </button>
+            <div key={i} className="flex flex-col gap-1.5 py-2 border-b border-gray-100 last:border-0">
+              <div className="flex items-center gap-2">
+                <div className="w-28 shrink-0">
+                  <span className="font-medium text-sm text-gray-900">{q.standard_code || <span className="text-gray-400 font-normal">—</span>}</span>
+                </div>
+                <select
+                  className={`${inputCls} w-24`} value={q.accreditation_body}
+                  onChange={(e) => patchQual(i, { accreditation_body: e.target.value })}
+                >
+                  {BODY_OPTIONS.map((b) => <option key={b} value={b}>{b}</option>)}
+                </select>
+                <input
+                  type="text" placeholder="Depth" className={`${inputCls} flex-1`}
+                  value={q.technical_depth}
+                  onChange={(e) => patchQual(i, { technical_depth: e.target.value })}
+                />
+                <input
+                  type="number" min={0} placeholder="Yrs" className={`${inputCls} w-16`}
+                  value={q.experience_years}
+                  onChange={(e) => patchQual(i, { experience_years: e.target.value })}
+                />
+                <button type="button" onClick={() => removeQual(i)} className="rounded p-2 text-gray-400 hover:bg-gray-50 hover:text-red-500" aria-label="Remove qualification">
+                  <Trash2 size={13} />
+                </button>
+              </div>
+              <div>
+                <label className="text-xs text-gray-400">EA codes for {q.standard_code || 'this standard'} (comma-separated)</label>
+                <input
+                  type="text"
+                  className={inputCls}
+                  value={(q.ea_codes ?? []).join(', ')}
+                  onChange={(e) => patchQual(i, { ea_codes: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
+                  placeholder="e.g. EA 3, EA 9"
+                />
+              </div>
             </div>
           ))}
         </div>

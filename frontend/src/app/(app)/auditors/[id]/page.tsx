@@ -137,7 +137,8 @@ const TECH_DEPTH_OPTIONS = ['Lead Auditor', 'Team Auditor', 'Technical Expert'] 
 interface QualEditRow {
   standard_code:      string
   accreditation_body: string
-  scope_category:     string   // EA codes specific to this standard, e.g. "EA 3, EA 18"
+  scope_category:     string   // for category-based standards (ISO 22000, FSSC, etc.)
+  ea_codes:           string   // comma-separated per-standard EA codes (ISO 9001/14001/45001/27001)
   technical_depth:    string
   experience_years:   string   // kept as string for the input; parsed on save
 }
@@ -148,6 +149,7 @@ function rowsFromAuditor(a: AuditorResponse): QualEditRow[] {
     .map((q) => ({
       standard_code:      q.standard_code ?? '',
       accreditation_body: q.accreditation_body ?? '',
+      ea_codes:           (q.ea_codes ?? []).join(', '),
       scope_category:     q.scope_category ?? '',
       technical_depth:    q.technical_depth ?? '',
       experience_years:   q.experience_years != null ? String(q.experience_years) : '',
@@ -181,7 +183,7 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
   function patchRow(i: number, p: Partial<QualEditRow>) {
     setRows((cur) => cur.map((r, idx) => (idx === i ? { ...r, ...p } : r)))
   }
-  function addRow()           { setRows((cur) => [...cur, { standard_code: '', accreditation_body: '', scope_category: '', technical_depth: '', experience_years: '' }]) }
+  function addRow()           { setRows((cur) => [...cur, { standard_code: '', accreditation_body: '', scope_category: '', ea_codes: '', technical_depth: '', experience_years: '' }]) }
   function removeRow(i: number) { setRows((cur) => cur.filter((_, idx) => idx !== i)) }
 
   const save = useMutation({
@@ -192,10 +194,12 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
         ea_codes: eaCodes.length ? eaCodes : null,
         standard_qualifications: rows.map((r) => {
           const yrs = parseInt(r.experience_years, 10)
+          const eaCodes = r.ea_codes.split(',').map((s) => s.trim()).filter(Boolean)
           return {
             standard_code:      r.standard_code.trim(),
             accreditation_body: r.accreditation_body.trim() || null,
             scope_category:     r.scope_category.trim() || null,
+            ea_codes:           eaCodes.length ? eaCodes : [],
             technical_depth:    r.technical_depth || null,
             experience_years:   Number.isFinite(yrs) ? yrs : null,
             is_qualified:       true,
@@ -290,10 +294,16 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
                     onChange={(e) => patchRow(i, { accreditation_body: e.target.value })}
                   />
                   <input
-                    type="text" placeholder="EA 3, EA 18" className={`${inputCls} flex-1 min-w-[8rem]`}
+                    type="text" placeholder="EA 3, EA 9" className={`${inputCls} w-28`}
+                    value={r.ea_codes}
+                    onChange={(e) => patchRow(i, { ea_codes: e.target.value })}
+                    title="Per-standard EA codes (ISO 9001/14001/45001/27001 only)"
+                  />
+                  <input
+                    type="text" placeholder="scope category" className={`${inputCls} flex-1 min-w-[7rem]`}
                     value={r.scope_category}
                     onChange={(e) => patchRow(i, { scope_category: e.target.value })}
-                    title="EA codes this auditor is qualified for under this standard"
+                    title="Scope category for category-based standards (ISO 22000, FSSC, etc.)"
                   />
                   <select
                     className={`${inputCls} w-36`} value={r.technical_depth}
@@ -343,8 +353,19 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
                     {q.technical_depth}
                   </span>
                 )}
+                {q.ea_codes && q.ea_codes.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {q.ea_codes.map((code: string) => (
+                      <span key={code}
+                        className="rounded px-1.5 py-0.5 text-xs font-mono"
+                        style={{ background: '#F3F4F6', color: '#374151', border: '1px solid #E5E7EB' }}>
+                        {code}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {q.scope_category && (
-                  <p className="mt-1 text-gray-500" style={{ fontSize: 11 }} title="Sector scope (EA codes)">
+                  <p className="mt-1 text-gray-500" style={{ fontSize: 11 }} title="Scope category">
                     🏭 {q.scope_category}
                   </p>
                 )}

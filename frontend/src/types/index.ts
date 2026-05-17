@@ -208,7 +208,8 @@ export interface LanguageItem       { language?: string | null; level?: string |
 export interface StandardQualificationItem {
   standard_code?: string | null
   accreditation_body?: string | null
-  scope_category?: string | null       // EA codes for this standard, e.g. "EA 3, EA 18"
+  scope_category?: string | null       // for category-based standards (ISO 22000, FSSC, etc.)
+  ea_codes?: string[]                  // per-standard EA codes for ISO 9001/14001/45001/27001
   technical_depth?: string | null
   experience_years?: number | null
   is_qualified?: boolean | null
@@ -427,7 +428,12 @@ export interface AuditorAvailabilityItem {
   name: string
   role: string | null
   ea_codes: string[]
-  standard_qualifications: { standard_code: string; technical_depth: string }[]
+  standard_qualifications: {
+    standard_code: string
+    technical_depth: string
+    ea_codes: string[]          // per-standard EA codes — may be [] for old records
+    scope_category: string | null
+  }[]
   available: boolean
   conflict_detail: string | null
 }

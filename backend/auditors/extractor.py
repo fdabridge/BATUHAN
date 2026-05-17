@@ -22,7 +22,7 @@ Return ONLY valid JSON with these keys:
   field_of_expertise,
   ea_codes (list of strings — use ONLY codes from the official IAF EA code list below),
   accreditation_bodies (list of strings like "UAF", "TURKAK"),
-  standard_qualifications (list of {standard_code, accreditation_body, scope_category, technical_depth, experience_years}),
+  standard_qualifications (list of {standard_code, accreditation_body, scope_category, ea_codes, technical_depth, experience_years}),
   work_experience (list of {employer, position, start_date, end_date, description}),
   training_records (list of {training_date, institution, subject, duration_days, standard_code, certificate_available}).
 Use null for any field not found.
@@ -71,7 +71,20 @@ EA 39 - Other social services
 STANDARD QUALIFICATIONS RULES:
 - standard_code must be the ISO standard reference, e.g. "ISO 9001", "ISO 14001", "ISO 45001", "ISO 27001".
 - For each qualification, include accreditation_body if mentioned (e.g. "UAF", "TURKAK", "DAkkS").
-- scope_category: the specific EA code(s) the auditor is qualified to audit for THIS standard, as a comma-separated string (e.g. "EA 3, EA 18"). Look for sector-specific authorisations, approved scopes, or NACE/EA codes listed against the standard in the CV. If no sector-specific scope is mentioned for this standard, set scope_category to null.
+- For standards ISO 9001, ISO 14001, ISO 45001, and ISO 27001 only: include "ea_codes" as a list
+  of IAF EA codes (from the official EA 1–39 list) for which the auditor has documented auditing
+  experience specifically for THAT standard.
+  Example: auditor who did ISO 9001 audits in food factories (EA 3) and printing (EA 9):
+    {"standard_code": "ISO 9001", "ea_codes": ["EA 3", "EA 9"], ...}
+  If the CV does not specify sectors per standard, fall back to the auditor's overall ea_codes list
+  as a default. Apply the same validation: only use codes from EA 1–EA 39.
+- For ISO 22000, FSSC 22000, ISO 13485, ISO 50001, ISO 37001, ISO 37301: do NOT include ea_codes.
+  These standards do not use EA codes for scope classification. Their scope is captured in
+  "scope_category" (food chain categories, medical device areas, energy complexity, sector type).
+  Set "ea_codes": [] for these standards.
+- scope_category: for category-based standards (ISO 22000, FSSC 22000, ISO 13485, ISO 50001,
+  ISO 37001, ISO 37301), capture the specific category/scope as a string. For EA-code standards,
+  set scope_category to null.
 - technical_depth: one of "Lead Auditor", "Team Auditor", "Technical Expert".
 - experience_years: total years of documented auditing experience for that standard (integer).
 - A qualification must ONLY be included if there is evidence of BOTH: (a) relevant training/certification AND (b) documented auditing experience for that standard. If only training is mentioned with no documented auditing experience, DO NOT include it in standard_qualifications at all. It can always be added manually by the user later.
