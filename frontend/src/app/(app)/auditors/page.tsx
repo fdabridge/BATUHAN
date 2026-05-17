@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
-import type { AuditorDashboardEntry, AuditorIngestResult, WitnessStatus } from '@/types'
+import type { AuditorDashboardEntry, AuditorIngestResult, AuditorQualificationSummary, WitnessStatus } from '@/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -69,14 +69,15 @@ function SkeletonRow() {
 
 // ── Row ───────────────────────────────────────────────────────────────────────
 
-function AuditorRow({ a, stds, overflow, witness, onClick }: {
+function AuditorRow({ a, quals, witness, onClick }: {
   a:       AuditorDashboardEntry
-  stds:    string[]
-  overflow: number
+  quals:   AuditorQualificationSummary[]
   witness: WitnessStatus | undefined
   onClick: () => void
 }) {
   const witnessOverdue = witness?.witness_overdue || witness?.new_auditor_unwitnessed
+  const visible  = quals.slice(0, 3)
+  const overflow = quals.length - visible.length
 
   return (
     <tr className="cursor-pointer hover:bg-gray-50" onClick={onClick}>
@@ -86,9 +87,14 @@ function AuditorRow({ a, stds, overflow, witness, onClick }: {
       </td>
       <td className="px-4 py-3">
         <div className="flex flex-wrap gap-1">
-          {stds.map((s) => (
-            <span key={s} className="rounded px-1.5 py-0.5 font-medium" style={{ fontSize: 11, background: '#F0FAF4', color: '#1A4731' }}>
-              {s}
+          {visible.map((q) => (
+            <span key={q.standard_code} className="rounded px-1.5 py-0.5 font-medium" style={{ fontSize: 11, background: '#F0FAF4', color: '#1A4731' }}
+              title={q.scope_category ? `Scope: ${q.scope_category}` : undefined}
+            >
+              {q.standard_code}
+              {q.scope_category && (
+                <span style={{ color: '#256D46', fontWeight: 400 }}> · {q.scope_category}</span>
+              )}
             </span>
           ))}
           {overflow > 0 && (
@@ -429,16 +435,12 @@ export default function AuditorsPage() {
                   </tr>
                 )
                 : rows.map((a) => {
-                  const stds = uniq(a.qualifications.map((q) => q.standard_code))
-                  const visible = stds.slice(0, 4)
-                  const overflow = stds.length - visible.length
                   const witness = witnessSummary?.find((w) => w.auditor_id === a.auditor_id)
                   return (
                     <AuditorRow
                       key={a.auditor_id}
                       a={a}
-                      stds={visible}
-                      overflow={overflow}
+                      quals={a.qualifications as AuditorQualificationSummary[]}
                       witness={witness}
                       onClick={() => router.push(`/auditors/${a.auditor_id}`)}
                     />

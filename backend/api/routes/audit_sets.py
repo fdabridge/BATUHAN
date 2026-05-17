@@ -22,12 +22,14 @@ from audit_set.schemas import (
     AuditSetUpdatePlanningSchema,
     AuditSetResponse,
     AuditSetSummarySchema,
+    QuickCalcSchema,
 )
 from audit_set.service import (
     create_audit_set,
     get_audit_set,
     list_audit_sets,
     update_planning,
+    quick_calculate,
 )
 from auth.db_models import PlatformUser
 from auth.dependencies import require_admin, require_planner, require_any
@@ -96,6 +98,24 @@ def download_zip(audit_set_id: str, db: Session = Depends(get_db), _: PlatformUs
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.post("/{audit_set_id}/quick-calculate", response_model=AuditSetResponse)
+def run_quick_calculate(
+    audit_set_id: str,
+    payload: QuickCalcSchema,
+    db: Session = Depends(get_db),
+    _: PlatformUser = Depends(require_planner),
+):
+    """
+    (Re-)run the IAF MD 5 calculator for an existing audit set using submitted
+    personnel / integration data. Updates man_day_result and stage audit_days.
+    Useful for manually-created clients that skipped the form upload step.
+    """
+    audit_set = quick_calculate(db, audit_set_id, payload)
+    if not audit_set:
+        raise HTTPException(status_code=404, detail=f"Audit set '{audit_set_id}' not found.")
+    return audit_set
 
 
 @router.delete("/{audit_set_id}", status_code=204)

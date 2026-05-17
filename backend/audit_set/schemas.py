@@ -110,6 +110,17 @@ class AuditSetUpdatePlanningSchema(BaseModel):
     stages: list[StageInput] = []
 
 
+class QuickCalcSchema(BaseModel):
+    """Payload for POST /{id}/quick-calculate.
+    Allows manually-created clients to (re)run the IAF MD 5 calculator
+    with updated personnel / integration data without a full form re-upload.
+    """
+    personnel: PersonnelData = PersonnelData()
+    integration_level: IntegrationLevel = IntegrationLevel()
+    ea_code: Optional[str] = None
+    ea_category: Optional[str] = None
+
+
 # ── Output schemas ─────────────────────────────────────────────────────────
 
 class StageResponse(BaseModel):

@@ -16,6 +16,7 @@ from audit_set.schemas import (
     AuditSetCertUpdateSchema,
     AuditSetCreateSchema,
     AuditSetUpdatePlanningSchema,
+    QuickCalcSchema,
 )
 
 logger = logging.getLogger(__name__)
@@ -215,6 +216,57 @@ def create_audit_set(db: Session, data: AuditSetCreateSchema) -> AuditSet:
 def get_audit_set(db: Session, audit_set_id: str) -> AuditSet | None:
     """Return AuditSet by ID (including archived), or None."""
     return db.query(AuditSet).filter(AuditSet.id == audit_set_id).first()
+
+
+def quick_calculate(db: Session, audit_set_id: str, data: QuickCalcSchema) -> AuditSet | None:
+    """
+    Re-run the IAF MD 5 calculator for an audit set with updated personnel /
+    integration data. Persists new man_day_result and updates existing stage
+    audit_days. Returns the refreshed AuditSet, or None if not found.
+    """
+    audit_set = get_audit_set(db, audit_set_id)
+    if not audit_set:
+        return None
+
+    # Patch the audit set with submitted data (in-memory only, not persisted directly)
+    audit_set.personnel = data.personnel.model_dump()
+    audit_set.integration_level = data.integration_level.model_dump()
+    if data.ea_code is not None:
+        audit_set.ea_code = data.ea_code
+    if data.ea_category is not None:
+        audit_set.ea_category = data.ea_category
+
+    result = _run_calculation(audit_set)
+    if not result:
+        logger.warning("[AuditSet] quick_calculate: engine returned None for id=%s", audit_set_id)
+        return audit_set  # return as-is without crashing
+
+    audit_set.man_day_result = result
+    audit_set.effective_employees = int(round(result.get("eps", 0)))
+    audit_set.risk_category = (
+        result["standard_results"][0].get("category", "").upper()
+        if result.get("standard_results") else None
+    )
+
+    # Update stage audit_days to match new recommended days
+    audit_type = (audit_set.audit_type or "initial").lower()
+    stage_day_map: dict[str, float | None] = {}
+    if audit_type == "initial":
+        stage_day_map = {"stage_1": result.get("final_ph1"), "stage_2": result.get("final_ph2")}
+    elif audit_type == "surveillance":
+        stage_day_map = {"surveillance": result.get("final_surv1")}
+    else:
+        stage_day_map = {"stage_1": result.get("final_recert_ph1"), "stage_2": result.get("final_recert_ph2")}
+
+    for stage in audit_set.stages:
+        new_days = stage_day_map.get(stage.stage_type)
+        if new_days is not None:
+            stage.audit_days = new_days
+
+    db.commit()
+    db.refresh(audit_set)
+    logger.info("[AuditSet] quick_calculate done for id=%s final_total=%s", audit_set_id, result.get("final_total"))
+    return audit_set
 
 
 def list_audit_sets(db: Session, status: str | None = None) -> list[AuditSet]:

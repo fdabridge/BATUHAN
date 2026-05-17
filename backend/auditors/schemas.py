@@ -20,7 +20,9 @@ class LanguageItem(BaseModel):
 
 class StandardQualificationItem(BaseModel):
     standard_code: Optional[str] = None
-    technical_depth: Optional[str] = None   # Lead Auditor, Team Auditor …
+    accreditation_body: Optional[str] = None  # e.g. "UAF", "TURKAK"
+    scope_category: Optional[str] = None      # EA codes qualified for this standard, e.g. "EA 3, EA 18"
+    technical_depth: Optional[str] = None     # Lead Auditor, Team Auditor …
     experience_years: Optional[int] = None
     is_qualified: Optional[bool] = True
     last_training_date: Optional[str] = None  # "YYYY-MM-DD"
@@ -149,6 +151,8 @@ class EligibilityResultSchema(BaseModel):
 
 class QualificationSummary(BaseModel):
     standard_code: str
+    accreditation_body: str | None = None
+    scope_category: str | None = None
     is_qualified: bool
     technical_depth: str | None
     experience_years: int | None

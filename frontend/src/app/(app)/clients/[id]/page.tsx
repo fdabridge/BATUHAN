@@ -6,7 +6,7 @@ import { ArrowLeft, ChevronDown, ChevronRight, Download, Loader2, Pencil, Check 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { CertBadge } from '@/components/ui/CertBadge'
-import type { AuditSetResponse, StageResponse, ManDayEntry, AuditorSummary, AuditorAvailabilityItem } from '@/types'
+import type { AuditSetResponse, StageResponse, ManDayResult, AuditorSummary, AuditorAvailabilityItem } from '@/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -61,7 +61,7 @@ const lblCls   = 'mb-1 block text-xs font-medium text-gray-500'
 
 function recommendedDays(
   stageType: string,
-  manDayResult: Record<string, number> | null,
+  manDayResult: ManDayResult | null,
   auditType: string | null,
 ): number | null {
   if (!manDayResult) return null
@@ -77,6 +77,44 @@ function recommendedDays(
     if (stageType === 'stage_1') return manDayResult.final_recert_ph1 ?? null
     if (stageType === 'stage_2') return manDayResult.final_recert_ph2 ?? null
     return manDayResult.final_recert ?? null
+  }
+  return null
+}
+
+/** Given a start date (YYYY-MM-DD) and a number of working days, return the end date. */
+function suggestEndDate(startISO: string, workDays: number): string {
+  const d = new Date(startISO)
+  let remaining = Math.max(1, Math.round(workDays))
+  // day 1 is the start date itself if it's a weekday
+  if (d.getDay() !== 0 && d.getDay() !== 6) remaining--
+  while (remaining > 0) {
+    d.setDate(d.getDate() + 1)
+    if (d.getDay() !== 0 && d.getDay() !== 6) remaining--
+  }
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * Returns an error message if stage ordering is violated.
+ * Stage 2 start must be after Stage 1 end (if both are set).
+ */
+function validateStageOrder(
+  currentStage: StageResponse,
+  allStages: StageResponse[],
+  startDate: string,
+  endDate: string,
+): string | null {
+  if (currentStage.stage_type === 'stage_2' && startDate) {
+    const stage1 = allStages.find((s) => s.stage_type === 'stage_1')
+    if (stage1?.audit_date_end && startDate <= stage1.audit_date_end) {
+      return `Stage 2 must start after Stage 1 ends (${formatDate(stage1.audit_date_end)}).`
+    }
+  }
+  if (currentStage.stage_type === 'stage_1' && endDate) {
+    const stage2 = allStages.find((s) => s.stage_type === 'stage_2')
+    if (stage2?.audit_date_start && endDate >= stage2.audit_date_start) {
+      return `Stage 1 must end before Stage 2 starts (${formatDate(stage2.audit_date_start)}).`
+    }
   }
   return null
 }
@@ -236,7 +274,7 @@ function StageCard({
   onSuccess: () => void
   auditors: AuditorSummary[]
   auditorsLoading: boolean
-  manDayResult: Record<string, number> | null
+  manDayResult: ManDayResult | null
   auditType: string | null
   eaCode: string | null
   standards: string[]
@@ -266,6 +304,7 @@ function StageCard({
 
   const workingDays = datesReady ? workingDaysBetween(edit.audit_date_start, edit.audit_date_end) : null
   const dateMismatch = recommended != null && workingDays != null && Math.abs(workingDays - recommended) > 0.5
+  const stageOrderErr = validateStageOrder(stage, allStages, edit.audit_date_start, edit.audit_date_end)
 
   const { mutate, isPending } = useMutation({
     mutationFn: () => {
@@ -391,15 +430,27 @@ function StageCard({
         </div>
 
         {/* Date range */}
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className={lblCls}>Start date</label>
-            <input type="date" className={inputCls} value={edit.audit_date_start} onChange={(e) => patch({ audit_date_start: e.target.value })} />
+        <div className="space-y-1">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className={lblCls}>Start date</label>
+              <input type="date" className={inputCls} value={edit.audit_date_start} onChange={(e) => patch({ audit_date_start: e.target.value })} />
+            </div>
+            <div>
+              <label className={lblCls}>End date</label>
+              <input type="date" className={inputCls} value={edit.audit_date_end} onChange={(e) => patch({ audit_date_end: e.target.value })} />
+            </div>
           </div>
-          <div>
-            <label className={lblCls}>End date</label>
-            <input type="date" className={inputCls} value={edit.audit_date_end} onChange={(e) => patch({ audit_date_end: e.target.value })} />
-          </div>
+          {/* Suggest end date from IAF recommended days */}
+          {recommended != null && edit.audit_date_start && (
+            <button
+              type="button"
+              onClick={() => patch({ audit_date_end: suggestEndDate(edit.audit_date_start, recommended) })}
+              className="text-xs text-certiva-primary underline hover:opacity-70"
+            >
+              Suggest end date ({recommended} working days from start)
+            </button>
+          )}
         </div>
         <div>
           <label className={lblCls}>Auditors <span className="font-normal text-gray-300">(comma-separated)</span></label>
@@ -411,10 +462,18 @@ function StageCard({
         </div>
       </div>
 
+      {/* Stage order validation error */}
+      {stageOrderErr && (
+        <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+          ⛔ {stageOrderErr}
+        </div>
+      )}
+
       {/* Save row */}
       <div className="mt-4 flex items-center gap-2">
         <button
-          type="button" disabled={isPending}
+          type="button"
+          disabled={isPending || !!stageOrderErr}
           onClick={() => mutate()}
           className="flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium text-white disabled:opacity-60 hover:opacity-90"
           style={{ background: '#1A4731' }}
@@ -433,10 +492,21 @@ function StageCard({
 }
 
 
-// ── Man-day section (collapsible) ─────────────────────────────────────────────
+// ── Man-day section (collapsible, correct CalculationResult shape) ────────────
 
-function ManDaySection({ result }: { result: Record<string, ManDayEntry> | null }) {
+function ManDaySection({ result }: { result: ManDayResult | null }) {
   const [open, setOpen] = useState(false)
+
+  function phaseRow(label: string, days: number | undefined) {
+    if (!days) return null
+    return (
+      <div className="flex items-center justify-between py-1">
+        <span className="text-gray-500">{label}</span>
+        <span className="font-medium text-certiva-primary">{days} days</span>
+      </div>
+    )
+  }
+
   return (
     <div className="rounded-lg border border-gray-100 bg-white">
       <button
@@ -444,42 +514,172 @@ function ManDaySection({ result }: { result: Record<string, ManDayEntry> | null 
         className="flex w-full items-center justify-between px-5 py-4 text-left"
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="text-sm font-medium text-gray-700">Man-day calculation</span>
+        <span className="text-sm font-medium text-gray-700">
+          IAF MD 5 man-day calculation
+          {result && (
+            <span className="ml-2 text-xs font-normal text-gray-400">
+              {result.total_employees} employees · EPS {result.eps}
+            </span>
+          )}
+        </span>
         {open
           ? <ChevronDown size={16} className="text-gray-400" />
           : <ChevronRight size={16} className="text-gray-400" />}
       </button>
 
       {open && (
-        <div className="border-t border-gray-100 px-5 pb-5 pt-4">
+        <div className="border-t border-gray-100 px-5 pb-5 pt-4 space-y-4">
           {!result ? (
-            <p className="text-sm text-gray-400">Calculation not available.</p>
+            <p className="text-sm text-gray-400">Calculation not available. Use Quick Calculate to generate man-day guidance.</p>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs font-medium uppercase tracking-wide text-gray-400">
-                  <th className="pb-2 pr-4">Standard</th>
-                  <th className="pb-2 pr-4">Base days</th>
-                  <th className="pb-2 pr-4">After integration</th>
-                  <th className="pb-2 pr-4">After reporting reduction</th>
-                  <th className="pb-2">Final</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {Object.entries(result).map(([std, e]) => (
-                  <tr key={std}>
-                    <td className="py-2 pr-4 font-medium">{std}</td>
-                    <td className="py-2 pr-4 text-gray-600">{e.base_days ?? '—'}</td>
-                    <td className="py-2 pr-4 text-gray-600">{e.after_integration ?? '—'}</td>
-                    <td className="py-2 pr-4 text-gray-600">{e.after_reporting_reduction ?? '—'}</td>
-                    <td className="py-2 font-medium text-certiva-primary">{e.final ?? '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <>
+              {result.warning && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  {result.warning}
+                </div>
+              )}
+
+              {/* Per-standard breakdown */}
+              {result.standard_results?.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">Per-standard breakdown</p>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs font-medium uppercase tracking-wide text-gray-400">
+                        <th className="pb-2 pr-4">Standard</th>
+                        <th className="pb-2 pr-4">Category</th>
+                        <th className="pb-2 pr-4">Base (init)</th>
+                        <th className="pb-2 pr-4">Base (surv)</th>
+                        <th className="pb-2">Base (recert)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {result.standard_results.map((r) => (
+                        <tr key={r.standard}>
+                          <td className="py-2 pr-4 font-medium">{r.standard}</td>
+                          <td className="py-2 pr-4 text-gray-500">{r.category}</td>
+                          <td className="py-2 pr-4 text-gray-600">{r.base_init}</td>
+                          <td className="py-2 pr-4 text-gray-600">{r.base_surv}</td>
+                          <td className="py-2 text-gray-600">{r.base_recert}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Final phase totals */}
+              <div>
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">Recommended audit days</p>
+                <div className="divide-y divide-gray-50 text-sm">
+                  {phaseRow('Initial — Stage 1', result.final_ph1)}
+                  {phaseRow('Initial — Stage 2', result.final_ph2)}
+                  {phaseRow('Surveillance (each)', result.final_surv1)}
+                  {phaseRow('Recertification — Stage 1', result.final_recert_ph1)}
+                  {phaseRow('Recertification — Stage 2', result.final_recert_ph2)}
+                </div>
+              </div>
+
+              {/* Deductions summary */}
+              <div className="rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-500 space-y-1">
+                <div className="flex justify-between">
+                  <span>Combined base</span><span>{result.combined_base} days</span>
+                </div>
+                {result.integration_reduction > 0 && (
+                  <div className="flex justify-between">
+                    <span>Integration reduction (20%)</span><span>−{result.integration_reduction}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span>Reporting reduction (20%)</span><span>−{result.reporting_reduction}</span>
+                </div>
+                <div className="flex justify-between font-medium text-gray-700 border-t border-gray-200 pt-1 mt-1">
+                  <span>Final total</span><span>{result.final_total} days</span>
+                </div>
+              </div>
+            </>
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Quick Calculate widget ─────────────────────────────────────────────────────
+
+function QuickCalcWidget({ auditSetId, onSuccess }: { auditSetId: string; onSuccess: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [fullTime,  setFullTime]  = useState('')
+  const [partTime,  setPartTime]  = useState('')
+  const [subcontr,  setSubcontr]  = useState('')
+  const [seasonal,  setSeasonal]  = useState('')
+  const [err, setErr] = useState<string | null>(null)
+
+  const calc = useMutation({
+    mutationFn: () => {
+      const ft = parseInt(fullTime, 10) || 0
+      const pt = parseInt(partTime, 10) || 0
+      const sc = parseInt(subcontr, 10) || 0
+      const se = parseInt(seasonal, 10) || 0
+      if (ft + pt + sc + se === 0) throw new Error('Enter at least one employee count.')
+      return api.post(`/audit-sets/${auditSetId}/quick-calculate`, {
+        personnel: { full_time: ft, part_time: pt, subcontractors: sc, seasonal: se },
+      })
+    },
+    onSuccess: () => { setOpen(false); onSuccess() },
+    onError:   (e: unknown) => setErr(e instanceof Error ? e.message : 'Calculation failed.'),
+  })
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-xs text-certiva-primary underline hover:opacity-70"
+      >
+        Quick Calculate man-days
+      </button>
+    )
+  }
+
+  return (
+    <div className="rounded-lg border border-certiva-primary/20 bg-certiva-surface p-4 text-sm">
+      <p className="mb-3 font-medium text-gray-700">Quick Calculate — enter personnel data</p>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[
+          ['Full-time', fullTime, setFullTime],
+          ['Part-time', partTime, setPartTime],
+          ['Subcontractors', subcontr, setSubcontr],
+          ['Seasonal', seasonal, setSeasonal],
+        ].map(([label, val, setter]) => (
+          <label key={label as string} className="flex flex-col gap-0.5">
+            <span className="text-xs text-gray-500">{label as string}</span>
+            <input
+              type="number" min={0} value={val as string}
+              onChange={(e) => (setter as (v: string) => void)(e.target.value)}
+              className="rounded border border-gray-200 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-certiva-primary"
+            />
+          </label>
+        ))}
+      </div>
+      {err && <p className="mt-2 text-xs text-red-500">{err}</p>}
+      <div className="mt-3 flex gap-2">
+        <button
+          type="button" disabled={calc.isPending}
+          onClick={() => { setErr(null); calc.mutate() }}
+          className="flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+          style={{ background: '#1A4731' }}
+        >
+          {calc.isPending ? <Loader2 size={12} className="animate-spin" /> : null}
+          Calculate
+        </button>
+        <button
+          type="button" onClick={() => { setOpen(false); setErr(null) }}
+          className="rounded px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100"
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   )
 }
@@ -590,7 +790,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
                   onSuccess={invalidate}
                   auditors={auditors}
                   auditorsLoading={auditorsLoading}
-                  manDayResult={data.man_day_result as Record<string, number> | null}
+                  manDayResult={data.man_day_result}
                   auditType={data.audit_type ?? null}
                   eaCode={data.ea_code ?? null}
                   standards={(data.standards ?? []) as string[]}
@@ -602,6 +802,11 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
       )}
 
       <ManDaySection result={data.man_day_result} />
+
+      {/* Quick Calculate — shown when man_day_result is missing (manually created client) */}
+      {!data.man_day_result && (
+        <QuickCalcWidget auditSetId={id} onSuccess={invalidate} />
+      )}
     </div>
   )
 }

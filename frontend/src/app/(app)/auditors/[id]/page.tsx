@@ -137,6 +137,7 @@ const TECH_DEPTH_OPTIONS = ['Lead Auditor', 'Team Auditor', 'Technical Expert'] 
 interface QualEditRow {
   standard_code:      string
   accreditation_body: string
+  scope_category:     string   // EA codes specific to this standard, e.g. "EA 3, EA 18"
   technical_depth:    string
   experience_years:   string   // kept as string for the input; parsed on save
 }
@@ -147,6 +148,7 @@ function rowsFromAuditor(a: AuditorResponse): QualEditRow[] {
     .map((q) => ({
       standard_code:      q.standard_code ?? '',
       accreditation_body: q.accreditation_body ?? '',
+      scope_category:     q.scope_category ?? '',
       technical_depth:    q.technical_depth ?? '',
       experience_years:   q.experience_years != null ? String(q.experience_years) : '',
     }))
@@ -179,7 +181,7 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
   function patchRow(i: number, p: Partial<QualEditRow>) {
     setRows((cur) => cur.map((r, idx) => (idx === i ? { ...r, ...p } : r)))
   }
-  function addRow()           { setRows((cur) => [...cur, { standard_code: '', accreditation_body: '', technical_depth: '', experience_years: '' }]) }
+  function addRow()           { setRows((cur) => [...cur, { standard_code: '', accreditation_body: '', scope_category: '', technical_depth: '', experience_years: '' }]) }
   function removeRow(i: number) { setRows((cur) => cur.filter((_, idx) => idx !== i)) }
 
   const save = useMutation({
@@ -193,6 +195,7 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
           return {
             standard_code:      r.standard_code.trim(),
             accreditation_body: r.accreditation_body.trim() || null,
+            scope_category:     r.scope_category.trim() || null,
             technical_depth:    r.technical_depth || null,
             experience_years:   Number.isFinite(yrs) ? yrs : null,
             is_qualified:       true,
@@ -275,26 +278,32 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
                 <p className="text-xs text-gray-400">No qualifications yet. Click “Add standard” to add one.</p>
               )}
               {rows.map((r, i) => (
-                <div key={i} className="flex items-center gap-2">
+                <div key={i} className="flex flex-wrap items-center gap-2">
                   <input
-                    type="text" placeholder="ISO 9001" className={`${inputCls} flex-1`}
+                    type="text" placeholder="ISO 9001" className={`${inputCls} w-28`}
                     value={r.standard_code}
                     onChange={(e) => patchRow(i, { standard_code: e.target.value })}
                   />
                   <input
-                    type="text" placeholder="UAF" className={`${inputCls} w-24`}
+                    type="text" placeholder="UAF" className={`${inputCls} w-20`}
                     value={r.accreditation_body}
                     onChange={(e) => patchRow(i, { accreditation_body: e.target.value })}
                   />
+                  <input
+                    type="text" placeholder="EA 3, EA 18" className={`${inputCls} flex-1 min-w-[8rem]`}
+                    value={r.scope_category}
+                    onChange={(e) => patchRow(i, { scope_category: e.target.value })}
+                    title="EA codes this auditor is qualified for under this standard"
+                  />
                   <select
-                    className={`${inputCls} w-40`} value={r.technical_depth}
+                    className={`${inputCls} w-36`} value={r.technical_depth}
                     onChange={(e) => patchRow(i, { technical_depth: e.target.value })}
                   >
                     <option value="">—</option>
                     {TECH_DEPTH_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
                   </select>
                   <input
-                    type="number" min={0} placeholder="Yrs" className={`${inputCls} w-16`}
+                    type="number" min={0} placeholder="Yrs" className={`${inputCls} w-14`}
                     value={r.experience_years}
                     onChange={(e) => patchRow(i, { experience_years: e.target.value })}
                   />
@@ -316,7 +325,7 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
       ) : qs.length === 0 ? (
         <p className="text-sm text-gray-400">No qualified standards on record. Click “Edit” to add some.</p>
       ) : (
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           {qs.map((q, i) => {
             const code = q.standard_code as string
             const iso  = STANDARDS_FULL[code] ?? ''
@@ -334,8 +343,16 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
                     {q.technical_depth}
                   </span>
                 )}
+                {q.scope_category && (
+                  <p className="mt-1 text-gray-500" style={{ fontSize: 11 }} title="Sector scope (EA codes)">
+                    🏭 {q.scope_category}
+                  </p>
+                )}
+                {q.accreditation_body && (
+                  <p className="mt-0.5 text-gray-400" style={{ fontSize: 11 }}>{q.accreditation_body}</p>
+                )}
                 {q.experience_years != null && q.experience_years > 0 && (
-                  <p className="mt-1 text-gray-500" style={{ fontSize: 11 }}>{q.experience_years} yrs</p>
+                  <p className="mt-0.5 text-gray-500" style={{ fontSize: 11 }}>{q.experience_years} yrs</p>
                 )}
               </div>
             )

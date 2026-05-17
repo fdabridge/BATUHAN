@@ -28,8 +28,23 @@ def get_db():
         db.close()
 
 
+def _safe_add_column(table: str, col_def: str) -> None:
+    """Add a column to an existing table if it doesn't already exist (SQLite safe)."""
+    with engine.connect() as conn:
+        try:
+            conn.execute(
+                __import__("sqlalchemy").text(f"ALTER TABLE {table} ADD COLUMN {col_def}")
+            )
+            conn.commit()
+        except Exception:
+            pass  # column already exists
+
+
 def create_tables():
     Base.metadata.create_all(bind=engine)
+    # Safe migrations: add columns introduced after initial deployment
+    _safe_add_column("auditor_standard_qualifications", "accreditation_body TEXT")
+    _safe_add_column("auditor_standard_qualifications", "scope_category TEXT")
 
 
 class Auditor(Base):
@@ -78,15 +93,17 @@ class AuditorLanguage(Base):
 
 class AuditorStandardQualification(Base):
     __tablename__ = "auditor_standard_qualifications"
-    id                = Column(Integer, primary_key=True, autoincrement=True)
-    auditor_id        = Column(String, ForeignKey("auditors.id"), nullable=False)
-    standard_code     = Column(String)   # e.g. "ISO 9001", "ISO 27001"
-    technical_depth   = Column(String)   # e.g. "Lead Auditor", "Team Auditor", "Technical Expert"
-    experience_years  = Column(Integer)
-    is_qualified      = Column(Boolean, default=True, nullable=False)
-    last_training_date= Column(String)   # ISO date "YYYY-MM-DD"
-    last_verified_date= Column(String)   # ISO date "YYYY-MM-DD" — used by TURKAK annual check
-    auditor           = relationship("Auditor", back_populates="standard_qualifications")
+    id                 = Column(Integer, primary_key=True, autoincrement=True)
+    auditor_id         = Column(String, ForeignKey("auditors.id"), nullable=False)
+    standard_code      = Column(String)   # e.g. "ISO 9001", "ISO 27001"
+    accreditation_body = Column(String)   # e.g. "UAF", "TURKAK" — per-standard accreditation
+    scope_category     = Column(String)   # EA code(s) qualified for this standard, e.g. "EA 3, EA 18"
+    technical_depth    = Column(String)   # "Lead Auditor" | "Team Auditor" | "Technical Expert"
+    experience_years   = Column(Integer)
+    is_qualified       = Column(Boolean, default=True, nullable=False)
+    last_training_date = Column(String)   # ISO date "YYYY-MM-DD"
+    last_verified_date = Column(String)   # ISO date "YYYY-MM-DD" — used by TURKAK annual check
+    auditor            = relationship("Auditor", back_populates="standard_qualifications")
 
 
 class AuditorWorkExperience(Base):

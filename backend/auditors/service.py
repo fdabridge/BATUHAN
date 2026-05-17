@@ -160,6 +160,8 @@ def get_dashboard(db: Session, active_only: bool = True) -> list[AuditorDashboar
 
             qual_summaries.append(QualificationSummary(
                 standard_code=row.standard_code or "",
+                accreditation_body=getattr(row, "accreditation_body", None),
+                scope_category=getattr(row, "scope_category", None),
                 is_qualified=bool(row.is_qualified),
                 technical_depth=row.technical_depth,
                 experience_years=row.experience_years,

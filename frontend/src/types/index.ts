@@ -52,11 +52,54 @@ export interface AuditSetPersonnel {
   seasonal: number
 }
 
+/** @deprecated Use ManDayResult instead */
 export interface ManDayEntry {
   base_days?: number
   after_integration?: number
   after_reporting_reduction?: number
   final?: number
+}
+
+/** Per-standard breakdown row inside ManDayResult (mirrors backend StandardAuditResult) */
+export interface StandardAuditResult {
+  standard: string
+  category: string
+  eps: number
+  base_init: number
+  base_ph1: number
+  base_ph2: number
+  base_surv: number
+  base_recert: number
+  base_recert_ph1: number
+  base_recert_ph2: number
+  site_addition: number
+}
+
+/** Full IAF MD 5 calculation result (mirrors backend CalculationResult) */
+export interface ManDayResult {
+  org_name: string
+  standards: string[]
+  audit_type: string
+  scope: string
+  standard_results: StandardAuditResult[]
+  combined_base: number
+  integration_reduction: number
+  reporting_reduction: number
+  final_total: number
+  final_ph1: number
+  final_ph2: number
+  final_surv1: number
+  final_surv2: number
+  final_recert: number
+  final_recert_ph1: number
+  final_recert_ph2: number
+  total_employees: number
+  office_employees: number
+  repetitive_employees: number
+  eps: number
+  enms_k?: number | null
+  enms_complexity?: string | null
+  warning?: string | null
 }
 
 export interface AuditSetResponse {
@@ -72,7 +115,7 @@ export interface AuditSetResponse {
   scope_tr: string | null
   scope_en: string | null
   effective_employees: number | null
-  man_day_result: Record<string, ManDayEntry> | null
+  man_day_result: ManDayResult | null
   ea_code: string | null
   ea_category: string | null
   certification_fee: number | null
@@ -133,6 +176,8 @@ export interface JobListEntry {
 
 export interface AuditorQualificationSummary {
   standard_code: string
+  accreditation_body: string | null
+  scope_category: string | null
   is_qualified: boolean
   technical_depth: string | null
   experience_years: number | null
@@ -163,6 +208,7 @@ export interface LanguageItem       { language?: string | null; level?: string |
 export interface StandardQualificationItem {
   standard_code?: string | null
   accreditation_body?: string | null
+  scope_category?: string | null       // EA codes for this standard, e.g. "EA 3, EA 18"
   technical_depth?: string | null
   experience_years?: number | null
   is_qualified?: boolean | null
