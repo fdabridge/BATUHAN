@@ -349,6 +349,31 @@ export interface BrandingResponse {
   supported_standards: string[]
 }
 
+// ── Witness audit records (ISO 17021-1 §7.1) ──────────────────────────────────
+
+export interface WitnessRecord {
+  id: number
+  witness_date: string
+  client_name: string | null
+  standard_code: string | null
+  ea_code: string | null
+  role_witnessed: string | null
+  observer_name: string | null
+  outcome: 'Satisfactory' | 'Needs Improvement' | 'Unsatisfactory' | null
+  notes: string | null
+}
+
+export interface WitnessStatus {
+  auditor_id: string
+  auditor_name: string
+  last_witness_date: string | null
+  days_since_last_witness: number | null
+  witness_overdue: boolean
+  new_auditor_unwitnessed: boolean
+  total_witness_count: number
+  records: WitnessRecord[]
+}
+
 
 
 

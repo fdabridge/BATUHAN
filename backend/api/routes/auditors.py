@@ -21,6 +21,7 @@ from auditors.models import get_db
 from auditors.schemas import (
     AuditorCreateSchema, AuditorResponseSchema, AuditorSummarySchema,
     EligibilityCheckSchema, EligibilityResultSchema,
+    WitnessRecordCreateSchema, WitnessStatusSchema, WitnessRecordItem,
 )
 from auditors.service import (
     create_auditor, get_auditor, list_auditors, update_auditor, delete_auditor,
@@ -168,6 +169,47 @@ def generate_audit_plan_endpoint(body: AuditPlanRequest, _: PlatformUser = Depen
     )
 
 
+@router.get("/witness-summary", response_model=list[WitnessStatusSchema])
+def witness_summary(
+    db: Session = Depends(get_db),
+    _: PlatformUser = Depends(require_any),
+):
+    """Return witness compliance status for every active auditor."""
+    from auditors.models import Auditor, AuditorWitnessRecord
+    from datetime import date
+
+    auditors = db.query(Auditor).filter(Auditor.is_active == True).all()
+    result = []
+    for auditor in auditors:
+        records = db.query(AuditorWitnessRecord).filter(
+            AuditorWitnessRecord.auditor_id == auditor.id
+        ).order_by(AuditorWitnessRecord.witness_date.desc()).all()
+
+        last_witness_date = records[0].witness_date if records else None
+        days_since = None
+        witness_overdue = True
+
+        if last_witness_date:
+            last_dt = date.fromisoformat(last_witness_date)
+            days_since = (date.today() - last_dt).days
+            witness_overdue = days_since > (3 * 365)
+
+        created = auditor.created_at.date() if auditor.created_at else date.today()
+        new_auditor_unwitnessed = (len(records) == 0) and ((date.today() - created).days > 365)
+
+        result.append(WitnessStatusSchema(
+            auditor_id=auditor.id,
+            auditor_name=auditor.name,
+            last_witness_date=last_witness_date,
+            days_since_last_witness=days_since,
+            witness_overdue=witness_overdue,
+            new_auditor_unwitnessed=new_auditor_unwitnessed,
+            total_witness_count=len(records),
+            records=[],  # omit full records in summary view
+        ))
+    return result
+
+
 @router.get("/{auditor_id}", response_model=AuditorResponseSchema)
 def get_one(auditor_id: str, db: Session = Depends(get_db), _: PlatformUser = Depends(require_any)):
     """Return full auditor profile by ID."""
@@ -225,3 +267,99 @@ def eligibility_check(
         accreditation_body=body.accreditation_body,
         role=body.role,
     )
+
+
+@router.get("/{auditor_id}/witness", response_model=WitnessStatusSchema)
+def get_witness_status(
+    auditor_id: str,
+    db: Session = Depends(get_db),
+    _: PlatformUser = Depends(require_any),
+):
+    """Return all witness records + computed compliance status for one auditor."""
+    from auditors.models import Auditor, AuditorWitnessRecord
+    from datetime import date
+
+    auditor = db.query(Auditor).filter(Auditor.id == auditor_id).first()
+    if not auditor:
+        raise HTTPException(status_code=404, detail="Auditor not found")
+
+    records = db.query(AuditorWitnessRecord).filter(
+        AuditorWitnessRecord.auditor_id == auditor_id
+    ).order_by(AuditorWitnessRecord.witness_date.desc()).all()
+
+    last_witness_date = records[0].witness_date if records else None
+    days_since = None
+    witness_overdue = True
+
+    if last_witness_date:
+        last_dt = date.fromisoformat(last_witness_date)
+        days_since = (date.today() - last_dt).days
+        witness_overdue = days_since > (3 * 365)
+
+    created = auditor.created_at.date() if auditor.created_at else date.today()
+    new_auditor_unwitnessed = (len(records) == 0) and ((date.today() - created).days > 365)
+
+    return WitnessStatusSchema(
+        auditor_id=auditor_id,
+        auditor_name=auditor.name,
+        last_witness_date=last_witness_date,
+        days_since_last_witness=days_since,
+        witness_overdue=witness_overdue,
+        new_auditor_unwitnessed=new_auditor_unwitnessed,
+        total_witness_count=len(records),
+        records=[WitnessRecordItem(
+            id=r.id,
+            witness_date=r.witness_date,
+            client_name=r.client_name,
+            standard_code=r.standard_code,
+            ea_code=r.ea_code,
+            role_witnessed=r.role_witnessed,
+            observer_name=r.observer_name,
+            outcome=r.outcome,
+            notes=r.notes,
+        ) for r in records],
+    )
+
+
+@router.post("/{auditor_id}/witness", status_code=201)
+def add_witness_record(
+    auditor_id: str,
+    payload: WitnessRecordCreateSchema,
+    db: Session = Depends(get_db),
+    _: PlatformUser = Depends(require_admin),
+):
+    """Log a new witness audit record for an auditor."""
+    from auditors.models import Auditor, AuditorWitnessRecord
+
+    auditor = db.query(Auditor).filter(Auditor.id == auditor_id).first()
+    if not auditor:
+        raise HTTPException(status_code=404, detail="Auditor not found")
+
+    record = AuditorWitnessRecord(
+        auditor_id=auditor_id,
+        **payload.model_dump(),
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return {"id": record.id, "status": "created"}
+
+
+@router.delete("/{auditor_id}/witness/{record_id}", status_code=204)
+def delete_witness_record(
+    auditor_id: str,
+    record_id: int,
+    db: Session = Depends(get_db),
+    _: PlatformUser = Depends(require_admin),
+):
+    """Remove a witness record."""
+    from auditors.models import AuditorWitnessRecord
+
+    rec = db.query(AuditorWitnessRecord).filter(
+        AuditorWitnessRecord.id == record_id,
+        AuditorWitnessRecord.auditor_id == auditor_id,
+    ).first()
+    if not rec:
+        raise HTTPException(status_code=404, detail="Record not found")
+    db.delete(rec)
+    db.commit()

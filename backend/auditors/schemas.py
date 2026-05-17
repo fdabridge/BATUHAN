@@ -69,6 +69,41 @@ class AuditorCreateSchema(BaseModel):
     audit_log: list[AuditLogItem] = []
 
 
+# ── Witness audit records ──────────────────────────────────────
+
+class WitnessRecordItem(BaseModel):
+    id: Optional[int] = None
+    witness_date: str
+    client_name: Optional[str] = None
+    standard_code: Optional[str] = None
+    ea_code: Optional[str] = None
+    role_witnessed: Optional[str] = None
+    observer_name: Optional[str] = None
+    outcome: Optional[str] = None   # "Satisfactory" | "Needs Improvement" | "Unsatisfactory"
+    notes: Optional[str] = None
+
+class WitnessRecordCreateSchema(BaseModel):
+    witness_date: str
+    client_name: Optional[str] = None
+    standard_code: Optional[str] = None
+    ea_code: Optional[str] = None
+    role_witnessed: Optional[str] = None
+    observer_name: Optional[str] = None
+    outcome: Optional[str] = None
+    notes: Optional[str] = None
+
+class WitnessStatusSchema(BaseModel):
+    """Computed witness compliance status for one auditor."""
+    auditor_id: str
+    auditor_name: str
+    last_witness_date: Optional[str]
+    days_since_last_witness: Optional[int]
+    witness_overdue: bool
+    new_auditor_unwitnessed: bool
+    total_witness_count: int
+    records: list[WitnessRecordItem]
+
+
 # ── Full response ──────────────────────────────────────────────
 
 class AuditorResponseSchema(BaseModel):
@@ -93,6 +128,7 @@ class AuditorResponseSchema(BaseModel):
     work_experience: list[WorkExperienceItem] = []
     training_records: list[TrainingRecordItem] = []
     audit_log: list[AuditLogItem] = []
+    witness_records: list[WitnessRecordItem] = []
 
 
 # ── Eligibility ───────────────────────────────────────────────

@@ -2,11 +2,12 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, AlertTriangle, CheckCircle2, Loader2, XCircle } from 'lucide-react'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { ArrowLeft, AlertTriangle, CheckCircle2, Loader2, Plus, Trash2, XCircle } from 'lucide-react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 import type {
   AuditorResponse, EligibilityCheckRequest, EligibilityResult, EligibilityRoleValue,
+  WitnessRecord, WitnessStatus,
 } from '@/types'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -296,6 +297,185 @@ function AuditHistory({ a }: { a: AuditorResponse }) {
   )
 }
 
+// ── Witness audit panel ───────────────────────────────────────────────────────
+
+const OUTCOME_OPTIONS = ['Satisfactory', 'Needs Improvement', 'Unsatisfactory'] as const
+const ROLE_WITNESSED_OPTIONS = ['Lead Auditor', 'Team Auditor', 'Technical Expert'] as const
+
+function outcomeBadge(outcome: WitnessRecord['outcome']) {
+  if (!outcome) return null
+  const styles: Record<string, { bg: string; color: string }> = {
+    'Satisfactory':      { bg: '#F0FAF4', color: '#1A4731' },
+    'Needs Improvement': { bg: '#FEF3C7', color: '#92400E' },
+    'Unsatisfactory':    { bg: '#FEE2E2', color: '#991B1B' },
+  }
+  const s = styles[outcome] ?? { bg: '#F3F4F6', color: '#6B7280' }
+  return (
+    <span className="rounded px-2 py-0.5 text-xs" style={s}>{outcome}</span>
+  )
+}
+
+const BLANK_FORM = {
+  witness_date: '', client_name: '', standard_code: '', ea_code: '',
+  role_witnessed: 'Lead Auditor', observer_name: '', outcome: 'Satisfactory' as string, notes: '',
+}
+
+function WitnessPanel({ id }: { id: string }) {
+  const queryClient = useQueryClient()
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({ ...BLANK_FORM })
+  const [formErr, setFormErr] = useState<string | null>(null)
+
+  const { data: ws, isLoading } = useQuery<WitnessStatus>({
+    queryKey: ['witness-status', id],
+    queryFn: () => api.get<WitnessStatus>(`/auditors/${id}/witness`).then((r) => r.data),
+  })
+
+  const addRecord = useMutation({
+    mutationFn: () => api.post(`/auditors/${id}/witness`, form),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['witness-status', id] })
+      queryClient.invalidateQueries({ queryKey: ['witness-summary'] })
+      setForm({ ...BLANK_FORM })
+      setShowForm(false)
+      setFormErr(null)
+    },
+    onError: (err: unknown) => {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setFormErr(detail ?? 'Failed to save.')
+    },
+  })
+
+  const deleteRecord = useMutation({
+    mutationFn: (recId: number) => api.delete(`/auditors/${id}/witness/${recId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['witness-status', id] })
+      queryClient.invalidateQueries({ queryKey: ['witness-summary'] })
+    },
+  })
+
+  function patch(k: string, v: string) { setForm((f) => ({ ...f, [k]: v })) }
+
+  const isOverdue = ws?.witness_overdue || ws?.new_auditor_unwitnessed
+
+  return (
+    <div className="rounded-lg border border-gray-100 bg-white p-5">
+      <div className="mb-4 flex items-center justify-between">
+        <p className="text-sm font-medium text-gray-700">Witness audits <span className="ml-1 text-xs font-normal text-gray-400">(ISO 17021-1 §7.1)</span></p>
+        <button
+          type="button"
+          onClick={() => setShowForm((v) => !v)}
+          className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+          style={{ background: '#1A4731' }}
+        >
+          <Plus size={12} /> Log witness audit
+        </button>
+      </div>
+
+      {isLoading && <div className="py-4 text-center"><Loader2 size={16} className="animate-spin text-certiva-primary" /></div>}
+
+      {ws && (
+        <>
+          {/* Status banner */}
+          {isOverdue ? (
+            <div className="mb-4 rounded-md p-3 text-sm" style={{ background: '#FEE2E2', color: '#991B1B' }}>
+              ⚠ Witness audit overdue. ISO 17021-1 §7.1 requires witnessing at least once every 3 years per auditor.
+              {' '}Last witnessed: <strong>{ws.last_witness_date ?? 'Never'}</strong>
+            </div>
+          ) : (
+            <div className="mb-4 rounded-md p-3 text-sm" style={{ background: '#F0FAF4', color: '#1A4731' }}>
+              ✓ Witness audit up to date. Last: <strong>{ws.last_witness_date}</strong> ({ws.days_since_last_witness} days ago)
+            </div>
+          )}
+
+          {/* Log form */}
+          {showForm && (
+            <div className="mb-4 rounded-lg border border-gray-100 p-4">
+              <p className="mb-3 text-sm font-medium text-gray-700">New witness record</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className={lblCls}>Witness date *</label>
+                  <input type="date" className={inputCls} value={form.witness_date} onChange={(e) => patch('witness_date', e.target.value)} /></div>
+                <div><label className={lblCls}>Client name</label>
+                  <input type="text" className={inputCls} value={form.client_name} onChange={(e) => patch('client_name', e.target.value)} /></div>
+                <div><label className={lblCls}>Standard</label>
+                  <input type="text" className={inputCls} placeholder="ISO 9001" value={form.standard_code} onChange={(e) => patch('standard_code', e.target.value)} /></div>
+                <div><label className={lblCls}>EA Code</label>
+                  <input type="text" className={inputCls} placeholder="EA 3" value={form.ea_code} onChange={(e) => patch('ea_code', e.target.value)} /></div>
+                <div><label className={lblCls}>Role witnessed</label>
+                  <select className={inputCls} value={form.role_witnessed} onChange={(e) => patch('role_witnessed', e.target.value)}>
+                    {ROLE_WITNESSED_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select></div>
+                <div><label className={lblCls}>Observer name</label>
+                  <input type="text" className={inputCls} value={form.observer_name} onChange={(e) => patch('observer_name', e.target.value)} /></div>
+                <div><label className={lblCls}>Outcome</label>
+                  <select className={inputCls} value={form.outcome} onChange={(e) => patch('outcome', e.target.value)}>
+                    {OUTCOME_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select></div>
+                <div className="col-span-2"><label className={lblCls}>Notes</label>
+                  <textarea rows={2} className={inputCls} value={form.notes} onChange={(e) => patch('notes', e.target.value)} /></div>
+              </div>
+              {formErr && <p className="mt-2 text-xs text-red-600">{formErr}</p>}
+              <div className="mt-3 flex gap-2">
+                <button type="button" onClick={() => setShowForm(false)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Cancel</button>
+                <button
+                  type="button"
+                  disabled={!form.witness_date || addRecord.isPending}
+                  onClick={() => { setFormErr(null); addRecord.mutate() }}
+                  className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-60 hover:opacity-90"
+                  style={{ background: '#1A4731' }}
+                >
+                  {addRecord.isPending && <Loader2 size={14} className="animate-spin" />}
+                  Save
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Records table */}
+          {ws.records.length === 0 ? (
+            <p className="text-xs text-gray-400">No witness records logged yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-gray-100 text-left text-gray-400 uppercase tracking-wide">
+                    {['Date', 'Client', 'Standard', 'EA Code', 'Role', 'Observer', 'Outcome', ''].map((h) => (
+                      <th key={h} className="px-2 py-2">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {ws.records.map((r) => (
+                    <tr key={r.id} className="text-gray-700">
+                      <td className="px-2 py-2">{formatDate(r.witness_date)}</td>
+                      <td className="px-2 py-2">{r.client_name || '—'}</td>
+                      <td className="px-2 py-2">{r.standard_code || '—'}</td>
+                      <td className="px-2 py-2">{r.ea_code || '—'}</td>
+                      <td className="px-2 py-2">{r.role_witnessed || '—'}</td>
+                      <td className="px-2 py-2">{r.observer_name || '—'}</td>
+                      <td className="px-2 py-2">{outcomeBadge(r.outcome)}</td>
+                      <td className="px-2 py-2">
+                        <button
+                          type="button"
+                          onClick={() => deleteRecord.mutate(r.id)}
+                          className="rounded p-1 text-gray-400 hover:bg-gray-50 hover:text-red-500"
+                          aria-label="Delete record"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function AuditorDetailPage({ params }: { params: { id: string } }) {
@@ -340,6 +520,7 @@ export default function AuditorDetailPage({ params }: { params: { id: string } }
       <QualifiedStandards a={data} />
       <EligibilityChecker id={id} />
       <AuditHistory a={data} />
+      <WitnessPanel id={id} />
     </div>
   )
 }

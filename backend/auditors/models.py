@@ -54,6 +54,7 @@ class Auditor(Base):
     work_experience         = relationship("AuditorWorkExperience",        back_populates="auditor", cascade="all, delete-orphan")
     training_records        = relationship("AuditorTrainingRecord",        back_populates="auditor", cascade="all, delete-orphan")
     audit_log               = relationship("AuditorAuditLog",              back_populates="auditor", cascade="all, delete-orphan")
+    witness_records         = relationship("AuditorWitnessRecord",         back_populates="auditor", cascade="all, delete-orphan")
 
 
 class AuditorEducation(Base):
@@ -124,3 +125,22 @@ class AuditorAuditLog(Base):
     role          = Column(String)   # Lead Auditor / Team Auditor / Witness
     notes         = Column(Text)
     auditor       = relationship("Auditor", back_populates="audit_log")
+
+
+class AuditorWitnessRecord(Base):
+    """CB's own witness audit records for its auditors (ISO 17021-1 §7.1)."""
+    __tablename__ = "auditor_witness_records"
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    auditor_id     = Column(String, ForeignKey("auditors.id"), nullable=False)
+    witness_date   = Column(String, nullable=False)   # "YYYY-MM-DD"
+    client_name    = Column(String)
+    standard_code  = Column(String)                   # e.g. "ISO 9001"
+    ea_code        = Column(String)                   # e.g. "EA 3"
+    role_witnessed = Column(String)                   # "Lead Auditor" | "Team Auditor"
+    observer_name  = Column(String)                   # name of the CB witness observer
+    outcome        = Column(String)                   # "Satisfactory" | "Needs Improvement" | "Unsatisfactory"
+    notes          = Column(Text)
+    created_at     = Column(DateTime, default=datetime.utcnow)
+
+    auditor = relationship("Auditor", back_populates="witness_records")

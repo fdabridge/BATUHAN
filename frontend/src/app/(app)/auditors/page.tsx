@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
-import type { AuditorDashboardEntry, AuditorIngestResult } from '@/types'
+import type { AuditorDashboardEntry, AuditorIngestResult, WitnessStatus } from '@/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -58,7 +58,7 @@ function StatusBadge({ a }: { a: AuditorDashboardEntry }) {
 function SkeletonRow() {
   return (
     <tr className="border-b border-gray-50">
-      {Array.from({ length: 7 }).map((_, i) => (
+      {Array.from({ length: 8 }).map((_, i) => (
         <td key={i} className="px-4 py-3">
           <div className="h-3 w-3/4 animate-pulse rounded bg-gray-100" />
         </td>
@@ -69,9 +69,15 @@ function SkeletonRow() {
 
 // ── Row ───────────────────────────────────────────────────────────────────────
 
-function AuditorRow({ a, stds, overflow, onClick }: {
-  a: AuditorDashboardEntry; stds: string[]; overflow: number; onClick: () => void
+function AuditorRow({ a, stds, overflow, witness, onClick }: {
+  a:       AuditorDashboardEntry
+  stds:    string[]
+  overflow: number
+  witness: WitnessStatus | undefined
+  onClick: () => void
 }) {
+  const witnessOverdue = witness?.witness_overdue || witness?.new_auditor_unwitnessed
+
   return (
     <tr className="cursor-pointer hover:bg-gray-50" onClick={onClick}>
       <td className="px-4 py-3">
@@ -103,6 +109,13 @@ function AuditorRow({ a, stds, overflow, onClick }: {
       </td>
       <td className="px-4 py-3 text-gray-500" style={{ fontSize: 13 }}>{lastAuditLabel(a)}</td>
       <td className="px-4 py-3"><StatusBadge a={a} /></td>
+      <td className="px-4 py-3">
+        {witnessOverdue && (
+          <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs" style={{ background: '#FEE2E2', color: '#991B1B' }}>
+            <AlertTriangle size={12} /> Witness Due
+          </span>
+        )}
+      </td>
       <td className="px-4 py-3">
         <Link
           href={`/auditors/${a.auditor_id}`}
@@ -351,6 +364,11 @@ export default function AuditorsPage() {
     queryFn: () => api.get<AuditorDashboardEntry[]>('/auditors/dashboard').then((r) => r.data),
   })
 
+  const { data: witnessSummary } = useQuery<WitnessStatus[]>({
+    queryKey: ['witness-summary'],
+    queryFn: () => api.get<WitnessStatus[]>('/auditors/witness-summary').then((r) => r.data),
+  })
+
   const rows = data ?? []
   const totalCount   = rows.length
   const activeCount  = rows.filter((a) => a.is_active).length
@@ -395,6 +413,7 @@ export default function AuditorsPage() {
                 <th className="px-4 py-2.5">Accreditation bodies</th>
                 <th className="px-4 py-2.5">Last audit</th>
                 <th className="px-4 py-2.5">Status</th>
+                <th className="px-4 py-2.5">Witness</th>
                 <th className="px-4 py-2.5">Actions</th>
               </tr>
             </thead>
@@ -404,7 +423,7 @@ export default function AuditorsPage() {
                 : rows.length === 0
                 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">
+                    <td colSpan={8} className="px-4 py-12 text-center text-sm text-gray-400">
                       No auditors yet.
                     </td>
                   </tr>
@@ -413,12 +432,14 @@ export default function AuditorsPage() {
                   const stds = uniq(a.qualifications.map((q) => q.standard_code))
                   const visible = stds.slice(0, 4)
                   const overflow = stds.length - visible.length
+                  const witness = witnessSummary?.find((w) => w.auditor_id === a.auditor_id)
                   return (
                     <AuditorRow
                       key={a.auditor_id}
                       a={a}
                       stds={visible}
                       overflow={overflow}
+                      witness={witness}
                       onClick={() => router.push(`/auditors/${a.auditor_id}`)}
                     />
                   )
