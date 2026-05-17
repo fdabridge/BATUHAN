@@ -130,40 +130,218 @@ function ProfileOverview({ a }: { a: AuditorResponse }) {
 }
 
 
-// ── Qualified standards ───────────────────────────────────────────────────────
+// ── Qualified standards (with inline edit mode) ───────────────────────────────
 
-function QualifiedStandards({ a }: { a: AuditorResponse }) {
+const TECH_DEPTH_OPTIONS = ['Lead Auditor', 'Team Auditor', 'Technical Expert'] as const
+
+interface QualEditRow {
+  standard_code:      string
+  accreditation_body: string
+  technical_depth:    string
+  experience_years:   string   // kept as string for the input; parsed on save
+}
+
+function rowsFromAuditor(a: AuditorResponse): QualEditRow[] {
+  return a.standard_qualifications
+    .filter((q) => q.is_qualified !== false)
+    .map((q) => ({
+      standard_code:      q.standard_code ?? '',
+      accreditation_body: q.accreditation_body ?? '',
+      technical_depth:    q.technical_depth ?? '',
+      experience_years:   q.experience_years != null ? String(q.experience_years) : '',
+    }))
+}
+
+function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
+  const queryClient = useQueryClient()
+  const [editing, setEditing]             = useState(false)
+  const [eaText, setEaText]               = useState('')
+  const [rows, setRows]                   = useState<QualEditRow[]>([])
+  const [validationErr, setValidationErr] = useState<string | null>(null)
+  const [saveErr, setSaveErr]             = useState<string | null>(null)
+
   const qs = a.standard_qualifications.filter((q) => q.is_qualified !== false && q.standard_code)
-  if (qs.length === 0) return null
+
+  function startEdit() {
+    setEaText((a.ea_codes ?? []).join(', '))
+    setRows(rowsFromAuditor(a))
+    setValidationErr(null)
+    setSaveErr(null)
+    setEditing(true)
+  }
+
+  function cancelEdit() {
+    setEditing(false)
+    setValidationErr(null)
+    setSaveErr(null)
+  }
+
+  function patchRow(i: number, p: Partial<QualEditRow>) {
+    setRows((cur) => cur.map((r, idx) => (idx === i ? { ...r, ...p } : r)))
+  }
+  function addRow()           { setRows((cur) => [...cur, { standard_code: '', accreditation_body: '', technical_depth: '', experience_years: '' }]) }
+  function removeRow(i: number) { setRows((cur) => cur.filter((_, idx) => idx !== i)) }
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const eaCodes = eaText.split(',').map((s) => s.trim()).filter(Boolean)
+      const payload = {
+        ...a,
+        ea_codes: eaCodes.length ? eaCodes : null,
+        standard_qualifications: rows.map((r) => {
+          const yrs = parseInt(r.experience_years, 10)
+          return {
+            standard_code:      r.standard_code.trim(),
+            accreditation_body: r.accreditation_body.trim() || null,
+            technical_depth:    r.technical_depth || null,
+            experience_years:   Number.isFinite(yrs) ? yrs : null,
+            is_qualified:       true,
+          }
+        }),
+      }
+      await api.put(`/auditors/${id}`, payload)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['auditor', id] })
+      queryClient.invalidateQueries({ queryKey: ['auditors-dashboard'] })
+      setEditing(false)
+    },
+    onError: (err: unknown) => {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setSaveErr(detail ?? 'Failed to save.')
+    },
+  })
+
+  function attemptSave() {
+    if (rows.some((r) => !r.standard_code.trim())) {
+      setValidationErr('Standard code is required for each row.')
+      return
+    }
+    setValidationErr(null)
+    setSaveErr(null)
+    save.mutate()
+  }
 
   return (
     <div className="rounded-lg border border-gray-100 bg-white p-5">
-      <p className="mb-4 text-sm font-medium text-gray-700">Qualified standards</p>
-      <div className="grid grid-cols-4 gap-3">
-        {qs.map((q, i) => {
-          const code = q.standard_code as string
-          const iso  = STANDARDS_FULL[code] ?? ''
-          return (
-            <div
-              key={`${code}-${i}`}
-              className="rounded-lg border"
-              style={{ background: '#F0FAF4', borderColor: 'rgba(34, 168, 92, 0.3)', padding: '0.75rem' }}
+      <div className="mb-4 flex items-center justify-between">
+        <p className="text-sm font-medium text-gray-700">Qualified standards</p>
+        {editing ? (
+          <div className="flex gap-2">
+            <button
+              type="button" onClick={cancelEdit} disabled={save.isPending}
+              className="rounded-lg border border-gray-200 px-3 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-60"
             >
-              <p className="font-medium text-gray-800" style={{ fontSize: 13 }}>
-                {code}{iso && ` — ${iso}`}
-              </p>
-              {q.technical_depth && (
-                <span className="mt-2 inline-block rounded px-1.5 py-0.5 text-certiva-primary" style={{ fontSize: 11, background: 'white' }}>
-                  {q.technical_depth}
-                </span>
-              )}
-              {q.experience_years != null && q.experience_years > 0 && (
-                <p className="mt-1 text-gray-500" style={{ fontSize: 11 }}>{q.experience_years} yrs</p>
-              )}
-            </div>
-          )
-        })}
+              Cancel
+            </button>
+            <button
+              type="button" onClick={attemptSave} disabled={save.isPending}
+              className="inline-flex items-center gap-1 rounded-lg px-3 py-1 text-xs font-medium text-white hover:opacity-90 disabled:opacity-60"
+              style={{ background: '#1A4731' }}
+            >
+              {save.isPending && <Loader2 size={12} className="animate-spin" />}
+              Save
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button" onClick={startEdit}
+            className="rounded-lg border border-gray-200 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Edit
+          </button>
+        )}
       </div>
+
+      {editing ? (
+        <div className="space-y-4">
+          <div>
+            <label className={lblCls}>EA Codes <span className="font-normal text-gray-300">(comma-separated)</span></label>
+            <input
+              type="text" className={inputCls} value={eaText}
+              onChange={(e) => setEaText(e.target.value)} placeholder="EA 3, EA 18, EA 29"
+            />
+          </div>
+
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <label className="block text-sm font-medium text-gray-700">Standard qualifications</label>
+              <button type="button" onClick={addRow} className="inline-flex items-center gap-1 text-xs font-medium text-certiva-primary hover:opacity-70">
+                <Plus size={12} /> Add standard
+              </button>
+            </div>
+            <div className="space-y-2">
+              {rows.length === 0 && (
+                <p className="text-xs text-gray-400">No qualifications yet. Click “Add standard” to add one.</p>
+              )}
+              {rows.map((r, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input
+                    type="text" placeholder="ISO 9001" className={`${inputCls} flex-1`}
+                    value={r.standard_code}
+                    onChange={(e) => patchRow(i, { standard_code: e.target.value })}
+                  />
+                  <input
+                    type="text" placeholder="UAF" className={`${inputCls} w-24`}
+                    value={r.accreditation_body}
+                    onChange={(e) => patchRow(i, { accreditation_body: e.target.value })}
+                  />
+                  <select
+                    className={`${inputCls} w-40`} value={r.technical_depth}
+                    onChange={(e) => patchRow(i, { technical_depth: e.target.value })}
+                  >
+                    <option value="">—</option>
+                    {TECH_DEPTH_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                  <input
+                    type="number" min={0} placeholder="Yrs" className={`${inputCls} w-16`}
+                    value={r.experience_years}
+                    onChange={(e) => patchRow(i, { experience_years: e.target.value })}
+                  />
+                  <button
+                    type="button" onClick={() => removeRow(i)}
+                    className="rounded p-2 text-gray-400 hover:bg-gray-50 hover:text-red-500"
+                    aria-label="Remove row"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {validationErr && <p className="text-xs text-red-600">{validationErr}</p>}
+          {saveErr        && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-600">{saveErr}</div>}
+        </div>
+      ) : qs.length === 0 ? (
+        <p className="text-sm text-gray-400">No qualified standards on record. Click “Edit” to add some.</p>
+      ) : (
+        <div className="grid grid-cols-4 gap-3">
+          {qs.map((q, i) => {
+            const code = q.standard_code as string
+            const iso  = STANDARDS_FULL[code] ?? ''
+            return (
+              <div
+                key={`${code}-${i}`}
+                className="rounded-lg border"
+                style={{ background: '#F0FAF4', borderColor: 'rgba(34, 168, 92, 0.3)', padding: '0.75rem' }}
+              >
+                <p className="font-medium text-gray-800" style={{ fontSize: 13 }}>
+                  {code}{iso && ` — ${iso}`}
+                </p>
+                {q.technical_depth && (
+                  <span className="mt-2 inline-block rounded px-1.5 py-0.5 text-certiva-primary" style={{ fontSize: 11, background: 'white' }}>
+                    {q.technical_depth}
+                  </span>
+                )}
+                {q.experience_years != null && q.experience_years > 0 && (
+                  <p className="mt-1 text-gray-500" style={{ fontSize: 11 }}>{q.experience_years} yrs</p>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -517,7 +695,7 @@ export default function AuditorDetailPage({ params }: { params: { id: string } }
       </div>
 
       <ProfileOverview a={data} />
-      <QualifiedStandards a={data} />
+      <QualifiedStandards a={data} id={id} />
       <EligibilityChecker id={id} />
       <AuditHistory a={data} />
       <WitnessPanel id={id} />

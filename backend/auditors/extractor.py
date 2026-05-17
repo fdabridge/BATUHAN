@@ -73,7 +73,7 @@ STANDARD QUALIFICATIONS RULES:
 - For each qualification, include accreditation_body if mentioned (e.g. "UAF", "TURKAK", "DAkkS").
 - technical_depth: one of "Lead Auditor", "Team Auditor", "Technical Expert".
 - experience_years: total years of documented auditing experience for that standard (integer).
-- A qualification should only be included if there is evidence of BOTH: (a) relevant training/certification AND (b) auditing experience. If only training is mentioned with no experience, still include it but set experience_years to 0.
+- A qualification must ONLY be included if there is evidence of BOTH: (a) relevant training/certification AND (b) documented auditing experience for that standard. If only training is mentioned with no documented auditing experience, DO NOT include it in standard_qualifications at all. It can always be added manually by the user later.
 """
 
 
