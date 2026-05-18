@@ -139,19 +139,21 @@ const TECH_DEPTH_OPTIONS = ['Lead Auditor', 'Team Auditor', 'Technical Expert'] 
 const FOOD_CHAIN_CATEGORIES = ['BIII','C0','CI','CII','CIII','CIV','D','E','FI','FII','G','I','K']
 const MEDICAL_DEVICE_TAS    = ['A1.1','A1.2','A1.3','A1.4','A1.5','A1.6','A1.7','A2.1','A2.2','A2.3','A2.4']
 
-function getStandardType(code: string): 'ea' | 'food' | 'medical' | 'sector' {
+function getStandardType(code: string): 'ea' | 'food' | 'medical' | 'sector' | 'energy' {
   const c = code.toLowerCase()
   if (['22000','fssc'].some((s) => c.includes(s)))  return 'food'
   if (['13485'].some((s) => c.includes(s)))         return 'medical'
   if (['37001','37301'].some((s) => c.includes(s))) return 'sector'
+  if (c.includes('50001'))                          return 'energy'
   return 'ea'
 }
 
 function scopeLabel(q: { standard_code?: string | null; ea_codes?: string[] | null; scope_category?: string | null }): string | null {
   const type = getStandardType(q.standard_code ?? '')
-  if (type === 'food' || type === 'medical') return q.scope_category || null
-  if (type === 'sector') return q.scope_category || null
-  // EA standard — combine ea_codes + risk level
+  // Category-based: only scope_category matters
+  if (type === 'food' || type === 'medical' || type === 'sector' || type === 'energy')
+    return q.scope_category || null
+  // EA standard — ea_codes + optional risk badge
   const parts: string[] = []
   if (q.ea_codes && q.ea_codes.length) parts.push(q.ea_codes.join(', '))
   if (q.scope_category) parts.push(`[${q.scope_category}]`)
@@ -170,7 +172,6 @@ function ScopeInput({ standardCode, eaCodes, scopeCategory, onChangeEA, onChange
 
   const riskLabel   = c.includes('14001') ? 'EMS complexity'
     : c.includes('45001') ? 'OH&S risk level'
-    : c.includes('50001') ? 'Energy complexity'
     : 'Risk category'
   const riskOptions = c.includes('14001') ? ['High','Medium','Low','Limited'] : ['High','Medium','Low']
 
@@ -244,7 +245,21 @@ function ScopeInput({ standardCode, eaCodes, scopeCategory, onChangeEA, onChange
     )
   }
 
-  // EA-code standards (ISO 9001, 14001, 45001, 27001, 50001)
+  if (type === 'energy') {
+    return (
+      <div className="mt-2">
+        <label className="block text-xs text-gray-400 mb-1">Energy complexity</label>
+        <select className={inputCls} value={scopeCategory} onChange={(e) => onChangeScope(e.target.value)}>
+          <option value="">— Select —</option>
+          <option>Low</option>
+          <option>Medium</option>
+          <option>High</option>
+        </select>
+      </div>
+    )
+  }
+
+  // EA-code standards only: ISO 9001, 14001, 45001, 27001
   return (
     <div className="mt-2 space-y-2">
       <div>
@@ -318,7 +333,7 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
   function patchRow(i: number, p: Partial<QualEditRow>) {
     setRows((cur) => cur.map((r, idx) => (idx === i ? { ...r, ...p } : r)))
   }
-  function addRow()           { setRows((cur) => [...cur, { standard_code: '', accreditation_body: '', scope_category: '', ea_codes: '', technical_depth: '', experience_years: '' }]) }
+  function addRow()           { setRows((cur) => [...cur, { standard_code: '', accreditation_body: '', scope_category: '', ea_codes: [], technical_depth: '', experience_years: '' }]) }
   function removeRow(i: number) { setRows((cur) => cur.filter((_, idx) => idx !== i)) }
 
   const save = useMutation({
@@ -523,10 +538,26 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
                     </div>
                   )
 
-                  // EA standard — ea_codes + optional risk/complexity badge
-                  const [eaPart, riskPart] = label.includes('[')
-                    ? [label.slice(0, label.lastIndexOf('[')).trim(), label.slice(label.lastIndexOf('[') + 1, label.lastIndexOf(']'))]
-                    : [label, null]
+                  if (type === 'energy') {
+                    const badgeStyle = label === 'High'
+                      ? { background: '#FEF2F2', color: '#991B1B', border: '1px solid #FECACA' }
+                      : label === 'Medium'
+                      ? { background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' }
+                      : { background: '#F0FDF4', color: '#166534', border: '1px solid #BBF7D0' }
+                    return (
+                      <div className="mt-1">
+                        <span className="rounded px-1.5 py-0.5 text-xs font-medium" style={badgeStyle}>
+                          {label}
+                        </span>
+                      </div>
+                    )
+                  }
+
+                  // EA standard only (9001 / 14001 / 45001 / 27001)
+                  // label = "EA 3, EA 9 [High]" or just "EA 3, EA 9"
+                  const bracketIdx = label.lastIndexOf('[')
+                  const eaPart  = bracketIdx >= 0 ? label.slice(0, bracketIdx).trim() : label
+                  const riskPart = bracketIdx >= 0 ? label.slice(bracketIdx + 1, label.lastIndexOf(']')) : null
                   return (
                     <div className="mt-1 space-y-0.5">
                       {eaPart && <p className="text-gray-500 font-mono" style={{ fontSize: 11 }}>{eaPart}</p>}
