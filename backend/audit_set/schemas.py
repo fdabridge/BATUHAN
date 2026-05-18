@@ -107,6 +107,8 @@ class AuditSetUpdatePlanningSchema(BaseModel):
     ea_technical_area: Optional[str] = None
     certification_fee: Optional[float] = None
     surveillance_fee: Optional[float] = None
+    required_scope: Optional[dict] = None           # persisted from derive-scope
+    scope_integration_level: Optional[str] = None  # "Low" | "Medium" | "High"
     stages: list[StageInput] = []
 
 
@@ -159,6 +161,8 @@ class AuditSetResponse(BaseModel):
     ea_category: Optional[str]
     certification_fee: Optional[float]
     surveillance_fee: Optional[float]
+    required_scope: Optional[dict] = None            # per-standard derived scope codes
+    scope_integration_level: Optional[str] = None   # "Low" | "Medium" | "High"
     stages: list[StageResponse]
     created_at: datetime
     updated_at: datetime

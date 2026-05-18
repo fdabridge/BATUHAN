@@ -219,6 +219,7 @@ def get_available_auditors(
     date_end: str,
     standard_code: Optional[str] = None,
     ea_code: Optional[str] = None,
+    required_categories: Optional[str] = None,   # JSON-encoded required_scope dict
     db: Session = Depends(get_db),
     _: PlatformUser = Depends(require_any),
 ):
@@ -227,15 +228,28 @@ def get_available_auditors(
     overlapping bookings in the audit_sets DB for the requested date range.
 
     Query params:
-      date_start    — ISO date string YYYY-MM-DD (inclusive)
-      date_end      — ISO date string YYYY-MM-DD (inclusive)
-      standard_code — optional; e.g. "ISO 9001" (partial case-insensitive match)
-      ea_code       — optional; e.g. "EA 3" (numeric part compared)
+      date_start           — ISO date string YYYY-MM-DD (inclusive)
+      date_end             — ISO date string YYYY-MM-DD (inclusive)
+      standard_code        — optional; e.g. "ISO 9001" (partial case-insensitive match)
+      ea_code              — optional; e.g. "EA 3" (numeric part compared)
+      required_categories  — optional; JSON-encoded required_scope dict, e.g.
+                             '{"ISO 22000": {"type": "food", "codes": ["CI", "CIV"]}}'
+                             When provided, each result includes covered_scope showing
+                             which codes from the required set this auditor can cover.
 
     Returns list sorted: available auditors first, then unavailable.
     """
+    import json as _json
     from auditors.models import Auditor
     from audit_set.db_models import get_db as get_sets_db, AuditSetStage, AuditSet
+
+    # Parse required_categories (JSON string → dict)
+    req_cat: dict = {}
+    if required_categories:
+        try:
+            req_cat = _json.loads(required_categories)
+        except Exception:
+            req_cat = {}
 
     # 1. Fetch all active auditors
     all_auditors = db.query(Auditor).filter(Auditor.is_active == True).all()
@@ -284,6 +298,42 @@ def get_available_auditors(
             .all()
         )
 
+        def _compute_covered_scope(auditor_qualifications: list, req: dict) -> dict:
+            """
+            For each required standard/codes, determine which codes this auditor covers.
+            Returns {iso_standard: [covered_codes]}.
+            """
+            covered: dict = {}
+            for iso_std, entry in req.items():
+                scope_type = entry.get("type", "ea")
+                required_codes: list[str] = entry.get("codes", [])
+                if not required_codes:
+                    continue
+                # Find the auditor's qualification for this standard
+                std_lower = iso_std.lower().replace("iso ", "").replace(" ", "")
+                qual = next(
+                    (q for q in auditor_qualifications
+                     if q.is_qualified is not False and std_lower in
+                     (q.standard_code or "").lower().replace("iso ", "").replace(" ", "")),
+                    None,
+                )
+                if not qual:
+                    continue
+
+                auditor_codes: list[str] = []
+                if scope_type in ("food", "medical", "sector", "energy"):
+                    # scope_category is a comma-separated string like "CI, CIV, E"
+                    raw = qual.scope_category or ""
+                    auditor_codes = [c.strip() for c in raw.split(",") if c.strip()]
+                elif scope_type == "ea":
+                    auditor_codes = qual.ea_codes or []
+
+                # Intersection of required codes and auditor's codes
+                matched = [c for c in required_codes if c in auditor_codes]
+                if matched:
+                    covered[iso_std] = matched
+            return covered
+
         for auditor in all_auditors:
             conflict_detail: Optional[str] = None
             for stage, company_name in overlapping_stages:
@@ -297,6 +347,8 @@ def get_available_auditors(
                     client    = company_name or "a client"
                     conflict_detail = f"Booked {start_str} to {end_str} ({client})"
                     break
+
+            covered_scope = _compute_covered_scope(auditor.standard_qualifications, req_cat)
 
             result.append(AuditorAvailabilityItem(
                 id=auditor.id,
@@ -315,6 +367,7 @@ def get_available_auditors(
                 ],
                 available=conflict_detail is None,
                 conflict_detail=conflict_detail,
+                covered_scope=covered_scope,
             ))
     finally:
         sets_db.close()

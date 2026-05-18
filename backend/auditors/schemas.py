@@ -190,6 +190,7 @@ class AuditorAvailabilityItem(BaseModel):
     standard_qualifications: list[dict] = []   # [{standard_code, technical_depth, ea_codes, scope_category}]
     available: bool
     conflict_detail: Optional[str] = None      # e.g. "Booked 2026-06-10 to 2026-06-12 (Client ABC)"
+    covered_scope: dict = {}                   # {standard: [codes]} derived from required_categories param
 
 
 # ── Summary (list endpoint) ────────────────────────────────────

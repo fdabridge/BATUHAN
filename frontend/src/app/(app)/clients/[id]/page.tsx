@@ -2,11 +2,11 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, ChevronDown, ChevronRight, Download, Loader2, Pencil, Check } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronRight, Download, Loader2, Pencil, Check, Zap } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { CertBadge } from '@/components/ui/CertBadge'
-import type { AuditSetResponse, StageResponse, ManDayResult, AuditorSummary, AuditorAvailabilityItem } from '@/types'
+import type { AuditSetResponse, StageResponse, ManDayResult, AuditorSummary, AuditorAvailabilityItem, RequiredScope } from '@/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -170,6 +170,8 @@ interface CoverageResult {
   covered: boolean
   coveredBy: string | null
   reason: string | null
+  // Per-code detail (populated when requiredScope is available)
+  codeResults?: { code: string; coveredBy: string | null }[]
 }
 
 function computeCoverage(
@@ -177,38 +179,59 @@ function computeCoverage(
   clientEACode: string | null,
   teamMembers: TeamMember[],
   allAuditors: AuditorAvailabilityItem[],
+  requiredScope?: RequiredScope | null,
 ): CoverageResult[] {
+  const teamAuditors = allAuditors.filter(
+    (a) => teamMembers.some((m) => (m.id ? m.id === a.id : m.name === a.name))
+  )
+
   return requiredStandards.map((std) => {
     const stdNorm = std.toLowerCase().replace('iso ', '').replace(/\s/g, '')
     const scopeType = standardUsesCodes(std)
+    const rsEntry = requiredScope?.[std]
 
-    const cover = allAuditors
-      .filter((a) => teamMembers.some((m) => m.id ? m.id === a.id : m.name === a.name))
-      .find((a) => {
-        const qual = a.standard_qualifications.find((q) => {
-          const qNorm = q.standard_code.toLowerCase().replace('iso ', '').replace(/\s/g, '')
-          return qNorm === stdNorm || qNorm.startsWith(stdNorm) || stdNorm.startsWith(qNorm)
-        })
-        if (!qual) return false
-
-        if (scopeType === 'ea') {
-          if (!clientEACode) return true
-          const qualEA = qual.ea_codes
-          if (!qualEA || qualEA.length === 0) return true  // no ea_codes stored — don't block old records
-          const clientNum = clientEACode.replace(/[^0-9]/g, '')
-          return qualEA.some((c) => c.replace(/[^0-9]/g, '') === clientNum)
-        }
-
-        return true  // category-based or unknown — just verify qualification exists
+    // ── Per-code check when requiredScope is available ──────────────────────
+    if (rsEntry && rsEntry.codes.length > 0) {
+      const codeResults = rsEntry.codes.map((code) => {
+        const coveredBy = teamAuditors.find((a) => {
+          const cs = a.covered_scope?.[std]
+          return cs && cs.includes(code)
+        })?.name ?? null
+        return { code, coveredBy }
       })
+      const allCodesCovered = codeResults.every((r) => r.coveredBy !== null)
+      const firstCover = codeResults.find((r) => r.coveredBy)
+      return {
+        standard: std,
+        covered: allCodesCovered,
+        coveredBy: firstCover?.coveredBy ?? null,
+        reason: allCodesCovered ? null : `missing codes: ${codeResults.filter((r) => !r.coveredBy).map((r) => r.code).join(', ')}`,
+        codeResults,
+      }
+    }
+
+    // ── Fallback: per-standard check ────────────────────────────────────────
+    const cover = teamAuditors.find((a) => {
+      const qual = a.standard_qualifications.find((q) => {
+        const qNorm = q.standard_code.toLowerCase().replace('iso ', '').replace(/\s/g, '')
+        return qNorm === stdNorm || qNorm.startsWith(stdNorm) || stdNorm.startsWith(qNorm)
+      })
+      if (!qual) return false
+      if (scopeType === 'ea') {
+        if (!clientEACode) return true
+        const qualEA = qual.ea_codes
+        if (!qualEA || qualEA.length === 0) return true
+        const clientNum = clientEACode.replace(/[^0-9]/g, '')
+        return qualEA.some((c) => c.replace(/[^0-9]/g, '') === clientNum)
+      }
+      return true
+    })
 
     let reason: string | null = null
     if (!cover) {
-      if (scopeType === 'ea' && clientEACode) {
-        reason = `needs qualification + ${clientEACode}`
-      } else {
-        reason = 'no qualified team member'
-      }
+      reason = scopeType === 'ea' && clientEACode
+        ? `needs qualification + ${clientEACode}`
+        : 'no qualified team member'
     }
 
     return {
@@ -229,9 +252,31 @@ function LabeledField({ label, children }: { label: string; children: React.Reac
   )
 }
 
+// ── Scope type badge colors ───────────────────────────────────────────────────
+
+function scopeBadgeStyle(type: string, code: string): React.CSSProperties {
+  if (type === 'food')    return { background: '#FEF3C7', color: '#92400E' }
+  if (type === 'medical') return { background: '#EDE9FE', color: '#5B21B6' }
+  if (type === 'sector')  return { background: '#EFF6FF', color: '#1E40AF' }
+  if (type === 'energy') {
+    if (code === 'High')   return { background: '#FEE2E2', color: '#991B1B' }
+    if (code === 'Medium') return { background: '#FEF3C7', color: '#92400E' }
+    return { background: '#F0FDF4', color: '#166534' }
+  }
+  return { background: '#F0FAF4', color: '#1A4731' }
+}
+
 // ── Plan overview ─────────────────────────────────────────────────────────────
 
-function PlanOverview({ data }: { data: AuditSetResponse }) {
+function PlanOverview({
+  data,
+  auditSetId,
+  onInvalidate,
+}: {
+  data: AuditSetResponse
+  auditSetId: string
+  onInvalidate: () => void
+}) {
   const p = data.personnel
   const personnelStr = p
     ? `${p.full_time} FT · ${p.part_time} PT · ${p.subcontractors} contractor`
@@ -239,9 +284,28 @@ function PlanOverview({ data }: { data: AuditSetResponse }) {
     ? `${data.effective_employees} effective employees`
     : '—'
 
+  const { mutate: deriveScope, isPending: deriving } = useMutation({
+    mutationFn: () => api.post<AuditSetResponse>(`/audit-sets/${auditSetId}/derive-scope`),
+    onSuccess: () => onInvalidate(),
+  })
+
+  const rs = data.required_scope
+
   return (
     <div className="rounded-lg border border-gray-100 bg-white p-5">
-      <p className="mb-4 text-sm font-medium text-gray-700">Plan overview</p>
+      <div className="mb-4 flex items-center justify-between">
+        <p className="text-sm font-medium text-gray-700">Plan overview</p>
+        <button
+          type="button"
+          disabled={deriving}
+          onClick={() => deriveScope()}
+          className="flex items-center gap-1 text-certiva-primary hover:opacity-70 disabled:opacity-50"
+          style={{ fontSize: 13 }}
+        >
+          {deriving ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+          Derive required scope
+        </button>
+      </div>
       <div className="grid grid-cols-3 gap-x-6 gap-y-5">
         <LabeledField label="Standards">
           <div className="mt-0.5 flex flex-wrap gap-1.5">
@@ -261,6 +325,26 @@ function PlanOverview({ data }: { data: AuditSetResponse }) {
           <span className="text-gray-500">{data.scope_en || '—'}</span>
         </LabeledField>
         <LabeledField label="Personnel">{personnelStr}</LabeledField>
+
+        {rs && Object.keys(rs).length > 0 && (
+          <div className="col-span-3">
+            <p className="mb-0.5 font-medium uppercase tracking-wide text-gray-400" style={{ fontSize: 11 }}>Required scope (derived)</p>
+            <div className="mt-1 space-y-1">
+              {Object.entries(rs).map(([std, entry]) => (
+                <div key={std} className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs font-medium text-gray-600 w-24 shrink-0">{std}</span>
+                  {entry.codes.length === 0 ? (
+                    <span className="text-xs text-gray-400 italic">no codes derived</span>
+                  ) : entry.codes.map((code) => (
+                    <span key={code} className="rounded px-2 py-0.5 text-xs font-medium" style={scopeBadgeStyle(entry.type, code)}>
+                      {code}
+                    </span>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -353,7 +437,7 @@ function CertSection({
 function StageCard({
   stage, label, allStages, auditSetId, onSuccess,
   auditors, auditorsLoading,
-  manDayResult, auditType, eaCode, standards,
+  manDayResult, auditType, eaCode, standards, requiredScope,
 }: {
   stage: StageResponse
   label: string
@@ -366,6 +450,7 @@ function StageCard({
   auditType: string | null
   eaCode: string | null
   standards: string[]
+  requiredScope: RequiredScope | null
 }) {
   const [edit, setEdit] = useState<StageEdit>(() => buildStageEdit(stage))
   const [saved, setSaved] = useState(false)
@@ -376,8 +461,9 @@ function StageCard({
 
   // Availability query — fires only when both dates are filled
   const datesReady = !!edit.audit_date_start && !!edit.audit_date_end
+  const reqCatStr = requiredScope ? JSON.stringify(requiredScope) : undefined
   const { data: availableAuditors, isFetching: loadingAvailability } = useQuery<AuditorAvailabilityItem[]>({
-    queryKey: ['auditor-availability', edit.audit_date_start, edit.audit_date_end, primaryStandard, eaCode],
+    queryKey: ['auditor-availability', edit.audit_date_start, edit.audit_date_end, primaryStandard, eaCode, reqCatStr],
     queryFn: () => {
       const params = new URLSearchParams({
         date_start: edit.audit_date_start,
@@ -385,6 +471,7 @@ function StageCard({
       })
       if (primaryStandard) params.set('standard_code', primaryStandard)
       if (eaCode)          params.set('ea_code', eaCode)
+      if (reqCatStr)       params.set('required_categories', reqCatStr)
       return api.get<AuditorAvailabilityItem[]>(`/auditors/available?${params}`).then((r) => r.data)
     },
     enabled: datesReady,
@@ -406,7 +493,7 @@ function StageCard({
     ...edit.technical_experts,
   ]
   const coverageResults = (resolvedStandards.length > 0 && (availableAuditors ?? []).length > 0)
-    ? computeCoverage(resolvedStandards, eaCode, teamMembers, availableAuditors ?? [])
+    ? computeCoverage(resolvedStandards, eaCode, teamMembers, availableAuditors ?? [], requiredScope)
     : []
   const allCovered = coverageResults.length === 0 || coverageResults.every((r) => r.covered)
 
@@ -527,10 +614,14 @@ function StageCard({
             {dropdownList.map((a) => {
               const avail = availableAuditors?.find((x) => x.name === a.name)
               const isUnavailable = avail && !avail.available
+              const coveredCodes = avail?.covered_scope
+                ? Object.values(avail.covered_scope).flat()
+                : []
+              const coverLabel = coveredCodes.length > 0 ? ` ✓ ${coveredCodes.join(', ')}` : ''
               return (
                 <option key={a.id ?? a.name} value={a.name} disabled={!!isUnavailable}>
                   {a.name}{'role' in a && a.role ? ` — ${a.role}` : ''}
-                  {isUnavailable ? ' — Unavailable' : ''}
+                  {isUnavailable ? ' — Unavailable' : coverLabel}
                 </option>
               )
             })}
@@ -644,11 +735,20 @@ function StageCard({
             {allCovered ? '✓ All standards covered' : '✗ Coverage incomplete — cannot save'}
           </p>
           {coverageResults.map((r) => (
-            <div key={r.standard} className="flex items-center gap-2 text-xs mt-0.5">
-              <span style={{ color: r.covered ? '#1A4731' : '#991B1B' }}>
+            <div key={r.standard} className="mt-0.5">
+              <span className="text-xs" style={{ color: r.covered ? '#1A4731' : '#991B1B' }}>
                 {r.covered ? '✓' : '✗'} {r.standard}
-                {r.coveredBy ? ` — ${r.coveredBy}` : r.reason ? ` — ${r.reason}` : ' — no qualified team member'}
+                {!r.codeResults && (r.coveredBy ? ` — ${r.coveredBy}` : r.reason ? ` — ${r.reason}` : ' — no qualified team member')}
               </span>
+              {r.codeResults && (
+                <div className="ml-4 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                  {r.codeResults.map((cr) => (
+                    <span key={cr.code} className="text-xs" style={{ color: cr.coveredBy ? '#1A4731' : '#991B1B' }}>
+                      {cr.coveredBy ? '✓' : '✗'} {cr.code}{cr.coveredBy ? ` (${cr.coveredBy})` : ''}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -692,7 +792,7 @@ function StageCard({
 // ── Man-day section (collapsible, correct CalculationResult shape) ────────────
 
 function ManDaySection({ result }: { result: ManDayResult | null }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(true)
 
   function phaseRow(label: string, days: number | undefined) {
     if (!days) return null
@@ -964,7 +1064,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
         </div>
       </div>
 
-      <PlanOverview data={data} />
+      <PlanOverview data={data} auditSetId={id} onInvalidate={invalidate} />
       <CertSection data={data} id={id} onInvalidate={invalidate} />
 
       {/* Audit stages */}
@@ -991,6 +1091,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
                   auditType={data.audit_type ?? null}
                   eaCode={data.ea_code ?? null}
                   standards={(data.standards ?? []) as string[]}
+                  requiredScope={data.required_scope ?? null}
                 />
               )
             })}

@@ -41,8 +41,22 @@ def get_db():
         db.close()
 
 
+def _safe_add_column(table: str, col_def: str) -> None:
+    """Add a column if it doesn't already exist (Postgres + SQLite safe)."""
+    import sqlalchemy as sa
+    with engine.connect() as conn:
+        try:
+            conn.execute(sa.text(f"ALTER TABLE {table} ADD COLUMN {col_def}"))
+            conn.commit()
+        except Exception:
+            pass  # column already exists
+
+
 def create_tables():
     Base.metadata.create_all(bind=engine)
+    # Safe migrations — add columns introduced after initial deployment
+    _safe_add_column("audit_sets", "required_scope JSON")
+    _safe_add_column("audit_sets", "scope_integration_level VARCHAR")
 
 
 # ---------------------------------------------------------------------------
@@ -103,6 +117,12 @@ class AuditSet(Base):
     # ── Fees ──────────────────────────────────────────────────────────────────
     certification_fee  = Column(Float, nullable=True)
     surveillance_fee   = Column(Float, nullable=True)
+
+    # ── Derived required scope (from derive-scope endpoint) ──────────────────
+    # JSON dict: {"ISO 22000": {"type": "food", "codes": ["CI", "CIV"]}, ...}
+    required_scope            = Column(JSON,   nullable=True)
+    # IAF MD 11 integration reduction level: "Low" | "Medium" | "High"
+    scope_integration_level   = Column(String, nullable=True)
 
     # ── EA classification ─────────────────────────────────────────────────────
     ea_code          = Column(String, nullable=True)

@@ -102,6 +102,17 @@ export interface ManDayResult {
   warning?: string | null
 }
 
+// ── Scope derivation ──────────────────────────────────────────────────────────
+
+/** Single standard's derived scope entry */
+export interface RequiredScopeEntry {
+  type: 'food' | 'medical' | 'sector' | 'energy' | 'ea'
+  codes: string[]
+}
+
+/** Full derived scope — keyed by ISO standard name, e.g. "ISO 22000" */
+export type RequiredScope = Record<string, RequiredScopeEntry>
+
 export interface AuditSetResponse {
   id: string
   plan_number: number
@@ -120,6 +131,8 @@ export interface AuditSetResponse {
   ea_category: string | null
   certification_fee: number | null
   surveillance_fee: number | null
+  required_scope: RequiredScope | null
+  scope_integration_level: string | null     // "Low" | "Medium" | "High"
   stages: StageResponse[]
   created_at: string
   updated_at: string
@@ -436,6 +449,7 @@ export interface AuditorAvailabilityItem {
   }[]
   available: boolean
   conflict_detail: string | null
+  covered_scope: Record<string, string[]>    // {standard: [covered_codes]} from required_categories
 }
 
 

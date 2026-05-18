@@ -30,6 +30,7 @@ from audit_set.service import (
     list_audit_sets,
     update_planning,
     quick_calculate,
+    derive_and_save_scope,
 )
 from auth.db_models import PlatformUser
 from auth.dependencies import require_admin, require_planner, require_any
@@ -113,6 +114,24 @@ def run_quick_calculate(
     Useful for manually-created clients that skipped the form upload step.
     """
     audit_set = quick_calculate(db, audit_set_id, payload)
+    if not audit_set:
+        raise HTTPException(status_code=404, detail=f"Audit set '{audit_set_id}' not found.")
+    return audit_set
+
+
+@router.post("/{audit_set_id}/derive-scope", response_model=AuditSetResponse)
+def run_derive_scope(
+    audit_set_id: str,
+    db: Session = Depends(get_db),
+    _: PlatformUser = Depends(require_planner),
+):
+    """
+    Derive per-standard required scope codes from the client's scope text using
+    keyword matching (food chain categories, medical TAs, sector types, energy
+    complexity, EA codes).  Saves the result to audit_set.required_scope and
+    returns the updated audit set.
+    """
+    audit_set = derive_and_save_scope(db, audit_set_id)
     if not audit_set:
         raise HTTPException(status_code=404, detail=f"Audit set '{audit_set_id}' not found.")
     return audit_set

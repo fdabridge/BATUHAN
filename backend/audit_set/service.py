@@ -23,15 +23,113 @@ logger = logging.getLogger(__name__)
 
 # Standard code → full ISO name understood by calculator/engine.py
 _CODE_TO_ISO: dict[str, str] = {
-    "QMS":   "ISO 9001",
-    "EMS":   "ISO 14001",
-    "OHSMS": "ISO 45001",
-    "FSMS":  "ISO 22000",
-    "MDQMS": "ISO 13485",
-    "ISMS":  "ISO 27001",
-    "ENMS":  "ISO 50001",
-    "ABMS":  "ISO 37001",
+    "QMS":        "ISO 9001",
+    "EMS":        "ISO 14001",
+    "OHSMS":      "ISO 45001",
+    "FSMS":       "ISO 22000",
+    "FSSC 22000": "FSSC 22000",
+    "MDQMS":      "ISO 13485",
+    "MDMS":       "ISO 13485",
+    "ISMS":       "ISO 27001",
+    "ENMS":       "ISO 50001",
+    "EnMS":       "ISO 50001",
+    "ABMS":       "ISO 37001",
+    "CMS":        "ISO 37301",
 }
+
+# ── Scope-derivation keyword maps ──────────────────────────────────────────
+_FOOD_CHAIN_KW: dict[str, tuple[str, ...]] = {
+    "CI":   ("meat", "poultry", "fish", "seafood", "dairy", "milk", "yogurt", "cheese", "ice cream", "egg"),
+    "CII":  ("fresh juice", "cut vegetable", "fresh produce", "perishable plant", "fresh fruit"),
+    "CIII": ("ready meal", "sandwich", "mixed perishable", "prepared food", "ready-to-eat"),
+    "CIV":  ("confection", "chocolate", "candy", "biscuit", "cookie", "snack", "chip", "cracker",
+             "canned", "ambient", "dried", "cereal", "flour", "rice", "pasta", "edible oil",
+             "sauce", "condiment", "frozen", "beverage", "juice in carton", "soft drink", "bottled water",
+             "coffee", "tea"),
+    "D":    ("animal feed", "pet food", "feedstuff"),
+    "E":    ("catering", "restaurant", "canteen", "food service", "hospitality kitchen"),
+    "FI":   ("food retail", "food wholesale", "supermarket", "grocer"),
+    "FII":  ("food broker", "food distribution", "food trader"),
+    "G":    ("food storage", "cold chain", "food logistics", "food warehousing"),
+    "I":    ("food packaging", "packaging material", "food contact material"),
+    "K":    ("food chemical", "food additive", "ingredient manufacture", "food enzyme", "vitamin"),
+    "BIII": ("plant pre-process", "cleaning of plant", "sorting plant", "packing whole plant"),
+    "C0":   ("slaughter", "slaughterhouse", "abattoir", "animal primary"),
+}
+
+_MEDICAL_TA_KW: dict[str, tuple[str, ...]] = {
+    "A1.1": ("bandage", "wound care", "catheter", "surgical instrument", "syringe"),
+    "A1.2": ("hip replacement", "dental implant", "non-active implant", "orthopaedic"),
+    "A1.3": ("imaging equipment", "monitoring equipment", "ventilator"),
+    "A1.4": ("pacemaker", "active implant", "defibrillator"),
+    "A1.5": ("sterilization", "sterilisation", "ethylene oxide", "gamma steriliz"),
+    "A1.6": ("software as medical device", "samd", "medical software", "ai medical"),
+    "A1.7": ("medical device component", "medical parts supplier"),
+    "A2.1": ("in-vitro diagnostic", "ivd reagent"),
+    "A2.2": ("ivd self-test", "self-testing diagnostic"),
+    "A2.3": ("ivd professional", "professional diagnostic"),
+    "A2.4": ("companion diagnostic",),
+}
+
+_SECTOR_KW: dict[str, tuple[str, ...]] = {
+    "Public":           ("government", "ministry", "municipality", "public authority", "state-owned", "public sector"),
+    "Third sector/NGO": ("ngo", "non-profit", "nonprofit", "charity", "foundation", "association", "third sector"),
+}
+
+_ENERGY_HIGH_KW = ("chemical", "steel", "cement", "refinery", "petrochemical", "mining", "smelting")
+_ENERGY_MED_KW  = ("manufacturing", "production", "industrial", "plant", "factory", "assembly")
+
+
+def derive_required_scope(
+    standards: list[str],
+    scope_tr: str | None,
+    scope_en: str | None,
+    ea_code: str | None,
+) -> dict:
+    """
+    Derive per-standard required scope codes from the client's scope text.
+
+    Returns a dict keyed by the ISO standard name:
+      {"ISO 22000": {"type": "food", "codes": ["CI", "CIV"]}, ...}
+    """
+    haystack = f"{scope_tr or ''} {scope_en or ''}".lower()
+    result: dict = {}
+
+    for abbr in (standards or []):
+        iso = _CODE_TO_ISO.get(abbr, abbr)
+        norm = iso.lower().replace("iso ", "").replace(" ", "")
+
+        if "22000" in norm or "fssc" in norm:
+            codes = [c for c, kws in _FOOD_CHAIN_KW.items() if any(kw in haystack for kw in kws)]
+            result[iso] = {"type": "food", "codes": codes}
+
+        elif "13485" in norm:
+            codes = [c for c, kws in _MEDICAL_TA_KW.items() if any(kw in haystack for kw in kws)]
+            result[iso] = {"type": "medical", "codes": codes}
+
+        elif "37001" in norm or "37301" in norm:
+            sector = "Private"
+            for s, kws in _SECTOR_KW.items():
+                if any(kw in haystack for kw in kws):
+                    sector = s
+                    break
+            result[iso] = {"type": "sector", "codes": [sector]}
+
+        elif "50001" in norm:
+            if any(kw in haystack for kw in _ENERGY_HIGH_KW):
+                complexity = "High"
+            elif any(kw in haystack for kw in _ENERGY_MED_KW):
+                complexity = "Medium"
+            else:
+                complexity = "Low"
+            result[iso] = {"type": "energy", "codes": [complexity]}
+
+        elif any(n in norm for n in ("9001", "14001", "45001", "27001")):
+            codes = [ea_code] if ea_code else []
+            result[iso] = {"type": "ea", "codes": codes}
+
+    logger.info("[AuditSet] derive_required_scope → %s", result)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -293,11 +391,16 @@ def update_planning(
         return None
 
     # Update top-level fields (full replace — PUT semantics)
-    audit_set.ea_code          = data.ea_code
-    audit_set.ea_category      = data.ea_category
-    audit_set.ea_technical_area= data.ea_technical_area
-    audit_set.certification_fee= data.certification_fee
-    audit_set.surveillance_fee = data.surveillance_fee
+    audit_set.ea_code               = data.ea_code
+    audit_set.ea_category           = data.ea_category
+    audit_set.ea_technical_area     = data.ea_technical_area
+    audit_set.certification_fee     = data.certification_fee
+    audit_set.surveillance_fee      = data.surveillance_fee
+    # Persist derived scope only when the caller provides it (don't wipe on stage-only saves)
+    if data.required_scope is not None:
+        audit_set.required_scope = data.required_scope
+    if data.scope_integration_level is not None:
+        audit_set.scope_integration_level = data.scope_integration_level
 
     # Upsert stages
     for stage_input in data.stages:
@@ -339,6 +442,31 @@ def update_planning(
     db.commit()
     db.refresh(audit_set)
     logger.info("[AuditSet] Planning updated id=%s", audit_set.id)
+    return audit_set
+
+
+def derive_and_save_scope(
+    db: Session,
+    audit_set_id: str,
+) -> AuditSet | None:
+    """
+    Run keyword-based scope derivation against the stored scope text and
+    save the result to audit_set.required_scope.  Returns None if not found.
+    """
+    audit_set = get_audit_set(db, audit_set_id)
+    if not audit_set:
+        return None
+
+    scoped = derive_required_scope(
+        standards=audit_set.standards or [],
+        scope_tr=audit_set.scope_tr,
+        scope_en=audit_set.scope_en,
+        ea_code=audit_set.ea_code,
+    )
+    audit_set.required_scope = scoped
+    db.commit()
+    db.refresh(audit_set)
+    logger.info("[AuditSet] Scope derived and saved id=%s → %s", audit_set.id, scoped)
     return audit_set
 
 
