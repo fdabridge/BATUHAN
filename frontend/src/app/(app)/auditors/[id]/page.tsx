@@ -343,13 +343,19 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
         ...a,
         ea_codes: eaCodes.length ? eaCodes : null,
         standard_qualifications: rows.map((r) => {
-          const yrs     = parseInt(r.experience_years, 10)
-          const eaCodes = r.ea_codes.map((s) => s.trim()).filter(Boolean)
+          const yrs   = parseInt(r.experience_years, 10)
+          const stype = getStandardType(r.standard_code.trim())
+          const isEA  = stype === 'ea'
+          const rowEA = r.ea_codes.map((s) => s.trim()).filter(Boolean)
           return {
             standard_code:      r.standard_code.trim(),
             accreditation_body: r.accreditation_body.trim() || null,
-            scope_category:     r.scope_category.trim() || null,
-            ea_codes:           eaCodes.length ? eaCodes : [],
+            // EA-code standards get ea_codes; all others get empty array
+            ea_codes:           isEA ? (rowEA.length ? rowEA : []) : [],
+            // Category-based standards get scope_category; ISO 27001 does not
+            scope_category:     (!isEA || !r.standard_code.toLowerCase().includes('27001'))
+                                  ? (r.scope_category.trim() || null)
+                                  : null,
             technical_depth:    r.technical_depth || null,
             experience_years:   Number.isFinite(yrs) ? yrs : null,
             is_qualified:       true,

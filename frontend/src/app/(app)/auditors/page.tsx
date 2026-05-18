@@ -174,11 +174,12 @@ const FOOD_STANDARDS    = ['22000','fssc']
 const MEDICAL_STANDARDS = ['13485']
 const SECTOR_STANDARDS  = ['37001','37301']
 
-function getStandardType(code: string): 'ea' | 'food' | 'medical' | 'sector' {
+function getStandardType(code: string): 'ea' | 'food' | 'medical' | 'sector' | 'energy' {
   const c = code.toLowerCase()
   if (FOOD_STANDARDS.some((s) => c.includes(s)))    return 'food'
   if (MEDICAL_STANDARDS.some((s) => c.includes(s))) return 'medical'
   if (SECTOR_STANDARDS.some((s) => c.includes(s)))  return 'sector'
+  if (c.includes('50001'))                           return 'energy'
   return 'ea'
 }
 
@@ -192,9 +193,8 @@ function ScopeInput({ standardCode, eaCodes, scopeCategory, onChangeEA, onChange
   const type = getStandardType(standardCode)
   const c    = standardCode.toLowerCase()
 
-  const riskLabel = c.includes('14001') ? 'EMS complexity'
+  const riskLabel   = c.includes('14001') ? 'EMS complexity'
     : c.includes('45001') ? 'OH&S risk level'
-    : c.includes('50001') ? 'Energy complexity'
     : 'Risk category'
   const riskOptions = c.includes('14001') ? ['High','Medium','Low','Limited'] : ['High','Medium','Low']
 
@@ -269,11 +269,28 @@ function ScopeInput({ standardCode, eaCodes, scopeCategory, onChangeEA, onChange
     )
   }
 
-  // EA-code standards (ISO 9001, 14001, 45001, 27001, 50001)
+  if (type === 'energy') {
+    return (
+      <div className="mt-2">
+        <label className="block text-xs text-gray-400 mb-1">Energy complexity</label>
+        <select
+          className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm"
+          value={scopeCategory}
+          onChange={(e) => onChangeScope(e.target.value)}>
+          <option value="">— Select —</option>
+          <option>Low</option>
+          <option>Medium</option>
+          <option>High</option>
+        </select>
+      </div>
+    )
+  }
+
+  // EA-code standards only: ISO 9001, 14001, 45001, 27001
   return (
     <div className="mt-2 space-y-2">
       <div>
-        <label className="block text-xs text-gray-400 mb-1">EA codes for {standardCode || 'this standard'} (comma-separated)</label>
+        <label className="block text-xs text-gray-400 mb-1">EA codes (comma-separated)</label>
         <input
           type="text"
           className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm"
@@ -364,14 +381,20 @@ function AddAuditorPanel({ onClose, onCreated }: { onClose: () => void; onCreate
         education:             preview.education       ?? [],
         languages:             preview.languages       ?? [],
         standard_qualifications: cleanQuals.map((q) => {
-          const yrs = parseInt(q.experience_years, 10)
+          const yrs  = parseInt(q.experience_years, 10)
+          const stype = getStandardType(q.standard_code.trim())
+          const isEA  = stype === 'ea'
           return {
             standard_code:      q.standard_code.trim(),
             accreditation_body: q.accreditation_body.trim() || null,
             technical_depth:    q.technical_depth || null,
             experience_years:   Number.isFinite(yrs) ? yrs : null,
-            ea_codes:           q.ea_codes.length ? q.ea_codes : [],
-            scope_category:     q.scope_category || null,
+            // EA-code standards get ea_codes; all others get empty array
+            ea_codes:           isEA ? (q.ea_codes.length ? q.ea_codes : []) : [],
+            // Category-based standards get scope_category; ISO 27001 does not
+            scope_category:     (!isEA || !q.standard_code.toLowerCase().includes('27001'))
+                                  ? (q.scope_category || null)
+                                  : null,
             is_qualified:       true,
           }
         }),
