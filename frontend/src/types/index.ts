@@ -99,6 +99,7 @@ export interface ManDayResult {
   eps: number
   enms_k?: number | null
   enms_complexity?: string | null
+  scope_integration_level?: string | null   // "Low" | "Medium" | "High" — IAF MD 11
   warning?: string | null
 }
 

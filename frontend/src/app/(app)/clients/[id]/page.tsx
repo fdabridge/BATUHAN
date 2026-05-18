@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, ChevronDown, ChevronRight, Download, Loader2, Pencil, Check, Zap } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -268,6 +268,14 @@ function scopeBadgeStyle(type: string, code: string): React.CSSProperties {
 
 // ── Plan overview ─────────────────────────────────────────────────────────────
 
+const MD11_LEVELS = ['Low', 'Medium', 'High'] as const
+const MD11_RATES: Record<string, number> = { Low: 10, Medium: 20, High: 30 }
+const MD11_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  Low:    { bg: '#F0FDF4', text: '#166534', border: '#BBF7D0' },
+  Medium: { bg: '#FEF3C7', text: '#92400E', border: '#FDE68A' },
+  High:   { bg: '#FEF2F2', text: '#991B1B', border: '#FECACA' },
+}
+
 function PlanOverview({
   data,
   auditSetId,
@@ -277,6 +285,8 @@ function PlanOverview({
   auditSetId: string
   onInvalidate: () => void
 }) {
+  const [integLevel, setIntegLevel] = useState<string>(data.scope_integration_level ?? 'Medium')
+
   const p = data.personnel
   const personnelStr = p
     ? `${p.full_time} FT · ${p.part_time} PT · ${p.subcontractors} contractor`
@@ -289,22 +299,62 @@ function PlanOverview({
     onSuccess: () => onInvalidate(),
   })
 
+  const { mutate: applyIntegLevel, isPending: applyingLevel } = useMutation({
+    mutationFn: (level: string) =>
+      api.post<AuditSetResponse>(`/audit-sets/${auditSetId}/quick-calculate`, {
+        scope_integration_level: level,
+      }),
+    onSuccess: () => onInvalidate(),
+  })
+
   const rs = data.required_scope
+  const hasCalcResult = !!data.man_day_result
 
   return (
     <div className="rounded-lg border border-gray-100 bg-white p-5">
       <div className="mb-4 flex items-center justify-between">
         <p className="text-sm font-medium text-gray-700">Plan overview</p>
-        <button
-          type="button"
-          disabled={deriving}
-          onClick={() => deriveScope()}
-          className="flex items-center gap-1 text-certiva-primary hover:opacity-70 disabled:opacity-50"
-          style={{ fontSize: 13 }}
-        >
-          {deriving ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
-          Derive required scope
-        </button>
+        <div className="flex items-center gap-3">
+          {/* IAF MD 11 integration level selector — only when a calculation exists */}
+          {hasCalcResult && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-gray-400">MD 11:</span>
+              {MD11_LEVELS.map((lvl) => {
+                const active = integLevel === lvl
+                const colors = MD11_COLORS[lvl]
+                return (
+                  <button
+                    key={lvl}
+                    type="button"
+                    disabled={applyingLevel}
+                    onClick={() => {
+                      setIntegLevel(lvl)
+                      applyIntegLevel(lvl)
+                    }}
+                    className="rounded px-2 py-0.5 text-xs font-medium transition-opacity disabled:opacity-50"
+                    style={active
+                      ? { background: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }
+                      : { background: '#F9FAFB', color: '#6B7280', border: '1px solid #E5E7EB' }
+                    }
+                  >
+                    {applyingLevel && active ? '…' : lvl}
+                  </button>
+                )
+              })}
+              <span className="text-xs text-gray-400">({MD11_RATES[integLevel]}% reduction)</span>
+            </div>
+          )}
+          <button
+            type="button"
+            disabled={deriving}
+            onClick={() => deriveScope()}
+            className="flex items-center gap-1 text-certiva-primary hover:opacity-70 disabled:opacity-50"
+            style={{ fontSize: 13 }}
+          >
+            {deriving ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+            Derive required scope
+          </button>
+        </div>
       </div>
       <div className="grid grid-cols-3 gap-x-6 gap-y-5">
         <LabeledField label="Standards">
@@ -478,6 +528,35 @@ function StageCard({
     staleTime: 30_000,
   })
 
+  // Auto-fill suggested dates on mount when the stage has no dates yet
+  useEffect(() => {
+    if (edit.audit_date_start || edit.audit_date_end) return   // don't override existing dates
+    if (!recommended) return                                    // need man-day recommendation first
+
+    let suggestedStart: string | null = null
+
+    if (stage.stage_type === 'stage_1') {
+      const d = new Date()
+      d.setDate(d.getDate() + 14)   // 2-week lead time
+      while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1)
+      suggestedStart = d.toISOString().slice(0, 10)
+    } else if (stage.stage_type === 'stage_2') {
+      const stage1 = allStages.find((s) => s.stage_type === 'stage_1')
+      if (!stage1?.audit_date_end) return   // need stage 1 end first
+      const d = new Date(stage1.audit_date_end)
+      d.setDate(d.getDate() + 7)   // 1-week gap after stage 1
+      while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1)
+      suggestedStart = d.toISOString().slice(0, 10)
+    }
+
+    if (suggestedStart) {
+      patch({
+        audit_date_start: suggestedStart,
+        audit_date_end: suggestEndDate(suggestedStart, recommended),
+      })
+    }
+  }, [])   // eslint-disable-line react-hooks/exhaustive-deps — intentionally on mount only
+
   const workingDays = datesReady ? workingDaysBetween(edit.audit_date_start, edit.audit_date_end) : null
   const dateMismatch = recommended != null && workingDays != null && Math.abs(workingDays - recommended) > 0.5
   const stageOrderErr = validateStageOrder(stage, allStages, edit.audit_date_start, edit.audit_date_end)
@@ -497,12 +576,19 @@ function StageCard({
     : []
   const allCovered = coverageResults.length === 0 || coverageResults.every((r) => r.covered)
 
+  const isStage2 = stage.stage_type === 'stage_2'
+  const coverageIncomplete = coverageResults.length > 0 && !allCovered
+
   const { mutate, isPending } = useMutation({
     mutationFn: () => {
-      if (coverageResults.length > 0 && !allCovered) {
-        const missing = coverageResults.filter((r) => !r.covered).map((r) => r.standard).join(', ')
-        throw new Error(`Cannot save: ${missing} ${missing.includes(',') ? 'are' : 'is'} not covered by any qualified team member.`)
+      // Stage 2: hard block — every required code must be covered
+      if (isStage2 && coverageIncomplete) {
+        const missingCodes = coverageResults
+          .flatMap((r) => r.codeResults?.filter((cr) => !cr.coveredBy).map((cr) => cr.code) ?? (r.covered ? [] : [r.standard]))
+          .join(', ')
+        throw new Error(`Stage 2 save blocked — uncovered codes: ${missingCodes}. Assign team members who cover these codes first.`)
       }
+      // Stage 1: allow save even with incomplete coverage (warning shown separately)
       const stages = allStages.map((s) => {
         const isThis = s.id === stage.id
         return {
@@ -538,7 +624,16 @@ function StageCard({
   function patch(p: Partial<StageEdit>) { setEdit((prev) => ({ ...prev, ...p })) }
 
   // Determine the auditor list to render in dropdowns
-  const dropdownList: (AuditorSummary | AuditorAvailabilityItem)[] = availableAuditors ?? auditors
+  // When required_scope is derived and availability data is loaded, exclude auditors
+  // who cover zero required codes — they add no value to this audit.
+  const allDropdown: (AuditorSummary | AuditorAvailabilityItem)[] = availableAuditors ?? auditors
+  const dropdownList: (AuditorSummary | AuditorAvailabilityItem)[] =
+    (availableAuditors && requiredScope && Object.keys(requiredScope).length > 0)
+      ? availableAuditors.filter((a) => {
+          const coveredTotal = Object.values(a.covered_scope ?? {}).flat().length
+          return coveredTotal > 0
+        })
+      : allDropdown
 
   return (
     <div className="rounded-lg border border-gray-100 p-4">
@@ -729,10 +824,14 @@ function StageCard({
 
       {/* Coverage summary */}
       {coverageResults.length > 0 && (
-        <div className={`mt-3 rounded-md p-3 text-sm ${allCovered ? 'border border-green-200' : 'border border-red-200'}`}
-          style={{ background: allCovered ? '#F0FAF4' : '#FEF2F2' }}>
-          <p className="font-medium mb-1" style={{ color: allCovered ? '#1A4731' : '#991B1B' }}>
-            {allCovered ? '✓ All standards covered' : '✗ Coverage incomplete — cannot save'}
+        <div className={`mt-3 rounded-md p-3 text-sm ${allCovered ? 'border border-green-200' : isStage2 ? 'border border-red-200' : 'border border-amber-200'}`}
+          style={{ background: allCovered ? '#F0FAF4' : isStage2 ? '#FEF2F2' : '#FFFBEB' }}>
+          <p className="font-medium mb-1" style={{ color: allCovered ? '#1A4731' : isStage2 ? '#991B1B' : '#92400E' }}>
+            {allCovered
+              ? '✓ All required codes covered'
+              : isStage2
+              ? '✗ Coverage incomplete — Stage 2 save blocked'
+              : '⚠ Coverage incomplete — Stage 1 can still be saved (warning)'}
           </p>
           {coverageResults.map((r) => (
             <div key={r.standard} className="mt-0.5">
@@ -770,7 +869,7 @@ function StageCard({
       <div className="mt-4 flex items-center gap-2">
         <button
           type="button"
-          disabled={isPending || !!stageOrderErr || !allCovered}
+          disabled={isPending || !!stageOrderErr || (isStage2 && coverageIncomplete)}
           onClick={() => mutate()}
           className="flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium text-white disabled:opacity-60 hover:opacity-90"
           style={{ background: '#1A4731' }}
@@ -882,11 +981,16 @@ function ManDaySection({ result }: { result: ManDayResult | null }) {
                 <div className="flex justify-between">
                   <span>Combined base</span><span>{result.combined_base} days</span>
                 </div>
-                {result.integration_reduction > 0 && (
-                  <div className="flex justify-between">
-                    <span>Integration reduction (20%)</span><span>−{result.integration_reduction}</span>
-                  </div>
-                )}
+                {result.integration_reduction > 0 && (() => {
+                  const lvl = result.scope_integration_level ?? 'Medium'
+                  const pct = MD11_RATES[lvl] ?? 20
+                  return (
+                    <div className="flex justify-between">
+                      <span>Integration reduction (IAF MD 11 — {lvl} {pct}%)</span>
+                      <span>−{result.integration_reduction}</span>
+                    </div>
+                  )
+                })()}
                 <div className="flex justify-between">
                   <span>Reporting reduction (20%)</span><span>−{result.reporting_reduction}</span>
                 </div>
@@ -997,6 +1101,17 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
     queryKey: ['auditors-active'],
     queryFn:  () => api.get<AuditorSummary[]>('/auditors/?active_only=true').then((r) => r.data),
   })
+
+  // Auto-calculate man-days on page load if result is missing but employees are known
+  const autoCalcFired = useRef(false)
+  useEffect(() => {
+    if (!data || data.man_day_result || autoCalcFired.current) return
+    if (!data.effective_employees || data.effective_employees <= 0) return
+    autoCalcFired.current = true
+    api.post(`/audit-sets/${id}/quick-calculate`, {
+      scope_integration_level: data.scope_integration_level ?? 'Medium',
+    }).then(() => queryClient.invalidateQueries({ queryKey: ['client', id] })).catch(() => {})
+  }, [data?.id, data?.man_day_result])   // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleDownload() {
     if (!data) return

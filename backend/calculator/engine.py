@@ -309,8 +309,10 @@ def calculate(data: ExtractedFormData) -> CalculationResult:
     # --- Step 4: Combined base (HQ + sites) ---
     combined_base = sum(r.base_init + r.site_addition for r in standard_results)
 
-    # --- Step 5: Integration reduction (20% if 2+ standards) ---
-    integration_reduction = round(combined_base * 0.20, 2) if len(data.standards) >= 2 else 0.0
+    # --- Step 5: Integration reduction (IAF MD 11 — rate depends on integration level) ---
+    _MD11_RATES: dict[str, float] = {"Low": 0.10, "Medium": 0.20, "High": 0.30}
+    md11_rate = _MD11_RATES.get(data.scope_integration_level or "Medium", 0.20)
+    integration_reduction = round(combined_base * md11_rate, 2) if len(data.standards) >= 2 else 0.0
 
     # --- Step 6: Reporting deduction (always 20% of combined_base) ---
     reporting_reduction = round(combined_base * 0.20, 2)
@@ -381,5 +383,6 @@ def calculate(data: ExtractedFormData) -> CalculationResult:
         eps=eps_display,
         enms_k=enms_k,
         enms_complexity=enms_complexity,
+        scope_integration_level=data.scope_integration_level,
     )
 

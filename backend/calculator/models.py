@@ -56,6 +56,9 @@ class ExtractedFormData(BaseModel):
     num_energy_types: Optional[int] = None
     num_seus: Optional[int] = None             # Significant Energy Uses (covering 80% consumption)
 
+    # IAF MD 11 integration level — overrides default 20% reduction
+    scope_integration_level: Optional[str] = None   # "Low" | "Medium" | "High"
+
     # Raw Claude response for traceability
     raw_extraction: str = ""
 
@@ -126,6 +129,9 @@ class CalculationResult(BaseModel):
     # EnMS complexity (ISO 50001 only)
     enms_k: Optional[float] = None
     enms_complexity: Optional[str] = None
+
+    # IAF MD 11 integration level applied to this calculation
+    scope_integration_level: Optional[str] = None   # "Low" | "Medium" | "High"
 
     # Error / warning message (e.g. missing EnMS form)
     warning: Optional[str] = None

@@ -219,6 +219,7 @@ def _run_calculation(audit_set: AuditSet) -> dict | None:
             annual_energy_tj=annual_energy_tj,
             num_energy_types=num_energy_types,
             num_seus=num_seus,
+            scope_integration_level=getattr(audit_set, "scope_integration_level", None),
         )
 
         result = calculate(form_data)
@@ -327,12 +328,23 @@ def quick_calculate(db: Session, audit_set_id: str, data: QuickCalcSchema) -> Au
         return None
 
     # Patch the audit set with submitted data (in-memory only, not persisted directly)
-    audit_set.personnel = data.personnel.model_dump()
-    audit_set.integration_level = data.integration_level.model_dump()
+    submitted_personnel = data.personnel.model_dump()
+    total_submitted = sum(
+        submitted_personnel.get(k, 0)
+        for k in ("full_time", "part_time", "subcontractors", "seasonal", "unskilled")
+    )
+    if total_submitted > 0:
+        # Only overwrite stored personnel when the caller explicitly supplies counts
+        audit_set.personnel = submitted_personnel
+        audit_set.integration_level = data.integration_level.model_dump()
+    # else: use the existing stored personnel (integration level change, scope level change, etc.)
+
     if data.ea_code is not None:
         audit_set.ea_code = data.ea_code
     if data.ea_category is not None:
         audit_set.ea_category = data.ea_category
+    if data.scope_integration_level is not None:
+        audit_set.scope_integration_level = data.scope_integration_level
 
     result = _run_calculation(audit_set)
     if not result:
