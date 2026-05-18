@@ -269,7 +269,7 @@ function scopeBadgeStyle(type: string, code: string): React.CSSProperties {
 // ── Plan overview ─────────────────────────────────────────────────────────────
 
 const MD11_LEVELS = ['Low', 'Medium', 'High'] as const
-const MD11_RATES: Record<string, number> = { Low: 10, Medium: 20, High: 30 }
+const MD11_RATES: Record<string, number> = { Low: 5, Medium: 10, High: 20 }
 const MD11_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   Low:    { bg: '#F0FDF4', text: '#166534', border: '#BBF7D0' },
   Medium: { bg: '#FEF3C7', text: '#92400E', border: '#FDE68A' },
@@ -979,11 +979,11 @@ function ManDaySection({ result }: { result: ManDayResult | null }) {
               {/* Deductions summary */}
               <div className="rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-500 space-y-1">
                 <div className="flex justify-between">
-                  <span>Combined base</span><span>{result.combined_base} days</span>
+                  <span>Combined base (incl. sites)</span><span>{result.combined_base} days</span>
                 </div>
                 {result.integration_reduction > 0 && (() => {
                   const lvl = result.scope_integration_level ?? 'Medium'
-                  const pct = MD11_RATES[lvl] ?? 20
+                  const pct = MD11_RATES[lvl] ?? 10
                   return (
                     <div className="flex justify-between">
                       <span>Integration reduction (IAF MD 11 — {lvl} {pct}%)</span>
@@ -991,6 +991,12 @@ function ManDaySection({ result }: { result: ManDayResult | null }) {
                     </div>
                   )
                 })()}
+                {result.md11_floor_applied && result.md11_floor_value != null && (
+                  <div className="flex justify-between rounded px-1 py-0.5" style={{ background: '#FEF3C7', color: '#92400E' }}>
+                    <span>⚠ Floor applied per IAF MD 11 — minimum 50% of individual totals ({result.md11_floor_value} days)</span>
+                    <span />
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span>Reporting reduction (20%)</span><span>−{result.reporting_reduction}</span>
                 </div>

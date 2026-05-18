@@ -309,16 +309,30 @@ def calculate(data: ExtractedFormData) -> CalculationResult:
     # --- Step 4: Combined base (HQ + sites) ---
     combined_base = sum(r.base_init + r.site_addition for r in standard_results)
 
-    # --- Step 5: Integration reduction (IAF MD 11 — rate depends on integration level) ---
-    _MD11_RATES: dict[str, float] = {"Low": 0.10, "Medium": 0.20, "High": 0.30}
-    md11_rate = _MD11_RATES.get(data.scope_integration_level or "Medium", 0.20)
-    integration_reduction = round(combined_base * md11_rate, 2) if len(data.standards) >= 2 else 0.0
+    # --- Step 5: Integration reduction (IAF MD 11:2023 §6.4) ---
+    # Corrected ceiling: Low=5%, Medium=10%, High=20% (absolute max per MD 11)
+    _MD11_RATES: dict[str, float] = {"Low": 0.05, "Medium": 0.10, "High": 0.20}
+    md11_rate = _MD11_RATES.get(data.scope_integration_level or "Medium", 0.10)
+    multi_standard = len(data.standards) >= 2
+    integration_reduction = round(combined_base * md11_rate, 2) if multi_standard else 0.0
+
+    # --- Step 5b: IAF MD 11 floor — after integration reduction the combined time
+    #              must be ≥ 50% of the sum of each standard's individual table time ---
+    individual_sum = sum(r.base_init for r in standard_results)   # without site additions
+    md11_floor_value = round(individual_sum * 0.50, 2)
+    after_integration = combined_base - integration_reduction
+    md11_floor_applied = False
+    if multi_standard and after_integration < md11_floor_value:
+        after_integration = md11_floor_value
+        # Recalculate effective integration reduction so downstream maths stays consistent
+        integration_reduction = round(combined_base - after_integration, 2)
+        md11_floor_applied = True
 
     # --- Step 6: Reporting deduction (always 20% of combined_base) ---
     reporting_reduction = round(combined_base * 0.20, 2)
 
     # --- Step 7: Final total ---
-    raw_total = combined_base - integration_reduction - reporting_reduction
+    raw_total = after_integration - reporting_reduction
     final_total = _round_audit(raw_total)
 
     # --- Step 8: Phase split — weighted average of per-standard pre-split values ---
@@ -384,5 +398,7 @@ def calculate(data: ExtractedFormData) -> CalculationResult:
         enms_k=enms_k,
         enms_complexity=enms_complexity,
         scope_integration_level=data.scope_integration_level,
+        md11_floor_applied=md11_floor_applied,
+        md11_floor_value=md11_floor_value if md11_floor_applied else None,
     )
 

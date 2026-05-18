@@ -133,6 +133,10 @@ class CalculationResult(BaseModel):
     # IAF MD 11 integration level applied to this calculation
     scope_integration_level: Optional[str] = None   # "Low" | "Medium" | "High"
 
+    # IAF MD 11 §6.4 floor — set when after-integration time < 50% of individual sum
+    md11_floor_applied: bool = False
+    md11_floor_value: Optional[float] = None   # the 50% floor that was enforced
+
     # Error / warning message (e.g. missing EnMS form)
     warning: Optional[str] = None
 

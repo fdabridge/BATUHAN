@@ -100,6 +100,8 @@ export interface ManDayResult {
   enms_k?: number | null
   enms_complexity?: string | null
   scope_integration_level?: string | null   // "Low" | "Medium" | "High" — IAF MD 11
+  md11_floor_applied?: boolean              // true when 50% floor was enforced
+  md11_floor_value?: number | null          // the floor that was applied
   warning?: string | null
 }
 
