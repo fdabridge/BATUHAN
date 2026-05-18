@@ -45,7 +45,8 @@ _FOOD_CHAIN_KW: dict[str, tuple[str, ...]] = {
     "CIV":  ("confection", "chocolate", "candy", "biscuit", "cookie", "snack", "chip", "cracker",
              "canned", "ambient", "dried", "cereal", "flour", "rice", "pasta", "edible oil",
              "sauce", "condiment", "frozen", "beverage", "juice in carton", "soft drink", "bottled water",
-             "coffee", "tea"),
+             "coffee", "tea", "cake", "tortilla", "bread", "bakery", "pastry", "wrap", "gluten",
+             "noodle", "wafer"),
     "D":    ("animal feed", "pet food", "feedstuff"),
     "E":    ("catering", "restaurant", "canteen", "food service", "hospitality kitchen"),
     "FI":   ("food retail", "food wholesale", "supermarket", "grocer"),
@@ -78,6 +79,55 @@ _SECTOR_KW: dict[str, tuple[str, ...]] = {
 
 _ENERGY_HIGH_KW = ("chemical", "steel", "cement", "refinery", "petrochemical", "mining", "smelting")
 _ENERGY_MED_KW  = ("manufacturing", "production", "industrial", "plant", "factory", "assembly")
+
+# Scope text → EA code keyword map (IAF EA 1–39)
+_SCOPE_TO_EA_KW: dict[str, tuple[str, ...]] = {
+    "EA 1":  ("agriculture", "farming", "horticulture", "fishery", "aquaculture", "forestry", "livestock"),
+    "EA 3":  ("food", "beverage", "tobacco", "bakery", "confectionery", "dairy", "meat processing",
+              "cake", "tortilla", "snack", "sandwich", "pastry", "bread", "milling", "brewing",
+              "gluten", "biscuit", "cookie", "cracker", "noodle", "pasta production"),
+    "EA 4":  ("textile", "clothing", "apparel", "garment", "leather", "footwear", "fabric"),
+    "EA 5":  ("wood", "furniture", "paper", "pulp", "printing", "packaging material"),
+    "EA 6":  ("chemical", "petrochemical", "pharmaceutical", "cosmetic", "paint", "coating", "adhesive"),
+    "EA 7":  ("metal", "steel", "aluminium", "foundry", "forging", "casting", "metallurgy", "welding"),
+    "EA 8":  ("machinery", "equipment manufacturing", "pump", "compressor", "valve", "industrial equipment"),
+    "EA 9":  ("electrical", "electronics", "semiconductor", "circuit board", "pcb", "electronic component"),
+    "EA 10": ("shipbuilding", "marine", "aerospace", "aircraft", "defence", "military equipment"),
+    "EA 11": ("automotive", "vehicle", "car", "truck", "bus", "motorcycle", "spare part", "auto component"),
+    "EA 13": ("rubber", "plastic", "polymer", "composite"),
+    "EA 14": ("glass", "ceramic", "stone", "mineral", "tile", "brick"),
+    "EA 15": ("concrete", "cement", "construction material", "aggregate"),
+    "EA 16": ("construction", "building", "civil engineering", "infrastructure", "contractor", "installation"),
+    "EA 17": ("wholesale", "retail", "trade", "distribution", "import", "export", "commerce"),
+    "EA 18": ("hotel", "restaurant", "catering", "hospitality", "tourism", "accommodation"),
+    "EA 19": ("transport", "logistics", "freight", "courier", "shipping", "warehousing", "supply chain"),
+    "EA 20": ("mining", "quarrying", "extraction", "oil", "gas", "refinery", "petroleum"),
+    "EA 21": ("water treatment", "waste management", "recycling", "environmental services", "sewage"),
+    "EA 22": ("electricity generation", "power plant", "gas supply", "energy utility", "grid"),
+    "EA 23": ("education", "training", "school", "university", "academy", "e-learning"),
+    "EA 24": ("healthcare", "hospital", "clinic", "medical services", "diagnostic laboratory"),
+    "EA 26": ("financial", "banking", "insurance", "investment", "fintech", "audit firm"),
+    "EA 27": ("information technology", "it services", "data centre", "cloud", "managed services"),
+    "EA 28": ("telecom", "telecommunication", "internet service provider", "isp"),
+    "EA 29": ("engineering services", "technical consulting", "testing laboratory", "inspection"),
+    "EA 33": ("software development", "software house", "it consulting", "technology consulting", "saas"),
+    "EA 34": ("management consulting", "business services", "legal services", "advisory"),
+    "EA 35": ("public administration", "government services", "municipality"),
+    "EA 37": ("media", "publishing", "broadcasting", "advertising"),
+    "EA 39": ("beauty", "cleaning services", "laundry", "personal services"),
+}
+
+# Risk level keywords for ISO 9001 / 45001 (affects table lookup in the engine)
+_RISK_HIGH_KW: tuple[str, ...] = (
+    "food", "pharmaceutical", "medical", "aerospace", "nuclear", "defence",
+    "chemical", "petrochemical", "construction", "mining", "oil", "gas",
+    "cake", "tortilla", "snack", "sandwich", "dairy", "meat", "bakery",
+    "implant", "surgical", "explosive",
+)
+_RISK_LOW_KW: tuple[str, ...] = (
+    "software development", "it consulting", "consultancy", "training",
+    "education", "media", "publishing", "financial services", "insurance",
+)
 
 
 def derive_required_scope(
@@ -125,8 +175,22 @@ def derive_required_scope(
             result[iso] = {"type": "energy", "codes": [complexity]}
 
         elif any(n in norm for n in ("9001", "14001", "45001", "27001")):
-            codes = [ea_code] if ea_code else []
-            result[iso] = {"type": "ea", "codes": codes}
+            # Use stored ea_code if available, otherwise infer from scope text
+            if ea_code:
+                codes = [ea_code]
+            else:
+                codes = [
+                    ea for ea, kws in _SCOPE_TO_EA_KW.items()
+                    if any(kw in haystack for kw in kws)
+                ]
+            # Derive risk level for ISO 9001 and 45001
+            if any(kw in haystack for kw in _RISK_HIGH_KW):
+                risk = "High"
+            elif any(kw in haystack for kw in _RISK_LOW_KW):
+                risk = "Low"
+            else:
+                risk = "Medium"
+            result[iso] = {"type": "ea", "codes": codes, "risk": risk}
 
     logger.info("[AuditSet] derive_required_scope → %s", result)
     return result
@@ -304,6 +368,14 @@ def create_audit_set(db: Session, data: AuditSetCreateSchema) -> AuditSet:
             result["standard_results"][0].get("category", "").upper()
             if result.get("standard_results") else None
         )
+
+    # Always derive required scope from scope text — no manual button needed
+    audit_set.required_scope = derive_required_scope(
+        standards=audit_set.standards or [],
+        scope_tr=audit_set.scope_tr,
+        scope_en=audit_set.scope_en,
+        ea_code=audit_set.ea_code,
+    )
 
     _create_auto_stages(db, audit_set, result)
     db.commit()

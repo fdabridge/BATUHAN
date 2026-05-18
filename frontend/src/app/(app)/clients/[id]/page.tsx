@@ -1015,7 +1015,7 @@ function ManDaySection({ result }: { result: ManDayResult | null }) {
 // ── Quick Calculate widget ─────────────────────────────────────────────────────
 
 function QuickCalcWidget({ auditSetId, onSuccess }: { auditSetId: string; onSuccess: () => void }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(true)
   const [fullTime,  setFullTime]  = useState('')
   const [partTime,  setPartTime]  = useState('')
   const [subcontr,  setSubcontr]  = useState('')
