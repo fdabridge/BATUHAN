@@ -372,6 +372,15 @@ def get_available_auditors(
     finally:
         sets_db.close()
 
+    # When required_scope is provided, exclude auditors who cover zero codes — they
+    # contribute nothing to this audit. Unavailable (date conflict) auditors who DO
+    # cover at least one required code are kept (shown greyed-out in UI).
+    if req_cat:
+        result = [
+            a for a in result
+            if a.covered_scope and any(codes for codes in a.covered_scope.values())
+        ]
+
     # Sort: available first, then by name
     result.sort(key=lambda a: (0 if a.available else 1, a.name))
     return result

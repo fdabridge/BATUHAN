@@ -303,7 +303,7 @@ def _create_auto_stages(db: Session, audit_set: AuditSet, result: dict | None) -
             ("stage_1", 1, result.get("final_ph1") if result else None),
             ("stage_2", 2, result.get("final_ph2") if result else None),
         ]
-    elif audit_type == "surveillance":
+    elif audit_type.startswith("surveillance"):  # surveillance_1, surveillance_2, surveillance
         stage_defs = [
             ("surveillance", 1, result.get("final_surv1") if result else None),
         ]
@@ -359,6 +359,17 @@ def create_audit_set(db: Session, data: AuditSetCreateSchema) -> AuditSet:
     )
     db.add(audit_set)
     db.flush()  # populate audit_set.id before child rows
+
+    # 2A — Derive scope_integration_level from boolean fields BEFORE calculation
+    # so the engine applies the correct IAF MD 11 rate on creation.
+    il = audit_set.integration_level or {}
+    yes_count = sum(1 for v in il.values() if v is True)
+    if yes_count <= 1:
+        audit_set.scope_integration_level = "Low"
+    elif yes_count <= 3:
+        audit_set.scope_integration_level = "Medium"
+    else:
+        audit_set.scope_integration_level = "High"
 
     result = _run_calculation(audit_set)
     if result:
@@ -435,7 +446,7 @@ def quick_calculate(db: Session, audit_set_id: str, data: QuickCalcSchema) -> Au
     stage_day_map: dict[str, float | None] = {}
     if audit_type == "initial":
         stage_day_map = {"stage_1": result.get("final_ph1"), "stage_2": result.get("final_ph2")}
-    elif audit_type == "surveillance":
+    elif audit_type.startswith("surveillance"):  # surveillance_1, surveillance_2, surveillance
         stage_day_map = {"surveillance": result.get("final_surv1")}
     else:
         stage_day_map = {"stage_1": result.get("final_recert_ph1"), "stage_2": result.get("final_recert_ph2")}

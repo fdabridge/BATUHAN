@@ -91,7 +91,7 @@ function recommendedDays(
     if (stageType === 'stage_1') return manDayResult.final_ph1 ?? null
     if (stageType === 'stage_2') return manDayResult.final_ph2 ?? null
   }
-  if (t === 'surveillance') {
+  if (t === 'surveillance' || t === 'surveillance_1' || t === 'surveillance_2') {
     return manDayResult.final_surv1 ?? null
   }
   if (t === 'recertification') {
@@ -558,7 +558,13 @@ function StageCard({
   }, [])   // eslint-disable-line react-hooks/exhaustive-deps — intentionally on mount only
 
   const workingDays = datesReady ? workingDaysBetween(edit.audit_date_start, edit.audit_date_end) : null
-  const dateMismatch = recommended != null && workingDays != null && Math.abs(workingDays - recommended) > 0.5
+  // Team size: lead + additional auditors + technical experts
+  const teamCount = (edit.lead_auditor_name ? 1 : 0) + edit.auditors.length + edit.technical_experts.length
+  // Man-days covered = working days in range × number of assigned team members
+  const manDaysCovered = workingDays != null && teamCount > 0 ? workingDays * teamCount : null
+  // Shortfall: covered < stage.audit_days (recommended for this stage from calculation)
+  const manDayShortfall = stage.audit_days != null && manDaysCovered != null && manDaysCovered < stage.audit_days
+  const dateMismatch = recommended != null && workingDays != null && teamCount === 0 && Math.abs(workingDays - recommended) > 0.5
   const stageOrderErr = validateStageOrder(stage, allStages, edit.audit_date_start, edit.audit_date_end)
 
   const [coverageError, setCoverageError] = useState<string | null>(null)
@@ -669,13 +675,21 @@ function StageCard({
         </div>
       )}
 
-      {/* Date range mismatch warning */}
+      {/* Man-day coverage warning — team × dates vs required audit days */}
+      {manDayShortfall && workingDays != null && (
+        <div className="mb-3 rounded-md px-3 py-2 text-sm" style={{ background: '#FEF3C7', color: '#92400E' }}>
+          ⚠ Your date range covers {workingDays} working day(s) × {teamCount} auditor(s) = {manDaysCovered} man-day(s).
+          IAF recommends {stage.audit_days} audit-day(s) for this stage.
+          Consider expanding the date range or adding more auditors.
+        </div>
+      )}
+      {/* Fallback: no team assigned yet — show plain date-vs-recommendation mismatch */}
       {dateMismatch && workingDays != null && (
         <div className="mb-3 rounded-md px-3 py-2 text-sm" style={{ background: '#FEF3C7', color: '#92400E' }}>
-          ⚠ Date range covers {workingDays} working day(s), but IAF MD 5 recommends {recommended}.
+          ⚠ Date range covers {workingDays} working day(s), but IAF MD 5 recommends {recommended} for a single auditor.
           {workingDays > recommended!
             ? ' This exceeds the recommended duration.'
-            : ' This is shorter than the recommended duration.'}
+            : ' Assign auditors or expand the date range.'}
         </div>
       )}
 
@@ -709,14 +723,17 @@ function StageCard({
             {dropdownList.map((a) => {
               const avail = availableAuditors?.find((x) => x.name === a.name)
               const isUnavailable = avail && !avail.available
-              const coveredCodes = avail?.covered_scope
-                ? Object.values(avail.covered_scope).flat()
-                : []
-              const coverLabel = coveredCodes.length > 0 ? ` ✓ ${coveredCodes.join(', ')}` : ''
+              // Group covered codes by standard: "EA 3 (ISO 9001), CIV CIII (ISO 22000)"
+              const coverLabel = avail?.covered_scope && Object.keys(avail.covered_scope).length > 0
+                ? ' — ' + Object.entries(avail.covered_scope)
+                    .filter(([, codes]) => (codes as string[]).length > 0)
+                    .map(([std, codes]) => `${(codes as string[]).join(' ')} (${std})`)
+                    .join(', ')
+                : ''
               return (
                 <option key={a.id ?? a.name} value={a.name} disabled={!!isUnavailable}>
                   {a.name}{'role' in a && a.role ? ` — ${a.role}` : ''}
-                  {isUnavailable ? ' — Unavailable' : coverLabel}
+                  {isUnavailable ? ' (unavailable on selected dates)' : coverLabel}
                 </option>
               )
             })}
