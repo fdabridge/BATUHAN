@@ -87,16 +87,67 @@ function AuditorRow({ a, quals, witness, onClick }: {
       </td>
       <td className="px-4 py-3">
         <div className="flex flex-wrap gap-1">
-          {visible.map((q) => (
-            <span key={q.standard_code} className="rounded px-1.5 py-0.5 font-medium" style={{ fontSize: 11, background: '#F0FAF4', color: '#1A4731' }}
-              title={q.scope_category ? `Scope: ${q.scope_category}` : undefined}
-            >
-              {q.standard_code}
-              {q.scope_category && (
-                <span style={{ color: '#256D46', fontWeight: 400 }}> · {q.scope_category}</span>
-              )}
-            </span>
-          ))}
+          {visible.map((q) => {
+            const stype = getStandardType(q.standard_code ?? '')
+            const cats  = q.scope_category
+              ? q.scope_category.split(',').map((s) => s.trim()).filter(Boolean)
+              : []
+
+            // Food chain categories → amber pills per code
+            if (stype === 'food' && cats.length > 0) return (
+              <span key={q.standard_code} className="flex flex-wrap gap-0.5 items-center">
+                <span className="rounded px-1.5 py-0.5 font-medium" style={{ fontSize: 11, background: '#F0FAF4', color: '#1A4731' }}>{q.standard_code}</span>
+                {cats.map((c) => (
+                  <span key={c} className="rounded px-1 py-0.5 font-mono" style={{ fontSize: 10, background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' }}>{c}</span>
+                ))}
+              </span>
+            )
+
+            // Medical device TAs → purple pills per code
+            if (stype === 'medical' && cats.length > 0) return (
+              <span key={q.standard_code} className="flex flex-wrap gap-0.5 items-center">
+                <span className="rounded px-1.5 py-0.5 font-medium" style={{ fontSize: 11, background: '#F0FAF4', color: '#1A4731' }}>{q.standard_code}</span>
+                {cats.map((c) => (
+                  <span key={c} className="rounded px-1 py-0.5 font-mono" style={{ fontSize: 10, background: '#EDE9FE', color: '#5B21B6', border: '1px solid #DDD6FE' }}>{c}</span>
+                ))}
+              </span>
+            )
+
+            // Sector type → blue badge
+            if (stype === 'sector' && q.scope_category) return (
+              <span key={q.standard_code} className="flex gap-0.5 items-center">
+                <span className="rounded px-1.5 py-0.5 font-medium" style={{ fontSize: 11, background: '#F0FAF4', color: '#1A4731' }}>{q.standard_code}</span>
+                <span className="rounded px-1 py-0.5" style={{ fontSize: 10, background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}>{q.scope_category}</span>
+              </span>
+            )
+
+            // Energy complexity → colored badge
+            if (stype === 'energy' && q.scope_category) {
+              const badgeStyle = q.scope_category === 'High'
+                ? { background: '#FEF2F2', color: '#991B1B', border: '1px solid #FECACA' }
+                : q.scope_category === 'Medium'
+                ? { background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' }
+                : { background: '#F0FDF4', color: '#166534', border: '1px solid #BBF7D0' }
+              return (
+                <span key={q.standard_code} className="flex gap-0.5 items-center">
+                  <span className="rounded px-1.5 py-0.5 font-medium" style={{ fontSize: 11, background: '#F0FAF4', color: '#1A4731' }}>{q.standard_code}</span>
+                  <span className="rounded px-1 py-0.5" style={{ fontSize: 10, ...badgeStyle }}>{q.scope_category}</span>
+                </span>
+              )
+            }
+
+            // EA / fallback → green Certiva pill, scope appended as subtitle
+            return (
+              <span key={q.standard_code} className="rounded px-1.5 py-0.5 font-medium" style={{ fontSize: 11, background: '#F0FAF4', color: '#1A4731' }}
+                title={q.scope_category ? `Scope: ${q.scope_category}` : undefined}
+              >
+                {q.standard_code}
+                {q.scope_category && (
+                  <span style={{ color: '#256D46', fontWeight: 400 }}> · {q.scope_category}</span>
+                )}
+              </span>
+            )
+          })}
           {overflow > 0 && (
             <span className="rounded px-1.5 py-0.5 text-gray-500" style={{ fontSize: 11, background: '#F3F4F6' }}>
               +{overflow}
