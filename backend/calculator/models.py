@@ -59,6 +59,10 @@ class ExtractedFormData(BaseModel):
     # IAF MD 11 integration level — overrides default 20% reduction
     scope_integration_level: Optional[str] = None   # "Low" | "Medium" | "High"
 
+    # Food chain categories in scope (ISO 22003-1:2022) — e.g. ["CI", "CIV"]
+    # Used to apply the complexity factor to ISO 22000 / FSSC 22000 base time.
+    food_chain_categories: list[str] = Field(default_factory=list)
+
     # Raw Claude response for traceability
     raw_extraction: str = ""
 
@@ -136,6 +140,9 @@ class CalculationResult(BaseModel):
     # IAF MD 11 §6.4 floor — set when after-integration time < 50% of individual sum
     md11_floor_applied: bool = False
     md11_floor_value: Optional[float] = None   # the 50% floor that was enforced
+
+    # FSSC 22000 reporting/preparation surcharge (ISO 22003-1:2022 §FSSC) — NOT on-site
+    fssc_reporting_surcharge: Optional[float] = None
 
     # Error / warning message (e.g. missing EnMS form)
     warning: Optional[str] = None

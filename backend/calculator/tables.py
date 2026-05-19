@@ -405,6 +405,54 @@ ISO50001_A4: list[tuple] = [
 
 
 # ---------------------------------------------------------------------------
+# ISO 22000 / FSSC 22000 — FSMS audit time (ISO 22003-1:2022 Annex B)
+# Baseline on-site Initial Certification time per EPS of food-safety personnel
+# (TFSMS + THACCP combined into a single row for simplicity).
+# Final time is modified by the food chain category complexity factor — see
+# FOOD_CHAIN_COMPLEXITY below.
+# (min_eps, max_eps, init_total)
+# Surveillance = max(1/3 of init_total, 1.0)
+# Recertification = max(2/3 of init_total, 1.0)
+# Phase split: Ph1 ≈ 1/3 of total, Ph2 = 2/3 of total
+# ---------------------------------------------------------------------------
+
+ISO22000: list[tuple] = [
+    (1,    19,   1.5),
+    (20,   49,   2.0),
+    (50,   79,   2.5),
+    (80,   199,  3.0),
+    (200,  499,  4.0),
+    (500,  899,  5.0),
+    (900,  1299, 6.0),
+    (1300, 1699, 7.0),
+    (1700, 2999, 8.0),
+    (3000, 5000, 9.0),
+    (5001, 10000, 10.0),
+]
+
+# Food chain category complexity factor (applied to ISO22000 base_init).
+# Aligns with ISO 22003-1:2022 Annex B intensity by sub-category.
+FOOD_CHAIN_COMPLEXITY: dict[str, float] = {
+    "CI":   1.00,   # Animal farming, perishable animal
+    "CII":  1.00,   # Perishable plant — fresh produce
+    "CIII": 0.95,   # Processed perishable / ready-to-eat
+    "CIV":  0.85,   # Ambient-stable food (bakery, confectionery, beverage)
+    "C0":   1.00,   # Slaughter / abattoir
+    "BIII": 0.90,   # Plant pre-processing
+    "D":    1.00,   # Animal feed
+    "E":    0.95,   # Catering
+    "FI":   0.75,   # Retail
+    "FII":  0.75,   # Wholesale / broker
+    "G":    0.75,   # Storage / logistics
+    "I":    0.75,   # Packaging materials
+    "K":    0.95,   # Biochemicals / additives
+}
+
+# FSSC 22000 mandatory reporting/preparation surcharge — minimum 1.0 auditor-day
+# applied SEPARATELY from on-site time (per ISO 22003-1:2022 + FSSC 22000 v6 §5).
+FSSC_REPORTING_SURCHARGE_DAYS: float = 1.0
+
+# ---------------------------------------------------------------------------
 # Helper: look up a value from any EPS table
 # ---------------------------------------------------------------------------
 

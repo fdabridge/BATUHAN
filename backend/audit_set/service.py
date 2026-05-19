@@ -267,6 +267,15 @@ def _run_calculation(audit_set: AuditSet) -> dict | None:
             for iso_name in standards
         ]
 
+        # ── Food chain categories — pulled from required_scope if already derived ─
+        food_cats: list[str] = []
+        rs = getattr(audit_set, "required_scope", None) or {}
+        for iso_name, entry in rs.items():
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("type") == "food":
+                food_cats.extend(entry.get("codes", []) or [])
+
         form_data = ExtractedFormData(
             org_name=audit_set.company_name or "",
             standards=standards,
@@ -284,6 +293,7 @@ def _run_calculation(audit_set: AuditSet) -> dict | None:
             num_energy_types=num_energy_types,
             num_seus=num_seus,
             scope_integration_level=getattr(audit_set, "scope_integration_level", None),
+            food_chain_categories=food_cats,
         )
 
         result = calculate(form_data)
@@ -371,6 +381,15 @@ def create_audit_set(db: Session, data: AuditSetCreateSchema) -> AuditSet:
     else:
         audit_set.scope_integration_level = "High"
 
+    # 2B — Derive required_scope BEFORE calculation so food chain categories
+    # (and any other scope-driven inputs) reach the engine on the first pass.
+    audit_set.required_scope = derive_required_scope(
+        standards=audit_set.standards or [],
+        scope_tr=audit_set.scope_tr,
+        scope_en=audit_set.scope_en,
+        ea_code=audit_set.ea_code,
+    )
+
     result = _run_calculation(audit_set)
     if result:
         audit_set.man_day_result = result
@@ -379,14 +398,6 @@ def create_audit_set(db: Session, data: AuditSetCreateSchema) -> AuditSet:
             result["standard_results"][0].get("category", "").upper()
             if result.get("standard_results") else None
         )
-
-    # Always derive required scope from scope text — no manual button needed
-    audit_set.required_scope = derive_required_scope(
-        standards=audit_set.standards or [],
-        scope_tr=audit_set.scope_tr,
-        scope_en=audit_set.scope_en,
-        ea_code=audit_set.ea_code,
-    )
 
     _create_auto_stages(db, audit_set, result)
     db.commit()
@@ -428,6 +439,16 @@ def quick_calculate(db: Session, audit_set_id: str, data: QuickCalcSchema) -> Au
         audit_set.ea_category = data.ea_category
     if data.scope_integration_level is not None:
         audit_set.scope_integration_level = data.scope_integration_level
+
+    # Ensure required_scope is populated before calculation so food chain
+    # categories (ISO 22000 / FSSC) flow into the engine on legacy records.
+    if not audit_set.required_scope:
+        audit_set.required_scope = derive_required_scope(
+            standards=audit_set.standards or [],
+            scope_tr=audit_set.scope_tr,
+            scope_en=audit_set.scope_en,
+            ea_code=audit_set.ea_code,
+        )
 
     result = _run_calculation(audit_set)
     if not result:
@@ -484,6 +505,20 @@ def update_planning(
     audit_set = get_audit_set(db, audit_set_id)
     if not audit_set:
         return None
+
+    # ── Stage ordering: Stage 1 end MUST be strictly before Stage 2 start ──
+    s1 = next((s for s in data.stages if s.stage_type == "stage_1"), None)
+    s2 = next((s for s in data.stages if s.stage_type == "stage_2"), None)
+    if s1 and s2 and s1.audit_date_end and s2.audit_date_start:
+        if s1.audit_date_end >= s2.audit_date_start:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Stage 1 end date ({s1.audit_date_end}) must be strictly before "
+                    f"Stage 2 start date ({s2.audit_date_start})."
+                ),
+            )
 
     # Update top-level fields (full replace — PUT semantics)
     audit_set.ea_code               = data.ea_code

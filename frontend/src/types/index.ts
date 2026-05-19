@@ -102,6 +102,7 @@ export interface ManDayResult {
   scope_integration_level?: string | null   // "Low" | "Medium" | "High" — IAF MD 11
   md11_floor_applied?: boolean              // true when 50% floor was enforced
   md11_floor_value?: number | null          // the floor that was applied
+  fssc_reporting_surcharge?: number | null  // FSSC 22000 reporting surcharge (off-site)
   warning?: string | null
 }
 

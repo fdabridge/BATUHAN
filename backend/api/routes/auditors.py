@@ -219,7 +219,8 @@ def get_available_auditors(
     date_end: str,
     standard_code: Optional[str] = None,
     ea_code: Optional[str] = None,
-    required_categories: Optional[str] = None,   # JSON-encoded required_scope dict
+    required_scope: Optional[str] = None,         # JSON-encoded required_scope dict (preferred)
+    required_categories: Optional[str] = None,    # legacy alias — same semantics
     db: Session = Depends(get_db),
     _: PlatformUser = Depends(require_any),
 ):
@@ -232,10 +233,11 @@ def get_available_auditors(
       date_end             — ISO date string YYYY-MM-DD (inclusive)
       standard_code        — optional; e.g. "ISO 9001" (partial case-insensitive match)
       ea_code              — optional; e.g. "EA 3" (numeric part compared)
-      required_categories  — optional; JSON-encoded required_scope dict, e.g.
+      required_scope       — optional; JSON-encoded required_scope dict, e.g.
                              '{"ISO 22000": {"type": "food", "codes": ["CI", "CIV"]}}'
                              When provided, each result includes covered_scope showing
                              which codes from the required set this auditor can cover.
+      required_categories  — legacy alias for required_scope (kept for compatibility).
 
     Returns list sorted: available auditors first, then unavailable.
     """
@@ -243,11 +245,12 @@ def get_available_auditors(
     from auditors.models import Auditor
     from audit_set.db_models import get_db as get_sets_db, AuditSetStage, AuditSet
 
-    # Parse required_categories (JSON string → dict)
+    # Parse required_scope (preferred name) with legacy fallback to required_categories
+    raw_scope = required_scope or required_categories
     req_cat: dict = {}
-    if required_categories:
+    if raw_scope:
         try:
-            req_cat = _json.loads(required_categories)
+            req_cat = _json.loads(raw_scope)
         except Exception:
             req_cat = {}
 

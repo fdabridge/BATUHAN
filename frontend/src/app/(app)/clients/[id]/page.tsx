@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, ChevronDown, ChevronRight, Download, Loader2, Pencil, Check, Zap } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronRight, Download, Loader2, Pencil, Check } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { CertBadge } from '@/components/ui/CertBadge'
@@ -294,11 +294,6 @@ function PlanOverview({
     ? `${data.effective_employees} effective employees`
     : '—'
 
-  const { mutate: deriveScope, isPending: deriving } = useMutation({
-    mutationFn: () => api.post<AuditSetResponse>(`/audit-sets/${auditSetId}/derive-scope`),
-    onSuccess: () => onInvalidate(),
-  })
-
   const { mutate: applyIntegLevel, isPending: applyingLevel } = useMutation({
     mutationFn: (level: string) =>
       api.post<AuditSetResponse>(`/audit-sets/${auditSetId}/quick-calculate`, {
@@ -344,16 +339,6 @@ function PlanOverview({
               <span className="text-xs text-gray-400">({MD11_RATES[integLevel]}% reduction)</span>
             </div>
           )}
-          <button
-            type="button"
-            disabled={deriving}
-            onClick={() => deriveScope()}
-            className="flex items-center gap-1 text-certiva-primary hover:opacity-70 disabled:opacity-50"
-            style={{ fontSize: 13 }}
-          >
-            {deriving ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
-            Derive required scope
-          </button>
         </div>
       </div>
       <div className="grid grid-cols-3 gap-x-6 gap-y-5">
@@ -521,7 +506,7 @@ function StageCard({
       })
       if (primaryStandard) params.set('standard_code', primaryStandard)
       if (eaCode)          params.set('ea_code', eaCode)
-      if (reqCatStr)       params.set('required_categories', reqCatStr)
+      if (reqCatStr)       params.set('required_scope', reqCatStr)
       return api.get<AuditorAvailabilityItem[]>(`/auditors/available?${params}`).then((r) => r.data)
     },
     enabled: datesReady,
@@ -558,8 +543,8 @@ function StageCard({
   }, [])   // eslint-disable-line react-hooks/exhaustive-deps — intentionally on mount only
 
   const workingDays = datesReady ? workingDaysBetween(edit.audit_date_start, edit.audit_date_end) : null
-  // Team size: lead + additional auditors + technical experts (defined before the teamCount useEffect)
-  const teamCount = (edit.lead_auditor_name ? 1 : 0) + edit.auditors.length + edit.technical_experts.length
+  // Team size for man-day math: lead + additional auditors ONLY (technical experts observe, not audit — per IAF MD 5 / spec Part 5)
+  const teamCount = (edit.lead_auditor_name ? 1 : 0) + edit.auditors.length
 
   // Reactive: when team size changes and a start date exists, recompute end date
   // so that: calendar days = ceil(audit_days / teamCount)
@@ -585,11 +570,10 @@ function StageCard({
 
   const resolvedStandards = resolvedStds
 
-  // Coverage computation
+  // Coverage computation — lead + additional auditors only, NOT technical experts (per spec Part 5)
   const teamMembers: TeamMember[] = [
     ...(edit.lead_auditor_name ? [{ id: edit.lead_auditor_id, name: edit.lead_auditor_name }] : []),
     ...edit.auditors,
-    ...edit.technical_experts,
   ]
   const coverageResults = (resolvedStandards.length > 0 && (availableAuditors ?? []).length > 0)
     ? computeCoverage(resolvedStandards, eaCode, teamMembers, availableAuditors ?? [], requiredScope)
@@ -608,6 +592,15 @@ function StageCard({
           .join(', ')
         throw new Error(`Stage 2 save blocked — uncovered codes: ${missingCodes}. Assign team members who cover these codes first.`)
       }
+      // Stage ordering: Stage 1 end must be strictly before Stage 2 start
+      const s1 = allStages.find((s) => s.stage_type === 'stage_1')
+      const s2 = allStages.find((s) => s.stage_type === 'stage_2')
+      const s1End   = stage.id === s1?.id ? edit.audit_date_end   : s1?.audit_date_end
+      const s2Start = stage.id === s2?.id ? edit.audit_date_start : s2?.audit_date_start
+      if (s1 && s2 && s1End && s2Start && s1End >= s2Start) {
+        throw new Error(`Stage 1 end (${s1End}) must be strictly before Stage 2 start (${s2Start}).`)
+      }
+
       // Stage 1: allow save even with incomplete coverage (warning shown separately)
       const stages = allStages.map((s) => {
         const isThis = s.id === stage.id
@@ -636,7 +629,9 @@ function StageCard({
       setTimeout(() => setSaved(false), 2000)
     },
     onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : 'Failed to save.'
+      // Surface backend HTTPException detail (e.g. 400 stage-ordering violation)
+      const e = err as { response?: { data?: { detail?: string } }; message?: string }
+      const msg = e?.response?.data?.detail ?? e?.message ?? 'Failed to save.'
       setCoverageError(msg)
     },
   })
@@ -964,7 +959,7 @@ function ManDaySection({ result }: { result: ManDayResult | null }) {
       {open && (
         <div className="border-t border-gray-100 px-5 pb-5 pt-4 space-y-4">
           {!result ? (
-            <p className="text-sm text-gray-400">Calculation not available. Use Quick Calculate to generate man-day guidance.</p>
+            <p className="text-sm text-gray-400">Calculation pending — recomputing automatically from stored personnel.</p>
           ) : (
             <>
               {result.warning && (
@@ -1039,96 +1034,19 @@ function ManDaySection({ result }: { result: ManDayResult | null }) {
                   <span>Reporting reduction (20%)</span><span>−{result.reporting_reduction}</span>
                 </div>
                 <div className="flex justify-between font-medium text-gray-700 border-t border-gray-200 pt-1 mt-1">
-                  <span>Final total</span><span>{result.final_total} days</span>
+                  <span>Final total (on-site)</span><span>{result.final_total} days</span>
                 </div>
+                {result.fssc_reporting_surcharge != null && result.fssc_reporting_surcharge > 0 && (
+                  <div className="flex justify-between rounded px-1 py-0.5" style={{ background: '#FEF3C7', color: '#92400E' }}>
+                    <span>+ FSSC 22000 reporting/preparation surcharge (off-site)</span>
+                    <span>+{result.fssc_reporting_surcharge} days</span>
+                  </div>
+                )}
               </div>
             </>
           )}
         </div>
       )}
-    </div>
-  )
-}
-
-// ── Quick Calculate widget ─────────────────────────────────────────────────────
-
-function QuickCalcWidget({ auditSetId, onSuccess, initialPersonnel }: {
-  auditSetId: string
-  onSuccess: () => void
-  initialPersonnel?: { full_time?: number; part_time?: number; subcontractors?: number; seasonal?: number; unskilled?: number } | null
-}) {
-  const [open, setOpen] = useState(true)
-  const [fullTime,  setFullTime]  = useState(String(initialPersonnel?.full_time      || ''))
-  const [partTime,  setPartTime]  = useState(String(initialPersonnel?.part_time      || ''))
-  const [subcontr,  setSubcontr]  = useState(String(initialPersonnel?.subcontractors || ''))
-  const [seasonal,  setSeasonal]  = useState(String(initialPersonnel?.seasonal       || ''))
-  const [err, setErr] = useState<string | null>(null)
-
-  const calc = useMutation({
-    mutationFn: () => {
-      const ft = parseInt(fullTime, 10) || 0
-      const pt = parseInt(partTime, 10) || 0
-      const sc = parseInt(subcontr, 10) || 0
-      const se = parseInt(seasonal, 10) || 0
-      if (ft + pt + sc + se === 0) throw new Error('Enter at least one employee count.')
-      return api.post(`/audit-sets/${auditSetId}/quick-calculate`, {
-        personnel: { full_time: ft, part_time: pt, subcontractors: sc, seasonal: se },
-      })
-    },
-    onSuccess: () => { setOpen(false); onSuccess() },
-    onError:   (e: unknown) => setErr(e instanceof Error ? e.message : 'Calculation failed.'),
-  })
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="text-xs text-certiva-primary underline hover:opacity-70"
-      >
-        Quick Calculate man-days
-      </button>
-    )
-  }
-
-  return (
-    <div className="rounded-lg border border-certiva-primary/20 bg-certiva-surface p-4 text-sm">
-      <p className="mb-3 font-medium text-gray-700">Quick Calculate — enter personnel data</p>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {[
-          ['Full-time', fullTime, setFullTime],
-          ['Part-time', partTime, setPartTime],
-          ['Subcontractors', subcontr, setSubcontr],
-          ['Seasonal', seasonal, setSeasonal],
-        ].map(([label, val, setter]) => (
-          <label key={label as string} className="flex flex-col gap-0.5">
-            <span className="text-xs text-gray-500">{label as string}</span>
-            <input
-              type="number" min={0} value={val as string}
-              onChange={(e) => (setter as (v: string) => void)(e.target.value)}
-              className="rounded border border-gray-200 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-certiva-primary"
-            />
-          </label>
-        ))}
-      </div>
-      {err && <p className="mt-2 text-xs text-red-500">{err}</p>}
-      <div className="mt-3 flex gap-2">
-        <button
-          type="button" disabled={calc.isPending}
-          onClick={() => { setErr(null); calc.mutate() }}
-          className="flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
-          style={{ background: '#1A4731' }}
-        >
-          {calc.isPending ? <Loader2 size={12} className="animate-spin" /> : null}
-          Calculate
-        </button>
-        <button
-          type="button" onClick={() => { setOpen(false); setErr(null) }}
-          className="rounded px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100"
-        >
-          Cancel
-        </button>
-      </div>
     </div>
   )
 }
@@ -1156,7 +1074,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
     if (!data || data.man_day_result || autoCalcFired.current) return
     const p = data.personnel
     const totalPersonnel = (p?.full_time || 0) + (p?.part_time || 0) + (p?.subcontractors || 0) + (p?.seasonal || 0) + (p?.unskilled || 0)
-    if (totalPersonnel <= 0) return  // genuinely no personnel entered — show QuickCalcWidget
+    if (totalPersonnel <= 0) return  // legacy record with no personnel — nothing to recompute
     autoCalcFired.current = true
     api.post(`/audit-sets/${id}/quick-calculate`, {
       personnel: {
@@ -1272,11 +1190,6 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
       )}
 
       <ManDaySection result={data.man_day_result} />
-
-      {/* Quick Calculate — shown when man_day_result is missing (manually created client) */}
-      {!data.man_day_result && (
-        <QuickCalcWidget auditSetId={id} onSuccess={invalidate} initialPersonnel={data.personnel} />
-      )}
     </div>
   )
 }

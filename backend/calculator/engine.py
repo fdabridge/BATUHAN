@@ -21,6 +21,7 @@ from .models import ExtractedFormData, StandardAuditResult, CalculationResult
 from .tables import (
     ISO9001_TABLES, ISO14001_TABLES, ISO45001_TABLES,
     ISO13485, ISO27001, ISO50001_A3, ISO50001_A4,
+    ISO22000, FOOD_CHAIN_COMPLEXITY, FSSC_REPORTING_SURCHARGE_DAYS,
     lookup_eps,
 )
 
@@ -214,6 +215,34 @@ def _lookup_standard(data: ExtractedFormData, standard: str) -> StandardAuditRes
             base_recert_ph1=r_ph1, base_recert_ph2=r_ph2,
         )
 
+    elif _std_match(standard, "ISO 22000") or _std_match(standard, "FSSC 22000"):
+        # ISO 22003-1:2022 Annex B — food-safety EPS table with food chain modifier.
+        # EPS for FSMS = personnel involved in food safety activities (defaults to total).
+        row = lookup_eps(ISO22000, eps)
+        if not row:
+            raise ValueError(f"EPS {eps} out of range for {standard}")
+        _, _, init_t = row
+        # Apply food chain category complexity factor (highest factor wins when multiple)
+        cats = data.food_chain_categories or []
+        if cats:
+            factor = max((FOOD_CHAIN_COMPLEXITY.get(c, 1.0) for c in cats), default=1.0)
+        else:
+            factor = 1.0
+        init_t = round(init_t * factor, 2)
+        ph1 = round(init_t / 3 * 2) / 2
+        ph2 = round(init_t - ph1, 2)
+        surv = max(round(init_t / 3 * 2) / 2, 1.0)
+        recert_t = max(round(init_t * 2 / 3 * 2) / 2, 1.0)
+        r_ph1 = round(recert_t / 3 * 2) / 2
+        r_ph2 = round(recert_t - r_ph1, 2)
+        cat_label = ",".join(cats) if cats else "unspecified"
+        return StandardAuditResult(
+            standard=standard, category=f"FSMS · {cat_label}", eps=eps,
+            base_init=init_t, base_ph1=ph1, base_ph2=ph2,
+            base_surv=surv, base_recert=recert_t,
+            base_recert_ph1=r_ph1, base_recert_ph2=r_ph2,
+        )
+
     elif _std_match(standard, "ISO 50001"):
         if data.annual_energy_tj is None or data.num_energy_types is None or data.num_seus is None:
             raise ValueError("ISO 50001 requires EnMS energy data (missing from form)")
@@ -374,6 +403,11 @@ def calculate(data: ExtractedFormData) -> CalculationResult:
 
     eps_display = _eps_standard(data, data.standards[0]) if data.standards else 0.0
 
+    # FSSC 22000 reporting/preparation surcharge (separate from on-site time)
+    fssc_surcharge: float | None = None
+    if any(_std_match(s, "FSSC 22000") for s in data.standards):
+        fssc_surcharge = FSSC_REPORTING_SURCHARGE_DAYS
+
     return CalculationResult(
         org_name=data.org_name,
         standards=data.standards,
@@ -400,5 +434,6 @@ def calculate(data: ExtractedFormData) -> CalculationResult:
         scope_integration_level=data.scope_integration_level,
         md11_floor_applied=md11_floor_applied,
         md11_floor_value=md11_floor_value if md11_floor_applied else None,
+        fssc_reporting_surcharge=fssc_surcharge,
     )
 
