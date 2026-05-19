@@ -39,7 +39,7 @@ def build_audit_set_zip(audit_set, db) -> bytes:
     """
     del db  # not needed today; kept in signature per service convention
 
-    document_set = resolve_document_set(audit_set)
+    document_set, missing_templates = resolve_document_set(audit_set)
 
     # Index stages by stage_type for O(1) lookup
     stages_by_type = {s.stage_type: s for s in (audit_set.stages or [])}
@@ -67,5 +67,14 @@ def build_audit_set_zip(audit_set, db) -> bytes:
 
                 arcname = f"{company_slug}/{output_folder}/{doc.output_filename}"
                 zf.writestr(arcname, file_bytes)
+
+        # If any template files were not found on disk, include a manifest so the
+        # coordinator knows which documents are missing from this package.
+        if missing_templates:
+            manifest_lines = [
+                "The following templates were not found on disk and are missing from this package:",
+                "",
+            ] + [f"  - {m}" for m in missing_templates]
+            zf.writestr(f"{company_slug}/MISSING_TEMPLATES.txt", "\n".join(manifest_lines))
 
     return buf.getvalue()

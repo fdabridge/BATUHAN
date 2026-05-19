@@ -46,11 +46,11 @@ export interface StageResponse {
 }
 
 export interface AuditSetPersonnel {
-  full_time: number
-  part_time: number
-  subcontractors: number
-  seasonal: number
-  unskilled?: number
+  full_time?:      number
+  part_time?:      number
+  subcontractors?: number
+  seasonal?:       number
+  unskilled?:      number
 }
 
 /** @deprecated Use ManDayResult instead */

@@ -506,7 +506,7 @@ function StageCard({
       })
       if (primaryStandard) params.set('standard_code', primaryStandard)
       if (eaCode)          params.set('ea_code', eaCode)
-      if (reqCatStr)       params.set('required_scope', reqCatStr)
+      if (reqCatStr)       params.set('required_categories', reqCatStr)
       return api.get<AuditorAvailabilityItem[]>(`/auditors/available?${params}`).then((r) => r.data)
     },
     enabled: datesReady,

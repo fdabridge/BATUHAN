@@ -6,9 +6,12 @@ they group into output folders (Stage_1 / Stage_2 / Surveillance).
 """
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from audit_set.field_maps import (
     FR211_MAP, FR217_MAP, FR218_MAP, FR222_MAP, FR223_MAP,
@@ -106,13 +109,19 @@ def _find_template(folder: Path, fr_number: str) -> Path | None:
     return candidates[0] if candidates else None
 
 
-def _add(specs, seen, fr_number, group, stage_sub, field_map, stage_context, *, allow_dup=False):
-    """Append a DocumentSpec if the fr_number isn't already in `seen` (or always when allow_dup)."""
+def _add(specs, seen, fr_number, group, stage_sub, field_map, stage_context, missing: list[str], *, allow_dup=False):
+    """Append a DocumentSpec if the fr_number isn't already in `seen` (or always when allow_dup).
+
+    When the template file cannot be found on disk, the fr_number is appended to
+    `missing` so callers can surface the gap to the user.
+    """
     if not allow_dup and fr_number in seen:
         return
     folder = BLANK_SET_PATH / GROUP_FOLDER[group] / stage_sub
     template = _find_template(folder, fr_number)
     if template is None:
+        missing.append(f"{group}/{stage_sub}/{fr_number}")
+        logger.warning("[Resolver] Template not found: %s/%s/%s", group, stage_sub, fr_number)
         return
     specs.append(DocumentSpec(
         fr_number=fr_number,
@@ -127,59 +136,59 @@ def _add(specs, seen, fr_number, group, stage_sub, field_map, stage_context, *, 
 # --------------------------------------------------------------------------- #
 # Per-stage builders
 # --------------------------------------------------------------------------- #
-def _build_stage_1(needs_base, needs_mdqms, needs_isms, sub: str) -> list[DocumentSpec]:
+def _build_stage_1(needs_base, needs_mdqms, needs_isms, sub: str, missing: list[str]) -> list[DocumentSpec]:
     specs: list[DocumentSpec] = []
     seen: set[str] = set()
 
     primary = "base" if needs_base else ("mdqms" if needs_mdqms else ("isms" if needs_isms else None))
     if primary:
-        _add(specs, seen, "FR.217", primary, sub, FR217_MAP, "all")
-        _add(specs, seen, "FR.218", primary, sub, FR218_MAP, "all")
-        _add(specs, seen, "FR.220", primary, sub, {},        "all")
-        _add(specs, seen, "FR.222", primary, sub, FR222_MAP, "all")
+        _add(specs, seen, "FR.217", primary, sub, FR217_MAP, "all", missing)
+        _add(specs, seen, "FR.218", primary, sub, FR218_MAP, "all", missing)
+        _add(specs, seen, "FR.220", primary, sub, {},        "all", missing)
+        _add(specs, seen, "FR.222", primary, sub, FR222_MAP, "all", missing)
 
     for fr, fmap in [("FR.223", FR223_MAP), ("FR.224", FR224_MAP),
                      ("FR.225", FR225_MAP), ("FR.230", FR230_MAP)]:
-        if needs_base:  _add(specs, seen, fr, "base",  sub, fmap, "stage_1")
-        if needs_mdqms: _add(specs, seen, fr, "mdqms", sub, fmap, "stage_1")
-        if needs_isms:  _add(specs, seen, fr, "isms",  sub, fmap, "stage_1")
+        if needs_base:  _add(specs, seen, fr, "base",  sub, fmap, "stage_1", missing)
+        if needs_mdqms: _add(specs, seen, fr, "mdqms", sub, fmap, "stage_1", missing)
+        if needs_isms:  _add(specs, seen, fr, "isms",  sub, fmap, "stage_1", missing)
 
     if needs_base:
-        _add(specs, seen, "FR.231", "base", sub, FR231_MAP, "stage_1")
+        _add(specs, seen, "FR.231",   "base",  sub, FR231_MAP, "stage_1", missing)
     if needs_mdqms:
-        _add(specs, seen, "FR.231-1", "mdqms", sub, FR231_MAP, "stage_1")
+        _add(specs, seen, "FR.231-1", "mdqms", sub, FR231_MAP, "stage_1", missing)
 
-    if needs_base:  _add(specs, seen, "FR.211", "base",  sub, FR211_MAP, "stage_1")
-    if needs_mdqms: _add(specs, seen, "FR.211", "mdqms", sub, FR211_MAP, "stage_1")
-    if needs_isms:  _add(specs, seen, "FR.211", "isms",  sub, FR211_MAP, "stage_1")
+    if needs_base:  _add(specs, seen, "FR.211", "base",  sub, FR211_MAP, "stage_1", missing)
+    if needs_mdqms: _add(specs, seen, "FR.211", "mdqms", sub, FR211_MAP, "stage_1", missing)
+    if needs_isms:  _add(specs, seen, "FR.211", "isms",  sub, FR211_MAP, "stage_1", missing)
     return specs
 
 
 
-def _build_stage_2(needs_base, needs_mdqms, needs_isms, sub: str) -> list[DocumentSpec]:
+def _build_stage_2(needs_base, needs_mdqms, needs_isms, sub: str, missing: list[str]) -> list[DocumentSpec]:
     specs: list[DocumentSpec] = []
     seen: set[str] = set()
 
     for fr, fmap in [("FR.223", FR223_MAP), ("FR.224", FR224_MAP),
                      ("FR.225", FR225_MAP), ("FR.230", FR230_MAP)]:
-        if needs_base:  _add(specs, seen, fr, "base",  sub, fmap, "stage_2")
-        if needs_mdqms: _add(specs, seen, fr, "mdqms", sub, fmap, "stage_2")
-        if needs_isms:  _add(specs, seen, fr, "isms",  sub, fmap, "stage_2")
+        if needs_base:  _add(specs, seen, fr, "base",  sub, fmap, "stage_2", missing)
+        if needs_mdqms: _add(specs, seen, fr, "mdqms", sub, fmap, "stage_2", missing)
+        if needs_isms:  _add(specs, seen, fr, "isms",  sub, fmap, "stage_2", missing)
 
     if needs_base:
-        _add(specs, seen, "FR.232", "base", sub, FR232_MAP, "stage_2")
+        _add(specs, seen, "FR.232",   "base",  sub, FR232_MAP, "stage_2", missing)
     if needs_mdqms:
-        _add(specs, seen, "FR.232-1", "mdqms", sub, FR232_MAP, "stage_2")
+        _add(specs, seen, "FR.232-1", "mdqms", sub, FR232_MAP, "stage_2", missing)
     if needs_isms:
-        _add(specs, seen, "FR.229", "isms", sub, FR232_MAP, "stage_2")
+        _add(specs, seen, "FR.229",   "isms",  sub, FR232_MAP, "stage_2", missing)
 
-    if needs_base:  _add(specs, seen, "FR.211", "base",  sub, FR211_MAP, "stage_2")
-    if needs_mdqms: _add(specs, seen, "FR.211", "mdqms", sub, FR211_MAP, "stage_2")
-    if needs_isms:  _add(specs, seen, "FR.211", "isms",  sub, FR211_MAP, "stage_2")
+    if needs_base:  _add(specs, seen, "FR.211", "base",  sub, FR211_MAP, "stage_2", missing)
+    if needs_mdqms: _add(specs, seen, "FR.211", "mdqms", sub, FR211_MAP, "stage_2", missing)
+    if needs_isms:  _add(specs, seen, "FR.211", "isms",  sub, FR211_MAP, "stage_2", missing)
     return specs
 
 
-def _build_surveillance(needs_base, needs_mdqms, needs_isms, sub: str) -> list[DocumentSpec]:
+def _build_surveillance(needs_base, needs_mdqms, needs_isms, sub: str, missing: list[str]) -> list[DocumentSpec]:
     specs: list[DocumentSpec] = []
     seen: set[str] = set()
 
@@ -188,21 +197,25 @@ def _build_surveillance(needs_base, needs_mdqms, needs_isms, sub: str) -> list[D
         ("FR.230", FR230_MAP), ("FR.232", FR232_MAP), ("FR.234", FR234_MAP),
         ("FR.211", FR211_MAP),
     ]:
-        if needs_base:  _add(specs, seen, fr, "base",  sub, fmap, "surveillance")
-        if needs_mdqms: _add(specs, seen, fr, "mdqms", sub, fmap, "surveillance")
-        if needs_isms:  _add(specs, seen, fr, "isms",  sub, fmap, "surveillance")
+        if needs_base:  _add(specs, seen, fr, "base",  sub, fmap, "surveillance", missing)
+        if needs_mdqms: _add(specs, seen, fr, "mdqms", sub, fmap, "surveillance", missing)
+        if needs_isms:  _add(specs, seen, fr, "isms",  sub, fmap, "surveillance", missing)
     return specs
 
 
 # --------------------------------------------------------------------------- #
 # Public entry point
 # --------------------------------------------------------------------------- #
-def resolve_document_set(audit_set) -> dict[str, list[DocumentSpec]]:
+def resolve_document_set(audit_set) -> tuple[dict[str, list[DocumentSpec]], list[str]]:
     """
-    Returns a dict keyed by output folder name:
-      "Stage_1"      → list[DocumentSpec]
-      "Stage_2"      → list[DocumentSpec]
-      "Surveillance" → list[DocumentSpec]
+    Returns ``(document_set, missing)`` where:
+
+    * ``document_set`` is keyed by output folder name:
+        - "Stage_1"      → list[DocumentSpec]
+        - "Stage_2"      → list[DocumentSpec]
+        - "Surveillance" → list[DocumentSpec]
+    * ``missing`` is a list of template paths that could not be found on disk.
+
     Initial / recertification produce Stage_1 + Stage_2.
     Surveillance (any variant) produces only Surveillance.
     """
@@ -213,15 +226,16 @@ def resolve_document_set(audit_set) -> dict[str, list[DocumentSpec]]:
 
     audit_type = (audit_set.audit_type or "").lower()
     accreditation_body = getattr(audit_set, "accreditation_body", "") or ""
-    result: dict[str, list[DocumentSpec]] = {}
+    document_set: dict[str, list[DocumentSpec]] = {}
+    missing: list[str] = []
 
     if audit_type.startswith("surveillance"):
         sub = _get_stage_subfolder(audit_type, "surveillance", accreditation_body)
-        result["Surveillance"] = _build_surveillance(needs_base, needs_mdqms, needs_isms, sub)
+        document_set["Surveillance"] = _build_surveillance(needs_base, needs_mdqms, needs_isms, sub, missing)
     else:  # initial or recertification
         sub1 = _get_stage_subfolder(audit_type, "stage_1", accreditation_body)
         sub2 = _get_stage_subfolder(audit_type, "stage_2", accreditation_body)
-        result["Stage_1"] = _build_stage_1(needs_base, needs_mdqms, needs_isms, sub1)
-        result["Stage_2"] = _build_stage_2(needs_base, needs_mdqms, needs_isms, sub2)
+        document_set["Stage_1"] = _build_stage_1(needs_base, needs_mdqms, needs_isms, sub1, missing)
+        document_set["Stage_2"] = _build_stage_2(needs_base, needs_mdqms, needs_isms, sub2, missing)
 
-    return result
+    return document_set, missing

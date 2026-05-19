@@ -165,6 +165,7 @@ class AuditSetResponse(BaseModel):
     surveillance_fee: Optional[float]
     required_scope: Optional[dict] = None            # per-standard derived scope codes
     scope_integration_level: Optional[str] = None   # "Low" | "Medium" | "High"
+    personnel: Optional[dict] = None                # {full_time, part_time, subcontractors, seasonal, unskilled}
     stages: list[StageResponse]
     created_at: datetime
     updated_at: datetime

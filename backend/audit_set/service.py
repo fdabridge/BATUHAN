@@ -317,7 +317,12 @@ def _create_auto_stages(db: Session, audit_set: AuditSet, result: dict | None) -
         stage_defs = [
             ("surveillance", 1, result.get("final_surv1") if result else None),
         ]
-    else:  # recertification, transfer, scope_extension — use recert phase split
+    else:  # recertification — use recert phase split
+        if audit_type not in ("recertification",):
+            logger.warning(
+                "[AuditSet] Unknown audit_type=%r for id=%s — defaulting to stage_1 + stage_2",
+                audit_type, getattr(audit_set, "id", "?"),
+            )
         stage_defs = [
             ("stage_1", 1, result.get("final_recert_ph1") if result else None),
             ("stage_2", 2, result.get("final_recert_ph2") if result else None),
