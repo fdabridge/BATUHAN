@@ -558,8 +558,22 @@ function StageCard({
   }, [])   // eslint-disable-line react-hooks/exhaustive-deps — intentionally on mount only
 
   const workingDays = datesReady ? workingDaysBetween(edit.audit_date_start, edit.audit_date_end) : null
-  // Team size: lead + additional auditors + technical experts
+  // Team size: lead + additional auditors + technical experts (defined before the teamCount useEffect)
   const teamCount = (edit.lead_auditor_name ? 1 : 0) + edit.auditors.length + edit.technical_experts.length
+
+  // Reactive: when team size changes and a start date exists, recompute end date
+  // so that: calendar days = ceil(audit_days / teamCount)
+  useEffect(() => {
+    if (!edit.audit_date_start) return           // no start date yet — nothing to do
+    if (!stage.audit_days) return                // no IAF recommendation — nothing to base on
+    if (teamCount === 0) return                  // no auditors yet — keep existing date
+    const calendarDaysNeeded = Math.ceil(stage.audit_days / teamCount)
+    const newEnd = suggestEndDate(edit.audit_date_start, calendarDaysNeeded)
+    if (newEnd !== edit.audit_date_end) {
+      patch({ audit_date_end: newEnd })
+    }
+  }, [teamCount])   // eslint-disable-line react-hooks/exhaustive-deps — intentionally watches teamCount only
+
   // Man-days covered = working days in range × number of assigned team members
   const manDaysCovered = workingDays != null && teamCount > 0 ? workingDays * teamCount : null
   // Shortfall: covered < stage.audit_days (recommended for this stage from calculation)
@@ -663,14 +677,21 @@ function StageCard({
         </div>
       </div>
 
-      {/* IAF MD 5 banner */}
+      {/* IAF MD 5 banner — shows live calendar days based on team size */}
       {recommended != null && (
         <div className="mb-3 rounded-md px-3 py-2 text-sm" style={{ background: '#F0FAF4', color: '#1A4731' }}>
-          <span className="font-medium">IAF MD 5 calculated:</span> {recommended} audit days recommended for this stage.
-          {stage.audit_days != null && stage.audit_days !== recommended && (
-            <span className="ml-2" style={{ color: '#92400E' }}>
-              (Currently saved: {stage.audit_days} days)
+          <span className="font-medium">IAF MD 5:</span>{' '}
+          {recommended} audit-days for this stage.
+          {teamCount > 0 && (
+            <span className="ml-2 font-medium">
+              {' '}÷ {teamCount} auditor{teamCount > 1 ? 's' : ''} ={' '}
+              <span style={{ color: '#1A4731' }}>
+                {Math.ceil(recommended / teamCount)} calendar day{Math.ceil(recommended / teamCount) > 1 ? 's' : ''}
+              </span>
             </span>
+          )}
+          {teamCount === 0 && (
+            <span className="ml-1 text-xs" style={{ color: '#92400E' }}>— assign auditors to see calendar days</span>
           )}
         </div>
       )}
