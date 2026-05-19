@@ -1031,12 +1031,16 @@ function ManDaySection({ result }: { result: ManDayResult | null }) {
 
 // ── Quick Calculate widget ─────────────────────────────────────────────────────
 
-function QuickCalcWidget({ auditSetId, onSuccess }: { auditSetId: string; onSuccess: () => void }) {
+function QuickCalcWidget({ auditSetId, onSuccess, initialPersonnel }: {
+  auditSetId: string
+  onSuccess: () => void
+  initialPersonnel?: { full_time?: number; part_time?: number; subcontractors?: number; seasonal?: number; unskilled?: number } | null
+}) {
   const [open, setOpen] = useState(true)
-  const [fullTime,  setFullTime]  = useState('')
-  const [partTime,  setPartTime]  = useState('')
-  const [subcontr,  setSubcontr]  = useState('')
-  const [seasonal,  setSeasonal]  = useState('')
+  const [fullTime,  setFullTime]  = useState(String(initialPersonnel?.full_time      || ''))
+  const [partTime,  setPartTime]  = useState(String(initialPersonnel?.part_time      || ''))
+  const [subcontr,  setSubcontr]  = useState(String(initialPersonnel?.subcontractors || ''))
+  const [seasonal,  setSeasonal]  = useState(String(initialPersonnel?.seasonal       || ''))
   const [err, setErr] = useState<string | null>(null)
 
   const calc = useMutation({
@@ -1125,13 +1129,22 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
     queryFn:  () => api.get<AuditorSummary[]>('/auditors/?active_only=true').then((r) => r.data),
   })
 
-  // Auto-calculate man-days on page load if result is missing but employees are known
+  // Auto-calculate man-days on page load if result is missing but personnel is stored
   const autoCalcFired = useRef(false)
   useEffect(() => {
     if (!data || data.man_day_result || autoCalcFired.current) return
-    if (!data.effective_employees || data.effective_employees <= 0) return
+    const p = data.personnel
+    const totalPersonnel = (p?.full_time || 0) + (p?.part_time || 0) + (p?.subcontractors || 0) + (p?.seasonal || 0) + (p?.unskilled || 0)
+    if (totalPersonnel <= 0) return  // genuinely no personnel entered — show QuickCalcWidget
     autoCalcFired.current = true
     api.post(`/audit-sets/${id}/quick-calculate`, {
+      personnel: {
+        full_time:      p?.full_time      || 0,
+        part_time:      p?.part_time      || 0,
+        subcontractors: p?.subcontractors || 0,
+        seasonal:       p?.seasonal       || 0,
+        unskilled:      p?.unskilled      || 0,
+      },
       scope_integration_level: data.scope_integration_level ?? 'Medium',
     }).then(() => queryClient.invalidateQueries({ queryKey: ['client', id] })).catch(() => {})
   }, [data?.id, data?.man_day_result])   // eslint-disable-line react-hooks/exhaustive-deps
@@ -1241,7 +1254,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
 
       {/* Quick Calculate — shown when man_day_result is missing (manually created client) */}
       {!data.man_day_result && (
-        <QuickCalcWidget auditSetId={id} onSuccess={invalidate} />
+        <QuickCalcWidget auditSetId={id} onSuccess={invalidate} initialPersonnel={data.personnel} />
       )}
     </div>
   )
