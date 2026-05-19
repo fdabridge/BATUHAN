@@ -673,20 +673,19 @@ function StageCard({
       </div>
 
       {/* IAF MD 5 banner — shows live calendar days based on team size */}
-      {recommended != null && (
+      {stage.audit_days != null && (
         <div className="mb-3 rounded-md px-3 py-2 text-sm" style={{ background: '#F0FAF4', color: '#1A4731' }}>
           <span className="font-medium">IAF MD 5:</span>{' '}
-          {recommended} audit-days for this stage.
-          {teamCount > 0 && (
+          {stage.audit_days} audit-day{stage.audit_days !== 1 ? 's' : ''} required.
+          {teamCount > 0 ? (
             <span className="ml-2 font-medium">
-              {' '}÷ {teamCount} auditor{teamCount > 1 ? 's' : ''} ={' '}
-              <span style={{ color: '#1A4731' }}>
-                {Math.ceil(recommended / teamCount)} calendar day{Math.ceil(recommended / teamCount) > 1 ? 's' : ''}
+              ÷ {teamCount} auditor{teamCount > 1 ? 's' : ''}{' = '}
+              <span>
+                {Math.ceil(stage.audit_days / teamCount)} calendar day{Math.ceil(stage.audit_days / teamCount) > 1 ? 's' : ''}
               </span>
             </span>
-          )}
-          {teamCount === 0 && (
-            <span className="ml-1 text-xs" style={{ color: '#92400E' }}>— assign auditors to see calendar days</span>
+          ) : (
+            <span className="ml-1 text-xs" style={{ color: '#92400E' }}>— assign auditors to see required calendar days</span>
           )}
         </div>
       )}
@@ -739,17 +738,17 @@ function StageCard({
             {dropdownList.map((a) => {
               const avail = availableAuditors?.find((x) => x.name === a.name)
               const isUnavailable = avail && !avail.available
-              // Group covered codes by standard: "EA 3 (ISO 9001), CIV CIII (ISO 22000)"
+              // Group covered codes by standard: "EA 3 (ISO 9001) | CIV CIII (ISO 22000)"
               const coverLabel = avail?.covered_scope && Object.keys(avail.covered_scope).length > 0
                 ? ' — ' + Object.entries(avail.covered_scope)
                     .filter(([, codes]) => (codes as string[]).length > 0)
                     .map(([std, codes]) => `${(codes as string[]).join(' ')} (${std})`)
-                    .join(', ')
+                    .join(' | ')
                 : ''
               return (
                 <option key={a.id ?? a.name} value={a.name} disabled={!!isUnavailable}>
                   {a.name}{'role' in a && a.role ? ` — ${a.role}` : ''}
-                  {isUnavailable ? ' (unavailable on selected dates)' : coverLabel}
+                  {coverLabel}{isUnavailable ? ' (unavailable on selected dates)' : ''}
                 </option>
               )
             })}

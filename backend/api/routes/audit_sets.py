@@ -87,11 +87,25 @@ def download_zip(audit_set_id: str, db: Session = Depends(get_db), _: PlatformUs
     audit_set = get_audit_set(db, audit_set_id)
     if not audit_set:
         raise HTTPException(status_code=404, detail=f"Audit set '{audit_set_id}' not found.")
+
+    # Pre-flight: at least one stage must have a lead auditor assigned
+    stages_with_lead = [s for s in (audit_set.stages or []) if s.lead_auditor_name]
+    if not stages_with_lead:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot generate audit package: no lead auditor has been assigned to any stage.",
+        )
+
     try:
         zip_bytes = build_audit_set_zip(audit_set, db)
     except Exception as exc:
         logger.exception("[AuditSet] ZIP build failed id=%s", audit_set_id)
         raise HTTPException(status_code=500, detail=f"Failed to build audit set ZIP: {exc}")
+
+    # Advance status to active now that the package has been generated
+    if audit_set.status != "active":
+        audit_set.status = "active"
+        db.commit()
 
     filename = f"audit_set_{audit_set.plan_number}.zip"
     return StreamingResponse(

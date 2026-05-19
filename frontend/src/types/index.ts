@@ -50,6 +50,7 @@ export interface AuditSetPersonnel {
   part_time: number
   subcontractors: number
   seasonal: number
+  unskilled?: number
 }
 
 /** @deprecated Use ManDayResult instead */

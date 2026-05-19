@@ -43,6 +43,34 @@ STAGE_SUBFOLDER = {
     "surveillance": "Gözetim",
 }
 
+# English equivalents (used when accreditation_body == "UAF")
+STAGE_SUBFOLDER_EN = {
+    "stage_1":      "Initial Certification/Stage 1",
+    "stage_2":      "Initial Certification/Stage 2",
+    "surveillance": "Surveillance",
+}
+STAGE_SUBFOLDER_RECERT_EN = "Recertification"
+STAGE_SUBFOLDER_RECERT_TR = "Yeniden Belgelendirme"
+
+
+def _get_stage_subfolder(audit_type: str, stage_key: str, accreditation_body: str) -> str:
+    """Return the correct sub-folder name for language routing.
+
+    Args:
+        audit_type: 'initial' | 'recertification' | 'surveillance' | 'surveillance_1' | ...
+        stage_key:  'stage_1' | 'stage_2' | 'surveillance'
+        accreditation_body: 'UAF' | 'TÜRKAK' | 'TURKAK' | ...
+    """
+    is_uaf = (accreditation_body or "").upper() == "UAF"
+
+    if stage_key == "surveillance":
+        return STAGE_SUBFOLDER_EN["surveillance"] if is_uaf else STAGE_SUBFOLDER["surveillance"]
+
+    if stage_key == "stage_2" and (audit_type or "").lower() == "recertification":
+        return STAGE_SUBFOLDER_RECERT_EN if is_uaf else STAGE_SUBFOLDER_RECERT_TR
+
+    return STAGE_SUBFOLDER_EN[stage_key] if is_uaf else STAGE_SUBFOLDER[stage_key]
+
 BASE_STANDARDS = {"QMS", "EMS", "OHSMS", "FSMS", "ABMS", "ENMS"}
 
 
@@ -99,10 +127,9 @@ def _add(specs, seen, fr_number, group, stage_sub, field_map, stage_context, *, 
 # --------------------------------------------------------------------------- #
 # Per-stage builders
 # --------------------------------------------------------------------------- #
-def _build_stage_1(needs_base, needs_mdqms, needs_isms) -> list[DocumentSpec]:
+def _build_stage_1(needs_base, needs_mdqms, needs_isms, sub: str) -> list[DocumentSpec]:
     specs: list[DocumentSpec] = []
     seen: set[str] = set()
-    sub = STAGE_SUBFOLDER["stage_1"]
 
     primary = "base" if needs_base else ("mdqms" if needs_mdqms else ("isms" if needs_isms else None))
     if primary:
@@ -129,10 +156,9 @@ def _build_stage_1(needs_base, needs_mdqms, needs_isms) -> list[DocumentSpec]:
 
 
 
-def _build_stage_2(needs_base, needs_mdqms, needs_isms) -> list[DocumentSpec]:
+def _build_stage_2(needs_base, needs_mdqms, needs_isms, sub: str) -> list[DocumentSpec]:
     specs: list[DocumentSpec] = []
     seen: set[str] = set()
-    sub = STAGE_SUBFOLDER["stage_2"]
 
     for fr, fmap in [("FR.223", FR223_MAP), ("FR.224", FR224_MAP),
                      ("FR.225", FR225_MAP), ("FR.230", FR230_MAP)]:
@@ -153,10 +179,9 @@ def _build_stage_2(needs_base, needs_mdqms, needs_isms) -> list[DocumentSpec]:
     return specs
 
 
-def _build_surveillance(needs_base, needs_mdqms, needs_isms) -> list[DocumentSpec]:
+def _build_surveillance(needs_base, needs_mdqms, needs_isms, sub: str) -> list[DocumentSpec]:
     specs: list[DocumentSpec] = []
     seen: set[str] = set()
-    sub = STAGE_SUBFOLDER["surveillance"]
 
     for fr, fmap in [
         ("FR.223", FR223_MAP), ("FR.224", FR224_MAP), ("FR.225", FR225_MAP),
@@ -179,7 +204,7 @@ def resolve_document_set(audit_set) -> dict[str, list[DocumentSpec]]:
       "Stage_2"      → list[DocumentSpec]
       "Surveillance" → list[DocumentSpec]
     Initial / recertification produce Stage_1 + Stage_2.
-    Surveillance produces only Surveillance.
+    Surveillance (any variant) produces only Surveillance.
     """
     standards = audit_set.standards or []
     needs_base  = any(s in BASE_STANDARDS for s in standards)
@@ -187,12 +212,16 @@ def resolve_document_set(audit_set) -> dict[str, list[DocumentSpec]]:
     needs_isms  = "ISMS"  in standards
 
     audit_type = (audit_set.audit_type or "").lower()
+    accreditation_body = getattr(audit_set, "accreditation_body", "") or ""
     result: dict[str, list[DocumentSpec]] = {}
 
-    if audit_type == "surveillance":
-        result["Surveillance"] = _build_surveillance(needs_base, needs_mdqms, needs_isms)
+    if audit_type.startswith("surveillance"):
+        sub = _get_stage_subfolder(audit_type, "surveillance", accreditation_body)
+        result["Surveillance"] = _build_surveillance(needs_base, needs_mdqms, needs_isms, sub)
     else:  # initial or recertification
-        result["Stage_1"] = _build_stage_1(needs_base, needs_mdqms, needs_isms)
-        result["Stage_2"] = _build_stage_2(needs_base, needs_mdqms, needs_isms)
+        sub1 = _get_stage_subfolder(audit_type, "stage_1", accreditation_body)
+        sub2 = _get_stage_subfolder(audit_type, "stage_2", accreditation_body)
+        result["Stage_1"] = _build_stage_1(needs_base, needs_mdqms, needs_isms, sub1)
+        result["Stage_2"] = _build_stage_2(needs_base, needs_mdqms, needs_isms, sub2)
 
     return result
