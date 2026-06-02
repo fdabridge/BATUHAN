@@ -99,6 +99,8 @@ class AuditSetCreateSchema(BaseModel):
     ea_code: Optional[str] = None
     ea_category: Optional[str] = None
     ea_technical_area: Optional[str] = None
+    audit_language: Optional[str] = None
+    document_language: Optional[str] = "turkish"
 
 
 class AuditSetUpdatePlanningSchema(BaseModel):
@@ -109,6 +111,8 @@ class AuditSetUpdatePlanningSchema(BaseModel):
     surveillance_fee: Optional[float] = None
     required_scope: Optional[dict] = None           # persisted from derive-scope
     scope_integration_level: Optional[str] = None  # "Low" | "Medium" | "High"
+    audit_language: Optional[str] = None
+    document_language: Optional[str] = None
     stages: list[StageInput] = []
 
 
@@ -166,6 +170,8 @@ class AuditSetResponse(BaseModel):
     required_scope: Optional[dict] = None            # per-standard derived scope codes
     scope_integration_level: Optional[str] = None   # "Low" | "Medium" | "High"
     personnel: Optional[dict] = None                # {full_time, part_time, subcontractors, seasonal, unskilled}
+    audit_language: Optional[str] = None
+    document_language: Optional[str] = None
     stages: list[StageResponse]
     created_at: datetime
     updated_at: datetime

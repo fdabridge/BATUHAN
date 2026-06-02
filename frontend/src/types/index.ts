@@ -138,6 +138,8 @@ export interface AuditSetResponse {
   surveillance_fee: number | null
   required_scope: RequiredScope | null
   scope_integration_level: string | null     // "Low" | "Medium" | "High"
+  audit_language: string | null
+  document_language: string | null            // "turkish" | "english" (TURKAK only)
   stages: StageResponse[]
   created_at: string
   updated_at: string

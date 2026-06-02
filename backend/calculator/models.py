@@ -89,6 +89,13 @@ class StandardAuditResult(BaseModel):
     # Site addition (pre-deduction)
     site_addition: float = 0.0
 
+    # FSMS only — extra person-days for HACCP studies (ISO 22003-1). None when N/A.
+    haccp_addition: Optional[float] = None
+
+    # ISMS only — business / IT complexity scores shown in FR.218 Table 22.
+    isms_business_score: Optional[int] = None
+    isms_it_score: Optional[int] = None
+
 
 # ---------------------------------------------------------------------------
 # Final combined calculation result
@@ -133,6 +140,14 @@ class CalculationResult(BaseModel):
     # EnMS complexity (ISO 50001 only)
     enms_k: Optional[float] = None
     enms_complexity: Optional[str] = None
+
+    # EnMS detail — IAF range labels + complexity factors (FR.218 Table 21)
+    enms_range_ec: Optional[str] = None    # annual energy consumption bracket
+    enms_range_et: Optional[str] = None    # number-of-energy-types bracket
+    enms_range_seu: Optional[str] = None   # number-of-SEUs bracket
+    enms_fec: Optional[float] = None       # factor: energy consumption
+    enms_fet: Optional[float] = None       # factor: energy types
+    enms_fseu: Optional[float] = None      # factor: SEUs
 
     # IAF MD 11 integration level applied to this calculation
     scope_integration_level: Optional[str] = None   # "Low" | "Medium" | "High"

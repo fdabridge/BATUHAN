@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 from audit_set.field_maps import (
-    FR211_MAP, FR217_MAP, FR218_MAP, FR222_MAP, FR223_MAP,
+    FR211_MAP, FR218_MAP, FR222_MAP, FR223_MAP,
     FR224_MAP, FR225_MAP, FR230_MAP, FR231_MAP, FR232_MAP, FR234_MAP,
 )
 
@@ -35,7 +36,7 @@ STANDARD_FOLDER = {
 }
 
 GROUP_FOLDER = {
-    "base":  "9-14-45",
+    "base":  "9-14-45-22-5001",
     "mdqms": "13485",
     "isms":  "27001",
 }
@@ -95,6 +96,32 @@ def _clean_filename(name: str) -> str:
     return cleaned.strip()
 
 
+def _norm_name(s: str) -> str:
+    """Normalise a folder name for tolerant matching: NFC, stripped, casefolded."""
+    return unicodedata.normalize("NFC", s or "").strip().casefold()
+
+
+def _resolve_dir(base: Path, sub: str) -> Path:
+    """Resolve a (possibly multi-segment) sub-path under `base`, tolerating
+    trailing/leading whitespace, case and unicode-normalisation drift in the
+    on-disk folder names (e.g. 'Initial Certification ' with a trailing space).
+
+    Falls back to the literal path if no match is found, so the caller's
+    missing-template handling still fires.
+    """
+    current = base
+    for part in Path(sub).parts:
+        if not current.is_dir():
+            return current / part
+        target = _norm_name(part)
+        match = next(
+            (c for c in current.iterdir() if c.is_dir() and _norm_name(c.name) == target),
+            None,
+        )
+        current = match if match is not None else current / part
+    return current
+
+
 def _find_template(folder: Path, fr_number: str) -> Path | None:
     """Locate a template file by FR-number prefix inside a stage folder."""
     if not folder.exists():
@@ -117,7 +144,7 @@ def _add(specs, seen, fr_number, group, stage_sub, field_map, stage_context, mis
     """
     if not allow_dup and fr_number in seen:
         return
-    folder = BLANK_SET_PATH / GROUP_FOLDER[group] / stage_sub
+    folder = _resolve_dir(BLANK_SET_PATH / GROUP_FOLDER[group], stage_sub)
     template = _find_template(folder, fr_number)
     if template is None:
         missing.append(f"{group}/{stage_sub}/{fr_number}")
@@ -142,9 +169,9 @@ def _build_stage_1(needs_base, needs_mdqms, needs_isms, sub: str, missing: list[
 
     primary = "base" if needs_base else ("mdqms" if needs_mdqms else ("isms" if needs_isms else None))
     if primary:
-        _add(specs, seen, "FR.217", primary, sub, FR217_MAP, "all", missing)
         _add(specs, seen, "FR.218", primary, sub, FR218_MAP, "all", missing)
         _add(specs, seen, "FR.220", primary, sub, {},        "all", missing)
+        _add(specs, seen, "FR.221", primary, sub, {},        "all", missing)
         _add(specs, seen, "FR.222", primary, sub, FR222_MAP, "all", missing)
 
     for fr, fmap in [("FR.223", FR223_MAP), ("FR.224", FR224_MAP),

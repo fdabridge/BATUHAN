@@ -48,37 +48,37 @@ def _round_audit(value: float) -> float:
 # EnMS complexity factor K
 # ---------------------------------------------------------------------------
 
-def _enms_k(annual_tj: float, num_energy_types: int, num_seus: int) -> tuple[float, str]:
-    """Compute K factor and complexity level for ISO 50001."""
-    # FEC score
+def _enms_detail(annual_tj: float, num_energy_types: int, num_seus: int) -> dict:
+    """Compute ISO 50001 complexity factors, IAF range labels, K factor and level."""
+    # FEC score — annual energy consumption (TJ)
     if annual_tj <= 20:
-        fec = 1.0
+        fec, range_ec = 1.0, "≤ 20 TJ"
     elif annual_tj <= 200:
-        fec = 1.2
+        fec, range_ec = 1.2, "> 20 and ≤ 200 TJ"
     elif annual_tj <= 2000:
-        fec = 1.4
+        fec, range_ec = 1.4, "> 200 and ≤ 2000 TJ"
     else:
-        fec = 1.6
+        fec, range_ec = 1.6, "> 2000 TJ"
 
-    # NET score
+    # NET score — number of energy types
     if num_energy_types <= 2:
-        net = 1.0
+        net, range_et = 1.0, "≤ 2 energy types"
     elif num_energy_types == 3:
-        net = 1.2
+        net, range_et = 1.2, "3 energy types"
     else:
-        net = 1.4
+        net, range_et = 1.4, "≥ 4 energy types"
 
-    # FSEU score
+    # FSEU score — number of Significant Energy Uses
     if num_seus <= 3:
-        fseu = 1.0
+        fseu, range_seu = 1.0, "≤ 3 SEUs"
     elif num_seus <= 6:
-        fseu = 1.2
+        fseu, range_seu = 1.2, "4–6 SEUs"
     elif num_seus <= 10:
-        fseu = 1.3
+        fseu, range_seu = 1.3, "7–10 SEUs"
     elif num_seus <= 15:
-        fseu = 1.4
+        fseu, range_seu = 1.4, "11–15 SEUs"
     else:
-        fseu = 1.6
+        fseu, range_seu = 1.6, "> 15 SEUs"
 
     k = round(0.25 * fec + 0.25 * net + 0.50 * fseu, 4)
 
@@ -89,7 +89,17 @@ def _enms_k(annual_tj: float, num_energy_types: int, num_seus: int) -> tuple[flo
     else:
         level = "Low"
 
-    return k, level
+    return {
+        "k": k, "level": level,
+        "fec": fec, "fet": net, "fseu": fseu,
+        "range_ec": range_ec, "range_et": range_et, "range_seu": range_seu,
+    }
+
+
+def _enms_k(annual_tj: float, num_energy_types: int, num_seus: int) -> tuple[float, str]:
+    """Compute K factor and complexity level for ISO 50001."""
+    d = _enms_detail(annual_tj, num_energy_types, num_seus)
+    return d["k"], d["level"]
 
 
 # ---------------------------------------------------------------------------
@@ -314,6 +324,7 @@ def calculate(data: ExtractedFormData) -> CalculationResult:
     standard_results: list[StandardAuditResult] = []
     enms_k: float | None = None
     enms_complexity: str | None = None
+    enms_extra: dict = {}
 
     for std in data.standards:
         result = _lookup_standard(data, std)
@@ -329,11 +340,13 @@ def calculate(data: ExtractedFormData) -> CalculationResult:
         result = result.model_copy(update={"site_addition": site_add})
         standard_results.append(result)
 
-        # Capture EnMS K value for display
+        # Capture EnMS K value + factor/range detail for display
         if _std_match(std, "ISO 50001") and data.annual_energy_tj is not None:
-            k, level = _enms_k(data.annual_energy_tj, data.num_energy_types or 1, data.num_seus or 1)
-            enms_k = k
-            enms_complexity = level
+            enms_extra = _enms_detail(
+                data.annual_energy_tj, data.num_energy_types or 1, data.num_seus or 1
+            )
+            enms_k = enms_extra["k"]
+            enms_complexity = enms_extra["level"]
 
     # --- Step 4: Combined base (HQ + sites) ---
     combined_base = sum(r.base_init + r.site_addition for r in standard_results)
@@ -431,6 +444,12 @@ def calculate(data: ExtractedFormData) -> CalculationResult:
         eps=eps_display,
         enms_k=enms_k,
         enms_complexity=enms_complexity,
+        enms_range_ec=enms_extra.get("range_ec"),
+        enms_range_et=enms_extra.get("range_et"),
+        enms_range_seu=enms_extra.get("range_seu"),
+        enms_fec=enms_extra.get("fec"),
+        enms_fet=enms_extra.get("fet"),
+        enms_fseu=enms_extra.get("fseu"),
         scope_integration_level=data.scope_integration_level,
         md11_floor_applied=md11_floor_applied,
         md11_floor_value=md11_floor_value if md11_floor_applied else None,

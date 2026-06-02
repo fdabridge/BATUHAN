@@ -1,167 +1,433 @@
 """
-BATUHAN — Audit Set: DOCX template filler.
+BATUHAN — Audit Set: docxtpl (Jinja2-for-Word) context builder + renderer.
 
-Opens an IFC blank-set DOCX template and writes values into the empty cells
-identified by a coordinate map from `field_maps.py`.  Returns the filled
-document as bytes.
+The IFC blank-set DOCX templates now carry Jinja2 placeholders
+({{ var }} and {% if %} blocks).  This module:
 
-The blank IFC forms have NO placeholder strings — the filler relies on
-(table_idx, row_idx, col_idx) coordinates and preserves existing paragraph
-and run formatting in each target cell.
+  * builds the render context from an AuditSet + AuditSetStage,
+  * renders a single template to bytes via docxtpl,
+  * provides the per-person context for the FR.224 (Audit Team Information)
+    and FR.211 (Auditor Assessment) forms, which are rendered once per
+    team member.
+
+Auditor scope coverage (`covered_scope`) is computed on the fly from each
+auditor's `standard_qualifications` against the audit set's `required_scope`
+— mirroring the logic in the /auditors/available endpoint.
 """
 from __future__ import annotations
 
+import calendar
 import io
-from datetime import date
-from pathlib import Path
+from datetime import date, timedelta
 
-from docx import Document
+from docxtpl import DocxTemplate
+
+# --------------------------------------------------------------------------- #
+# Constants
+# --------------------------------------------------------------------------- #
+STANDARD_NAMES = {
+    "QMS": "ISO 9001:2015", "EMS": "ISO 14001:2015",
+    "OHSMS": "ISO 45001:2018", "FSMS": "ISO 22000:2018",
+    "ISMS": "ISO/IEC 27001:2022", "MDQMS": "ISO 13485:2016",
+    "ABMS": "ISO 37001:2016", "ENMS": "ISO 50001:2018",
+}
+
+AUDIT_TYPE_DISPLAY = {
+    "initial": "Initial Certification",
+    "surveillance": "Surveillance",
+    "surveillance_1": "Surveillance",
+    "surveillance_2": "Surveillance",
+    "recertification": "Recertification",
+    "special": "Special Audit",
+}
+
+# FR-numbers rendered once per team member (all other forms render once).
+PER_PERSON_FORMS = {"FR.224", "FR.211"}
+
+# Approximate per-standard clause coverage by stage. The authoritative source
+# is the pre-printed FR.222 table; these strings feed FR.211/FR.224 per person.
+STAGE_CLAUSES = {
+    ("ISO 9001:2015", "stage_1"):      "4.1-4.2-4.3-4.4 / 5.2-5.3 / 6.1-6.2 / 7.1-7.2-7.3-7.4-7.5 / 8.1 / 9.2 / 9.3 / 10.1",
+    ("ISO 9001:2015", "stage_2"):      "4.1-4.2-4.3-4.4 / 5.1-5.2-5.3 / 6.1-6.2-6.3 / 7.1-7.2-7.3-7.4-7.5 / 8.1-8.2-8.3-8.4-8.5-8.6-8.7 / 9.1-9.2-9.3 / 10.1-10.2-10.3",
+    ("ISO 9001:2015", "surveillance"): "4.1-4.2-4.3 / 5.1-5.2-5.3 / 6.1-6.2-6.3 / 7.1-7.3-7.5 / 8.2-8.4-8.5-8.6-8.7 / 9.1-9.2-9.3 / 10.1-10.2-10.3",
+    ("ISO 14001:2015", "stage_1"):      "4.1-4.2-4.3-4.4 / 5.2-5.3 / 6.1-6.2 / 7.1-7.2-7.3-7.4-7.5 / 8.1 / 9.2 / 9.3 / 10.1",
+    ("ISO 14001:2015", "stage_2"):      "4.1-4.2-4.3-4.4 / 5.1-5.2-5.3 / 6.1-6.2-6.3 / 7.1-7.2-7.3-7.4-7.5 / 8.1-8.2-8.3 / 9.1-9.2-9.3 / 10.1-10.2",
+    ("ISO 14001:2015", "surveillance"): "4.1-4.2-4.3 / 5.1-5.2-5.3 / 6.1-6.2-6.3 / 7.1-7.3-7.5 / 8.1-8.2 / 9.1-9.2-9.3 / 10.1-10.2",
+    ("ISO 45001:2018", "stage_1"):      "4.1-4.2-4.3-4.4 / 5.2-5.3-5.4 / 6.1-6.2 / 7.1-7.2-7.3-7.4-7.5 / 8.1 / 9.2 / 9.3 / 10.1",
+    ("ISO 45001:2018", "stage_2"):      "4.1-4.2-4.3-4.4 / 5.1-5.2-5.3-5.4 / 6.1-6.2-6.3 / 7.1-7.2-7.3-7.4-7.5 / 8.1-8.2 / 9.1-9.2-9.3 / 10.1-10.2-10.3",
+    ("ISO 45001:2018", "surveillance"): "4.1-4.2-4.3 / 5.1-5.2-5.4 / 6.1-6.2-6.3 / 7.1-7.3-7.5 / 8.1-8.2 / 9.1-9.2-9.3 / 10.1-10.2-10.3",
+    ("ISO 22000:2018", "stage_1"):      "4.1-4.2-4.3-4.4 / 5.2-5.3 / 6.1-6.2 / 7.1-7.2-7.3-7.4-7.5 / 8.1-8.2 / 9.2 / 9.3 / 10.1",
+    ("ISO 22000:2018", "stage_2"):      "4.1-4.2-4.3-4.4 / 5.1-5.2-5.3 / 6.1-6.2-6.3 / 7.1-7.2-7.3-7.4-7.5 / 8.1-8.2-8.3-8.4-8.5-8.6-8.7-8.8-8.9 / 9.1-9.2-9.3 / 10.1-10.2-10.3",
+    ("ISO 22000:2018", "surveillance"): "4.1-4.2 / 5.1-5.2-5.3 / 6.1 / 7.1-7.3-7.5 / 8.2-8.5-8.8-8.9 / 9.1-9.2-9.3 / 10.1-10.2-10.3",
+    ("ISO/IEC 27001:2022", "stage_1"):      "4.1-4.2-4.3-4.4 / 5.2-5.3 / 6.1-6.2-6.3 / 7.1-7.2-7.3-7.4-7.5 / 8.1-8.2-8.3 / 9.2 / 9.3 / 10.1",
+    ("ISO/IEC 27001:2022", "stage_2"):      "4.1-4.2-4.3-4.4 / 5.1-5.2-5.3 / 6.1-6.2-6.3 / 7.1-7.2-7.3-7.4-7.5 / 8.1-8.2-8.3 / 9.1-9.2-9.3 / 10.1-10.2",
+    ("ISO/IEC 27001:2022", "surveillance"): "4.1-4.2-4.3 / 5.1-5.2-5.3 / 6.1-6.2-6.3 / 7.1-7.3-7.5 / 8.1-8.2-8.3 / 9.1-9.2-9.3 / 10.1-10.2",
+    ("ISO 50001:2018", "stage_1"):      "4.1-4.2-4.3 / 5.2-5.3 / 6.1-6.2-6.3 / 7.1-7.2-7.3-7.4-7.5 / 8.1-8.2 / 9.2 / 9.3 / 10.1",
+    ("ISO 50001:2018", "stage_2"):      "4.1-4.2-4.3 / 5.1-5.2-5.3 / 6.1-6.2-6.3 / 7.1-7.2-7.3-7.4-7.5 / 8.1-8.2-8.3-8.4-8.5-8.6 / 9.1-9.2-9.3 / 10.1-10.2-10.3",
+    ("ISO 50001:2018", "surveillance"): "4.1-4.2-4.3 / 5.1-5.2-5.3 / 6.1-6.2-6.3 / 7.1-7.3-7.5 / 8.1-8.2-8.3-8.4 / 9.1-9.2-9.3 / 10.1-10.2-10.3",
+    ("ISO 13485:2016", "stage_1"):      "4.1-4.2 / 5.1-5.2-5.3-5.4-5.5-5.6 / 6.1-6.2 / 7.1-7.2-7.3-7.4-7.5-7.6 / 8.1-8.2 / 9.2 / 10.1",
+    ("ISO 13485:2016", "stage_2"):      "4.1-4.2 / 5.1-5.2-5.3-5.4-5.5-5.6 / 6.1-6.2-6.3 / 7.1-7.2-7.3-7.4-7.5-7.6 / 8.1-8.2-8.3-8.4-8.5 / 9.1-9.2-9.3 / 10.1-10.2",
+    ("ISO 13485:2016", "surveillance"): "4.1-4.2 / 5.1-5.5-5.6 / 6.1-6.2 / 7.1-7.2-7.4-7.5-7.6 / 8.1-8.2-8.3-8.4-8.5 / 9.1-9.2 / 10.1-10.2",
+    ("ISO 37001:2016", "stage_1"):      "4.1-4.2-4.3-4.4-4.5 / 5.1-5.2-5.3-5.4 / 6.1-6.2 / 7.1-7.2-7.3-7.4-7.5 / 8.1-8.2-8.3-8.4-8.5-8.6-8.7-8.8-8.9-8.10 / 9.2 / 9.3 / 10.1",
+    ("ISO 37001:2016", "stage_2"):      "4.1-4.2-4.3-4.4-4.5 / 5.1-5.2-5.3-5.4 / 6.1-6.2 / 7.1-7.2-7.3-7.4-7.5 / 8.1-8.2-8.3-8.4-8.5-8.6-8.7-8.8-8.9-8.10 / 9.1-9.2-9.3 / 10.1-10.2",
+    ("ISO 37001:2016", "surveillance"): "4.1-4.2-4.4-4.5 / 5.1-5.2-5.4 / 6.1 / 7.1-7.3-7.5 / 8.1-8.2-8.6-8.7-8.10 / 9.1-9.2-9.3 / 10.1-10.2",
+}
 
 
-from config.settings import get_settings
-BLANK_SET_PATH = Path(get_settings().blank_set_path)
+# --------------------------------------------------------------------------- #
+# Date helpers
+# --------------------------------------------------------------------------- #
+def format_date(d) -> str:
+    """Format a date object as DD/MM/YYYY."""
+    if d is None:
+        return ""
+    return d.strftime("%d/%m/%Y")
 
 
-def fill_document(template_path: Path, field_map: dict, values: dict) -> bytes:
+def format_date_range(start, end) -> str:
+    """Format a date range. Same month: '10–12 June 2026'. Cross-month: '28 Jan – 3 Feb 2026'."""
+    if not start:
+        return ""
+    if not end or end == start:
+        return start.strftime("%-d %B %Y")
+    if start.month == end.month and start.year == end.year:
+        return f"{start.day}–{end.day} {start.strftime('%B %Y')}"
+    return f"{start.strftime('%-d %b')} – {end.strftime('%-d %b %Y')}"
+
+
+def add_working_days(d: date, days: int) -> date:
+    """Move `days` working days (Mon–Fri) from date d; positive = backwards."""
+    step = -1 if days > 0 else 1
+    count = 0
+    current = d
+    while count < abs(days):
+        current += timedelta(days=step)
+        if current.weekday() < 5:  # Mon=0 … Fri=4
+            count += 1
+    return current
+
+
+def subtract_months(d: date, months: int) -> date:
+    """Subtract calendar months from a date, clamping the day to month length."""
+    month = d.month - months
+    year = d.year
+    while month <= 0:
+        month += 12
+        year -= 1
+    day = min(d.day, calendar.monthrange(year, month)[1])
+    return date(year, month, day)
+
+
+def add_years_minus_one_day(d: date, years: int = 1) -> date:
+    """Add `years` then subtract 1 day (certification-cycle end dates)."""
+    try:
+        result = d.replace(year=d.year + years)
+    except ValueError:  # Feb 29 → Feb 28
+        result = d.replace(year=d.year + years, day=28)
+    return result - timedelta(days=1)
+
+
+# --------------------------------------------------------------------------- #
+# Auditor scope-coverage helpers
+# --------------------------------------------------------------------------- #
+def _norm_std(name: str) -> str:
+    """Normalise a standard name for matching: lowercase, drop ':YYYY' suffix."""
+    base = (name or "").split(":")[0]
+    return base.replace(" ", "").lower()
+
+
+def _std_match(a: str, b: str) -> bool:
+    na, nb = _norm_std(a), _norm_std(b)
+    return bool(na) and (na == nb or na in nb or nb in na)
+
+
+def _compute_covered_scope(qualifications, required_scope: dict) -> dict:
     """
-    Open a blank DOCX template, write values into cells defined by
-    `field_map`, return the filled document as bytes.
-
-    field_map: {field_name: (table_idx, row_idx, col_idx)}
-    values:    {field_name: str_value}  — only fields present in `values`
-               and with a non-None value are written.
+    For each required standard/codes, determine which codes this auditor covers.
+    Mirrors /auditors/available._compute_covered_scope.
+    Returns {iso_standard: [covered_codes]} keyed by the required_scope key.
     """
-    doc = Document(str(template_path))
-
-    for field_name, (t_idx, r_idx, c_idx) in field_map.items():
-        value = values.get(field_name)
-        if value is None or value == "":
+    covered: dict = {}
+    for iso_std, entry in (required_scope or {}).items():
+        scope_type = entry.get("type", "ea")
+        required_codes = entry.get("codes", []) or []
+        if not required_codes:
             continue
-        try:
-            cell = doc.tables[t_idx].rows[r_idx].cells[c_idx]
-        except (IndexError, AttributeError):
-            continue  # Skip if coordinate doesn't exist in this variant
+        qual = next(
+            (q for q in (qualifications or [])
+             if q.is_qualified is not False and _std_match(iso_std, q.standard_code or "")),
+            None,
+        )
+        if qual is None:
+            continue
+        if scope_type in ("food", "medical", "sector", "energy"):
+            raw = qual.scope_category or ""
+            auditor_codes = [c.strip() for c in raw.split(",") if c.strip()]
+        else:  # "ea"
+            auditor_codes = qual.ea_codes or []
+        matched = [c for c in required_codes if c in auditor_codes]
+        if matched:
+            covered[iso_std] = matched
+    return covered
 
-        # Preserve existing paragraph formatting — clear text, keep style.
-        if cell.paragraphs:
-            para = cell.paragraphs[0]
-            for run in para.runs:
-                run.text = ""
-            if para.runs:
-                para.runs[0].text = str(value)
-            else:
-                para.add_run(str(value))
-        else:
-            cell.add_paragraph(str(value))
 
+def _covered_codes_display(covered: dict) -> str:
+    """Render a covered_scope dict as 'EA 3 (ISO 9001) | CI CIV (ISO 22000)'."""
+    if not covered:
+        return ""
+    parts = [f"{' '.join(codes)} ({std})" for std, codes in covered.items() if codes]
+    return " | ".join(parts)
+
+
+# --------------------------------------------------------------------------- #
+# Base context
+# --------------------------------------------------------------------------- #
+def _extract_complexity_category(man_day: dict) -> str:
+    """Low/Medium/High complexity for EMS/OHSMS, read from man_day_result."""
+    for sr in (man_day.get("standard_results") or []):
+        if sr.get("standard") in ("ISO 14001:2015", "ISO 45001:2018"):
+            return sr.get("category", "") or ""
+    return ""
+
+
+def build_base_context(audit_set, stage) -> dict:
+    """Build the complete Jinja2 render context for one stage render."""
+    man_day = audit_set.man_day_result or {}
+    personnel = audit_set.personnel or {}
+    sites = audit_set.sites or []
+    integration_level = audit_set.integration_level or {}
+    audit_type = audit_set.audit_type or ""
+    standards_codes = audit_set.standards or []
+    standards_full = [STANDARD_NAMES[c] for c in standards_codes if c in STANDARD_NAMES]
+
+    is_initial = audit_type == "initial"
+    is_surveillance = audit_type.startswith("surveillance")
+    is_recertification = audit_type == "recertification"
+    is_special = audit_type == "special"
+
+    all_stages = {s.stage_type: s for s in (audit_set.stages or [])}
+    stage1 = all_stages.get("stage_1")
+    stage2 = all_stages.get("stage_2")
+
+    # Estimated certification-cycle dates.
+    surv1_estimated = surv2_estimated = recert_estimated = None
+    if (is_initial or is_recertification) and stage2 and stage2.audit_date_end:
+        surv1_estimated = add_years_minus_one_day(stage2.audit_date_end)
+        surv2_estimated = add_years_minus_one_day(surv1_estimated)
+        recert_estimated = add_years_minus_one_day(surv2_estimated)
+    elif audit_type == "surveillance_1" and stage.audit_date_end:
+        surv2_estimated = add_years_minus_one_day(stage.audit_date_end)
+        recert_estimated = add_years_minus_one_day(surv2_estimated)
+
+    if is_initial or is_recertification:
+        opening_meeting_date = stage1.audit_date_start if stage1 else None
+        closing_meeting_date = stage2.audit_date_end if stage2 else None
+    else:
+        opening_meeting_date = stage.audit_date_start
+        closing_meeting_date = stage.audit_date_end
+
+    standard_results_by_name = {
+        sr["standard"]: sr for sr in (man_day.get("standard_results") or [])
+    }
+
+    def get_std(full_name):
+        return standard_results_by_name.get(full_name)
+
+    total_employees = (
+        personnel.get("full_time", 0)
+        + personnel.get("part_time", 0)
+        + personnel.get("unskilled", 0)
+    )
+
+    enms_energy_tj = sum(s.get("energy_tj", 0) for s in sites)
+    enms_energy_types = max((s.get("energy_types", 0) for s in sites), default=0)
+    enms_seu_count = sum(s.get("seu_count", 0) for s in sites)
+
+    true_count = sum(1 for v in integration_level.values() if v)
+    integration_pct = round(true_count / 8 * 100) if integration_level else 0
+
+    end = stage.audit_date_end
+    start = stage.audit_date_start
+
+    return {
+        # Company
+        "company_name": audit_set.company_name,
+        "company_address": audit_set.company_address,
+        "phone": audit_set.phone,
+        "email": audit_set.email,
+        "website": audit_set.website,
+        "representative": audit_set.representative,
+        "scope_en": audit_set.scope_en,
+        "scope_tr": audit_set.scope_tr,
+        "non_applicable_clauses": audit_set.non_applicable_clauses,
+        "ea_code": audit_set.ea_code,
+        "ea_category": audit_set.ea_category,
+        "ea_technical_area": audit_set.ea_technical_area,
+        "effective_employees": audit_set.effective_employees,
+        "plan_number": audit_set.plan_number,
+        "certification_fee": audit_set.certification_fee,
+        "initial_fee": audit_set.certification_fee,
+        "surveillance_fee": audit_set.surveillance_fee,
+        "scope_integration_level": audit_set.scope_integration_level,
+        "risk_category": audit_set.risk_category,
+        "audit_language": audit_set.audit_language,
+        "document_language": audit_set.document_language,
+        # Standards
+        "standards": standards_codes,
+        "standards_str": ", ".join(standards_full),
+        # Audit type
+        "audit_type": audit_type,
+        "audit_type_display": AUDIT_TYPE_DISPLAY.get(audit_type, audit_type),
+        "is_initial": is_initial,
+        "is_surveillance": is_surveillance,
+        "is_recertification": is_recertification,
+        "is_special": is_special,
+        # Dates
+        "today": format_date(date.today()),
+        "audit_dates": format_date_range(start, end),
+        "audit_date_end": format_date(end),
+        "report_date": format_date(end + timedelta(days=1)) if end else "",
+        "plan_date": format_date(add_working_days(start, 5)) if start else "",
+        "notification_date": format_date(subtract_months(start, 2)) if start else "",
+        "opening_meeting_date": format_date(opening_meeting_date),
+        "closing_meeting_date": format_date(closing_meeting_date),
+        "stage1_dates": format_date_range(stage1.audit_date_start, stage1.audit_date_end) if stage1 else "",
+        "stage2_dates": format_date_range(stage2.audit_date_start, stage2.audit_date_end) if stage2 else "",
+        "stage2_start_date": format_date(stage2.audit_date_start) if stage2 else "",
+        "surv1_estimated_date": format_date(surv1_estimated),
+        "surv2_estimated_date": format_date(surv2_estimated),
+        "recert_estimated_date": format_date(recert_estimated),
+        # Team (auditor scope strings merged in by build_auditor_scope_strings)
+        "lead_auditor_name": stage.lead_auditor_name,
+        "auditors": stage.auditors or [],
+        "technical_experts": stage.technical_experts or [],
+        "observers": stage.observers or [],
+        # Personnel
+        "personnel": personnel,
+        "total_employees": total_employees,
+        "subcontractors": personnel.get("subcontractors", 0),
+        "shift_count": personnel.get("shift_count", 1),
+        "office_employees": personnel.get("office_employees", 0),
+        "repetitive_employees": personnel.get("repetitive_employees", 0),
+        # Sites
+        "sites": sites,
+        "site_addresses": "\n".join(s.get("address", "") for s in sites),
+        "enms_energy_tj": enms_energy_tj,
+        "enms_energy_types": enms_energy_types,
+        "enms_seu_count": enms_seu_count,
+        # Integration
+        "integration_level": integration_level,
+        "integration_pct": integration_pct,
+        # Man-day results
+        "man_day_result": man_day,
+        "man_day_result_qms": get_std("ISO 9001:2015"),
+        "man_day_result_ems": get_std("ISO 14001:2015"),
+        "man_day_result_ohsms": get_std("ISO 45001:2018"),
+        "man_day_result_fsms": get_std("ISO 22000:2018"),
+        "man_day_result_isms": get_std("ISO/IEC 27001:2022"),
+        "man_day_result_mdqms": get_std("ISO 13485:2016"),
+        "man_day_result_abms": get_std("ISO 37001:2016"),
+        "man_day_result_enms": get_std("ISO 50001:2018"),
+        # EnMS detail
+        "enms_range_ec": man_day.get("enms_range_ec", ""),
+        "enms_range_et": man_day.get("enms_range_et", ""),
+        "enms_range_seu": man_day.get("enms_range_seu", ""),
+        "enms_fec": man_day.get("enms_fec", ""),
+        "enms_fet": man_day.get("enms_fet", ""),
+        "enms_fseu": man_day.get("enms_fseu", ""),
+        # ISMS scores
+        "isms_business_score": man_day.get("isms_business_score", ""),
+        "isms_it_score": man_day.get("isms_it_score", ""),
+        # Audit duration
+        "stage_1_days": stage1.audit_days if stage1 else "",
+        "stage_2_days": stage2.audit_days if stage2 else "",
+        "surv_days": man_day.get("final_surv1", ""),
+        "audit_days": stage.audit_days or "",
+        "complexity_category": _extract_complexity_category(man_day),
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Auditor team enrichment + per-person context
+# --------------------------------------------------------------------------- #
+def build_auditor_scope_strings(stage, auditor_lookup: dict, required_scope: dict) -> dict:
+    """
+    Build `covered_codes_display` strings for the lead, auditors and technical
+    experts. `auditor_lookup` maps auditor_id → Auditor ORM object.
+    Returns a dict to merge into the base context (overrides auditors / TEs).
+    """
+    def disp(aud) -> str:
+        if not aud:
+            return ""
+        return _covered_codes_display(
+            _compute_covered_scope(aud.standard_qualifications, required_scope)
+        )
+
+    enriched_auditors = [
+        {**a, "covered_codes_display": disp(auditor_lookup.get(a.get("id")))}
+        for a in (stage.auditors or [])
+    ]
+    enriched_tes = [
+        {**te, "covered_codes_display": disp(auditor_lookup.get(te.get("id")))}
+        for te in (stage.technical_experts or [])
+    ]
+    return {
+        "lead_auditor_codes": disp(auditor_lookup.get(stage.lead_auditor_id)),
+        "auditors": enriched_auditors,
+        "technical_experts": enriched_tes,
+    }
+
+
+def _get_person_standards(person_id, auditor_lookup: dict, standards_codes: list) -> list:
+    """Full standard names this person is qualified for, within the audit scope.
+    Falls back to all in-scope standards when the auditor profile is unknown."""
+    standards_full = [STANDARD_NAMES[c] for c in standards_codes if c in STANDARD_NAMES]
+    aud = auditor_lookup.get(person_id)
+    if not aud:
+        return standards_full
+    quals = [q for q in (aud.standard_qualifications or []) if q.is_qualified is not False]
+    matched = [
+        full for full in standards_full
+        if any(_std_match(full, q.standard_code or "") for q in quals)
+    ]
+    return matched or standards_full
+
+
+def build_team_members(stage, auditor_lookup: dict, standards_codes: list) -> list:
+    """Per-person context blocks (FR.224 / FR.211): one per team member."""
+    clause_key = stage.stage_type  # "stage_1" | "stage_2" | "surveillance"
+    members: list[dict] = []
+    if stage.lead_auditor_name:
+        members.append({"id": stage.lead_auditor_id, "name": stage.lead_auditor_name})
+    for a in (stage.auditors or []):
+        members.append({"id": a.get("id"), "name": a.get("name", "")})
+    for te in (stage.technical_experts or []):
+        members.append({"id": te.get("id"), "name": te.get("name", "")})
+
+    result: list[dict] = []
+    seen: set = set()
+    for m in members:
+        if not m["name"] or m["name"] in seen:
+            continue
+        seen.add(m["name"])
+        person_standards = _get_person_standards(m["id"], auditor_lookup, standards_codes)
+        person_clauses = [STAGE_CLAUSES.get((std, clause_key), "") for std in person_standards]
+        result.append({
+            "name": m["name"],
+            "person_standards": person_standards,
+            "person_clauses": person_clauses,
+        })
+    return result
+
+
+# --------------------------------------------------------------------------- #
+# Renderer
+# --------------------------------------------------------------------------- #
+def render_docx(template_path, context: dict) -> bytes:
+    """Render one docxtpl template with `context`; return DOCX bytes."""
+    doc = DocxTemplate(str(template_path))
+    doc.render(context)
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
 
-
-def build_values(audit_set, stage=None) -> dict:
-    """
-    Build the values dict from an AuditSet ORM object + optional
-    AuditSetStage.  All values are coerced to strings ready for cell writing.
-    """
-    standard_display = {
-        "QMS":   "ISO 9001:2015",
-        "EMS":   "ISO 14001:2015",
-        "OHSMS": "ISO 45001:2018",
-        "FSMS":  "ISO 22000:2018",
-        "ISMS":  "ISO/IEC 27001:2022",
-        "MDQMS": "ISO 13485:2016",
-        "ABMS":  "ISO 37001:2016",
-        "ENMS":  "ISO 50001:2018",
-    }
-    audit_type_display = {
-        "initial":         "Initial Certification",
-        "surveillance":    "Surveillance",
-        "recertification": "Recertification",
-    }
-
-    standards_str = ", ".join(
-        standard_display.get(s, s) for s in (audit_set.standards or [])
-    )
-
-    values: dict = {
-        "plan_number":         str(audit_set.plan_number),
-        "today_date":          date.today().strftime("%d/%m/%Y"),
-        "company_name":        audit_set.company_name or "",
-        "company_address":     audit_set.company_address or "",
-        "phone":               audit_set.phone or "",
-        "email":               audit_set.email or "",
-        "representative":      audit_set.representative or "",
-        "standards_str":       standards_str,
-        "ea_code":             audit_set.ea_code or "",
-        "ea_category":         audit_set.ea_category or "",
-        "ea_technical_area":   audit_set.ea_technical_area or "",
-        "scope_en":            audit_set.scope_en or "",
-        "scope_tr":            audit_set.scope_tr or "",
-        "non_applicable_clauses": audit_set.non_applicable_clauses or "",
-        "audit_type_str":      audit_type_display.get(audit_set.audit_type, ""),
-        "effective_employees": str(audit_set.effective_employees or ""),
-        "shift_count":         str((audit_set.personnel or {}).get("shift_count", "")),
-    }
-
-    # Composite organisation block for FR.231 / FR.232 single-cell variants.
-    values["organisation_block"] = "\n".join(
-        x for x in [
-            audit_set.company_name or "",
-            audit_set.company_address or "",
-            f"Tel: {audit_set.phone}" if audit_set.phone else "",
-            f"E-mail: {audit_set.email}" if audit_set.email else "",
-            f"Representative: {audit_set.representative}" if audit_set.representative else "",
-        ] if x
-    )
-
-    # Repeated values for FR.234 second-block fields.
-    values["company_name_repeat"]    = values["company_name"]
-    values["company_address_repeat"] = values["company_address"]
-    values["scope_repeat"]           = values["scope_en"]
-
-    # Man-day calculation results
-    mdr = audit_set.man_day_result or {}
-    values["stage_1_days"]      = str(mdr.get("final_ph1", ""))
-    values["stage_2_days"]      = str(mdr.get("final_ph2", ""))
-    values["surveillance_days"] = str(mdr.get("final_surv1", ""))
-    values["recert_days"]       = str(mdr.get("final_recert", ""))
-
-    # Stage-specific values (auditor team, dates, audit days)
-    if stage:
-        def fmt_date_range(d1, d2):
-            if not d1:
-                return ""
-            s = d1.strftime("%d/%m/%Y")
-            if d2 and d2 != d1:
-                s += f" – {d2.strftime('%d/%m/%Y')}"
-            return s
-
-        if stage.stage_type == "stage_1":
-            values["stage_1_date"] = fmt_date_range(stage.audit_date_start, stage.audit_date_end)
-        elif stage.stage_type == "stage_2":
-            values["stage_2_date"] = fmt_date_range(stage.audit_date_start, stage.audit_date_end)
-        elif stage.stage_type == "surveillance":
-            values["surveillance_date"] = fmt_date_range(stage.audit_date_start, stage.audit_date_end)
-        values["audit_days"] = str(stage.audit_days or "")
-
-        values["lead_auditor_name"] = stage.lead_auditor_name or ""
-        auditors = stage.auditors or []
-        for i, a in enumerate(auditors[:3]):
-            values[f"auditor_{i+1}_name"]     = a.get("name", "")
-            values[f"auditor_{i+1}_standard"] = a.get("standard", "")
-            values[f"auditor_{i+1}_ea"]       = a.get("ea_code", "")
-        tech = stage.technical_experts or []
-        for i, t in enumerate(tech[:2]):
-            values[f"technical_expert_{i+1}_name"] = t.get("name", "")
-
-    # Per-standard audit date fields for FR.222.
-    for std_code in standard_display:
-        s1 = values.get("stage_1_date", "")
-        s2 = values.get("stage_2_date", "")
-        sv = values.get("surveillance_date", "")
-        values[f"stage_1_date_{std_code.lower()}"]      = s1
-        values[f"stage_2_date_{std_code.lower()}"]      = s2
-        values[f"surveillance_date_{std_code.lower()}"] = sv
-
-    return values

@@ -13,6 +13,7 @@ interface Step1Data {
   company_name: string; company_address: string; country: string; city: string
   phone: string; email: string; website: string; standards: string[]
   audit_type: string; scope_tr: string; scope_en: string; accreditation_body: string
+  audit_language: string; document_language: string
 }
 
 interface SiteRow { _key: string; address: string; employee_count: number }
@@ -32,6 +33,18 @@ const STANDARDS_GRID = [
   { code: 'ISMS',  iso: 'ISO 27001' }, { code: 'MDQMS', iso: 'ISO 13485' },
   { code: 'ABMS',  iso: 'ISO 37001' }, { code: 'ENMS',  iso: 'ISO 50001' },
 ]
+
+// Country → default spoken audit language (must mirror backend COUNTRY_LANGUAGE).
+const COUNTRY_LANGUAGE: Record<string, string> = {
+  Turkey: 'Turkish', 'Türkiye': 'Turkish',
+  Russia: 'Russian', Bangladesh: 'Bengali',
+  'United States': 'English', 'United Kingdom': 'English',
+  Germany: 'German', France: 'French',
+}
+
+function suggestLanguage(country: string): string {
+  return COUNTRY_LANGUAGE[country] ?? 'English'
+}
 
 function getPairs(stds: string[]): string[] {
   const pairs: string[] = []
@@ -66,6 +79,7 @@ const DEFAULT_S1: Step1Data = {
   company_name: '', company_address: '', country: 'Turkey', city: '',
   phone: '', email: '', website: '', standards: [],
   audit_type: '', scope_tr: '', scope_en: '', accreditation_body: 'UAF',
+  audit_language: 'Turkish', document_language: 'turkish',
 }
 
 const DEFAULT_S2: Step2Data = {
@@ -108,7 +122,7 @@ function Step1({
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className={lblCls}>Country</label>
-          <input className={inputCls} value={data.country} onChange={(e) => onChange({ country: e.target.value })} />
+          <input className={inputCls} value={data.country} onChange={(e) => onChange({ country: e.target.value, audit_language: suggestLanguage(e.target.value) })} />
         </div>
         <div>
           <label className={lblCls}>City</label>
@@ -159,6 +173,7 @@ function Step1({
             { value: 'initial',         label: 'Initial certification' },
             { value: 'surveillance',    label: 'Surveillance'          },
             { value: 'recertification', label: 'Recertification'       },
+            { value: 'special',         label: 'Special Audit'         },
           ].map(({ value, label }) => (
             <label key={value} className="flex cursor-pointer items-center gap-2 text-sm">
               <input type="radio" className="accent-certiva-primary" name="audit_type" value={value} checked={data.audit_type === value} onChange={() => onChange({ audit_type: value })} />
@@ -189,6 +204,34 @@ function Step1({
         </select>
         {errors.accreditation_body && <p className={errCls}>{errors.accreditation_body}</p>}
       </div>
+
+      <div>
+        <label className={lblCls}>Audit language</label>
+        <input
+          className={inputCls}
+          value={data.audit_language}
+          onChange={(e) => onChange({ audit_language: e.target.value })}
+          placeholder="e.g. Turkish"
+        />
+        <p className="mt-1 text-xs text-gray-400">Suggested from country — editable.</p>
+      </div>
+
+      {(data.accreditation_body === 'TURKAK' || data.accreditation_body === 'TÜRKAK') && (
+        <div>
+          <label className={lblCls}>Document language</label>
+          <div className="flex gap-5">
+            {[
+              { value: 'turkish', label: 'Turkish' },
+              { value: 'english', label: 'English' },
+            ].map(({ value, label }) => (
+              <label key={value} className="flex cursor-pointer items-center gap-2 text-sm">
+                <input type="radio" className="accent-certiva-primary" name="document_language" value={value} checked={data.document_language === value} onChange={() => onChange({ document_language: value })} />
+                {label}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -424,6 +467,8 @@ export default function NewClientPage() {
         standards: s1.standards, audit_type: s1.audit_type,
         scope_tr: s1.scope_tr, scope_en: s1.scope_en,
         accreditation_body: s1.accreditation_body,
+        audit_language: s1.audit_language,
+        document_language: s1.document_language,
         personnel: {
           full_time: s2.full_time, part_time: s2.part_time,
           subcontractors: s2.subcontractors, seasonal: s2.seasonal,

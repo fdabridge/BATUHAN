@@ -57,6 +57,8 @@ def create_tables():
     # Safe migrations — add columns introduced after initial deployment
     _safe_add_column("audit_sets", "required_scope JSON")
     _safe_add_column("audit_sets", "scope_integration_level VARCHAR")
+    _safe_add_column("audit_sets", "audit_language VARCHAR")
+    _safe_add_column("audit_sets", "document_language VARCHAR DEFAULT 'turkish'")
 
 
 # ---------------------------------------------------------------------------
@@ -128,6 +130,12 @@ class AuditSet(Base):
     ea_code          = Column(String, nullable=True)
     ea_category      = Column(String, nullable=True)
     ea_technical_area= Column(String, nullable=True)
+
+    # ── Languages ─────────────────────────────────────────────────────────────
+    # audit_language: spoken language of the audit (defaulted from country).
+    # document_language: report language, only meaningful for TURKAK ("turkish"|"english").
+    audit_language    = Column(String, nullable=True)
+    document_language = Column(String, default="turkish")
 
     # ── Certificate ───────────────────────────────────────────────────────────
     cert_issued_date = Column(Date, nullable=True)

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from sqlalchemy import cast, func, String
 from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm.attributes import flag_modified
 
 from audit_set.db_models import AuditSet, AuditSetStage
 from audit_set.schemas import (
@@ -35,6 +36,14 @@ _CODE_TO_ISO: dict[str, str] = {
     "EnMS":       "ISO 50001",
     "ABMS":       "ISO 37001",
     "CMS":        "ISO 37301",
+}
+
+# Country → default spoken audit language (coordinator may override).
+COUNTRY_LANGUAGE: dict[str, str] = {
+    "Turkey": "Turkish", "Türkiye": "Turkish",
+    "Russia": "Russian", "Bangladesh": "Bengali",
+    "United States": "English", "United Kingdom": "English",
+    "Germany": "German", "France": "French",
 }
 
 # ── Scope-derivation keyword maps ──────────────────────────────────────────
@@ -304,6 +313,28 @@ def _run_calculation(audit_set: AuditSet) -> dict | None:
         return None
 
 
+def _writeback_personnel_split(audit_set: AuditSet) -> None:
+    """Merge derived office_employees + repetitive_employees back into the
+    personnel JSON so downstream document generation can read them directly.
+    Uses the same derivation as _run_calculation."""
+    p = dict(audit_set.personnel or {})
+    full_time      = p.get("full_time", 0)
+    part_time      = p.get("part_time", 0)
+    subcontractors = p.get("subcontractors", 0)
+    seasonal       = p.get("seasonal", 0)
+    unskilled      = p.get("unskilled", 0)
+
+    total_employees      = full_time + part_time + subcontractors + seasonal + unskilled
+    repetitive_roles     = p.get("repetitive_roles", [])
+    repetitive_employees = sum(r.get("employee_count", 0) for r in repetitive_roles)
+    office_employees     = max(0, total_employees - repetitive_employees)
+
+    p["office_employees"]     = office_employees
+    p["repetitive_employees"] = repetitive_employees
+    audit_set.personnel = p
+    flag_modified(audit_set, "personnel")
+
+
 def _create_auto_stages(db: Session, audit_set: AuditSet, result: dict | None) -> None:
     """Insert auto-generated AuditSetStage rows based on audit_type."""
     audit_type = (audit_set.audit_type or "initial").lower()
@@ -316,6 +347,10 @@ def _create_auto_stages(db: Session, audit_set: AuditSet, result: dict | None) -
     elif audit_type.startswith("surveillance"):  # surveillance_1, surveillance_2, surveillance
         stage_defs = [
             ("surveillance", 1, result.get("final_surv1") if result else None),
+        ]
+    elif audit_type == "special":  # single special-purpose visit
+        stage_defs = [
+            ("stage_1", 1, result.get("final_total") if result else None),
         ]
     else:  # recertification — use recert phase split
         if audit_type not in ("recertification",):
@@ -344,6 +379,10 @@ def _create_auto_stages(db: Session, audit_set: AuditSet, result: dict | None) -
 
 def create_audit_set(db: Session, data: AuditSetCreateSchema) -> AuditSet:
     """Create a new AuditSet, run the calculator, auto-create stages. Returns persisted row."""
+    # Default the spoken audit language from the company's country if not supplied.
+    if not data.audit_language:
+        data.audit_language = COUNTRY_LANGUAGE.get(data.country, "English")
+
     audit_set = AuditSet(
         id=str(uuid.uuid4()),
         plan_number=_next_plan_number(db),
@@ -371,6 +410,8 @@ def create_audit_set(db: Session, data: AuditSetCreateSchema) -> AuditSet:
         ea_code=data.ea_code,
         ea_category=data.ea_category,
         ea_technical_area=data.ea_technical_area,
+        audit_language=data.audit_language,
+        document_language=data.document_language or "turkish",
     )
     db.add(audit_set)
     db.flush()  # populate audit_set.id before child rows
@@ -403,6 +444,7 @@ def create_audit_set(db: Session, data: AuditSetCreateSchema) -> AuditSet:
             result["standard_results"][0].get("category", "").upper()
             if result.get("standard_results") else None
         )
+        _writeback_personnel_split(audit_set)
 
     _create_auto_stages(db, audit_set, result)
     db.commit()
@@ -466,6 +508,7 @@ def quick_calculate(db: Session, audit_set_id: str, data: QuickCalcSchema) -> Au
         result["standard_results"][0].get("category", "").upper()
         if result.get("standard_results") else None
     )
+    _writeback_personnel_split(audit_set)
 
     # Update stage audit_days to match new recommended days
     audit_type = (audit_set.audit_type or "initial").lower()
@@ -474,6 +517,8 @@ def quick_calculate(db: Session, audit_set_id: str, data: QuickCalcSchema) -> Au
         stage_day_map = {"stage_1": result.get("final_ph1"), "stage_2": result.get("final_ph2")}
     elif audit_type.startswith("surveillance"):  # surveillance_1, surveillance_2, surveillance
         stage_day_map = {"surveillance": result.get("final_surv1")}
+    elif audit_type == "special":
+        stage_day_map = {"stage_1": result.get("final_total")}
     else:
         stage_day_map = {"stage_1": result.get("final_recert_ph1"), "stage_2": result.get("final_recert_ph2")}
 
@@ -536,6 +581,10 @@ def update_planning(
         audit_set.required_scope = data.required_scope
     if data.scope_integration_level is not None:
         audit_set.scope_integration_level = data.scope_integration_level
+    if data.audit_language is not None:
+        audit_set.audit_language = data.audit_language
+    if data.document_language is not None:
+        audit_set.document_language = data.document_language
 
     # Upsert stages
     for stage_input in data.stages:
