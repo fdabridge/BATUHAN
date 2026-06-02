@@ -4,6 +4,7 @@ All settings loaded from environment variables. Never hardcode secrets.
 """
 
 from functools import lru_cache
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -53,6 +54,16 @@ class Settings(BaseSettings):
     # Database
     # -----------------------------------------------------------------------
     database_url: str = "sqlite:///./batuhan.db"
+
+    @field_validator("database_url")
+    @classmethod
+    def _normalize_database_url(cls, v: str) -> str:
+        # Railway/Heroku hand out "postgres://"; SQLAlchemy 2.x requires
+        # "postgresql://". Rewrite so a managed Postgres URL works as-is.
+        if v.startswith("postgres://"):
+            v = "postgresql://" + v[len("postgres://"):]
+        return v
+
 
     # -----------------------------------------------------------------------
     # Redis / Celery
