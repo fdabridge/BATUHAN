@@ -87,9 +87,11 @@ class Settings(BaseSettings):
     # -----------------------------------------------------------------------
     # Audit Set — blank document templates
     # -----------------------------------------------------------------------
-    blank_set_path: str = "/Users/batuhan/BATUHAN/uaf_blank_set copy"
-    # docxtpl (Jinja2) templates live here. On Railway set env var
-    # BLANK_SET_PATH to the deployed templates directory.
+    blank_set_path: str = "./uaf_blank_set"
+    # docxtpl (Jinja2) templates live here.
+    # Default resolves relative to WORKDIR (/app/uaf_blank_set inside the container).
+    # Override locally with BLANK_SET_PATH=/Users/batuhan/BATUHAN/uaf_blank_set\ copy
+    # if you want to use the copy directly without copying into backend/.
 
     # -----------------------------------------------------------------------
     # Branding (set per CB deployment via environment variables)
