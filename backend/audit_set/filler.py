@@ -190,11 +190,35 @@ def _extract_complexity_category(man_day: dict) -> str:
     return ""
 
 
+def _normalize_site(s: dict) -> dict:
+    """Add all field aliases so every template variant works regardless of naming."""
+    d = dict(s)
+    # The DB stores 'process' (from SiteData schema). Add all aliases for template compat.
+    process_val = d.get("process") or d.get("process_description") or d.get("scope") or ""
+    d.setdefault("process", process_val)
+    d.setdefault("process_description", process_val)   # some old templates use this
+    d.setdefault("scope", process_val)                 # FR.222 sites[0] uses 'scope'
+    d.setdefault("employee_count", d.get("employees", 0))
+    d.setdefault("employees", d.get("employee_count", 0))   # FR.222 sites[0] uses 'employees'
+    d.setdefault("audit_days", "")                     # per-site days don't exist
+    d.setdefault("address", "")
+    return d
+
+
 def build_base_context(audit_set, stage) -> dict:
     """Build the complete Jinja2 render context for one stage render."""
     man_day = audit_set.man_day_result or {}
     personnel = audit_set.personnel or {}
-    sites = audit_set.sites or []
+    sites_raw = audit_set.sites or []
+    if not sites_raw:
+        # Fallback: synthesise one site from the top-level address so templates
+        # that access sites[0] don't crash when no sites were configured.
+        sites_raw = [{
+            "address": audit_set.company_address or "",
+            "process": audit_set.scope_en or "",
+            "employee_count": audit_set.effective_employees or 0,
+        }]
+    sites = [_normalize_site(s) for s in sites_raw]
     integration_level = audit_set.integration_level or {}
     audit_type = audit_set.audit_type or ""
     standards_codes = audit_set.standards or []
@@ -249,25 +273,34 @@ def build_base_context(audit_set, stage) -> dict:
     end = stage.audit_date_end
     start = stage.audit_date_start
 
+    # Audit-days fallback: derive from man_day_result when not explicitly set on the stage.
+    _stage_type = stage.stage_type  # "stage_1" | "stage_2" | "surveillance"
+    if _stage_type == "stage_1":
+        _audit_days_fallback = man_day.get("final_ph1", "")
+    elif _stage_type == "stage_2":
+        _audit_days_fallback = man_day.get("final_ph2", "")
+    else:  # surveillance
+        _audit_days_fallback = man_day.get("final_surv1", "")
+
     return {
         # Company
         "company_name": audit_set.company_name,
         "company_address": audit_set.company_address,
-        "phone": audit_set.phone,
-        "email": audit_set.email,
-        "website": audit_set.website,
-        "representative": audit_set.representative,
-        "scope_en": audit_set.scope_en,
-        "scope_tr": audit_set.scope_tr,
-        "non_applicable_clauses": audit_set.non_applicable_clauses,
-        "ea_code": audit_set.ea_code,
-        "ea_category": audit_set.ea_category,
-        "ea_technical_area": audit_set.ea_technical_area,
+        "phone": audit_set.phone or "",
+        "email": audit_set.email or "",
+        "website": audit_set.website or "",
+        "representative": audit_set.representative or "",
+        "scope_en": audit_set.scope_en or "",
+        "scope_tr": audit_set.scope_tr or "",
+        "non_applicable_clauses": audit_set.non_applicable_clauses or "",
+        "ea_code": audit_set.ea_code or "",
+        "ea_category": audit_set.ea_category or "",
+        "ea_technical_area": audit_set.ea_technical_area or "",
         "effective_employees": audit_set.effective_employees,
         "plan_number": audit_set.plan_number,
-        "certification_fee": audit_set.certification_fee,
-        "initial_fee": audit_set.certification_fee,
-        "surveillance_fee": audit_set.surveillance_fee,
+        "certification_fee": audit_set.certification_fee if audit_set.certification_fee is not None else "",
+        "initial_fee": audit_set.certification_fee if audit_set.certification_fee is not None else "",
+        "surveillance_fee": audit_set.surveillance_fee if audit_set.surveillance_fee is not None else "",
         "scope_integration_level": audit_set.scope_integration_level,
         "risk_category": audit_set.risk_category,
         "audit_language": audit_set.audit_language,
@@ -275,6 +308,15 @@ def build_base_context(audit_set, stage) -> dict:
         # Standards
         "standards": standards_codes,
         "standards_str": ", ".join(standards_full),
+        "standards_full": standards_full,
+        "qms_selected":   "QMS" in standards_codes,
+        "ems_selected":   "EMS" in standards_codes,
+        "ohsms_selected": "OHSMS" in standards_codes,
+        "fsms_selected":  "FSMS" in standards_codes,
+        "isms_selected":  "ISMS" in standards_codes,
+        "mdqms_selected": "MDQMS" in standards_codes,
+        "abms_selected":  "ABMS" in standards_codes,
+        "enms_selected":  "ENMS" in standards_codes,
         # Audit type
         "audit_type": audit_type,
         "audit_type_display": AUDIT_TYPE_DISPLAY.get(audit_type, audit_type),
@@ -311,7 +353,7 @@ def build_base_context(audit_set, stage) -> dict:
         "repetitive_employees": personnel.get("repetitive_employees", 0),
         # Sites
         "sites": sites,
-        "site_addresses": "\n".join(s.get("address", "") for s in sites),
+        "site_addresses": "\n".join(s.get("address", "") for s in sites) or (audit_set.company_address or ""),
         "enms_energy_tj": enms_energy_tj,
         "enms_energy_types": enms_energy_types,
         "enms_seu_count": enms_seu_count,
@@ -339,10 +381,12 @@ def build_base_context(audit_set, stage) -> dict:
         "isms_business_score": man_day.get("isms_business_score", ""),
         "isms_it_score": man_day.get("isms_it_score", ""),
         # Audit duration
-        "stage_1_days": stage1.audit_days if stage1 else "",
-        "stage_2_days": stage2.audit_days if stage2 else "",
+        "stage_1_days": (stage1.audit_days if stage1 and stage1.audit_days is not None
+                         else man_day.get("final_ph1", "")) if stage1 else "",
+        "stage_2_days": (stage2.audit_days if stage2 and stage2.audit_days is not None
+                         else man_day.get("final_ph2", "")) if stage2 else "",
         "surv_days": man_day.get("final_surv1", ""),
-        "audit_days": stage.audit_days or "",
+        "audit_days": stage.audit_days if stage.audit_days is not None else (_audit_days_fallback or ""),
         "complexity_category": _extract_complexity_category(man_day),
     }
 

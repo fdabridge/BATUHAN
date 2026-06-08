@@ -574,12 +574,23 @@ def update_planning(
                 ),
             )
 
-    # Update top-level fields (full replace — PUT semantics)
-    audit_set.ea_code               = data.ea_code
-    audit_set.ea_category           = data.ea_category
-    audit_set.ea_technical_area     = data.ea_technical_area
-    audit_set.certification_fee     = data.certification_fee
-    audit_set.surveillance_fee      = data.surveillance_fee
+    # Update top-level fields only when provided, so partial saves (e.g. a
+    # stage-only or fees-only PUT) don't wipe previously-set values.
+    if data.ea_code is not None:
+        audit_set.ea_code = data.ea_code
+    if data.ea_category is not None:
+        audit_set.ea_category = data.ea_category
+    if data.ea_technical_area is not None:
+        audit_set.ea_technical_area = data.ea_technical_area
+    if data.certification_fee is not None:
+        audit_set.certification_fee = data.certification_fee
+    if data.surveillance_fee is not None:
+        audit_set.surveillance_fee = data.surveillance_fee
+    # Persist optional company fields only when provided (don't wipe on stage-only saves)
+    if data.representative is not None:
+        audit_set.representative = data.representative
+    if data.non_applicable_clauses is not None:
+        audit_set.non_applicable_clauses = data.non_applicable_clauses
     # Persist derived scope only when the caller provides it (don't wipe on stage-only saves)
     if data.required_scope is not None:
         audit_set.required_scope = data.required_scope

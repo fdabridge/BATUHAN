@@ -286,6 +286,9 @@ function PlanOverview({
   onInvalidate: () => void
 }) {
   const [integLevel, setIntegLevel] = useState<string>(data.scope_integration_level ?? 'Medium')
+  const [certFee, setCertFee] = useState(data.certification_fee != null ? String(data.certification_fee) : '')
+  const [survFee, setSurvFee] = useState(data.surveillance_fee != null ? String(data.surveillance_fee) : '')
+  const [feeSaved, setFeeSaved] = useState(false)
 
   const p = data.personnel
   const personnelStr = p
@@ -300,6 +303,19 @@ function PlanOverview({
         scope_integration_level: level,
       }),
     onSuccess: () => onInvalidate(),
+  })
+
+  const { mutate: saveFees, isPending: savingFees } = useMutation({
+    mutationFn: () =>
+      api.put<AuditSetResponse>(`/audit-sets/${auditSetId}/planning`, {
+        certification_fee: certFee.trim() === '' ? null : parseFloat(certFee),
+        surveillance_fee:  survFee.trim() === '' ? null : parseFloat(survFee),
+      }),
+    onSuccess: () => {
+      onInvalidate()
+      setFeeSaved(true)
+      setTimeout(() => setFeeSaved(false), 2000)
+    },
   })
 
   const rs = data.required_scope
@@ -380,6 +396,29 @@ function PlanOverview({
             </div>
           </div>
         )}
+
+        <div className="col-span-3 border-t border-gray-100 pt-4">
+          <p className="mb-2 font-medium uppercase tracking-wide text-gray-400" style={{ fontSize: 11 }}>Fees</p>
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="w-44">
+              <label className={lblCls}>Initial Certification Fee</label>
+              <input type="number" step="0.01" min="0" className={inputCls} value={certFee} onChange={(e) => setCertFee(e.target.value)} placeholder="0.00" />
+            </div>
+            <div className="w-44">
+              <label className={lblCls}>Surveillance Fee</label>
+              <input type="number" step="0.01" min="0" className={inputCls} value={survFee} onChange={(e) => setSurvFee(e.target.value)} placeholder="0.00" />
+            </div>
+            <button
+              type="button"
+              disabled={savingFees}
+              onClick={() => saveFees()}
+              className="flex items-center gap-1 rounded-lg bg-certiva-primary px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {savingFees ? <Loader2 size={14} className="animate-spin" /> : feeSaved ? <Check size={14} /> : null}
+              {feeSaved ? 'Saved' : 'Save fees'}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )

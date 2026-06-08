@@ -11,8 +11,8 @@ import type { AuditSetResponse } from '@/types'
 
 interface Step1Data {
   company_name: string; company_address: string; country: string; city: string
-  phone: string; email: string; website: string; standards: string[]
-  audit_type: string; scope_tr: string; scope_en: string; accreditation_body: string
+  phone: string; email: string; website: string; representative: string; standards: string[]
+  audit_type: string; scope_tr: string; scope_en: string; non_applicable_clauses: string; accreditation_body: string
   audit_language: string; document_language: string
 }
 
@@ -77,8 +77,8 @@ const sectionHd  = 'mb-3 text-sm font-medium text-gray-700'
 
 const DEFAULT_S1: Step1Data = {
   company_name: '', company_address: '', country: 'Turkey', city: '',
-  phone: '', email: '', website: '', standards: [],
-  audit_type: '', scope_tr: '', scope_en: '', accreditation_body: 'UAF',
+  phone: '', email: '', website: '', representative: '', standards: [],
+  audit_type: '', scope_tr: '', scope_en: '', non_applicable_clauses: '', accreditation_body: 'UAF',
   audit_language: 'Turkish', document_language: 'turkish',
 }
 
@@ -147,6 +147,11 @@ function Step1({
       </div>
 
       <div>
+        <label className={lblCls}>Organization Representative <span className="text-gray-300 font-normal">(contact person)</span></label>
+        <input className={inputCls} value={data.representative} onChange={(e) => onChange({ representative: e.target.value })} placeholder="Full name" />
+      </div>
+
+      <div>
         <label className={lblCls}>Standards <span className="text-red-400">*</span></label>
         <div className="grid grid-cols-3 gap-2">
           {STANDARDS_GRID.map(({ code, iso }) => (
@@ -194,6 +199,11 @@ function Step1({
         <label className={lblCls}>Scope (English) <span className="text-red-400">*</span></label>
         <textarea className={inputCls} rows={3} value={data.scope_en} onChange={(e) => onChange({ scope_en: e.target.value })} placeholder="Certification scope..." />
         {errors.scope_en && <p className={errCls}>{errors.scope_en}</p>}
+      </div>
+
+      <div>
+        <label className={lblCls}>Not Applicable Clauses <span className="text-gray-300 font-normal">(e.g. 7.1.5, 8.3)</span></label>
+        <input className={inputCls} value={data.non_applicable_clauses} onChange={(e) => onChange({ non_applicable_clauses: e.target.value })} placeholder="e.g. 7.1.5, 8.3" />
       </div>
 
       <div>
@@ -463,9 +473,10 @@ export default function NewClientPage() {
       const payload = {
         company_name: s1.company_name, company_address: s1.company_address,
         country: s1.country, city: s1.city, phone: s1.phone,
-        email: s1.email, website: s1.website,
+        email: s1.email, website: s1.website, representative: s1.representative,
         standards: s1.standards, audit_type: s1.audit_type,
         scope_tr: s1.scope_tr, scope_en: s1.scope_en,
+        non_applicable_clauses: s1.non_applicable_clauses,
         accreditation_body: s1.accreditation_body,
         audit_language: s1.audit_language,
         document_language: s1.document_language,

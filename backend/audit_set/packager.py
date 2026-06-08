@@ -84,6 +84,89 @@ def _person_output_name(base_name: str, person_name: str) -> str:
     return f"{stem}_{safe}.{ext}" if dot else f"{base_name}_{safe}"
 
 
+# Forms that carry legacy Word form-field checkboxes for the standards grid.
+CHECKBOX_FORMS = {"FR.220", "FR.221"}
+
+# ISO standard label (as printed in the template) → internal standard code.
+_STANDARD_LABEL_TO_CODE = [
+    ("ISO 9001:2015",       "QMS"),
+    ("ISO 14001:2015",      "EMS"),
+    ("ISO 45001:2018",      "OHSMS"),
+    ("ISO 22000:2018",      "FSMS"),
+    ("ISO/IEC 27001:2022",  "ISMS"),
+    ("ISO 50001:2018",      "ENMS"),
+    ("ISO 13485:2016",      "MDQMS"),
+    ("ISO 37001:2016",      "ABMS"),
+]
+
+_W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+
+
+def apply_checkbox_selection(docx_bytes: bytes, standards_codes: list[str]) -> bytes:
+    """Tick the legacy form-field checkboxes for the audit's selected standards.
+
+    docxtpl cannot fill `<w:checkBox>` form fields, so we post-process the
+    rendered DOCX: each checkbox is paired with the ISO label that follows it in
+    the same cell, and its checked/default state is set from `standards_codes`.
+    Unmapped checkboxes (non-standard fields) are left untouched. Failures are
+    swallowed so a checkbox issue never breaks the package.
+    """
+    from lxml import etree
+
+    def q(tag: str) -> str:
+        return f"{{{_W_NS}}}{tag}"
+
+    selected = set(standards_codes or [])
+    try:
+        zin = zipfile.ZipFile(io.BytesIO(docx_bytes))
+        root = etree.fromstring(zin.read("word/document.xml"))
+
+        # Walk in document order, pairing each checkBox with the text that
+        # follows it (up to the next checkBox) so we can read its ISO label.
+        pairs: list[tuple] = []          # (checkBox_elem, selected_bool)
+        current_cb = None
+        buf: list[str] = []
+
+        def _flush(cb, text: str) -> None:
+            if cb is None:
+                return
+            for label, code in _STANDARD_LABEL_TO_CODE:
+                if label in text:
+                    pairs.append((cb, code in selected))
+                    return
+
+        for el in root.iter():
+            if el.tag == q("checkBox"):
+                _flush(current_cb, "".join(buf))
+                current_cb, buf = el, []
+            elif el.tag == q("t") and el.text:
+                buf.append(el.text)
+        _flush(current_cb, "".join(buf))
+
+        for cb, is_sel in pairs:
+            val = "1" if is_sel else "0"
+            for child_tag in ("default", "checked"):
+                child = cb.find(q(child_tag))
+                if child is None:
+                    child = etree.SubElement(cb, q(child_tag))
+                child.set(q("val"), val)
+
+        new_xml = etree.tostring(
+            root, xml_declaration=True, encoding="UTF-8", standalone=True
+        )
+        out = io.BytesIO()
+        with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zo:
+            for item in zin.namelist():
+                zo.writestr(
+                    item,
+                    new_xml if item == "word/document.xml" else zin.read(item),
+                )
+        return out.getvalue()
+    except Exception:  # pragma: no cover - defensive
+        logger.warning("[Packager] checkbox post-process failed", exc_info=True)
+        return docx_bytes
+
+
 def build_audit_set_zip(audit_set, db) -> bytes:
     """Build the full rendered-document ZIP for an `AuditSet`."""
     del db  # audit-sets session not needed; auditors use their own session
@@ -107,6 +190,9 @@ def build_audit_set_zip(audit_set, db) -> bytes:
 
             ctx = build_base_context(audit_set, stage)
             ctx.update(build_auditor_scope_strings(stage, auditor_lookup, required_scope))
+            # EA-code fallback for FR.224 display when the auditor profile is incomplete.
+            if not ctx.get("lead_auditor_codes"):
+                ctx["lead_auditor_codes"] = audit_set.ea_code or ""
             team = build_team_members(stage, auditor_lookup, standards_codes)
 
             for doc in doc_specs:
@@ -125,6 +211,8 @@ def build_audit_set_zip(audit_set, db) -> bytes:
                             zf.writestr(f"{company_slug}/{output_folder}/{out}", data)
                     else:
                         data = render_docx(doc.template_path, ctx)
+                        if doc.fr_number in CHECKBOX_FORMS:
+                            data = apply_checkbox_selection(data, standards_codes)
                         zf.writestr(f"{company_slug}/{output_folder}/{base_out}", data)
                 except Exception as exc:
                     logger.warning(

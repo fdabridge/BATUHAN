@@ -107,6 +107,8 @@ class AuditSetUpdatePlanningSchema(BaseModel):
     ea_code: Optional[str] = None
     ea_category: Optional[str] = None
     ea_technical_area: Optional[str] = None
+    representative: Optional[str] = None
+    non_applicable_clauses: Optional[str] = None
     certification_fee: Optional[float] = None
     surveillance_fee: Optional[float] = None
     required_scope: Optional[dict] = None           # persisted from derive-scope
