@@ -11,14 +11,20 @@ export default function AppLayout({
 }: {
   children: React.ReactNode
 }) {
-  const { token, isLoading } = useAuth()
+  const { token, user, isLoading } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
-    if (!isLoading && !token) {
+    if (isLoading) return
+    if (!token) {
       router.replace('/login')
+      return
     }
-  }, [isLoading, token, router])
+    // Client-role users belong in the (client) portal, not the internal app.
+    if (user?.role === 'client') {
+      router.replace('/client/overview')
+    }
+  }, [isLoading, token, user, router])
 
   // While hydrating auth state, show a minimal spinner
   if (isLoading) {
@@ -31,6 +37,7 @@ export default function AppLayout({
 
   // Render nothing while redirect is in progress (avoids flash)
   if (!token) return null
+  if (user?.role === 'client') return null
 
   return (
     <div className="flex h-screen">

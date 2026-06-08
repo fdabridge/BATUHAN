@@ -17,6 +17,13 @@ interface LoginResponse {
   user_id: string
 }
 
+// Role-based landing page after login or auto-rehydrate.
+function roleHome(role: string | undefined): string {
+  if (role === 'client')  return '/client/overview'
+  if (role === 'auditor') return '/auditor/dashboard'
+  return '/dashboard'
+}
+
 // ── Logo mark (44 × 44, same SVG as Sidebar) ─────────────────────────────────
 
 function CertivaLogoMark() {
@@ -61,10 +68,10 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error,      setError]      = useState(false)
 
-  // Already authenticated → go straight to dashboard
+  // Already authenticated → go straight to role-appropriate landing page
   useEffect(() => {
     if (!isLoading && user) {
-      router.replace('/dashboard')
+      router.replace(roleHome(user.role))
     }
   }, [isLoading, user, router])
 
@@ -83,7 +90,7 @@ export default function LoginPage() {
         full_name: data.full_name,
         role:      data.role,
       })
-      router.push('/dashboard')
+      router.push(roleHome(data.role))
     } catch {
       setError(true)
     } finally {
