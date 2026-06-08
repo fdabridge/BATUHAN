@@ -2,10 +2,11 @@
 BATUHAN — Auth: SQLAlchemy ORM models.
 Table: platform_users
 
-role values: "admin" | "planner" | "auditor" | "officer" | "executive"
+role values: "admin" | "planner" | "auditor" | "officer" | "executive" | "client"
 
 auditor_id is a soft link to auditors.auditors.id — stored as plain String,
 no DB-level FK constraint (lives in a separate SQLite file from auditors.db).
+audit_set_id is a soft link to audit_sets.id used only for client-role accounts.
 """
 from __future__ import annotations
 import uuid
@@ -34,8 +35,21 @@ def get_db():
         db.close()
 
 
+def _safe_add_column_auth(table: str, col_def: str) -> None:
+    """Add a column if it doesn't already exist (Postgres + SQLite safe)."""
+    import sqlalchemy as sa
+    with engine.connect() as conn:
+        try:
+            conn.execute(sa.text(f"ALTER TABLE {table} ADD COLUMN {col_def}"))
+            conn.commit()
+        except Exception:
+            pass  # column already exists
+
+
 def create_tables():
     Base.metadata.create_all(bind=engine)
+    # Safe migrations — added after initial deployment
+    _safe_add_column_auth("platform_users", "audit_set_id VARCHAR")
 
 
 class PlatformUser(Base):
@@ -46,9 +60,10 @@ class PlatformUser(Base):
     password_hash = Column(String, nullable=False)
     full_name     = Column(String, nullable=False)
     role          = Column(String, nullable=False)
-    # role choices: "admin" | "planner" | "auditor" | "officer" | "executive"
+    # role choices: "admin" | "planner" | "auditor" | "officer" | "executive" | "client"
     is_active     = Column(Boolean, default=True, nullable=False)
     auditor_id    = Column(String, nullable=True)   # soft FK → auditors.auditors.id
+    audit_set_id  = Column(String, nullable=True)   # soft FK → audit_sets.id (client role only)
     last_login    = Column(DateTime, nullable=True)
     created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at    = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

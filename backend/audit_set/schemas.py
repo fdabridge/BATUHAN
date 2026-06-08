@@ -178,6 +178,8 @@ class AuditSetResponse(BaseModel):
     personnel: Optional[dict] = None                # {full_time, part_time, subcontractors, seasonal, unskilled}
     audit_language: Optional[str] = None
     document_language: Optional[str] = None
+    workflow_status: Optional[str] = None
+    submitted_via_portal: bool = False
     stages: list[StageResponse]
     created_at: datetime
     updated_at: datetime

@@ -18,7 +18,7 @@ import uuid
 from datetime import date, datetime
 
 from sqlalchemy import (
-    Column, Date, DateTime, Float,
+    Boolean, Column, Date, DateTime, Float,
     ForeignKey, Integer, String, Text, JSON,
     create_engine,
 )
@@ -60,6 +60,9 @@ def create_tables():
     _safe_add_column("audit_sets", "audit_language VARCHAR")
     _safe_add_column("audit_sets", "document_language VARCHAR DEFAULT 'turkish'")
     _safe_add_column("audit_sets", "client_reference VARCHAR")
+    # Client portal additions
+    _safe_add_column("audit_sets", "workflow_status VARCHAR")
+    _safe_add_column("audit_sets", "submitted_via_portal BOOLEAN DEFAULT 0")
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +148,22 @@ class AuditSet(Base):
     cert_status      = Column(String, nullable=True)
     # cert_status values: "active" | "approaching_expiry" | "expired" | "suspended"
 
+    # ── Client portal workflow ────────────────────────────────────────────────
+    # workflow_status tracks the certification lifecycle for the client portal.
+    # Separate from `status` (internal planning status: draft/planning/complete).
+    # Valid values:
+    #   pending_review    → client submitted application, CB reviewing
+    #   in_planning       → CB approved, doing man-days/auditor assignment
+    #   quotation_sent    → FR.220 released to client portal
+    #   agreement_signed  → FR.220 + FR.221 both signed by client
+    #   audit_scheduled   → audit dates confirmed by both sides
+    #   audit_in_progress → audit underway
+    #   under_review      → auditor uploaded docs, CB technical review
+    #   certified         → certificate issued
+    # NULL = audit set created internally (not via client portal) — existing rows
+    workflow_status      = Column(String, nullable=True)
+    submitted_via_portal = Column(Boolean, default=False, nullable=False, server_default="0")
+
     # ── Timestamps ────────────────────────────────────────────────────────────
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -209,3 +228,68 @@ class AuditSetStage(Base):
 
     # ── Relationships ─────────────────────────────────────────────────────────
     audit_set = relationship("AuditSet", back_populates="stages")
+
+
+# ---------------------------------------------------------------------------
+# Table 3 — audit_set_status_events
+# Log of every workflow_status transition (ISO 17021-1 §9.5 traceability).
+# ---------------------------------------------------------------------------
+
+class AuditSetStatusEvent(Base):
+    __tablename__ = "audit_set_status_events"
+
+    id             = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    audit_set_id   = Column(String, ForeignKey("audit_sets.id", ondelete="CASCADE"), nullable=False)
+    from_status    = Column(String, nullable=True)   # null for initial creation event
+    to_status      = Column(String, nullable=False)
+    triggered_by   = Column(String, nullable=True)   # user id or "system"
+    triggered_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+    notes          = Column(Text, nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# Table 4 — audit_set_messages
+# Threaded message log per audit set (ISO 17021-1 §8.4 communication record).
+# ---------------------------------------------------------------------------
+
+class AuditSetMessage(Base):
+    __tablename__ = "audit_set_messages"
+
+    id             = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    audit_set_id   = Column(String, ForeignKey("audit_sets.id", ondelete="CASCADE"), nullable=False)
+    sender_user_id = Column(String, nullable=False)
+    sender_name    = Column(String, nullable=False)
+    sender_role    = Column(String, nullable=False)   # "client" | "planner" | "auditor" | …
+    body           = Column(Text, nullable=False)
+    attachment_url = Column(String, nullable=True)    # optional file link
+    created_at     = Column(DateTime, default=datetime.utcnow, nullable=False)
+    read_by        = Column(JSON, default=list)       # list of user ids who have read this
+
+
+# ---------------------------------------------------------------------------
+# Table 5 — audit_set_shared_documents
+# Documents released by CB to the client portal, or uploaded by an auditor.
+# OTP signing fields support the in-house e-signature flow (no DocuSign).
+# ---------------------------------------------------------------------------
+
+class AuditSetSharedDocument(Base):
+    __tablename__ = "audit_set_shared_documents"
+
+    id             = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    audit_set_id   = Column(String, ForeignKey("audit_sets.id", ondelete="CASCADE"), nullable=False)
+    label          = Column(String, nullable=False)   # e.g. "Quotation (FR.220)"
+    document_type  = Column(String, nullable=False)
+    # document_type: "quotation" | "agreement" | "audit_upload" | "certificate"
+    file_path      = Column(String, nullable=True)    # server-side path (CB-generated)
+    direction      = Column(String, nullable=False, default="cb_to_client")
+    # direction: "cb_to_client" | "auditor_to_cb"
+    status         = Column(String, nullable=False, default="released")
+    # status: "released" | "signed" | "uploaded"
+    released_by    = Column(String, nullable=True)    # user id
+    released_at    = Column(DateTime, nullable=True)
+    signed_by      = Column(String, nullable=True)    # user id (client)
+    signed_at      = Column(DateTime, nullable=True)
+    signed_ip      = Column(String, nullable=True)
+    otp_hash       = Column(String, nullable=True)    # bcrypt hash of OTP
+    otp_expires_at = Column(DateTime, nullable=True)
+    created_at     = Column(DateTime, default=datetime.utcnow, nullable=False)
