@@ -22,6 +22,7 @@ from api.routes.admin_users import router as admin_users_router
 from api.routes.dashboard import router as dashboard_router
 from api.routes.config import router as config_router
 from audit_set.apply_router import router as apply_router
+from audit_set.workflow_router import router as workflow_router
 
 settings = get_settings()
 
@@ -60,6 +61,10 @@ app.include_router(calculator_router)
 app.include_router(audit_plan_router)
 app.include_router(meetings_router, prefix="/meetings", tags=["meetings"])
 app.include_router(auditors_router, prefix="/auditors", tags=["auditors"])
+# Workflow router MUST be registered before audit_sets_router so that the
+# literal path /audit-sets/pending-applications is matched before the generic
+# /audit-sets/{audit_set_id} handler.
+app.include_router(workflow_router)
 app.include_router(audit_sets_router, prefix="/audit-sets", tags=["audit-sets"])
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(admin_users_router, prefix="/admin", tags=["admin"])

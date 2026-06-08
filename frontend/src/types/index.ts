@@ -151,6 +151,9 @@ export interface AuditSetResponse {
   cert_issued_date?: string | null
   cert_expiry_date?: string | null
   cert_status?: 'active' | 'approaching_expiry' | 'expired' | null
+  // Client portal workflow (Prompt 01 — null on internally created sets)
+  workflow_status?: string | null
+  submitted_via_portal?: boolean
 }
 
 // ── Jobs (AI report pipeline) ─────────────────────────────────────────────────

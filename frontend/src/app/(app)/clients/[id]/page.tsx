@@ -1285,6 +1285,17 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
     queryClient.invalidateQueries({ queryKey: ['client', id] })
   }
 
+  // Approve a client portal application: transitions workflow_status
+  // from 'pending_review' → 'in_planning' via the workflow router.
+  const { mutate: approveApplication, isPending: approving } = useMutation({
+    mutationFn: () =>
+      api.patch(`/audit-sets/${id}/workflow-status`, {
+        workflow_status: 'in_planning',
+        notes: 'Application reviewed and approved by CB coordinator',
+      }),
+    onSuccess: () => invalidate(),
+  })
+
   if (isLoading) return (
     <div className="flex items-center justify-center py-24">
       <Loader2 size={24} className="animate-spin text-certiva-primary" />
@@ -1330,6 +1341,30 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
           </Link>
         </div>
       </div>
+
+      {/* Client portal application — show approval banner when pending */}
+      {data.workflow_status === 'pending_review' && (
+        <div
+          className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4"
+        >
+          <div>
+            <p className="text-sm font-semibold text-amber-800">Client Portal Application</p>
+            <p className="mt-0.5 text-xs text-amber-700">
+              Complete the form below (fees, auditor, etc.) then approve to move to planning.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={approving}
+            onClick={() => approveApplication()}
+            className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm text-white hover:opacity-90 disabled:opacity-60"
+            style={{ background: '#1A4731' }}
+          >
+            {approving && <Loader2 size={13} className="animate-spin" />}
+            Approve Application
+          </button>
+        </div>
+      )}
 
       <PlanOverview data={data} auditSetId={id} onInvalidate={invalidate} />
       <CertSection data={data} id={id} onInvalidate={invalidate} />

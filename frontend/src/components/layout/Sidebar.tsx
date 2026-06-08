@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -8,11 +9,13 @@ import {
   Sparkles,
   Users,
   Calculator,
+  Inbox,
   UserCog,
   Settings,
   type LucideIcon,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
+import api from '@/lib/api'
 
 // ── Logo mark ────────────────────────────────────────────────────────────────
 
@@ -57,15 +60,16 @@ interface NavItemProps {
   label: string
   href: string
   active: boolean
+  badgeCount?: number
 }
 
-function NavItem({ icon: Icon, label, href, active }: NavItemProps) {
+function NavItem({ icon: Icon, label, href, active, badgeCount }: NavItemProps) {
   return (
     <div className="group/tip relative">
       <Link
         href={href}
         className={[
-          'flex h-10 w-10 items-center justify-center rounded-lg transition-colors',
+          'relative flex h-10 w-10 items-center justify-center rounded-lg transition-colors',
           active
             ? 'bg-white/15 text-white'
             : 'text-white/50 hover:bg-white/10 hover:text-white/80',
@@ -73,6 +77,15 @@ function NavItem({ icon: Icon, label, href, active }: NavItemProps) {
         aria-label={label}
       >
         <Icon size={20} />
+        {badgeCount != null && badgeCount > 0 && (
+          <span
+            className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center
+              rounded-full px-1 text-[10px] font-semibold text-white"
+            style={{ background: '#D97706' }}
+          >
+            {badgeCount > 9 ? '9+' : badgeCount}
+          </span>
+        )}
       </Link>
 
       {/* Tooltip — appears to the right on hover */}
@@ -91,12 +104,15 @@ function NavItem({ icon: Icon, label, href, active }: NavItemProps) {
 // ── Nav definitions ──────────────────────────────────────────────────────────
 
 const NAV_TOP: NavItemProps[] = [
-  { icon: LayoutDashboard, label: 'Dashboard',  href: '/dashboard',   active: false },
-  { icon: Building2,       label: 'Clients',    href: '/clients',     active: false },
-  { icon: Sparkles,        label: 'AI Reports', href: '/reports',     active: false },
-  { icon: Users,           label: 'Auditors',   href: '/auditors',    active: false },
-  { icon: Calculator,      label: 'Calculator', href: '/calculator',  active: false },
+  { icon: LayoutDashboard, label: 'Dashboard',    href: '/dashboard',    active: false },
+  { icon: Inbox,           label: 'Applications', href: '/applications', active: false },
+  { icon: Building2,       label: 'Clients',      href: '/clients',      active: false },
+  { icon: Sparkles,        label: 'AI Reports',   href: '/reports',      active: false },
+  { icon: Users,           label: 'Auditors',     href: '/auditors',     active: false },
+  { icon: Calculator,      label: 'Calculator',   href: '/calculator',   active: false },
 ]
+
+const CB_REVIEW_ROLES = new Set(['admin', 'planner', 'officer', 'executive'])
 
 const NAV_BOTTOM: NavItemProps[] = [
   { icon: UserCog,  label: 'Users',    href: '/admin/users', active: false },
@@ -108,12 +124,27 @@ const NAV_BOTTOM: NavItemProps[] = [
 export function Sidebar() {
   const pathname = usePathname()
   const { user } = useAuth()
+  const [pendingCount, setPendingCount] = useState<number>(0)
 
   const isActive = (href: string) => pathname.startsWith(href)
 
   const bottomItems = NAV_BOTTOM.filter(
     (item) => item.href !== '/admin/users' || user?.role === 'admin',
   )
+
+  // Poll pending applications count for the Applications badge (CB roles only)
+  useEffect(() => {
+    if (!user || !CB_REVIEW_ROLES.has(user.role)) return
+    let cancelled = false
+    const fetchCount = () =>
+      api
+        .get<unknown[]>('/audit-sets/pending-applications')
+        .then((r) => { if (!cancelled) setPendingCount(Array.isArray(r.data) ? r.data.length : 0) })
+        .catch(() => {})
+    fetchCount()
+    const id = setInterval(fetchCount, 60_000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [user])
 
   return (
     <aside
@@ -127,7 +158,12 @@ export function Sidebar() {
 
       {/* Primary nav */}
       {NAV_TOP.map((item) => (
-        <NavItem key={item.href} {...item} active={isActive(item.href)} />
+        <NavItem
+          key={item.href}
+          {...item}
+          active={isActive(item.href)}
+          badgeCount={item.href === '/applications' ? pendingCount : undefined}
+        />
       ))}
 
       {/* Divider */}
