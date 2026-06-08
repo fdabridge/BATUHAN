@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, ChevronDown, ChevronRight, Download, Loader2, Pencil, Check } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronRight, Download, Loader2, Pencil, Check, Sparkles } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { CertBadge } from '@/components/ui/CertBadge'
@@ -45,6 +45,19 @@ function resolveStandards(raw: string[]): string[] {
 // ── Local stage-edit state ────────────────────────────────────────────────────
 
 interface TeamMember { id: string; name: string; ea_code?: string }
+
+interface NACSuggestion {
+  clause: string
+  standard: string
+  title: string
+  justification: string
+  confidence?: 'high' | 'medium' | 'low' | string
+}
+
+interface NACGenerationResponse {
+  non_applicable_clauses: string
+  suggestions: NACSuggestion[]
+}
 
 interface StageEdit {
   lead_auditor_id:   string
@@ -289,6 +302,12 @@ function PlanOverview({
   const [certFee, setCertFee] = useState(data.certification_fee != null ? String(data.certification_fee) : '')
   const [survFee, setSurvFee] = useState(data.surveillance_fee != null ? String(data.surveillance_fee) : '')
   const [feeSaved, setFeeSaved] = useState(false)
+  const [nacText, setNacText] = useState<string>(data.non_applicable_clauses ?? '')
+  const [nacSuggestions, setNacSuggestions] = useState<NACSuggestion[]>([])
+  const [nacSaved, setNacSaved] = useState(false)
+  const [nacEmptyMsg, setNacEmptyMsg] = useState(false)
+  // Keep textarea in sync with server value after PUT round-trips invalidate the query.
+  useEffect(() => { setNacText(data.non_applicable_clauses ?? '') }, [data.non_applicable_clauses])
 
   const p = data.personnel
   const personnelStr = p
@@ -315,6 +334,28 @@ function PlanOverview({
       onInvalidate()
       setFeeSaved(true)
       setTimeout(() => setFeeSaved(false), 2000)
+    },
+  })
+
+  const { mutate: generateNac, isPending: generatingNac } = useMutation({
+    mutationFn: () =>
+      api.post<NACGenerationResponse>(`/audit-sets/${auditSetId}/generate-nac`, {}).then((r) => r.data),
+    onSuccess: (res) => {
+      setNacText(res.non_applicable_clauses ?? '')
+      setNacSuggestions(res.suggestions ?? [])
+      setNacEmptyMsg((res.suggestions ?? []).length === 0 && !(res.non_applicable_clauses ?? '').trim())
+    },
+  })
+
+  const { mutate: saveNac, isPending: savingNac } = useMutation({
+    mutationFn: () =>
+      api.put<AuditSetResponse>(`/audit-sets/${auditSetId}/planning`, {
+        non_applicable_clauses: nacText,
+      }),
+    onSuccess: () => {
+      onInvalidate()
+      setNacSaved(true)
+      setTimeout(() => setNacSaved(false), 2000)
     },
   })
 
@@ -416,6 +457,80 @@ function PlanOverview({
             >
               {savingFees ? <Loader2 size={14} className="animate-spin" /> : feeSaved ? <Check size={14} /> : null}
               {feeSaved ? 'Saved' : 'Save fees'}
+            </button>
+          </div>
+        </div>
+
+        <div className="col-span-3 border-t border-gray-100 pt-4">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="font-medium uppercase tracking-wide text-gray-400" style={{ fontSize: 11 }}>Not Applicable Clauses</p>
+            <button
+              type="button"
+              disabled={generatingNac}
+              onClick={() => generateNac()}
+              className="flex items-center gap-1.5 rounded-md border border-certiva-primary px-2.5 py-1 text-xs font-medium text-certiva-primary hover:bg-green-50 disabled:opacity-50"
+            >
+              {generatingNac ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+              {generatingNac ? 'Generating…' : 'Generate Suggestions'}
+            </button>
+          </div>
+          <textarea
+            className={`${inputCls} min-h-[72px] font-mono`}
+            value={nacText}
+            onChange={(e) => { setNacText(e.target.value); setNacEmptyMsg(false) }}
+            placeholder="e.g. 8.3 (ISO 9001:2015): Organization manufactures to external specifications — no design/development activities."
+          />
+          {nacEmptyMsg && (
+            <p className="mt-1 text-xs italic text-gray-500">
+              No clearly non-applicable clauses were identified for this scope. You can manually enter any N/A clauses in the field above.
+            </p>
+          )}
+          {nacSuggestions.length > 0 && (
+            <div className="mt-2 overflow-x-auto rounded-md border border-gray-100">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50 text-left text-gray-500">
+                    <th className="px-2 py-1.5 font-medium">Clause</th>
+                    <th className="px-2 py-1.5 font-medium">Standard</th>
+                    <th className="px-2 py-1.5 font-medium">Title</th>
+                    <th className="px-2 py-1.5 font-medium">Justification</th>
+                    <th className="px-2 py-1.5 font-medium">Confidence</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {nacSuggestions.map((s, i) => (
+                    <tr key={`${s.clause}-${i}`} className="text-gray-700">
+                      <td className="px-2 py-1.5 font-mono">{s.clause}</td>
+                      <td className="px-2 py-1.5">{s.standard}</td>
+                      <td className="px-2 py-1.5">{s.title}</td>
+                      <td className="px-2 py-1.5 text-gray-600">{s.justification}</td>
+                      <td className="px-2 py-1.5">
+                        <span
+                          className="rounded px-1.5 py-0.5 text-[10px] font-medium uppercase"
+                          style={
+                            s.confidence === 'high'   ? { background: '#DCFCE7', color: '#166534' } :
+                            s.confidence === 'medium' ? { background: '#FEF3C7', color: '#92400E' } :
+                                                        { background: '#FEE2E2', color: '#991B1B' }
+                          }
+                        >
+                          {s.confidence ?? 'low'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              disabled={savingNac}
+              onClick={() => saveNac()}
+              className="flex items-center gap-1 rounded-lg bg-certiva-primary px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {savingNac ? <Loader2 size={12} className="animate-spin" /> : nacSaved ? <Check size={12} /> : null}
+              {nacSaved ? 'Saved' : 'Save N/A clauses'}
             </button>
           </div>
         </div>

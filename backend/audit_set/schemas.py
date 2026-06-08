@@ -170,6 +170,7 @@ class AuditSetResponse(BaseModel):
     man_day_result: Optional[dict]
     ea_code: Optional[str]
     ea_category: Optional[str]
+    non_applicable_clauses: Optional[str] = None
     certification_fee: Optional[float]
     surveillance_fee: Optional[float]
     required_scope: Optional[dict] = None            # per-standard derived scope codes
@@ -204,6 +205,12 @@ class AuditSetSummarySchema(BaseModel):
 class AuditSetCertUpdateSchema(BaseModel):
     cert_issued_date: date | None = None
     cert_expiry_date: date | None = None
+
+
+class NACGenerationResponse(BaseModel):
+    """Result of POST /audit-sets/{id}/generate-nac — suggestions only, not saved."""
+    non_applicable_clauses: str
+    suggestions: list[dict]
 
 
 class DashboardStatsSchema(BaseModel):

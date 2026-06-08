@@ -136,6 +136,7 @@ export interface AuditSetResponse {
   man_day_result: ManDayResult | null
   ea_code: string | null
   ea_category: string | null
+  non_applicable_clauses: string | null
   certification_fee: number | null
   surveillance_fee: number | null
   required_scope: RequiredScope | null

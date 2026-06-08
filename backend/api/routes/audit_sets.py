@@ -22,6 +22,7 @@ from audit_set.schemas import (
     AuditSetUpdatePlanningSchema,
     AuditSetResponse,
     AuditSetSummarySchema,
+    NACGenerationResponse,
     QuickCalcSchema,
 )
 from audit_set.service import (
@@ -149,6 +150,28 @@ def run_derive_scope(
     if not audit_set:
         raise HTTPException(status_code=404, detail=f"Audit set '{audit_set_id}' not found.")
     return audit_set
+
+
+@router.post("/{audit_set_id}/generate-nac", response_model=NACGenerationResponse)
+def run_generate_nac(
+    audit_set_id: str,
+    db: Session = Depends(get_db),
+    _: PlatformUser = Depends(require_planner),
+):
+    """
+    Ask Claude which clauses are likely non-applicable for this organisation's
+    scope + standards.  Returns suggestions only — caller must explicitly save
+    the chosen `non_applicable_clauses` via PUT /{id}/planning.
+    """
+    from audit_set.nac_generator import generate_nac_ai
+    audit_set = get_audit_set(db, audit_set_id)
+    if not audit_set:
+        raise HTTPException(status_code=404, detail=f"Audit set '{audit_set_id}' not found.")
+    result = generate_nac_ai(audit_set)
+    return NACGenerationResponse(
+        non_applicable_clauses=result["nac_text"],
+        suggestions=result["suggestions"],
+    )
 
 
 @router.delete("/{audit_set_id}", status_code=204)
