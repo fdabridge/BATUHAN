@@ -126,6 +126,15 @@ class Settings(BaseSettings):
     admin_email: str = ""
     admin_password: str = ""
 
+    # -----------------------------------------------------------------------
+    # Email (Resend)
+    # -----------------------------------------------------------------------
+    resend_api_key: str = ""          # Set in Railway env. Empty = email disabled (dev mode).
+    email_from: str = "IFC Global <no-reply@ifcglobal.us>"
+    email_base_url: str = "https://compassionate-miracle-production.up.railway.app"
+    # email_base_url is used to build links inside emails (e.g. login link).
+    # Override with the actual production URL once a custom domain is set.
+
 
 @lru_cache()
 def get_settings() -> Settings:
