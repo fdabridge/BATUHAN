@@ -21,6 +21,7 @@ from api.routes.auth import router as auth_router
 from api.routes.admin_users import router as admin_users_router
 from api.routes.dashboard import router as dashboard_router
 from api.routes.config import router as config_router
+from audit_set.apply_router import router as apply_router
 
 settings = get_settings()
 
@@ -64,6 +65,8 @@ app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(admin_users_router, prefix="/admin", tags=["admin"])
 app.include_router(dashboard_router, prefix="/dashboard", tags=["dashboard"])
 app.include_router(config_router, prefix="/config", tags=["config"])
+# Public client application form — no auth required on POST /apply.
+app.include_router(apply_router)
 
 
 # --- Startup: create DB tables + first-admin bootstrap ---
