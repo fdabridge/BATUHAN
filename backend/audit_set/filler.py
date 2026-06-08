@@ -127,6 +127,16 @@ def add_years_minus_one_day(d: date, years: int = 1) -> date:
     return result - timedelta(days=1)
 
 
+def _fmt_fee(val) -> str:
+    """Format a fee as '$X,XXX' or '' if unset."""
+    if val is None or val == "":
+        return ""
+    try:
+        return f"${float(val):,.0f}"
+    except (TypeError, ValueError):
+        return str(val)
+
+
 # --------------------------------------------------------------------------- #
 # Auditor scope-coverage helpers
 # --------------------------------------------------------------------------- #
@@ -250,12 +260,48 @@ def build_base_context(audit_set, stage) -> dict:
         opening_meeting_date = stage.audit_date_start
         closing_meeting_date = stage.audit_date_end
 
-    standard_results_by_name = {
-        sr["standard"]: sr for sr in (man_day.get("standard_results") or [])
-    }
+    # Per-standard rows enriched with template-friendly column names.
+    # Engine stores `standard` as the bare name ("ISO 9001"), but templates
+    # reference the full label ("ISO 9001:2015") — normalise the key so both
+    # forms resolve to the same entry.
+    _combined_base = man_day.get("combined_base") or 0
+    _int_reduction_total = man_day.get("integration_reduction") or 0
+    _report_reduction_total = man_day.get("reporting_reduction") or 0
+
+    standard_results_rows: list[dict] = []
+    standard_results_by_name: dict[str, dict] = {}
+    for sr in (man_day.get("standard_results") or []):
+        base_init   = sr.get("base_init", 0) or 0
+        base_ph1    = sr.get("base_ph1", 0) or 0
+        base_ph2    = sr.get("base_ph2", 0) or 0
+        base_surv   = sr.get("base_surv", 0) or 0
+        base_recert = sr.get("base_recert", 0) or 0
+        site_add    = sr.get("site_addition", 0) or 0
+
+        # Proportional share of the total integration / reporting reductions,
+        # weighted by this standard's contribution to combined_base.
+        weight = ((base_init + site_add) / _combined_base) if _combined_base else 0
+        per_std_intg = round(_int_reduction_total * weight, 2)
+        per_std_report = round(_report_reduction_total * weight, 2)
+
+        ad = base_init + site_add
+        enriched = {
+            **sr,
+            # Template-friendly column names used by FR.218 per-standard rows.
+            "ad":               round(ad, 2) if ad else "",
+            "inc_dec_ad":       round(site_add, 2) if site_add else "",
+            "intg_reduction":   per_std_intg if per_std_intg else "",
+            "report_reduction": per_std_report if per_std_report else "",
+            "stage_1":          round(base_ph1, 2) if base_ph1 else "",
+            "stage_2":          round(base_ph2, 2) if base_ph2 else "",
+            "surv":             round(base_surv, 2) if base_surv else "",
+            "rec":              round(base_recert, 2) if base_recert else "",
+        }
+        standard_results_rows.append(enriched)
+        standard_results_by_name[_norm_std(sr.get("standard", ""))] = enriched
 
     def get_std(full_name):
-        return standard_results_by_name.get(full_name)
+        return standard_results_by_name.get(_norm_std(full_name))
 
     total_employees = (
         personnel.get("full_time", 0)
@@ -304,9 +350,9 @@ def build_base_context(audit_set, stage) -> dict:
         "plan_number_internal": audit_set.plan_number,
         "agreement_number": getattr(audit_set, "client_reference", None) or str(audit_set.plan_number),
         "client_reference": getattr(audit_set, "client_reference", None) or "",
-        "certification_fee": audit_set.certification_fee if audit_set.certification_fee is not None else "",
-        "initial_fee": audit_set.certification_fee if audit_set.certification_fee is not None else "",
-        "surveillance_fee": audit_set.surveillance_fee if audit_set.surveillance_fee is not None else "",
+        "certification_fee": _fmt_fee(audit_set.certification_fee),
+        "initial_fee":       _fmt_fee(audit_set.certification_fee),
+        "surveillance_fee":  _fmt_fee(audit_set.surveillance_fee),
         "scope_integration_level": audit_set.scope_integration_level,
         "risk_category": audit_set.risk_category,
         "audit_language": audit_set.audit_language,
@@ -368,6 +414,11 @@ def build_base_context(audit_set, stage) -> dict:
         "integration_pct": integration_pct,
         # Man-day results
         "man_day_result": man_day,
+        "standard_results_rows": standard_results_rows,
+        "integration_reduction": man_day.get("integration_reduction", ""),
+        "reporting_reduction":   man_day.get("reporting_reduction", ""),
+        "combined_base":         man_day.get("combined_base", ""),
+        "final_total":           man_day.get("final_total", ""),
         "man_day_result_qms": get_std("ISO 9001:2015"),
         "man_day_result_ems": get_std("ISO 14001:2015"),
         "man_day_result_ohsms": get_std("ISO 45001:2018"),

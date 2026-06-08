@@ -29,6 +29,10 @@ from audit_set.filler import (
     build_team_members,
     render_docx,
 )
+from audit_set.postprocess import (
+    apply_audit_type_highlighting,
+    apply_standard_highlighting,
+)
 from audit_set.resolver import resolve_document_set
 
 logger = logging.getLogger(__name__)
@@ -213,6 +217,10 @@ def build_audit_set_zip(audit_set, db) -> bytes:
                         data = render_docx(doc.template_path, ctx)
                         if doc.fr_number in CHECKBOX_FORMS:
                             data = apply_checkbox_selection(data, standards_codes)
+                            data = apply_standard_highlighting(data, standards_codes)
+                            data = apply_audit_type_highlighting(
+                                data, audit_set.audit_type or ""
+                            )
                         zf.writestr(f"{company_slug}/{output_folder}/{base_out}", data)
                 except Exception as exc:
                     logger.warning(
