@@ -8,7 +8,7 @@ import logging
 from datetime import date
 from pathlib import Path
 
-from sqlalchemy import cast, func, String
+from sqlalchemy import cast, func, or_, String
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -390,6 +390,7 @@ def create_audit_set(db: Session, data: AuditSetCreateSchema) -> AuditSet:
     audit_set = AuditSet(
         id=str(uuid.uuid4()),
         plan_number=_next_plan_number(db),
+        client_reference=(data.client_reference or None),
         status="draft",
         company_name=data.company_name,
         company_address=data.company_address,
@@ -591,6 +592,8 @@ def update_planning(
         audit_set.representative = data.representative
     if data.non_applicable_clauses is not None:
         audit_set.non_applicable_clauses = data.non_applicable_clauses
+    if data.client_reference is not None:
+        audit_set.client_reference = data.client_reference or None
     # Persist derived scope only when the caller provides it (don't wipe on stage-only saves)
     if data.required_scope is not None:
         audit_set.required_scope = data.required_scope
@@ -788,7 +791,10 @@ def list_clients(
         .filter(AuditSet.status != "archived")
     )
     if search:
-        q = q.filter(AuditSet.company_name.ilike(f"%{search}%"))
+        q = q.filter(or_(
+            AuditSet.company_name.ilike(f"%{search}%"),
+            AuditSet.client_reference.ilike(f"%{search}%"),
+        ))
     if standard:
         # standards is stored as JSON text in SQLite; match the quoted value
         q = q.filter(cast(AuditSet.standards, String).like(f'%"{standard}"%'))

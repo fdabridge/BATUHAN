@@ -59,6 +59,7 @@ def create_tables():
     _safe_add_column("audit_sets", "scope_integration_level VARCHAR")
     _safe_add_column("audit_sets", "audit_language VARCHAR")
     _safe_add_column("audit_sets", "document_language VARCHAR DEFAULT 'turkish'")
+    _safe_add_column("audit_sets", "client_reference VARCHAR")
 
 
 # ---------------------------------------------------------------------------
@@ -70,6 +71,7 @@ class AuditSet(Base):
 
     id           = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     plan_number  = Column(Integer, unique=True, nullable=False)   # app-managed, starts at 1600
+    client_reference = Column(String, nullable=True, index=True)   # user-supplied client/agreement code
     status       = Column(String, default="draft", nullable=False)  # "draft"|"planning"|"complete"
 
     # ── Company info ──────────────────────────────────────────────────────────

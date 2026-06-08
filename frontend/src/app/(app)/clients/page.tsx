@@ -107,7 +107,7 @@ function FilterBar({ search, status, standard, hasActive, onSearch, onStatus, on
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
         <input
           type="text"
-          placeholder="Search by company name…"
+          placeholder="Search by company or client reference…"
           value={search}
           onChange={(e) => onSearch(e.target.value)}
           className="w-full rounded-md border border-gray-200 bg-white py-1.5 pl-8 pr-3 text-sm text-gray-700 placeholder-gray-400 outline-none focus:ring-2 focus:ring-certiva-primary/30"
@@ -259,7 +259,7 @@ export default function ClientsPage() {
                     onClick={() => router.push(`/clients/${c.id}`)}
                   >
                     <td className="px-4 py-3 font-mono text-gray-400" style={{ fontSize: 13 }}>
-                      #{c.plan_number}
+                      {c.client_reference ? c.client_reference : `#${c.plan_number}`}
                     </td>
                     <td className="px-4 py-3 font-medium">
                       <Link
@@ -269,6 +269,11 @@ export default function ClientsPage() {
                       >
                         {c.company_name}
                       </Link>
+                      {c.client_reference && (
+                        <span className="ml-2 font-mono text-gray-300" style={{ fontSize: 12 }}>
+                          #{c.plan_number}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <Standards list={c.standards} />

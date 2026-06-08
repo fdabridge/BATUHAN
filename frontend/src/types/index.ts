@@ -14,6 +14,7 @@ export interface DashboardStats {
 export interface ClientSummary {
   id: string
   plan_number: number
+  client_reference: string | null      // user-supplied agreement/quotation code
   company_name: string
   company_address: string
   standards: string[]         // e.g. ["QMS", "EMS"]
@@ -121,6 +122,7 @@ export type RequiredScope = Record<string, RequiredScopeEntry>
 export interface AuditSetResponse {
   id: string
   plan_number: number
+  client_reference: string | null      // user-supplied agreement/quotation code
   status: string
   company_name: string
   company_address: string | null

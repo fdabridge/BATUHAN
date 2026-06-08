@@ -77,6 +77,7 @@ class StageInput(BaseModel):
 
 class AuditSetCreateSchema(BaseModel):
     company_name: str
+    client_reference: Optional[str] = None   # user-supplied agreement/quotation number
     company_address: str = ""
     country: str = ""
     city: str = ""
@@ -109,6 +110,7 @@ class AuditSetUpdatePlanningSchema(BaseModel):
     ea_technical_area: Optional[str] = None
     representative: Optional[str] = None
     non_applicable_clauses: Optional[str] = None
+    client_reference: Optional[str] = None
     certification_fee: Optional[float] = None
     surveillance_fee: Optional[float] = None
     required_scope: Optional[dict] = None           # persisted from derive-scope
@@ -154,6 +156,7 @@ class StageResponse(BaseModel):
 class AuditSetResponse(BaseModel):
     id: str
     plan_number: int
+    client_reference: Optional[str] = None
     status: str
     company_name: str
     company_address: Optional[str]
@@ -185,6 +188,7 @@ class AuditSetResponse(BaseModel):
 class AuditSetSummarySchema(BaseModel):
     id: str
     plan_number: int
+    client_reference: Optional[str] = None
     company_name: str
     standards: Optional[list]
     audit_type: str
@@ -214,6 +218,7 @@ class DashboardStatsSchema(BaseModel):
 class ClientSummarySchema(BaseModel):
     id: str
     plan_number: int
+    client_reference: str | None = None
     company_name: str
     company_address: str
     standards: list[str]

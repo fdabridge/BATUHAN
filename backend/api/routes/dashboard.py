@@ -56,6 +56,7 @@ def _to_client_summary(audit_set: AuditSet) -> ClientSummarySchema:
     return ClientSummarySchema(
         id=audit_set.id,
         plan_number=audit_set.plan_number,
+        client_reference=getattr(audit_set, "client_reference", None),
         company_name=audit_set.company_name or "",
         company_address=audit_set.company_address or "",
         standards=audit_set.standards or [],

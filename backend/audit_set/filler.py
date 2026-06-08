@@ -297,7 +297,13 @@ def build_base_context(audit_set, stage) -> dict:
         "ea_category": audit_set.ea_category or "",
         "ea_technical_area": audit_set.ea_technical_area or "",
         "effective_employees": audit_set.effective_employees,
-        "plan_number": audit_set.plan_number,
+        # `plan_number` in documents shows the client_reference if the user set one,
+        # otherwise the system-assigned sequential number. `plan_number_internal`
+        # keeps the raw DB id available for any template that needs it.
+        "plan_number": getattr(audit_set, "client_reference", None) or audit_set.plan_number,
+        "plan_number_internal": audit_set.plan_number,
+        "agreement_number": getattr(audit_set, "client_reference", None) or str(audit_set.plan_number),
+        "client_reference": getattr(audit_set, "client_reference", None) or "",
         "certification_fee": audit_set.certification_fee if audit_set.certification_fee is not None else "",
         "initial_fee": audit_set.certification_fee if audit_set.certification_fee is not None else "",
         "surveillance_fee": audit_set.surveillance_fee if audit_set.surveillance_fee is not None else "",

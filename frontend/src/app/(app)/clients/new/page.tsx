@@ -10,7 +10,7 @@ import type { AuditSetResponse } from '@/types'
 // ── Local types ───────────────────────────────────────────────────────────────
 
 interface Step1Data {
-  company_name: string; company_address: string; country: string; city: string
+  company_name: string; client_reference: string; company_address: string; country: string; city: string
   phone: string; email: string; website: string; representative: string; standards: string[]
   audit_type: string; scope_tr: string; scope_en: string; non_applicable_clauses: string; accreditation_body: string
   audit_language: string; document_language: string
@@ -76,7 +76,7 @@ const sectionHd  = 'mb-3 text-sm font-medium text-gray-700'
 // ── Default state ─────────────────────────────────────────────────────────────
 
 const DEFAULT_S1: Step1Data = {
-  company_name: '', company_address: '', country: 'Turkey', city: '',
+  company_name: '', client_reference: '', company_address: '', country: 'Turkey', city: '',
   phone: '', email: '', website: '', representative: '', standards: [],
   audit_type: '', scope_tr: '', scope_en: '', non_applicable_clauses: '', accreditation_body: 'UAF',
   audit_language: 'Turkish', document_language: 'turkish',
@@ -111,6 +111,12 @@ function Step1({
         <label className={lblCls}>Company name <span className="text-red-400">*</span></label>
         <input className={inputCls} value={data.company_name} onChange={(e) => onChange({ company_name: e.target.value })} placeholder="Acme Ltd." />
         {errors.company_name && <p className={errCls}>{errors.company_name}</p>}
+      </div>
+
+      <div>
+        <label className={lblCls}>Client Reference / Agreement No <span className="text-gray-300 font-normal">(optional)</span></label>
+        <input className={inputCls} value={data.client_reference} onChange={(e) => onChange({ client_reference: e.target.value })} placeholder="e.g. 202601" />
+        <p className="mt-1 text-xs text-gray-400">Used as the Agreement No and Quotation No in all documents. Leave blank to use the auto-assigned plan number.</p>
       </div>
 
       <div>
@@ -425,6 +431,7 @@ function Step2({
 function Step3({ s1, s2, error }: { s1: Step1Data; s2: Step2Data; error: string }) {
   const rows: [string, string][] = [
     ['Company',      s1.company_name],
+    ...(s1.client_reference ? [['Client ref / Agreement No', s1.client_reference] as [string, string]] : []),
     ['Address',      s1.company_address],
     ['Standards',    s1.standards.join(', ')],
     ['Audit type',   s1.audit_type ? s1.audit_type.charAt(0).toUpperCase() + s1.audit_type.slice(1) : '—'],
@@ -471,7 +478,8 @@ export default function NewClientPage() {
         ? s2.sites.map(({ address, employee_count }) => ({ address, employee_count }))
         : []
       const payload = {
-        company_name: s1.company_name, company_address: s1.company_address,
+        company_name: s1.company_name, client_reference: s1.client_reference || null,
+        company_address: s1.company_address,
         country: s1.country, city: s1.city, phone: s1.phone,
         email: s1.email, website: s1.website, representative: s1.representative,
         standards: s1.standards, audit_type: s1.audit_type,
