@@ -404,21 +404,29 @@ def build_auditor_scope_strings(stage, auditor_lookup: dict, required_scope: dic
     """
     Build `covered_codes_display` strings for the lead, auditors and technical
     experts. `auditor_lookup` maps auditor_id → Auditor ORM object.
+
+    Falls back to the assignment-level `ea_code` field on each entry when the
+    computed scope is empty or the auditor profile is unavailable, so the
+    EA/IAF Code column in FR.223/FR.224 always shows something the coordinator
+    explicitly assigned.
+
     Returns a dict to merge into the base context (overrides auditors / TEs).
     """
-    def disp(aud) -> str:
+    def disp(aud, assignment: dict | None = None) -> str:
+        fallback = (assignment or {}).get("ea_code") or ""
         if not aud:
-            return ""
-        return _covered_codes_display(
+            return fallback
+        computed = _covered_codes_display(
             _compute_covered_scope(aud.standard_qualifications, required_scope)
         )
+        return computed or fallback
 
     enriched_auditors = [
-        {**a, "covered_codes_display": disp(auditor_lookup.get(a.get("id")))}
+        {**a, "covered_codes_display": disp(auditor_lookup.get(a.get("id")), a)}
         for a in (stage.auditors or [])
     ]
     enriched_tes = [
-        {**te, "covered_codes_display": disp(auditor_lookup.get(te.get("id")))}
+        {**te, "covered_codes_display": disp(auditor_lookup.get(te.get("id")), te)}
         for te in (stage.technical_experts or [])
     ]
     return {

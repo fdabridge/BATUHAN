@@ -44,7 +44,7 @@ function resolveStandards(raw: string[]): string[] {
 
 // ── Local stage-edit state ────────────────────────────────────────────────────
 
-interface TeamMember { id: string; name: string }
+interface TeamMember { id: string; name: string; ea_code?: string }
 
 interface StageEdit {
   lead_auditor_id:   string
@@ -57,9 +57,9 @@ interface StageEdit {
 
 function parseTeamMembers(arr: unknown[] | null | undefined): TeamMember[] {
   if (!arr || !arr.length) return []
-  return (arr as { id?: string; name?: string }[])
+  return (arr as { id?: string; name?: string; ea_code?: string }[])
     .filter((a) => a.name)
-    .map((a) => ({ id: a.id ?? '', name: a.name! }))
+    .map((a) => ({ id: a.id ?? '', name: a.name!, ea_code: a.ea_code ?? '' }))
 }
 
 function buildStageEdit(s: StageResponse): StageEdit {
@@ -833,6 +833,18 @@ function StageCard({
                 className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
                 style={{ background: '#F0FAF4', color: '#1A4731', border: '1px solid #BBF7D0' }}>
                 {a.name}
+                <input
+                  type="text"
+                  placeholder="EA"
+                  className="w-14 rounded border border-green-200 bg-white/70 px-1 py-0 text-[11px] leading-tight text-gray-700 outline-none focus:border-certiva-primary"
+                  value={a.ea_code ?? ''}
+                  title="EA/IAF Code for this assignment (e.g. EA 3) — used in FR.223/FR.224 when the auditor's profile has no scope match"
+                  onChange={(e) => patch({
+                    auditors: edit.auditors.map((x) =>
+                      (x.id || x.name) === (a.id || a.name) ? { ...x, ea_code: e.target.value } : x
+                    ),
+                  })}
+                />
                 <button type="button"
                   className="ml-1 text-gray-400 hover:text-red-500"
                   onClick={() => patch({ auditors: edit.auditors.filter((x) => (x.id || x.name) !== (a.id || a.name)) })}>
@@ -867,6 +879,18 @@ function StageCard({
                 className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
                 style={{ background: '#F0FAF4', color: '#1A4731', border: '1px solid #BBF7D0' }}>
                 {a.name}
+                <input
+                  type="text"
+                  placeholder="EA"
+                  className="w-14 rounded border border-green-200 bg-white/70 px-1 py-0 text-[11px] leading-tight text-gray-700 outline-none focus:border-certiva-primary"
+                  value={a.ea_code ?? ''}
+                  title="EA/IAF Code for this assignment (e.g. EA 3) — used in FR.223/FR.224 when the auditor's profile has no scope match"
+                  onChange={(e) => patch({
+                    technical_experts: edit.technical_experts.map((x) =>
+                      (x.id || x.name) === (a.id || a.name) ? { ...x, ea_code: e.target.value } : x
+                    ),
+                  })}
+                />
                 <button type="button"
                   className="ml-1 text-gray-400 hover:text-red-500"
                   onClick={() => patch({ technical_experts: edit.technical_experts.filter((x) => (x.id || x.name) !== (a.id || a.name)) })}>

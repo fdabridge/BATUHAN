@@ -143,6 +143,41 @@ _RISK_LOW_KW: tuple[str, ...] = (
 )
 
 
+def _first_ea_code_from_scope(required_scope: dict | None) -> str | None:
+    """Return the first EA-typed code present in a derived required_scope dict,
+    so we can auto-populate `audit_set.ea_code` when the user hasn't set one."""
+    for entry in (required_scope or {}).values():
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("type") != "ea":
+            continue
+        codes = entry.get("codes") or []
+        if codes:
+            return codes[0]
+    return None
+
+
+def _auto_populate_ea_fields(audit_set: AuditSet) -> None:
+    """Populate `audit_set.ea_code` from required_scope when no manual code is set.
+    Re-derives required_scope first if it is empty but scope + standards are
+    available, so legacy audit sets created before auto-derive still benefit."""
+    if (not audit_set.required_scope) and audit_set.standards and (audit_set.scope_en or audit_set.scope_tr):
+        try:
+            audit_set.required_scope = derive_required_scope(
+                standards=audit_set.standards or [],
+                scope_tr=audit_set.scope_tr,
+                scope_en=audit_set.scope_en,
+                ea_code=audit_set.ea_code,
+            )
+        except Exception as exc:                                     # pragma: no cover
+            logger.warning("[AuditSet] auto-derive in _auto_populate_ea_fields failed: %s", exc)
+            return
+    if not audit_set.ea_code:
+        inferred = _first_ea_code_from_scope(audit_set.required_scope)
+        if inferred:
+            audit_set.ea_code = inferred
+
+
 def derive_required_scope(
     standards: list[str],
     scope_tr: str | None,
@@ -451,6 +486,11 @@ def create_audit_set(db: Session, data: AuditSetCreateSchema) -> AuditSet:
         )
         _writeback_personnel_split(audit_set)
 
+    # Auto-populate top-level ea_code from the derived scope so EA/IAF Code
+    # never renders "None" in FR.223/FR.224 even when the user skipped the
+    # explicit "derive scope" step.
+    _auto_populate_ea_fields(audit_set)
+
     _create_auto_stages(db, audit_set, result)
     db.commit()
     db.refresh(audit_set)
@@ -637,6 +677,11 @@ def update_planning(
                 stage_order=stage_input.stage_order,
                 **payload,
             ))
+
+    # Auto-populate ea_code (and required_scope on legacy records) so
+    # documents stop showing "None" for EA/IAF Code. The user's manual
+    # ea_code from the payload wins because that branch runs above.
+    _auto_populate_ea_fields(audit_set)
 
     if audit_set.status == "draft":
         audit_set.status = "planning"
