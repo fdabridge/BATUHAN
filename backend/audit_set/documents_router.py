@@ -15,11 +15,11 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from audit_set.db_models import AuditSet, AuditSetSharedDocument, get_db
+from audit_set.db_models import AuditSet, AuditSetSharedDocument, AuditSetStatusEvent, get_db
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
 from config.settings import get_settings
-from email_service import send_document_released, send_otp_code
+from email_service import send_client_status_update, send_document_released, send_otp_code
 
 router = APIRouter(prefix="/audit-sets", tags=["documents"])
 
@@ -46,6 +46,53 @@ def _doc_to_dict(d: AuditSetSharedDocument) -> dict:
         "signed_at":     d.signed_at.isoformat()   if d.signed_at   else None,
         "signed_by":     d.signed_by,
     }
+
+
+def _auto_advance_workflow(
+    db: Session,
+    auth_db: Session,
+    audit_set: AuditSet,
+    expected_from: str,
+    to_status: str,
+    triggered_by: str,
+    notes: str,
+) -> None:
+    """
+    Document-event-driven workflow advance.
+    No-op unless audit_set.workflow_status matches expected_from — keeps
+    the transition idempotent if the same document action runs twice
+    (e.g. CB releases a second quotation after status already moved on).
+
+    Writes the status event in the same transaction as the workflow_status
+    update. The client notification email is best-effort (swallowed) so a
+    Resend outage cannot roll back the status change.
+    """
+    if audit_set.workflow_status != expected_from:
+        return
+
+    audit_set.workflow_status = to_status
+    db.add(AuditSetStatusEvent(
+        audit_set_id=audit_set.id,
+        from_status=expected_from,
+        to_status=to_status,
+        triggered_by=triggered_by,
+        notes=notes,
+    ))
+    db.commit()
+
+    client_user = auth_db.query(PlatformUser).filter_by(
+        audit_set_id=audit_set.id, role="client",
+    ).first()
+    if client_user:
+        try:
+            send_client_status_update(
+                to=client_user.email,
+                full_name=client_user.full_name,
+                new_status=to_status,
+                notes=notes,
+            )
+        except Exception:
+            pass
 
 
 # ── CB: release a document to the client ────────────────────────────────────
@@ -100,6 +147,16 @@ def release_document(
             )
         except Exception:
             pass
+
+    # Auto-advance: releasing the quotation moves planning → quotation_sent
+    if payload.document_type == "quotation":
+        _auto_advance_workflow(
+            db, auth_db, audit_set,
+            expected_from="in_planning",
+            to_status="quotation_sent",
+            triggered_by=current_user.id,
+            notes="Quotation document released",
+        )
 
     return {"id": doc.id, "status": "released"}
 
@@ -196,6 +253,7 @@ def verify_sign_otp(
     request: Request,
     otp: str,
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     if current_user.role != "client":
@@ -225,6 +283,17 @@ def verify_sign_otp(
     doc.otp_expires_at = None
     db.commit()
 
+    # Auto-advance: client signing the quotation moves quotation_sent → agreement_signed
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    if audit_set:
+        _auto_advance_workflow(
+            db, auth_db, audit_set,
+            expected_from="quotation_sent",
+            to_status="agreement_signed",
+            triggered_by=current_user.id,
+            notes="Agreement signed by client",
+        )
+
     return {"signed": True, "signed_at": doc.signed_at.isoformat()}
 
 
@@ -236,6 +305,7 @@ async def upload_audit_document(
     label: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     if current_user.role not in AUDITOR_UPLOAD_ROLES:
@@ -264,5 +334,17 @@ async def upload_audit_document(
     )
     db.add(doc)
     db.commit()
+
+    # Auto-advance: auditor upload moves audit_in_progress → under_review
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    if audit_set:
+        _auto_advance_workflow(
+            db, auth_db, audit_set,
+            expected_from="audit_in_progress",
+            to_status="under_review",
+            triggered_by=current_user.id,
+            notes="Auditor uploaded completed documents",
+        )
+
     return {"id": doc.id, "label": doc.label, "status": "uploaded"}
 

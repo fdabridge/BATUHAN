@@ -5,9 +5,11 @@ import Link from 'next/link'
 import { ArrowLeft, ChevronDown, ChevronRight, Download, Loader2, Pencil, Check, Sparkles } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
+import { useAuth } from '@/lib/auth'
 import { CertBadge } from '@/components/ui/CertBadge'
 import { MessageThread } from '@/components/ui/MessageThread'
 import { SharedDocumentsSection } from '@/components/ui/SharedDocumentsSection'
+import { WorkflowStatusBar } from '@/components/ui/WorkflowStatusBar'
 import type { AuditSetResponse, StageResponse, ManDayResult, AuditorSummary, AuditorAvailabilityItem, RequiredScope } from '@/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1235,6 +1237,7 @@ function ManDaySection({ result }: { result: ManDayResult | null }) {
 export default function ClientDetailPage({ params }: { params: { id: string } }) {
   const { id } = params
   const queryClient = useQueryClient()
+  const { user: currentUser } = useAuth()
   const [downloading, setDownloading] = useState(false)
 
   const { data, isLoading, isError } = useQuery<AuditSetResponse>({
@@ -1366,6 +1369,16 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
             Approve Application
           </button>
         </div>
+      )}
+
+      {/* Workflow status tracker + status-specific action panel */}
+      {data.workflow_status && data.workflow_status !== 'pending_review' && (
+        <WorkflowStatusBar
+          auditSetId={id}
+          currentStatus={data.workflow_status}
+          currentUserRole={currentUser?.role ?? ''}
+          onAdvanced={invalidate}
+        />
       )}
 
       <PlanOverview data={data} auditSetId={id} onInvalidate={invalidate} />

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import api from '@/lib/api'
 
 const WORKFLOW_STEPS = [
@@ -139,6 +140,50 @@ export default function ClientOverviewPage() {
           })}
         </div>
       </div>
+
+      {/* Status-driven action banners */}
+      {data.workflow_status === 'quotation_sent' && (
+        <div className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <div>
+            <p className="text-sm font-semibold text-amber-900">Your quotation is ready to sign.</p>
+            <p className="mt-0.5 text-xs text-amber-800">Review and sign the document to confirm your agreement.</p>
+          </div>
+          <Link
+            href="/client/documents"
+            className="rounded-lg px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+            style={{ background: '#1A4731' }}
+          >
+            Review &amp; Sign Documents →
+          </Link>
+        </div>
+      )}
+      {data.workflow_status === 'agreement_signed' && (
+        <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+          <p className="text-sm font-semibold text-green-900">Your agreement is confirmed.</p>
+          <p className="mt-0.5 text-xs text-green-800">We&apos;ll notify you when your audit is scheduled.</p>
+        </div>
+      )}
+      {data.workflow_status === 'audit_scheduled' && (
+        <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+          <p className="text-sm font-semibold text-green-900">Your audit is scheduled.</p>
+          <p className="mt-0.5 text-xs text-green-800">Please prepare your documentation.</p>
+        </div>
+      )}
+      {data.workflow_status === 'certified' && (
+        <div className="flex items-center justify-between rounded-xl border border-green-200 bg-green-50 p-4">
+          <div>
+            <p className="text-sm font-semibold text-green-900">Your certificate has been issued.</p>
+            <p className="mt-0.5 text-xs text-green-800">Download it from the Documents section.</p>
+          </div>
+          <Link
+            href="/client/documents"
+            className="rounded-lg px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+            style={{ background: '#1A4731' }}
+          >
+            View Certificate →
+          </Link>
+        </div>
+      )}
 
       {/* Key Info Cards */}
       <div className="grid grid-cols-2 gap-4">
