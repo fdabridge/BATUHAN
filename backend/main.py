@@ -26,6 +26,7 @@ from audit_set.workflow_router import router as workflow_router
 from audit_set.client_router import router as client_router
 from audit_set.messages_router import router as messages_router
 from audit_set.documents_router import router as documents_router
+from audit_set.auditor_router import router as auditor_router
 
 settings = get_settings()
 
@@ -80,6 +81,8 @@ app.include_router(config_router, prefix="/config", tags=["config"])
 app.include_router(apply_router)
 # Client portal — auth enforced per-endpoint via get_current_user.
 app.include_router(client_router)
+# Auditor portal — auth + assignment check enforced per-endpoint.
+app.include_router(auditor_router)
 
 
 # --- Startup: create DB tables + first-admin bootstrap ---
