@@ -9,11 +9,17 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from audit_set.db_models import AuditSet, AuditSetStatusEvent, get_db
+from pydantic import BaseModel
+
+from audit_set.db_models import AuditSet, AuditSetMessage, AuditSetStatusEvent, get_db
 from auth.db_models import PlatformUser
 from auth.dependencies import get_current_user
 
 router = APIRouter(prefix="/client", tags=["client-portal"])
+
+
+class MessageCreateSchema(BaseModel):
+    body: str
 
 
 def _get_client_audit_set(current_user: PlatformUser, db: Session) -> AuditSet:
@@ -86,3 +92,56 @@ def get_my_status_history(
         }
         for e in events
     ]
+
+
+# ── Messages ─────────────────────────────────────────────────────────────────
+
+@router.get("/my-audit-set/messages")
+def get_my_messages(
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    audit_set = _get_client_audit_set(current_user, db)
+    msgs = (
+        db.query(AuditSetMessage)
+        .filter_by(audit_set_id=audit_set.id)
+        .order_by(AuditSetMessage.created_at)
+        .all()
+    )
+    return [
+        {
+            "id":          m.id,
+            "sender_name": m.sender_name,
+            "sender_role": m.sender_role,
+            "body":        m.body,
+            "created_at":  m.created_at.isoformat() if m.created_at else None,
+            "is_mine":     m.sender_user_id == current_user.id,
+        }
+        for m in msgs
+    ]
+
+
+@router.post("/my-audit-set/messages")
+def post_my_message(
+    payload: MessageCreateSchema,
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    audit_set = _get_client_audit_set(current_user, db)
+    body = (payload.body or "").strip()
+    if not body:
+        raise HTTPException(400, "Message body cannot be empty")
+    msg = AuditSetMessage(
+        audit_set_id=audit_set.id,
+        sender_user_id=current_user.id,
+        sender_name=current_user.full_name,
+        sender_role=current_user.role,
+        body=body,
+    )
+    db.add(msg)
+    db.commit()
+    db.refresh(msg)
+    return {
+        "id":         msg.id,
+        "created_at": msg.created_at.isoformat() if msg.created_at else None,
+    }

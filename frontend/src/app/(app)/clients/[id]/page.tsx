@@ -6,6 +6,7 @@ import { ArrowLeft, ChevronDown, ChevronRight, Download, Loader2, Pencil, Check,
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { CertBadge } from '@/components/ui/CertBadge'
+import { MessageThread } from '@/components/ui/MessageThread'
 import type { AuditSetResponse, StageResponse, ManDayResult, AuditorSummary, AuditorAvailabilityItem, RequiredScope } from '@/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1402,6 +1403,19 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
       )}
 
       <ManDaySection result={data.man_day_result} />
+
+      {/* Client Messages — Prompt 06 (additive, bottom of page) */}
+      <div className="mt-8">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-700">
+          Client Messages
+        </h2>
+        <div className="overflow-hidden rounded-xl border bg-white" style={{ height: 400 }}>
+          <MessageThread
+            fetchUrl={`/audit-sets/${id}/messages`}
+            postUrl={`/audit-sets/${id}/messages`}
+          />
+        </div>
+      </div>
     </div>
   )
 }
