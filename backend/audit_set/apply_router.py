@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from passlib.context import CryptContext
 
-from audit_set.db_models import AuditSet, AuditSetStatusEvent, get_db as get_audit_db
+from audit_set.db_models import AuditSet, AuditSetStage, AuditSetStatusEvent, get_db as get_audit_db
+from audit_set.service import _create_auto_stages
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from email_service import send_client_welcome
 
@@ -112,6 +113,9 @@ def submit_application(
     )
     audit_db.add(audit_set)
     audit_db.flush()   # get audit_set.id
+
+    # Auto-create stages so the CB stage-planning panel renders immediately
+    _create_auto_stages(audit_db, audit_set, None)
 
     # Log status event
     event = AuditSetStatusEvent(
