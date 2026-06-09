@@ -3,11 +3,14 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Search } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
+import { Search, Trash2, Loader2 } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
+import { useAuth } from '@/lib/auth'
 import { CertBadge } from '@/components/ui/CertBadge'
 import type { ClientSummary } from '@/types'
+
+const CAN_DELETE_ROLES = new Set(['admin', 'planner'])
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -146,12 +149,36 @@ function FilterBar({ search, status, standard, hasActive, onSearch, onStatus, on
 
 export default function ClientsPage() {
   const router = useRouter()
+  const queryClient = useQueryClient()
+  const { user: currentUser } = useAuth()
+  const canDelete = !!currentUser && CAN_DELETE_ROLES.has(currentUser.role)
 
   // Filter state
   const [searchRaw, setSearchRaw]   = useState('')
   const [status, setStatus]         = useState('')
   const [standard, setStandard]     = useState('')
   const [page, setPage]             = useState(1)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  const { mutate: deletePlan } = useMutation({
+    mutationFn: (id: string) => api.delete(`/audit-sets/${id}`),
+    onMutate:   (id: string) => { setDeletingId(id); setDeleteError(null) },
+    onSuccess:  () => { queryClient.invalidateQueries({ queryKey: ['clients'] }) },
+    onError:    (e: unknown) => {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setDeleteError(detail ?? 'Failed to delete plan')
+    },
+    onSettled:  () => setDeletingId(null),
+  })
+
+  function handleDelete(c: ClientSummary, e: React.MouseEvent) {
+    e.stopPropagation()
+    const ref = c.client_reference || `#${c.plan_number}`
+    if (window.confirm(`Delete plan ${ref} for ${c.company_name}? This cannot be undone.`)) {
+      deletePlan(c.id)
+    }
+  }
 
   const search = useDebounce(searchRaw, 400)
 
@@ -226,6 +253,14 @@ export default function ClientsPage() {
         onClear={clearFilters}
       />
 
+      {/* Delete error toast */}
+      {deleteError && (
+        <div className="mb-3 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+          <span>{deleteError}</span>
+          <button onClick={() => setDeleteError(null)} className="text-xs text-red-600 hover:opacity-70">Dismiss</button>
+        </div>
+      )}
+
       {/* Table card */}
       <div className="rounded-lg border border-gray-100 bg-white">
         <div className="overflow-x-auto">
@@ -288,14 +323,29 @@ export default function ClientsPage() {
                       {formatDate(c.cert_expiry_date)}
                     </td>
                     <td className="px-4 py-3">
-                      <Link
-                        href={`/clients/${c.id}`}
-                        className="text-certiva-primary transition-opacity hover:opacity-70"
-                        style={{ fontSize: 13 }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        View
-                      </Link>
+                      <div className="flex items-center gap-3">
+                        <Link
+                          href={`/clients/${c.id}`}
+                          className="text-certiva-primary transition-opacity hover:opacity-70"
+                          style={{ fontSize: 13 }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          View
+                        </Link>
+                        {canDelete && (
+                          <button
+                            type="button"
+                            title="Delete plan"
+                            disabled={deletingId === c.id}
+                            onClick={(e) => handleDelete(c, e)}
+                            className="text-gray-300 transition-colors hover:text-red-600 disabled:opacity-50"
+                          >
+                            {deletingId === c.id
+                              ? <Loader2 size={14} className="animate-spin" />
+                              : <Trash2 size={14} />}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))

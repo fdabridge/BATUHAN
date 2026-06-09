@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, ChevronDown, ChevronRight, Download, Loader2, Pencil, Check, Sparkles } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { ArrowLeft, ChevronDown, ChevronRight, Download, Loader2, Pencil, Check, Sparkles, Trash2 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { useAuth } from '@/lib/auth'
@@ -1234,11 +1235,16 @@ function ManDaySection({ result }: { result: ManDayResult | null }) {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+const CAN_DELETE_ROLES = new Set(['admin', 'planner'])
+
 export default function ClientDetailPage({ params }: { params: { id: string } }) {
   const { id } = params
+  const router = useRouter()
   const queryClient = useQueryClient()
   const { user: currentUser } = useAuth()
+  const canDelete = !!currentUser && CAN_DELETE_ROLES.has(currentUser.role)
   const [downloading, setDownloading] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const { data, isLoading, isError } = useQuery<AuditSetResponse>({
     queryKey: ['client', id],
@@ -1301,6 +1307,27 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
     onSuccess: () => invalidate(),
   })
 
+  const { mutate: deletePlan, isPending: deleting } = useMutation({
+    mutationFn: () => api.delete(`/audit-sets/${id}`),
+    onSuccess:  () => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] })
+      router.push('/clients')
+    },
+    onError:    (e: unknown) => {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setDeleteError(detail ?? 'Failed to delete plan')
+    },
+  })
+
+  function handleDelete() {
+    if (!data) return
+    const ref = data.client_reference || `#${data.plan_number}`
+    if (window.confirm(`Delete plan ${ref}? This will also remove the client's portal account. This cannot be undone.`)) {
+      setDeleteError(null)
+      deletePlan()
+    }
+  }
+
   if (isLoading) return (
     <div className="flex items-center justify-center py-24">
       <Loader2 size={24} className="animate-spin text-certiva-primary" />
@@ -1344,8 +1371,26 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
           >
             Generate AI report
           </Link>
+          {canDelete && (
+            <button
+              type="button"
+              disabled={deleting}
+              onClick={handleDelete}
+              className="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 disabled:opacity-60"
+            >
+              {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+              Delete Plan
+            </button>
+          )}
         </div>
       </div>
+
+      {deleteError && (
+        <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+          <span>{deleteError}</span>
+          <button onClick={() => setDeleteError(null)} className="text-xs text-red-600 hover:opacity-70">Dismiss</button>
+        </div>
+      )}
 
       {/* Client portal application — show approval banner when pending */}
       {data.workflow_status === 'pending_review' && (

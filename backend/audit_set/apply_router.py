@@ -71,7 +71,19 @@ def submit_application(
         email=payload.representative_email
     ).first()
     if existing:
-        raise HTTPException(409, "An account with this email already exists. Please log in.")
+        # Allow re-application if the linked audit set has been deleted
+        # (common during testing / cancelled applications). Otherwise block.
+        if existing.audit_set_id:
+            linked_set = audit_db.query(AuditSet).filter_by(id=existing.audit_set_id).first()
+            if linked_set:
+                raise HTTPException(
+                    409,
+                    "An account with this email already exists. "
+                    "Please log in to your client portal, or contact IFC Global if you need help.",
+                )
+        # Stale user with no valid audit set — clean it up and proceed
+        auth_db.delete(existing)
+        auth_db.commit()
 
     # Compute next plan_number (matches service-layer convention: COALESCE(MAX, 1599) + 1)
     max_plan = audit_db.query(func.max(AuditSet.plan_number)).scalar() or 1599

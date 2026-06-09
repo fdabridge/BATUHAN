@@ -150,3 +150,37 @@ def update_workflow_status(
         )
 
     return {"workflow_status": to_status, "updated": True}
+
+
+@router.delete("/{audit_set_id}")
+def delete_audit_set(
+    audit_set_id: str,
+    db: Session = Depends(get_audit_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """
+    Hard-delete an AuditSet and its linked client PlatformUser (if any).
+    Restricted to admin and planner. Child rows in audit_set_stages,
+    audit_set_status_events, audit_set_messages, and audit_set_shared_documents
+    are removed by Postgres ON DELETE CASCADE.
+    """
+    if current_user.role not in {"admin", "planner"}:
+        raise HTTPException(403, "Not authorized")
+
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    if not audit_set:
+        raise HTTPException(404, "Audit set not found")
+
+    # Free the email by removing the linked client account first
+    client_user = auth_db.query(PlatformUser).filter_by(
+        audit_set_id=audit_set_id, role="client",
+    ).first()
+    if client_user:
+        auth_db.delete(client_user)
+        auth_db.commit()
+
+    db.delete(audit_set)
+    db.commit()
+
+    return {"deleted": True, "id": audit_set_id}
