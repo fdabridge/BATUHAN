@@ -6,13 +6,19 @@ Only exposes a curated subset of AuditSet fields — fees, internal notes, and
 other CB-only data are intentionally omitted from the response payload.
 """
 from __future__ import annotations
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from pydantic import BaseModel
 
-from audit_set.db_models import AuditSet, AuditSetMessage, AuditSetStatusEvent, get_db
-from auth.db_models import PlatformUser
+from audit_set.db_models import (
+    AuditSet,
+    AuditSetMessage,
+    AuditSetSharedDocument,
+    AuditSetStatusEvent,
+    get_db,
+)
+from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
 
 router = APIRouter(prefix="/client", tags=["client-portal"])
@@ -145,3 +151,78 @@ def post_my_message(
         "id":         msg.id,
         "created_at": msg.created_at.isoformat() if msg.created_at else None,
     }
+
+
+
+# ── Documents (client-scoped shortcuts; delegate signing to documents_router) ─
+
+@router.get("/my-audit-set/documents")
+def get_my_documents(
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    audit_set = _get_client_audit_set(current_user, db)
+    docs = (
+        db.query(AuditSetSharedDocument)
+        .filter_by(audit_set_id=audit_set.id, direction="cb_to_client")
+        .order_by(AuditSetSharedDocument.created_at)
+        .all()
+    )
+    return [
+        {
+            "id":            d.id,
+            "label":         d.label,
+            "document_type": d.document_type,
+            "status":        d.status,
+            "released_at":   d.released_at.isoformat() if d.released_at else None,
+            "signed_at":     d.signed_at.isoformat()   if d.signed_at   else None,
+        }
+        for d in docs
+    ]
+
+
+@router.get("/my-audit-set/documents/{doc_id}/download")
+def download_my_document(
+    doc_id: str,
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    from fastapi.responses import FileResponse
+    import os
+
+    audit_set = _get_client_audit_set(current_user, db)
+    doc = db.query(AuditSetSharedDocument).filter_by(
+        id=doc_id, audit_set_id=audit_set.id, direction="cb_to_client"
+    ).first()
+    if not doc or not doc.file_path or not os.path.exists(doc.file_path):
+        raise HTTPException(404, "Document not found")
+    return FileResponse(
+        doc.file_path,
+        filename=os.path.basename(doc.file_path),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+
+
+@router.post("/my-audit-set/documents/{doc_id}/sign/request-otp")
+def client_request_otp(
+    doc_id: str,
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    from audit_set.documents_router import request_sign_otp
+    audit_set = _get_client_audit_set(current_user, db)
+    return request_sign_otp(audit_set.id, doc_id, db, auth_db, current_user)
+
+
+@router.post("/my-audit-set/documents/{doc_id}/sign/verify")
+def client_verify_otp(
+    doc_id: str,
+    otp: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    from audit_set.documents_router import verify_sign_otp
+    audit_set = _get_client_audit_set(current_user, db)
+    return verify_sign_otp(audit_set.id, doc_id, request, otp, db, current_user)

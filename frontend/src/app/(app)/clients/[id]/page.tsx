@@ -7,6 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { CertBadge } from '@/components/ui/CertBadge'
 import { MessageThread } from '@/components/ui/MessageThread'
+import { SharedDocumentsSection } from '@/components/ui/SharedDocumentsSection'
 import type { AuditSetResponse, StageResponse, ManDayResult, AuditorSummary, AuditorAvailabilityItem, RequiredScope } from '@/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1416,6 +1417,9 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
           />
         </div>
       </div>
+
+      {/* Shared Documents — Prompt 07 (additive, bottom of page) */}
+      <SharedDocumentsSection auditSetId={id} />
     </div>
   )
 }

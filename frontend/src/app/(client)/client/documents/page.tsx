@@ -1,3 +1,225 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import api from '@/lib/api'
+
+type DocStatus = 'released' | 'signed'
+
+interface SharedDoc {
+  id: string
+  label: string
+  document_type: string
+  status: DocStatus
+  released_at: string | null
+  signed_at: string | null
+}
+
+function fmtDate(iso: string | null): string {
+  if (!iso) return ''
+  return new Date(iso).toLocaleDateString('en-GB', {
+    day: 'numeric', month: 'long', year: 'numeric',
+  })
+}
+
 export default function ClientDocumentsPage() {
-  return <div className="p-8 text-gray-400">Documents — coming soon</div>
+  const [docs, setDocs]       = useState<SharedDoc[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const [signingDoc, setSigningDoc] = useState<string | null>(null)
+  const [otpSent, setOtpSent]       = useState(false)
+  const [otpValue, setOtpValue]     = useState('')
+  const [signError, setSignError]   = useState('')
+  const [signLoading, setSignLoading] = useState(false)
+
+  async function loadDocs() {
+    try {
+      const r = await api.get<SharedDoc[]>('/client/my-audit-set/documents')
+      setDocs(r.data)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { loadDocs() }, [])
+
+  // Bearer auth lives in localStorage; an <a href> can't send it. Fetch the
+  // file as a blob via axios and trigger a download from an object URL.
+  async function downloadDoc(docId: string, label: string) {
+    try {
+      const r = await api.get(`/client/my-audit-set/documents/${docId}/download`, {
+        responseType: 'blob',
+      })
+      const url = window.URL.createObjectURL(r.data as Blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${label}.docx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+    } catch {
+      alert('Could not download document.')
+    }
+  }
+
+  async function requestOtp(docId: string) {
+    setSigningDoc(docId)
+    setOtpSent(false)
+    setSignError('')
+    setSignLoading(true)
+    try {
+      await api.post(`/client/my-audit-set/documents/${docId}/sign/request-otp`)
+      setOtpSent(true)
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })
+        ?.response?.data?.detail
+      setSignError(detail || 'Failed to send OTP')
+    } finally {
+      setSignLoading(false)
+    }
+  }
+
+  async function submitOtp(docId: string) {
+    setSignLoading(true)
+    setSignError('')
+    try {
+      await api.post(
+        `/client/my-audit-set/documents/${docId}/sign/verify?otp=${otpValue}`,
+      )
+      setSigningDoc(null)
+      setOtpValue('')
+      setOtpSent(false)
+      await loadDocs()
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })
+        ?.response?.data?.detail
+      setSignError(detail || 'Invalid code')
+    } finally {
+      setSignLoading(false)
+    }
+  }
+
+  if (loading) return <div className="p-8 text-gray-400">Loading documents…</div>
+
+  return (
+    <div className="mx-auto max-w-2xl p-6">
+      <div className="mb-6">
+        <h1 className="text-xl font-bold text-gray-900">Documents</h1>
+        <p className="mt-0.5 text-sm text-gray-400">
+          Documents shared with you by IFC Global
+        </p>
+      </div>
+
+      {docs.length === 0 ? (
+        <div className="py-16 text-center text-sm text-gray-400">
+          No documents have been shared yet. You will be notified by email when
+          documents are ready.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {docs.map((doc) => (
+            <div key={doc.id} className="rounded-xl border bg-white p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">{doc.label}</p>
+                  <p className="mt-0.5 text-xs text-gray-400">
+                    {doc.released_at ? `Received ${fmtDate(doc.released_at)}` : ''}
+                  </p>
+                </div>
+                <span
+                  className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                    doc.status === 'signed'
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-amber-100 text-amber-700'
+                  }`}
+                >
+                  {doc.status === 'signed' ? '✓ Signed' : 'Awaiting Signature'}
+                </span>
+              </div>
+
+              <div className="mt-4 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => downloadDoc(doc.id, doc.label)}
+                  className="rounded-lg border border-[#1A4731] px-3 py-1.5 text-sm text-[#1A4731] transition-colors hover:bg-green-50"
+                >
+                  Download
+                </button>
+                {doc.status !== 'signed' && (
+                  <button
+                    type="button"
+                    onClick={() => requestOtp(doc.id)}
+                    className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-sm text-white transition-colors hover:bg-[#143828]"
+                  >
+                    Sign Document
+                  </button>
+                )}
+                {doc.status === 'signed' && doc.signed_at && (
+                  <span className="text-xs text-gray-400">
+                    Signed on {fmtDate(doc.signed_at)}
+                  </span>
+                )}
+              </div>
+
+              {signingDoc === doc.id && (
+                <div className="mt-4 rounded-lg border bg-gray-50 p-4">
+                  {!otpSent ? (
+                    <p className="text-sm text-gray-600">
+                      {signLoading
+                        ? 'Sending code…'
+                        : 'Sending a 6-digit code to your email…'}
+                    </p>
+                  ) : (
+                    <div>
+                      <p className="mb-2 text-sm font-medium text-gray-700">
+                        Enter the 6-digit code sent to your email:
+                      </p>
+                      <div className="flex gap-2">
+                        <input
+                          className="w-36 rounded-lg border px-3 py-2 text-center font-mono text-sm tracking-widest focus:outline-none focus:ring-2 focus:ring-[#1A4731]/30"
+                          placeholder="000000"
+                          maxLength={6}
+                          value={otpValue}
+                          onChange={(e) => setOtpValue(e.target.value.replace(/\D/g, ''))}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => submitOtp(doc.id)}
+                          disabled={otpValue.length !== 6 || signLoading}
+                          className="rounded-lg bg-[#1A4731] px-4 py-2 text-sm text-white disabled:opacity-40"
+                        >
+                          {signLoading ? '…' : 'Confirm'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSigningDoc(null)
+                            setOtpSent(false)
+                            setOtpValue('')
+                          }}
+                          className="px-2 text-sm text-gray-400"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => requestOtp(doc.id)}
+                        className="mt-2 text-xs text-gray-400 underline"
+                      >
+                        Resend code
+                      </button>
+                    </div>
+                  )}
+                  {signError && (
+                    <p className="mt-2 text-xs text-red-500">{signError}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }

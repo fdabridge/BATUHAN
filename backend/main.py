@@ -25,6 +25,7 @@ from audit_set.apply_router import router as apply_router
 from audit_set.workflow_router import router as workflow_router
 from audit_set.client_router import router as client_router
 from audit_set.messages_router import router as messages_router
+from audit_set.documents_router import router as documents_router
 
 settings = get_settings()
 
@@ -69,6 +70,7 @@ app.include_router(auditors_router, prefix="/auditors", tags=["auditors"])
 # /audit-sets/{audit_set_id} handler.
 app.include_router(workflow_router)
 app.include_router(messages_router)
+app.include_router(documents_router)
 app.include_router(audit_sets_router, prefix="/audit-sets", tags=["audit-sets"])
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(admin_users_router, prefix="/admin", tags=["admin"])
