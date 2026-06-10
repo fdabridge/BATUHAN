@@ -68,13 +68,11 @@ def get_my_pending_signatures(
         .all()
     )
 
-    # Unassigned slots this user is eligible to claim
+    # Unassigned slots this user is eligible to claim.
+    # NOTE: cb_reviewer removed in Prompt 14 — assigned only via committee appointment.
     eligible_labels: list[str] = []
     if current_user.role in ("admin", "executive"):
         eligible_labels.append("cb_cert_manager")
-    # cb_reviewer eligibility (EA-code check added in Prompt 14)
-    if current_user.role in ("admin", "executive", "auditor"):
-        eligible_labels.append("cb_reviewer")
 
     unassigned: list[AuditDocumentSignature] = []
     if eligible_labels:
@@ -121,12 +119,11 @@ def request_cb_signature_otp(
     if not sig:
         raise HTTPException(404, "Signature request not found")
 
-    # Self-assign if the slot is unassigned and the caller is eligible
+    # Self-assign if the slot is unassigned and the caller is eligible.
+    # NOTE: cb_reviewer is no longer self-assignable — appointment required (Prompt 14).
     if sig.signer_user_id is None:
         eligible = False
         if sig.signer_role_label == "cb_cert_manager" and current_user.role in ("admin", "executive"):
-            eligible = True
-        if sig.signer_role_label == "cb_reviewer" and current_user.role in ("admin", "executive", "auditor"):
             eligible = True
         if not eligible:
             raise HTTPException(403, "You are not eligible to sign this slot")
@@ -183,12 +180,11 @@ def verify_cb_signature(
     if not sig:
         raise HTTPException(404, "Signature request not found")
 
-    # Self-assign if unassigned and caller is eligible
+    # Self-assign if unassigned and caller is eligible.
+    # NOTE: cb_reviewer is no longer self-assignable — appointment required (Prompt 14).
     if sig.signer_user_id is None:
         eligible = False
         if sig.signer_role_label == "cb_cert_manager" and current_user.role in ("admin", "executive"):
-            eligible = True
-        if sig.signer_role_label == "cb_reviewer" and current_user.role in ("admin", "executive", "auditor"):
             eligible = True
         if not eligible:
             raise HTTPException(403, "You are not eligible to sign this slot")
@@ -279,11 +275,10 @@ def get_internal_signatures(
         .all()
     )
 
+    # NOTE: cb_reviewer removed in Prompt 14 — assigned only via committee appointment.
     eligible_labels: set[str] = set()
     if current_user.role in ("admin", "executive"):
         eligible_labels.add("cb_cert_manager")
-    if current_user.role in ("admin", "executive", "auditor"):
-        eligible_labels.add("cb_reviewer")
 
     return [
         {

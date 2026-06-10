@@ -11,6 +11,7 @@ import { CertBadge } from '@/components/ui/CertBadge'
 import { MessageThread } from '@/components/ui/MessageThread'
 import { SharedDocumentsSection } from '@/components/ui/SharedDocumentsSection'
 import { InternalApprovalsSection } from '@/components/ui/InternalApprovalsSection'
+import { CommitteeSection } from '@/components/ui/CommitteeSection'
 import { WorkflowStatusBar } from '@/components/ui/WorkflowStatusBar'
 import type { AuditSetResponse, StageResponse, ManDayResult, AuditorSummary, AuditorAvailabilityItem, RequiredScope } from '@/types'
 
@@ -1482,6 +1483,12 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
 
       {/* Internal CB Approvals — Prompt 13 (FR.218 / FR.222) */}
       <InternalApprovalsSection
+        auditSetId={id}
+        workflowStatus={data.workflow_status ?? null}
+      />
+
+      {/* Certification Committee — Prompt 14 (reviewer / decision maker appointments) */}
+      <CommitteeSection
         auditSetId={id}
         workflowStatus={data.workflow_status ?? null}
       />

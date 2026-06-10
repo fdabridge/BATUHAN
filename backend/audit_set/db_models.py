@@ -321,3 +321,23 @@ class AuditDocumentSignature(Base):
     signing_token    = Column(String, nullable=True)    # for future guest token links
     token_expires_at = Column(DateTime, nullable=True)
     created_at       = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+
+# ---------------------------------------------------------------------------
+# Table 7 — audit_set_committee_members
+# Certification committee appointments for ISO 17021-1 review and decision.
+# ---------------------------------------------------------------------------
+
+class AuditSetCommitteeMember(Base):
+    __tablename__ = "audit_set_committee_members"
+
+    id                      = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    audit_set_id            = Column(String, ForeignKey("audit_sets.id", ondelete="CASCADE"), nullable=False)
+    user_id                 = Column(String, nullable=False)   # PlatformUser.id
+    user_name               = Column(String, nullable=False)   # denormalized for display
+    user_email              = Column(String, nullable=False)   # denormalized for email
+    role                    = Column(String, nullable=False)   # "reviewer" | "decision_maker"
+    appointed_by            = Column(String, nullable=True)    # PlatformUser.id of the appointing user
+    ea_codes_at_appointment = Column(JSON, nullable=True)      # snapshot of EA codes at time of appointment
+    appointed_at            = Column(DateTime, default=datetime.utcnow, nullable=False)
