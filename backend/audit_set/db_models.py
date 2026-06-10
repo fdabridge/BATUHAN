@@ -444,3 +444,30 @@ class AuditSetAuditorAssessment(Base):
     otp_expires_at  = Column(DateTime, nullable=True)
 
     created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Table 11 — audit_set_impartiality_declarations
+# FR.224 — Impartiality declaration signed by each audit team member.
+# One record per person per stage. Seeded by CB; signed by the auditor.
+# ---------------------------------------------------------------------------
+
+class AuditSetImpartialityDeclaration(Base):
+    __tablename__ = "audit_set_impartiality_declarations"
+
+    id             = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    audit_set_id   = Column(String, ForeignKey("audit_sets.id", ondelete="CASCADE"), nullable=False)
+    stage_type     = Column(String, nullable=False)
+    stage_order    = Column(Integer, nullable=True)
+    member_name    = Column(String, nullable=False)   # denormalized
+    member_role    = Column(String, nullable=False)   # "Lead Auditor"|"Team Auditor"|"Technical Expert"|"Observer"
+    auditor_ref_id = Column(String, nullable=True)    # soft FK → auditors.id (for self-sign matching)
+
+    # Signature
+    signed_by      = Column(String, nullable=True)    # PlatformUser.id
+    signed_at      = Column(DateTime, nullable=True)
+    signed_ip      = Column(String, nullable=True)
+    otp_hash       = Column(String, nullable=True)
+    otp_expires_at = Column(DateTime, nullable=True)
+
+    created_at     = Column(DateTime, default=datetime.utcnow, nullable=False)

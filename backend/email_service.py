@@ -257,3 +257,31 @@ def send_nc_form_client_ready(
     </div>
     """
     return _send(to, f"IFC Global — NC Form Ready for Counter-Signature", html)
+
+
+def send_impartiality_declaration_request(
+    to: str,
+    full_name: str,
+    company_name: str,
+    stage_label: str,
+    role: str,
+) -> bool:
+    """Sent to each audit team member when CB creates declaration records for a stage."""
+    settings = get_settings()
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+      <h2 style="color:#1A4731">IFC Global LLC — Impartiality Declaration Required</h2>
+      <p>Dear {full_name},</p>
+      <p>You are assigned as <strong>{role}</strong> for the audit of
+         <strong>{company_name}</strong> ({stage_label}).</p>
+      <p>As required by ISO 17021-1, you must sign an impartiality declaration
+         before the audit commences. Please log in to the portal, navigate to
+         the relevant audit assignment, and complete the declaration under the
+         <strong>Declarations</strong> tab.</p>
+      <p><a href="{settings.email_base_url}/auditor/dashboard"
+            style="background:#1A4731;color:white;padding:10px 20px;border-radius:4px;
+                   text-decoration:none">Go to Portal</a></p>
+      <p style="color:#666;font-size:12px">IFC Global LLC · application@ifcglobal.us</p>
+    </div>
+    """
+    return _send(to, f"IFC Global — Impartiality Declaration Required: {company_name}", html)
