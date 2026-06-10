@@ -12,6 +12,7 @@ import { MessageThread } from '@/components/ui/MessageThread'
 import { SharedDocumentsSection } from '@/components/ui/SharedDocumentsSection'
 import { InternalApprovalsSection } from '@/components/ui/InternalApprovalsSection'
 import { CommitteeSection } from '@/components/ui/CommitteeSection'
+import { MeetingAttendeesSection } from '@/components/ui/MeetingAttendeesSection'
 import { WorkflowStatusBar } from '@/components/ui/WorkflowStatusBar'
 import type { AuditSetResponse, StageResponse, ManDayResult, AuditorSummary, AuditorAvailabilityItem, RequiredScope } from '@/types'
 
@@ -1489,6 +1490,12 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
 
       {/* Certification Committee — Prompt 14 (reviewer / decision maker appointments) */}
       <CommitteeSection
+        auditSetId={id}
+        workflowStatus={data.workflow_status ?? null}
+      />
+
+      {/* Meeting Attendees — Prompt 15 (FR.225 opening / closing meeting signatures) */}
+      <MeetingAttendeesSection
         auditSetId={id}
         workflowStatus={data.workflow_status ?? null}
       />

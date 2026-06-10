@@ -128,6 +128,64 @@ def send_otp_code(to: str, full_name: str, otp: str, document_label: str) -> boo
     return _send(to, "IFC Global — Your Signature Code", html)
 
 
+def send_meeting_signing_link(
+    to: str,
+    full_name: str,
+    company_name: str,
+    stage_label: str,
+    sign_url: str,
+) -> bool:
+    """Sent to an external meeting attendee with their personal signing link."""
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+      <h2 style="color:#1A4731">IFC Global LLC — Audit Meeting Attendance</h2>
+      <p>Dear {full_name},</p>
+      <p>You are registered as a meeting attendee for the IFC Global audit of
+         <strong>{company_name}</strong> ({stage_label}).</p>
+      <p>Please use your personal signing link to record your attendance at the
+         opening and closing meetings. Each signature requires a one-time code
+         sent to this email.</p>
+      <p style="margin:24px 0">
+        <a href="{sign_url}" style="background:#1A4731;color:white;padding:12px 24px;
+           border-radius:4px;text-decoration:none;font-weight:bold">Sign Meetings</a>
+      </p>
+      <p style="color:#888;font-size:12px">
+        This link is personal and expires in 72 hours. Do not share it.<br>
+        If you believe this was sent in error, please ignore this email.<br>
+        IFC Global LLC · application@ifcglobal.us
+      </p>
+    </div>
+    """
+    return _send(to, f"IFC Global — Audit Meeting Sign-in: {company_name}", html)
+
+
+def send_meeting_otp(
+    to: str,
+    full_name: str,
+    event_type: str,
+    company_name: str,
+    otp: str,
+) -> bool:
+    """OTP code for signing an opening or closing meeting."""
+    label = "Opening Meeting" if event_type == "opening" else "Closing Meeting"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+      <h2 style="color:#1A4731">IFC Global — Meeting Signature Code</h2>
+      <p>Dear {full_name},</p>
+      <p>Use the following code to sign the <strong>{label}</strong>
+         attendance record for <strong>{company_name}</strong>:</p>
+      <div style="background:#1A4731;color:white;padding:24px;border-radius:6px;
+                  margin:16px 0;text-align:center">
+        <span style="font-size:36px;letter-spacing:8px;font-weight:bold">{otp}</span>
+      </div>
+      <p style="color:#666">This code expires in 10 minutes. Do not share it.</p>
+      <p style="color:#666;font-size:12px">IFC Global LLC · application@ifcglobal.us</p>
+    </div>
+    """
+    return _send(to, f"IFC Global — {label} Signature Code", html)
+
+
+
 def send_new_message_notification(to: str, full_name: str, sender_name: str) -> bool:
     """Sent when a new portal message is received (max once per hour to avoid spam)."""
     settings = get_settings()

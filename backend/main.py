@@ -28,6 +28,8 @@ from audit_set.messages_router import router as messages_router
 from audit_set.documents_router import router as documents_router
 from audit_set.signatures_router import router as signatures_router
 from audit_set.committee_router import router as committee_router
+from audit_set.meeting_router import protected_router as meeting_protected_router
+from audit_set.meeting_router import public_router as meeting_public_router
 from audit_set.auditor_router import router as auditor_router
 
 settings = get_settings()
@@ -75,6 +77,8 @@ app.include_router(workflow_router)
 app.include_router(messages_router)
 app.include_router(signatures_router)
 app.include_router(committee_router)
+app.include_router(meeting_protected_router)
+app.include_router(meeting_public_router)
 app.include_router(documents_router)
 app.include_router(audit_sets_router, prefix="/audit-sets", tags=["audit-sets"])
 app.include_router(auth_router, prefix="/auth", tags=["auth"])

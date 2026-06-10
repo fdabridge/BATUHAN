@@ -46,7 +46,136 @@ interface AssignmentDetail {
   stages:                 Stage[]
 }
 
-type Tab = 'overview' | 'messages' | 'upload'
+type Tab = 'overview' | 'messages' | 'upload' | 'attendees'
+
+function AuditorAttendeesView({ auditSetId }: { auditSetId: string }) {
+  const [attendees, setAttendees] = useState<{
+    id: string; stage_label: string; full_name: string; title: string | null
+    email: string; opening_signed: boolean; closing_signed: boolean
+    stage_type: string
+  }[]>([])
+  const [loading, setLoading] = useState(true)
+  const [form, setForm]       = useState({ stage_type: 'stage_1', full_name: '', title: '', email: '' })
+  const [busy, setBusy]       = useState(false)
+  const [addMsg, setAddMsg]   = useState('')
+
+  const STAGE_OPTS = [
+    { value: 'stage_1',         label: 'Stage 1' },
+    { value: 'stage_2',         label: 'Stage 2' },
+    { value: 'surveillance',    label: 'Surveillance' },
+    { value: 'recertification', label: 'Recertification' },
+  ]
+
+  useEffect(() => {
+    api.get(`/audit-sets/${auditSetId}/meeting-attendees`)
+      .then(r => setAttendees(r.data as typeof attendees))
+      .finally(() => setLoading(false))
+  }, [auditSetId])
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    setAddMsg('')
+    try {
+      const r = await api.post(`/audit-sets/${auditSetId}/meeting-attendees`, {
+        stage_type: form.stage_type,
+        full_name:  form.full_name.trim(),
+        title:      form.title.trim() || null,
+        email:      form.email.trim(),
+      })
+      setAttendees(prev => [...prev, r.data as typeof attendees[0]])
+      setForm({ stage_type: 'stage_1', full_name: '', title: '', email: '' })
+      setAddMsg('Attendee added and invite sent.')
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setAddMsg(detail || 'Failed to add attendee')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (loading) return <p className="text-sm text-gray-400">Loading…</p>
+
+  const grouped = attendees.reduce<Record<string, typeof attendees>>((acc, a) => {
+    acc[a.stage_type] = acc[a.stage_type] || []
+    acc[a.stage_type].push(a)
+    return acc
+  }, {})
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border bg-white p-5">
+        <p className="mb-3 text-sm font-medium text-gray-700">Add Meeting Attendee</p>
+        <form onSubmit={handleAdd} className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <select
+              value={form.stage_type}
+              onChange={e => setForm(f => ({ ...f, stage_type: e.target.value }))}
+              className="rounded-lg border px-3 py-2 text-sm"
+            >
+              {STAGE_OPTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+            <input
+              value={form.full_name} required placeholder="Full Name *"
+              onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))}
+              className="rounded-lg border px-3 py-2 text-sm"
+            />
+            <input
+              value={form.title} placeholder="Title / Role"
+              onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+              className="rounded-lg border px-3 py-2 text-sm"
+            />
+            <input
+              type="email" value={form.email} required placeholder="Email *"
+              onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+              className="rounded-lg border px-3 py-2 text-sm"
+            />
+          </div>
+          <button
+            type="submit" disabled={busy}
+            className="rounded-lg bg-[#1A4731] px-4 py-2 text-sm text-white disabled:opacity-40"
+          >
+            {busy ? 'Adding…' : 'Add & Send Invite'}
+          </button>
+          {addMsg && <p className="text-xs text-gray-500">{addMsg}</p>}
+        </form>
+      </div>
+
+      {Object.entries(grouped).map(([stage, list]) => (
+        <div key={stage} className="rounded-xl border bg-white">
+          <div className="border-b px-4 py-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+              {STAGE_OPTS.find(s => s.value === stage)?.label ?? stage}
+            </p>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {list.map(a => (
+              <div key={a.id} className="flex items-center justify-between px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium">{a.full_name}
+                    {a.title && <span className="ml-1 text-xs text-gray-400">— {a.title}</span>}
+                  </p>
+                  <p className="text-xs text-gray-400">{a.email}</p>
+                </div>
+                <div className="flex gap-2">
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${a.opening_signed ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
+                    {a.opening_signed ? 'Opening ✓' : 'Opening —'}
+                  </span>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${a.closing_signed ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
+                    {a.closing_signed ? 'Closing ✓' : 'Closing —'}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      {attendees.length === 0 && (
+        <p className="py-8 text-center text-sm text-gray-400">No attendees registered yet.</p>
+      )}
+    </div>
+  )
+}
 
 export default function AuditorAuditDetail() {
   const { id } = useParams<{ id: string }>()
@@ -131,7 +260,7 @@ export default function AuditorAuditDetail() {
 
       {/* Tabs */}
       <div className="mb-6 flex w-fit gap-1 rounded-lg bg-gray-100 p-1">
-        {(['overview', 'messages', 'upload'] as const).map((t) => (
+        {(['overview', 'messages', 'upload', 'attendees'] as const).map((t) => (
           <button
             key={t}
             type="button"
@@ -142,7 +271,7 @@ export default function AuditorAuditDetail() {
                 : 'text-gray-500 hover:text-gray-700'
             }`}
           >
-            {t === 'upload' ? 'Upload Documents' : t}
+            {t === 'upload' ? 'Upload Documents' : t === 'attendees' ? 'Attendees' : t}
           </button>
         ))}
       </div>
@@ -261,6 +390,11 @@ export default function AuditorAuditDetail() {
           </button>
           {uploadMsg && <p className="text-sm text-gray-600">{uploadMsg}</p>}
         </div>
+      )}
+
+      {/* Attendees tab — Prompt 15 (FR.225 meeting attendance roster) */}
+      {tab === 'attendees' && (
+        <AuditorAttendeesView auditSetId={id} />
       )}
     </div>
   )

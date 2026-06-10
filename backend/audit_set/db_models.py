@@ -341,3 +341,37 @@ class AuditSetCommitteeMember(Base):
     appointed_by            = Column(String, nullable=True)    # PlatformUser.id of the appointing user
     ea_codes_at_appointment = Column(JSON, nullable=True)      # snapshot of EA codes at time of appointment
     appointed_at            = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+
+# ---------------------------------------------------------------------------
+# Table 8 — audit_set_meeting_attendees
+# External organization personnel who sign FR.225 opening and closing meetings.
+# No Certiva account — signed via tokenized email links.
+# ---------------------------------------------------------------------------
+
+class AuditSetMeetingAttendee(Base):
+    __tablename__ = "audit_set_meeting_attendees"
+
+    id               = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    audit_set_id     = Column(String, ForeignKey("audit_sets.id", ondelete="CASCADE"), nullable=False)
+    stage_type       = Column(String, nullable=False)  # "stage_1" | "stage_2" | "surveillance" | "recertification"
+    full_name        = Column(String, nullable=False)
+    title            = Column(String, nullable=True)   # e.g. "General Manager", "Quality Engineer"
+    email            = Column(String, nullable=False)
+    # Token for the signing link — UUID, hard to guess
+    token            = Column(String, unique=True, nullable=False,
+                              default=lambda: str(uuid.uuid4()))
+    token_expires_at = Column(DateTime, nullable=True)  # 72h from creation
+    # Opening meeting
+    opening_otp_hash    = Column(String, nullable=True)
+    opening_otp_expires = Column(DateTime, nullable=True)
+    opening_signed_at   = Column(DateTime, nullable=True)
+    opening_signed_ip   = Column(String, nullable=True)
+    # Closing meeting
+    closing_otp_hash    = Column(String, nullable=True)
+    closing_otp_expires = Column(DateTime, nullable=True)
+    closing_signed_at   = Column(DateTime, nullable=True)
+    closing_signed_ip   = Column(String, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
