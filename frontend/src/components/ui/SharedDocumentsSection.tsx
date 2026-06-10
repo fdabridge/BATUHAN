@@ -8,10 +8,12 @@ interface SharedDoc {
   label: string
   document_type: string
   direction: 'cb_to_client' | 'auditor_to_cb'
-  status: 'released' | 'signed' | 'uploaded'
+  status: 'pending_cb_signature' | 'released' | 'signed' | 'uploaded'
   released_at: string | null
   signed_at: string | null
   signed_by: string | null
+  cb_sig_status: 'pending' | 'signed' | null
+  cb_sig_id: string | null
 }
 
 const DOC_TYPES = [
@@ -174,14 +176,30 @@ export function SharedDocumentsSection({ auditSetId }: { auditSetId: string }) {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  {d.cb_sig_status && (
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                      d.cb_sig_status === 'signed'
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'bg-amber-100 text-amber-800'
+                    }`}>
+                      {d.cb_sig_status === 'signed' ? 'CB ✓' : 'CB Signing…'}
+                    </span>
+                  )}
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                      d.status === 'signed'   ? 'bg-green-100 text-green-700'
-                      : d.status === 'uploaded' ? 'bg-blue-100 text-blue-700'
+                      d.status === 'signed'                 ? 'bg-green-100 text-green-700'
+                      : d.status === 'uploaded'             ? 'bg-blue-100 text-blue-700'
+                      : d.status === 'pending_cb_signature' ? 'bg-gray-100 text-gray-500'
                       : 'bg-amber-100 text-amber-700'
                     }`}
                   >
-                    {d.status === 'signed' ? '✓ Signed' : d.status === 'uploaded' ? 'Uploaded' : 'Awaiting Signature'}
+                    {d.status === 'signed'
+                      ? '✓ Signed'
+                      : d.status === 'uploaded'
+                      ? 'Uploaded'
+                      : d.status === 'pending_cb_signature'
+                      ? 'Pending release'
+                      : 'Awaiting Signature'}
                   </span>
                   <button
                     type="button"

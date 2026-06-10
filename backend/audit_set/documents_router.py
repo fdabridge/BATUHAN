@@ -14,7 +14,13 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from audit_set.db_models import AuditSet, AuditSetSharedDocument, AuditSetStatusEvent, get_db
+from audit_set.db_models import (
+    AuditDocumentSignature,
+    AuditSet,
+    AuditSetSharedDocument,
+    AuditSetStatusEvent,
+    get_db,
+)
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
 from config.settings import get_settings
@@ -34,8 +40,8 @@ def _hash_otp(otp: str) -> str:
     return hashlib.sha256(otp.encode()).hexdigest()
 
 
-def _doc_to_dict(d: AuditSetSharedDocument) -> dict:
-    return {
+def _doc_to_dict(d: AuditSetSharedDocument, db: Session | None = None) -> dict:
+    result = {
         "id":            d.id,
         "label":         d.label,
         "document_type": d.document_type,
@@ -44,7 +50,19 @@ def _doc_to_dict(d: AuditSetSharedDocument) -> dict:
         "released_at":   d.released_at.isoformat() if d.released_at else None,
         "signed_at":     d.signed_at.isoformat()   if d.signed_at   else None,
         "signed_by":     d.signed_by,
+        "cb_sig_status": None,
+        "cb_sig_id":     None,
     }
+    if db is not None and d.document_type in ("quotation", "agreement"):
+        cb_sig = (
+            db.query(AuditDocumentSignature)
+            .filter_by(document_id=d.id, signer_role_label="cb_planner")
+            .first()
+        )
+        if cb_sig:
+            result["cb_sig_status"] = "signed" if cb_sig.signed_at else "pending"
+            result["cb_sig_id"] = cb_sig.id
+    return result
 
 
 def _auto_advance_workflow(
@@ -124,17 +142,42 @@ async def release_document(
     with open(file_path, "wb") as f:
         f.write(content)
 
+    # Quotation and Agreement need CB countersignature before the client can see
+    # them. Certificates are released immediately (no CB countersignature flow).
+    requires_cb_sig = document_type in ("quotation", "agreement")
+    initial_status  = "pending_cb_signature" if requires_cb_sig else "released"
+
     doc = AuditSetSharedDocument(
         audit_set_id=audit_set_id,
         label=label,
         document_type=document_type,
         file_path=file_path,
         direction="cb_to_client",
-        status="released",
+        status=initial_status,
         released_by=current_user.id,
         released_at=datetime.utcnow(),
     )
     db.add(doc)
+    db.flush()  # populate doc.id before linking signature
+
+    if requires_cb_sig:
+        sig = AuditDocumentSignature(
+            audit_set_id=audit_set_id,
+            document_id=doc.id,
+            document_type=document_type,
+            signer_role_label="cb_planner",
+            signer_user_id=current_user.id,
+            signer_name=current_user.full_name,
+            signer_email=current_user.email,
+            required=True,
+            order_index=0,
+        )
+        db.add(sig)
+        db.commit()
+        db.refresh(doc)
+        # Workflow advance + client email are deferred to verify_cb_signature.
+        return {"id": doc.id, "status": "pending_cb_signature", "signature_id": sig.id}
+
     db.commit()
     db.refresh(doc)
 
@@ -150,16 +193,6 @@ async def release_document(
             )
         except Exception:
             pass
-
-    # Auto-advance: releasing the quotation moves planning → quotation_sent
-    if document_type == "quotation":
-        _auto_advance_workflow(
-            db, auth_db, audit_set,
-            expected_from="in_planning",
-            to_status="quotation_sent",
-            triggered_by=current_user.id,
-            notes="Quotation document released",
-        )
 
     return {"id": doc.id, "status": "released"}
 
@@ -178,7 +211,7 @@ def list_documents(
         .order_by(AuditSetSharedDocument.created_at)
         .all()
     )
-    return [_doc_to_dict(d) for d in docs]
+    return [_doc_to_dict(d, db) for d in docs]
 
 
 @router.get("/{audit_set_id}/documents/{doc_id}/download")

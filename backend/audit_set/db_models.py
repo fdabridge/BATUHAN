@@ -293,3 +293,31 @@ class AuditSetSharedDocument(Base):
     otp_hash       = Column(String, nullable=True)    # bcrypt hash of OTP
     otp_expires_at = Column(DateTime, nullable=True)
     created_at     = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Table 6 — audit_document_signatures
+# Multi-party signature tracking for all document types.
+# CB planner signs FR.220/FR.221; future prompts add committee, auditor, guest.
+# ---------------------------------------------------------------------------
+
+class AuditDocumentSignature(Base):
+    __tablename__ = "audit_document_signatures"
+
+    id               = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    audit_set_id     = Column(String, ForeignKey("audit_sets.id", ondelete="CASCADE"), nullable=False)
+    document_id      = Column(String, nullable=True)   # soft FK → audit_set_shared_documents.id
+    document_type    = Column(String, nullable=False)   # "quotation" | "agreement" | "FR218" | etc.
+    signer_role_label= Column(String, nullable=False)   # "cb_planner" | "cb_cert_manager" | "lead_auditor" | "guest"
+    signer_user_id   = Column(String, nullable=True)    # PlatformUser.id; null for guests
+    signer_name      = Column(String, nullable=True)    # denormalized
+    signer_email     = Column(String, nullable=True)    # for OTP delivery
+    required         = Column(Boolean, default=True, nullable=False)
+    order_index      = Column(Integer, default=0, nullable=False)
+    signed_at        = Column(DateTime, nullable=True)
+    signed_ip        = Column(String, nullable=True)
+    otp_hash         = Column(String, nullable=True)
+    otp_expires_at   = Column(DateTime, nullable=True)
+    signing_token    = Column(String, nullable=True)    # for future guest token links
+    token_expires_at = Column(DateTime, nullable=True)
+    created_at       = Column(DateTime, default=datetime.utcnow, nullable=False)

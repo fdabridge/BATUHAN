@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { CertBadge } from '@/components/ui/CertBadge'
+import { PendingSignaturesWidget } from '@/components/ui/PendingSignaturesWidget'
 import type { DashboardStats, ClientSummary } from '@/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -199,6 +200,7 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col gap-6">
       <StatCards stats={stats} isLoading={statsLoading} />
+      <PendingSignaturesWidget />
       <ClientTable />
     </div>
   )

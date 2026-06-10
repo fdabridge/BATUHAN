@@ -165,6 +165,7 @@ def get_my_documents(
     docs = (
         db.query(AuditSetSharedDocument)
         .filter_by(audit_set_id=audit_set.id, direction="cb_to_client")
+        .filter(AuditSetSharedDocument.status != "pending_cb_signature")
         .order_by(AuditSetSharedDocument.created_at)
         .all()
     )
