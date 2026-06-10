@@ -24,12 +24,17 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from audit_set.db_models import (
-    AuditSet, AuditSetAuditReport, AuditSetCommitteeMember, AuditSetStage, get_db,
+    AuditSet, AuditSetAuditReport, AuditSetCommitteeMember,
+    AuditSetStage, AuditSetStatusEvent, get_db,
 )
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
 from config.settings import get_settings
-from email_service import send_audit_report_review_request, send_otp_code
+from email_service import (
+    send_audit_report_review_request,
+    send_client_status_update,
+    send_otp_code,
+)
 
 router = APIRouter(tags=["audit_reports"])
 
@@ -358,7 +363,8 @@ def review_verify_otp(
     rid: str,
     otp: str,
     request: Request,
-    db: Session = Depends(get_db),
+    db:      Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     report = db.query(AuditSetAuditReport).filter_by(
@@ -384,8 +390,38 @@ def review_verify_otp(
     report.status                = "approved"
     db.commit()
 
+    # ── Auto-advance workflow: under_review → certified ───────────────────────
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    if audit_set and audit_set.workflow_status == "under_review":
+        audit_set.workflow_status  = "certified"
+        audit_set.cert_issued_date = datetime.utcnow().date()
+        db.add(AuditSetStatusEvent(
+            audit_set_id=audit_set_id,
+            from_status="under_review",
+            to_status="certified",
+            triggered_by=current_user.id,
+            notes=f"Audit report '{report.report_form} — {report.label}' approved by committee reviewer.",
+        ))
+        db.commit()
+
+        # Notify the linked client account (silent failure — best-effort)
+        try:
+            client_user = auth_db.query(PlatformUser).filter_by(
+                audit_set_id=audit_set_id, role="client",
+            ).first()
+            if client_user:
+                send_client_status_update(
+                    to=client_user.email,
+                    full_name=client_user.full_name,
+                    new_status="certified",
+                    notes="Your audit report has been reviewed and approved by the certification committee.",
+                )
+        except Exception:
+            pass
+
     return {
         "approved": True,
         "status": "approved",
         "reviewer_signed_at": report.reviewer_signed_at.isoformat(),
+        "workflow_advanced": audit_set.workflow_status == "certified" if audit_set else False,
     }
