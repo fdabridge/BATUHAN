@@ -1,0 +1,177 @@
+"""
+Certiva — DOCX → PDF conversion + signature field extraction (Prompt 23).
+
+Provides two public functions:
+  - prepare_document(docx_path, db)  ← main entry point used by viewer_router
+  - extract_sig_fields(pdf_path)     ← pure pdfplumber scan, no DB side effects
+
+LibreOffice headless performs the conversion. HOME is set to /tmp to allow
+the container's no-home-dir user to write LibreOffice's config files.
+
+Coordinate system: pdfplumber returns coordinates in PDF points (72 pts/inch)
+with origin at the top-left of the page. page_width and page_height are also
+in points. The viewer uses these values to compute pixel overlay positions.
+"""
+from __future__ import annotations
+
+import os
+import re
+import subprocess
+from typing import TYPE_CHECKING
+
+import pdfplumber
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+# Regex for [SIG:KEY] tokens — KEY is uppercase letters, digits, underscores
+_SIG_PATTERN = re.compile(r"^\[SIG:([A-Z0-9_]+)\]$")
+
+
+# ── DOCX → PDF ───────────────────────────────────────────────────────────────
+
+def convert_docx_to_pdf(docx_path: str) -> str:
+    """
+    Convert a DOCX to PDF using LibreOffice headless.
+    The PDF is written to the same directory as the DOCX.
+    Returns the absolute path to the generated PDF.
+    Raises RuntimeError on failure.
+    """
+    docx_path  = os.path.abspath(docx_path)
+    output_dir = os.path.dirname(docx_path)
+
+    env = os.environ.copy()
+    env["HOME"] = "/tmp"  # LibreOffice needs a writable home for user profile
+
+    result = subprocess.run(
+        [
+            "libreoffice", "--headless",
+            "--convert-to", "pdf",
+            "--outdir", output_dir,
+            docx_path,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env=env,
+    )
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"LibreOffice conversion failed (exit {result.returncode}).\n"
+            f"stderr: {result.stderr[:500]}"
+        )
+
+    stem     = os.path.splitext(os.path.basename(docx_path))[0]
+    pdf_path = os.path.join(output_dir, f"{stem}.pdf")
+
+    if not os.path.exists(pdf_path):
+        raise RuntimeError(
+            f"LibreOffice succeeded but PDF not found at expected path:\n  {pdf_path}"
+        )
+
+    return pdf_path
+
+
+# ── Field extraction ─────────────────────────────────────────────────────────
+
+def extract_sig_fields(pdf_path: str) -> list[dict]:
+    """
+    Scan a PDF for [SIG:KEY] placeholder text injected by Prompt 21.
+    Returns a list of dicts, one per found placeholder:
+      { sig_key, page_number, x0, y0, x1, y1, page_width, page_height }
+    A document with no placeholders returns an empty list.
+    """
+    fields: list[dict] = []
+    with pdfplumber.open(pdf_path) as pdf:
+        for page_idx, page in enumerate(pdf.pages):
+            words = page.extract_words(
+                x_tolerance=3,
+                y_tolerance=3,
+                keep_blank_chars=True,
+            )
+            for word in words:
+                m = _SIG_PATTERN.match(word.get("text", ""))
+                if m:
+                    fields.append({
+                        "sig_key":     m.group(1),
+                        "page_number": page_idx,
+                        "x0":          float(word["x0"]),
+                        "y0":          float(word["top"]),
+                        "x1":          float(word["x1"]),
+                        "y1":          float(word["bottom"]),
+                        "page_width":  float(page.width),
+                        "page_height": float(page.height),
+                    })
+    return fields
+
+
+# ── Main entry point ─────────────────────────────────────────────────────────
+
+def prepare_document(docx_path: str, db: "Session") -> dict:
+    """
+    Idempotent prepare step called by the viewer when a document is opened.
+
+    Steps:
+      1. Convert DOCX → PDF (if PDF not already present alongside DOCX).
+      2. Extract [SIG:...] fields from PDF (if not already in document_signature_fields).
+      3. Return { pdf_path, fields }.
+
+    Raises RuntimeError if conversion fails.
+    """
+    from audit_set.db_models import DocumentSignatureField
+
+    docx_path = os.path.abspath(docx_path)
+    pdf_path  = os.path.splitext(docx_path)[0] + ".pdf"
+
+    # Step 1: Convert DOCX → PDF
+    if not os.path.exists(pdf_path):
+        pdf_path = convert_docx_to_pdf(docx_path)
+
+    # Step 2: Return from cache if already extracted
+    existing = db.query(DocumentSignatureField).filter_by(docx_path=docx_path).all()
+    if existing:
+        return {
+            "pdf_path": pdf_path,
+            "fields": [
+                {
+                    "sig_key":     f.sig_key,
+                    "page_number": f.page_number,
+                    "x0": f.x0, "y0": f.y0,
+                    "x1": f.x1, "y1": f.y1,
+                    "page_width":  f.page_width,
+                    "page_height": f.page_height,
+                }
+                for f in existing
+            ],
+        }
+
+    # Step 3: Extract and store
+    raw_fields = extract_sig_fields(pdf_path)
+    for field in raw_fields:
+        db.add(DocumentSignatureField(
+            docx_path   = docx_path,
+            pdf_path    = pdf_path,
+            sig_key     = field["sig_key"],
+            page_number = field["page_number"],
+            x0          = field["x0"],
+            y0          = field["y0"],
+            x1          = field["x1"],
+            y1          = field["y1"],
+            page_width  = field["page_width"],
+            page_height = field["page_height"],
+        ))
+
+    # Sentinel for docs with no [SIG:...] fields — avoids re-scanning on every open
+    if not raw_fields:
+        db.add(DocumentSignatureField(
+            docx_path   = docx_path,
+            pdf_path    = pdf_path,
+            sig_key     = "__none__",
+            page_number = 0,
+            x0=0, y0=0, x1=0, y1=0,
+            page_width=0, page_height=0,
+        ))
+
+    db.commit()
+    return {"pdf_path": pdf_path, "fields": raw_fields}

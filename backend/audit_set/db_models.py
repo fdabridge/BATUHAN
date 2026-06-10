@@ -513,3 +513,29 @@ class AuditSetAuditReport(Base):
 
     uploaded_by  = Column(String, nullable=True)   # PlatformUser.id of uploader
     created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Table 13 — document_signature_fields
+# Stores bounding-box coordinates of [SIG:KEY] placeholders extracted from PDFs.
+# Populated lazily when a document is first opened in the in-portal viewer.
+# Keyed by docx_path (absolute) so it's decoupled from document type.
+# ---------------------------------------------------------------------------
+
+class DocumentSignatureField(Base):
+    __tablename__ = "document_signature_fields"
+
+    id           = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    docx_path    = Column(String, nullable=False, index=True)   # absolute path to source DOCX
+    pdf_path     = Column(String, nullable=True)                # absolute path to converted PDF
+    sig_key      = Column(String, nullable=False)               # e.g. "CB_PLANNER" | "CLIENT"
+    page_number  = Column(Integer, nullable=False)              # 0-indexed
+    # Bounding box in PDF points (72 pts/inch), pdfplumber top-left origin
+    x0           = Column(Float, nullable=False)
+    y0           = Column(Float, nullable=False)
+    x1           = Column(Float, nullable=False)
+    y1           = Column(Float, nullable=False)
+    # Page dimensions (needed by viewer to compute overlay pixel positions)
+    page_width   = Column(Float, nullable=False)
+    page_height  = Column(Float, nullable=False)
+    created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)

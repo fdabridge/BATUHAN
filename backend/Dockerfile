@@ -20,6 +20,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libtiff-dev \
     # Build tools
     gcc \
+    # LibreOffice headless — DOCX → PDF conversion (Prompt 23)
+    libreoffice-writer \
+    libreoffice-calc \
+    fonts-liberation \
+    fonts-noto-core \
     && rm -rf /var/lib/apt/lists/*
 
 # -----------------------------------------------------------------------
