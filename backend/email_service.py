@@ -285,3 +285,40 @@ def send_impartiality_declaration_request(
     </div>
     """
     return _send(to, f"IFC Global — Impartiality Declaration Required: {company_name}", html)
+
+
+
+def send_audit_report_review_request(
+    to: str,
+    full_name: str,
+    company_name: str,
+    stage_label: str,
+    report_form: str,
+    label: str,
+) -> bool:
+    """Sent to the committee reviewer after the Lead Auditor signs the audit report."""
+    settings = get_settings()
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+      <h2 style="color:#1A4731">IFC Global LLC — Audit Report Ready for Review</h2>
+      <p>Dear {full_name},</p>
+      <p>The Lead Auditor has signed the audit report for <strong>{company_name}</strong>
+         ({stage_label}). As the appointed committee reviewer, your approval is required
+         before the report can be finalised.</p>
+      <div style="background:#f5f5f5;padding:16px;border-radius:6px;margin:16px 0">
+        <p style="margin:0"><strong>Form:</strong> {report_form}</p>
+        <p style="margin:4px 0 0"><strong>Report:</strong> {label}</p>
+      </div>
+      <p>Please log in to the portal, navigate to the client record, and approve the
+         report under the <strong>Audit Reports</strong> section.</p>
+      <p><a href="{settings.email_base_url}/app/clients"
+            style="background:#1A4731;color:white;padding:10px 20px;border-radius:4px;
+                   text-decoration:none">Go to Portal</a></p>
+      <p style="color:#666;font-size:12px">IFC Global LLC · application@ifcglobal.us</p>
+    </div>
+    """
+    return _send(
+        to,
+        f"IFC Global — Audit Report Ready for Review: {company_name}",
+        html,
+    )

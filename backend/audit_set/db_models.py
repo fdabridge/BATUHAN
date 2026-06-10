@@ -471,3 +471,45 @@ class AuditSetImpartialityDeclaration(Base):
     otp_expires_at = Column(DateTime, nullable=True)
 
     created_at     = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+
+# ---------------------------------------------------------------------------
+# Table 12 — audit_set_audit_reports
+# FR.231 / FR.229 / FR.232 — Formal audit reports requiring committee review.
+# Two-party signing: Lead Auditor signs first, then Committee Reviewer approves.
+# ---------------------------------------------------------------------------
+
+class AuditSetAuditReport(Base):
+    __tablename__ = "audit_set_audit_reports"
+
+    id           = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    audit_set_id = Column(String, ForeignKey("audit_sets.id", ondelete="CASCADE"), nullable=False)
+    stage_type   = Column(String, nullable=False)   # "stage_1" | "stage_2" | "surveillance" | "recertification"
+    report_form  = Column(String, nullable=False)   # "FR.231" | "FR.229" | "FR.232"
+    label        = Column(String, nullable=False)   # short description e.g. "Stage 2 Audit Report"
+    file_path    = Column(String, nullable=False)
+    file_name    = Column(String, nullable=True)
+
+    # ── Lead Auditor signature (party 1) ───────────────────────────────────
+    la_user_id      = Column(String, nullable=True)
+    la_signed_at    = Column(DateTime, nullable=True)
+    la_signed_ip    = Column(String, nullable=True)
+    la_otp_hash     = Column(String, nullable=True)
+    la_otp_expires  = Column(DateTime, nullable=True)
+
+    # ── Committee Reviewer approval (party 2) ─────────────────────────────
+    reviewer_user_id      = Column(String, nullable=True)
+    reviewer_signed_at    = Column(DateTime, nullable=True)
+    reviewer_signed_ip    = Column(String, nullable=True)
+    reviewer_otp_hash     = Column(String, nullable=True)
+    reviewer_otp_expires  = Column(DateTime, nullable=True)
+
+    # ── Status ─────────────────────────────────────────────────────────────
+    # "pending_la"     → awaiting Lead Auditor signature
+    # "pending_review" → LA signed; awaiting committee reviewer approval
+    # "approved"       → both signed — report is final
+    status       = Column(String, default="pending_la", nullable=False)
+
+    uploaded_by  = Column(String, nullable=True)   # PlatformUser.id of uploader
+    created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)

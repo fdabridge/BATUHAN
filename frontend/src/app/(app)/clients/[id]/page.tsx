@@ -16,6 +16,7 @@ import { MeetingAttendeesSection } from '@/components/ui/MeetingAttendeesSection
 import { AssessmentManagementSection } from '@/components/ui/AssessmentManagementSection'
 import { NCFormManagementSection } from '@/components/ui/NCFormManagementSection'
 import { DeclarationManagementSection } from '@/components/ui/DeclarationManagementSection'
+import { AuditReportSection } from '@/components/ui/AuditReportSection'
 import { WorkflowStatusBar } from '@/components/ui/WorkflowStatusBar'
 import type { AuditSetResponse, StageResponse, ManDayResult, AuditorSummary, AuditorAvailabilityItem, RequiredScope } from '@/types'
 
@@ -1517,6 +1518,12 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
 
       {/* Impartiality Declarations — Prompt 18 (FR.224 each audit team member self-signs) */}
       <DeclarationManagementSection
+        auditSetId={id}
+        workflowStatus={data.workflow_status ?? null}
+      />
+
+      {/* Audit Reports — Prompt 19 (FR.231/FR.229/FR.232 two-party signing) */}
+      <AuditReportSection
         auditSetId={id}
         workflowStatus={data.workflow_status ?? null}
       />
