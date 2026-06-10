@@ -377,6 +377,46 @@ class AuditSetMeetingAttendee(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+# ---------------------------------------------------------------------------
+# Table 10 — audit_set_nc_forms
+# FR.230 — Nonconformity Notification Form.
+# Two-party signing: Lead Auditor signs first, then client counter-signs.
+# ---------------------------------------------------------------------------
+
+class AuditSetNCForm(Base):
+    __tablename__ = "audit_set_nc_forms"
+
+    id           = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    audit_set_id = Column(String, ForeignKey("audit_sets.id", ondelete="CASCADE"), nullable=False)
+    stage_type   = Column(String, nullable=False)   # "stage_1" | "stage_2" | "surveillance" etc.
+    label        = Column(String, nullable=False)   # NC reference / short description
+    file_path    = Column(String, nullable=False)   # disk path, same storage_base_path convention
+    file_name    = Column(String, nullable=True)    # original filename for Content-Disposition
+
+    # ── Lead Auditor signature (party 1) ───────────────────────────────────
+    la_user_id      = Column(String, nullable=True)  # PlatformUser.id (resolved at sign time)
+    la_signed_at    = Column(DateTime, nullable=True)
+    la_signed_ip    = Column(String, nullable=True)
+    la_otp_hash     = Column(String, nullable=True)
+    la_otp_expires  = Column(DateTime, nullable=True)
+
+    # ── Client signature (party 2) ─────────────────────────────────────────
+    client_user_id  = Column(String, nullable=True)
+    client_signed_at  = Column(DateTime, nullable=True)
+    client_signed_ip  = Column(String, nullable=True)
+    client_otp_hash   = Column(String, nullable=True)
+    client_otp_expires = Column(DateTime, nullable=True)
+
+    # ── Status ─────────────────────────────────────────────────────────────
+    # "pending_la"     → awaiting Lead Auditor signature
+    # "pending_client" → LA signed; awaiting client counter-signature
+    # "complete"       → both signed
+    status       = Column(String, default="pending_la", nullable=False)
+
+    created_by   = Column(String, nullable=True)   # CB user who uploaded
+    created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 
 # ---------------------------------------------------------------------------
 # Table 9 — audit_set_auditor_assessments

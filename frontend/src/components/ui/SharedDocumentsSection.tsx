@@ -20,7 +20,6 @@ const DOC_TYPES = [
   { value: 'quotation',   label: 'Quotation (FR.220)' },
   { value: 'agreement',   label: 'Agreement (FR.221)' },
   { value: 'audit_plan',  label: 'Audit Plan (FR.223)' },
-  { value: 'nc_form',     label: 'NC Notification (FR.230)' },
   { value: 'certificate', label: 'Certificate' },
 ]
 

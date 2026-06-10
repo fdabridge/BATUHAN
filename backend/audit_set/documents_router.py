@@ -30,7 +30,7 @@ router = APIRouter(prefix="/audit-sets", tags=["documents"])
 
 CB_ROLES = {"admin", "planner", "officer", "executive"}
 AUDITOR_UPLOAD_ROLES = {"auditor", "admin", "planner"}
-ALLOWED_DOC_TYPES = {"quotation", "agreement", "certificate"}
+ALLOWED_DOC_TYPES = {"quotation", "agreement", "certificate", "audit_plan"}
 
 OTP_EXPIRY_MINUTES = 10
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"

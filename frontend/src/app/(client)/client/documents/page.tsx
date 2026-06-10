@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import api from '@/lib/api'
+import { NCFormClientSection } from '@/components/ui/NCFormClientSection'
 
 type DocStatus = 'released' | 'signed'
 
@@ -220,6 +221,8 @@ export default function ClientDocumentsPage() {
           ))}
         </div>
       )}
+
+      <NCFormClientSection />
     </div>
   )
 }

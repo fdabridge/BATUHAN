@@ -31,6 +31,7 @@ from audit_set.committee_router import router as committee_router
 from audit_set.meeting_router import protected_router as meeting_protected_router
 from audit_set.meeting_router import public_router as meeting_public_router
 from audit_set.assessment_router import router as assessment_router
+from audit_set.nc_router import router as nc_router
 from audit_set.auditor_router import router as auditor_router
 
 settings = get_settings()
@@ -81,6 +82,7 @@ app.include_router(committee_router)
 app.include_router(meeting_protected_router)
 app.include_router(meeting_public_router)
 app.include_router(assessment_router)
+app.include_router(nc_router)
 app.include_router(documents_router)
 app.include_router(audit_sets_router, prefix="/audit-sets", tags=["audit-sets"])
 app.include_router(auth_router, prefix="/auth", tags=["auth"])

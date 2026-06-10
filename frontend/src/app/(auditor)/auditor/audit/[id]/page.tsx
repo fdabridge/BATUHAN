@@ -46,7 +46,7 @@ interface AssignmentDetail {
   stages:                 Stage[]
 }
 
-type Tab = 'overview' | 'messages' | 'upload' | 'attendees'
+type Tab = 'overview' | 'messages' | 'upload' | 'attendees' | 'nc_forms'
 
 function AuditorAttendeesView({ auditSetId }: { auditSetId: string }) {
   const [attendees, setAttendees] = useState<{
@@ -177,6 +177,192 @@ function AuditorAttendeesView({ auditSetId }: { auditSetId: string }) {
   )
 }
 
+function AuditorNCFormsView({ auditSetId }: { auditSetId: string }) {
+  const [forms, setForms]   = useState<{
+    id: string; stage_type: string; label: string; file_name: string | null; status: string;
+    la_signed_at: string | null;
+  }[]>([])
+  const [loading, setLoading] = useState(true)
+  const [otpState, setOtpState] = useState<Record<string, 'idle' | 'otp_sent' | 'done'>>({})
+  const [otpValues, setOtpValues] = useState<Record<string, string>>({})
+  const [messages, setMessages]   = useState<Record<string, string>>({})
+  const [busy, setBusy]           = useState<Record<string, boolean>>({})
+
+  const STAGE_LABELS: Record<string, string> = {
+    stage_1: 'Stage 1', stage_2: 'Stage 2', surveillance: 'Surveillance',
+    recertification: 'Recertification',
+  }
+
+  useEffect(() => {
+    api.get(`/audit-sets/${auditSetId}/nc-forms`)
+      .then(r => setForms(r.data as typeof forms))
+      .finally(() => setLoading(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auditSetId])
+
+  async function download(id: string, fileName: string | null) {
+    const r = await api.get(`/audit-sets/${auditSetId}/nc-forms/${id}/download`, {
+      responseType: 'blob',
+    })
+    const url = window.URL.createObjectURL(new Blob([r.data as Blob]))
+    const a   = document.createElement('a')
+    a.href = url; a.download = fileName || 'nc_form.docx'
+    document.body.appendChild(a); a.click(); a.remove()
+    window.URL.revokeObjectURL(url)
+  }
+
+  async function requestOtp(id: string) {
+    setBusy(b => ({ ...b, [id]: true }))
+    setMessages(m => ({ ...m, [id]: '' }))
+    try {
+      await api.post(`/audit-sets/${auditSetId}/nc-forms/${id}/sign/la/request-otp`)
+      setOtpState(s => ({ ...s, [id]: 'otp_sent' }))
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setMessages(m => ({ ...m, [id]: detail || 'Failed to send code' }))
+    } finally {
+      setBusy(b => ({ ...b, [id]: false }))
+    }
+  }
+
+  async function verifyOtp(id: string) {
+    setBusy(b => ({ ...b, [id]: true }))
+    setMessages(m => ({ ...m, [id]: '' }))
+    try {
+      await api.post(
+        `/audit-sets/${auditSetId}/nc-forms/${id}/sign/la/verify?otp=${otpValues[id] ?? ''}`,
+      )
+      setOtpState(s => ({ ...s, [id]: 'done' }))
+      setForms(prev => prev.map(f => f.id === id
+        ? { ...f, status: 'pending_client', la_signed_at: new Date().toISOString() }
+        : f
+      ))
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setMessages(m => ({ ...m, [id]: detail || 'Invalid code' }))
+    } finally {
+      setBusy(b => ({ ...b, [id]: false }))
+    }
+  }
+
+  if (loading) return <p className="text-sm text-gray-400">Loading…</p>
+
+  const pending = forms.filter(f => f.status === 'pending_la')
+  const completed = forms.filter(f => f.status !== 'pending_la')
+
+  return (
+    <div className="space-y-4">
+      {forms.length === 0 && (
+        <p className="py-8 text-center text-sm text-gray-400">No NC forms for your stages.</p>
+      )}
+
+      {pending.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-600">
+            Awaiting Your Signature
+          </p>
+          <div className="space-y-3">
+            {pending.map(f => {
+              const state = otpState[f.id] || 'idle'
+              return (
+                <div key={f.id} className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                  <div className="mb-3 flex items-start justify-between">
+                    <div>
+                      <p className="font-medium text-gray-800">{f.label}</p>
+                      <p className="text-xs text-gray-400">
+                        {STAGE_LABELS[f.stage_type] ?? f.stage_type}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => download(f.id, f.file_name)}
+                      className="text-xs text-[#1A4731] underline"
+                    >
+                      Download
+                    </button>
+                  </div>
+                  {state === 'idle' && (
+                    <button
+                      type="button"
+                      onClick={() => requestOtp(f.id)}
+                      disabled={busy[f.id]}
+                      className="rounded-lg bg-[#1A4731] px-4 py-2 text-sm text-white disabled:opacity-40"
+                    >
+                      {busy[f.id] ? 'Sending…' : 'Sign NC Form'}
+                    </button>
+                  )}
+                  {state === 'otp_sent' && (
+                    <div className="flex items-center gap-3">
+                      <input
+                        className="w-36 rounded-lg border px-3 py-2 text-center font-mono text-lg tracking-widest"
+                        placeholder="000000" maxLength={6}
+                        value={otpValues[f.id] ?? ''}
+                        onChange={e => setOtpValues(v => ({
+                          ...v, [f.id]: e.target.value.replace(/\D/g, ''),
+                        }))}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => verifyOtp(f.id)}
+                        disabled={(otpValues[f.id] ?? '').length !== 6 || busy[f.id]}
+                        className="rounded-lg bg-[#1A4731] px-4 py-2 text-sm text-white disabled:opacity-40"
+                      >
+                        {busy[f.id] ? '…' : 'Confirm'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => requestOtp(f.id)}
+                        className="text-xs text-gray-400 underline"
+                      >
+                        Resend
+                      </button>
+                    </div>
+                  )}
+                  {state === 'done' && (
+                    <p className="text-sm text-green-600 font-medium">Signed ✓ — client has been notified.</p>
+                  )}
+                  {messages[f.id] && (
+                    <p className="mt-1 text-xs text-red-500">{messages[f.id]}</p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {completed.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+            Signed
+          </p>
+          <div className="rounded-xl border bg-white divide-y divide-gray-50">
+            {completed.map(f => (
+              <div key={f.id} className="flex items-center justify-between px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-gray-800">{f.label}</p>
+                  <p className="text-xs text-gray-400">
+                    {STAGE_LABELS[f.stage_type] ?? f.stage_type} ·{' '}
+                    {f.status === 'complete' ? 'Both parties signed' : 'Awaiting client'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => download(f.id, f.file_name)}
+                  className="text-xs text-[#1A4731] underline"
+                >
+                  Download
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 export default function AuditorAuditDetail() {
   const { id } = useParams<{ id: string }>()
   const [data, setData]   = useState<AssignmentDetail | null>(null)
@@ -260,7 +446,7 @@ export default function AuditorAuditDetail() {
 
       {/* Tabs */}
       <div className="mb-6 flex w-fit gap-1 rounded-lg bg-gray-100 p-1">
-        {(['overview', 'messages', 'upload', 'attendees'] as const).map((t) => (
+        {(['overview', 'messages', 'upload', 'attendees', 'nc_forms'] as const).map((t) => (
           <button
             key={t}
             type="button"
@@ -271,7 +457,10 @@ export default function AuditorAuditDetail() {
                 : 'text-gray-500 hover:text-gray-700'
             }`}
           >
-            {t === 'upload' ? 'Upload Documents' : t === 'attendees' ? 'Attendees' : t}
+            {t === 'upload' ? 'Upload Documents'
+              : t === 'attendees' ? 'Attendees'
+              : t === 'nc_forms' ? 'NC Forms'
+              : t}
           </button>
         ))}
       </div>
@@ -395,6 +584,11 @@ export default function AuditorAuditDetail() {
       {/* Attendees tab — Prompt 15 (FR.225 meeting attendance roster) */}
       {tab === 'attendees' && (
         <AuditorAttendeesView auditSetId={id} />
+      )}
+
+      {/* NC Forms tab — Prompt 17 (FR.230 Lead Auditor signs first) */}
+      {tab === 'nc_forms' && (
+        <AuditorNCFormsView auditSetId={id} />
       )}
     </div>
   )

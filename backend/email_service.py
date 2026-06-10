@@ -199,3 +199,61 @@ def send_new_message_notification(to: str, full_name: str, sender_name: str) -> 
     </div>
     """
     return _send(to, f"IFC Global — New message from {sender_name}", html)
+
+
+def send_nc_form_la_request(
+    to: str,
+    full_name: str,
+    company_name: str,
+    stage_label: str,
+    nc_label: str,
+) -> bool:
+    """Sent to Lead Auditor when CB uploads an NC form requiring their signature."""
+    settings = get_settings()
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+      <h2 style="color:#1A4731">IFC Global LLC — NC Form Signature Required</h2>
+      <p>Dear {full_name},</p>
+      <p>An NC Form has been uploaded for your signature for the audit of
+         <strong>{company_name}</strong> ({stage_label}):</p>
+      <div style="background:#f5f5f5;padding:16px;border-radius:6px;margin:16px 0">
+        <strong>{nc_label}</strong>
+      </div>
+      <p>Please log in to the portal and navigate to the NC Forms tab in your audit
+         assignment to review and sign.</p>
+      <p><a href="{settings.email_base_url}/auditor/dashboard"
+            style="background:#1A4731;color:white;padding:10px 20px;border-radius:4px;
+                   text-decoration:none">Go to Portal</a></p>
+      <p style="color:#666;font-size:12px">IFC Global LLC · application@ifcglobal.us</p>
+    </div>
+    """
+    return _send(to, f"IFC Global — NC Form Signature Required: {company_name}", html)
+
+
+def send_nc_form_client_ready(
+    to: str,
+    full_name: str,
+    company_name: str,
+    nc_label: str,
+) -> bool:
+    """Sent to client after Lead Auditor signs — NC form ready for counter-signature."""
+    settings = get_settings()
+    portal_url = f"{settings.email_base_url}/client/documents"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+      <h2 style="color:#1A4731">IFC Global LLC — NC Form Ready for Your Signature</h2>
+      <p>Dear {full_name},</p>
+      <p>An NC Form related to your certification audit has been signed by the Lead Auditor
+         and is now ready for your counter-signature:</p>
+      <div style="background:#FFF3E0;padding:16px;border-radius:6px;margin:16px 0;
+                  border-left:4px solid #E65100">
+        <strong>{nc_label}</strong>
+      </div>
+      <p>Please log in to review the form and provide your signature.</p>
+      <p><a href="{portal_url}"
+            style="background:#1A4731;color:white;padding:10px 20px;border-radius:4px;
+                   text-decoration:none">Review &amp; Sign</a></p>
+      <p style="color:#666;font-size:12px">IFC Global LLC · application@ifcglobal.us</p>
+    </div>
+    """
+    return _send(to, f"IFC Global — NC Form Ready for Counter-Signature", html)

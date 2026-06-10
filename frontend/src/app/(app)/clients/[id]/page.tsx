@@ -14,6 +14,7 @@ import { InternalApprovalsSection } from '@/components/ui/InternalApprovalsSecti
 import { CommitteeSection } from '@/components/ui/CommitteeSection'
 import { MeetingAttendeesSection } from '@/components/ui/MeetingAttendeesSection'
 import { AssessmentManagementSection } from '@/components/ui/AssessmentManagementSection'
+import { NCFormManagementSection } from '@/components/ui/NCFormManagementSection'
 import { WorkflowStatusBar } from '@/components/ui/WorkflowStatusBar'
 import type { AuditSetResponse, StageResponse, ManDayResult, AuditorSummary, AuditorAvailabilityItem, RequiredScope } from '@/types'
 
@@ -1503,6 +1504,12 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
 
       {/* Auditor Assessments — Prompt 16 (FR.211 client rates auditors post-audit) */}
       <AssessmentManagementSection
+        auditSetId={id}
+        workflowStatus={data.workflow_status ?? null}
+      />
+
+      {/* NC Forms — Prompt 17 (FR.230 two-party signing: Lead Auditor → client) */}
+      <NCFormManagementSection
         auditSetId={id}
         workflowStatus={data.workflow_status ?? null}
       />
