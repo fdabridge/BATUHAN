@@ -375,3 +375,32 @@ class AuditSetMeetingAttendee(Base):
     closing_signed_ip   = Column(String, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+
+# ---------------------------------------------------------------------------
+# Table 9 — audit_set_auditor_assessments
+# FR.211 — Client evaluates each auditor after an audit stage (ISO 17021-1).
+# ---------------------------------------------------------------------------
+
+class AuditSetAuditorAssessment(Base):
+    __tablename__ = "audit_set_auditor_assessments"
+
+    id              = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    audit_set_id    = Column(String, ForeignKey("audit_sets.id", ondelete="CASCADE"), nullable=False)
+    stage_type      = Column(String, nullable=False)  # "stage_1" | "stage_2" | "surveillance"
+    stage_order     = Column(Integer, nullable=True)  # disambiguates multiple surveillance stages
+    auditor_name    = Column(String, nullable=False)  # denormalized
+    auditor_role    = Column(String, nullable=True)   # "Lead Auditor" | "Team Auditor"
+    auditor_ref_id  = Column(String, nullable=True)   # soft FK → auditors.auditors.id
+    # Client evaluation (filled before signing)
+    rating          = Column(Integer, nullable=True)  # 1–5
+    comments        = Column(Text, nullable=True)
+    # Signature
+    signed_by       = Column(String, nullable=True)   # PlatformUser.id
+    signed_at       = Column(DateTime, nullable=True)
+    signed_ip       = Column(String, nullable=True)
+    otp_hash        = Column(String, nullable=True)
+    otp_expires_at  = Column(DateTime, nullable=True)
+
+    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)

@@ -6,9 +6,10 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 
 const NAV = [
-  { href: '/client/overview',  label: 'Overview'  },
-  { href: '/client/documents', label: 'Documents' },
-  { href: '/client/messages',  label: 'Messages'  },
+  { href: '/client/overview',    label: 'Overview'    },
+  { href: '/client/documents',   label: 'Documents'   },
+  { href: '/client/assessments', label: 'Assessments' },
+  { href: '/client/messages',    label: 'Messages'    },
 ]
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {

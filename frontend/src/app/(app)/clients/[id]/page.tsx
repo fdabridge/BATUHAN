@@ -13,6 +13,7 @@ import { SharedDocumentsSection } from '@/components/ui/SharedDocumentsSection'
 import { InternalApprovalsSection } from '@/components/ui/InternalApprovalsSection'
 import { CommitteeSection } from '@/components/ui/CommitteeSection'
 import { MeetingAttendeesSection } from '@/components/ui/MeetingAttendeesSection'
+import { AssessmentManagementSection } from '@/components/ui/AssessmentManagementSection'
 import { WorkflowStatusBar } from '@/components/ui/WorkflowStatusBar'
 import type { AuditSetResponse, StageResponse, ManDayResult, AuditorSummary, AuditorAvailabilityItem, RequiredScope } from '@/types'
 
@@ -1496,6 +1497,12 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
 
       {/* Meeting Attendees — Prompt 15 (FR.225 opening / closing meeting signatures) */}
       <MeetingAttendeesSection
+        auditSetId={id}
+        workflowStatus={data.workflow_status ?? null}
+      />
+
+      {/* Auditor Assessments — Prompt 16 (FR.211 client rates auditors post-audit) */}
+      <AssessmentManagementSection
         auditSetId={id}
         workflowStatus={data.workflow_status ?? null}
       />
