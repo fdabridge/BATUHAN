@@ -10,9 +10,8 @@ import os
 import secrets
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from audit_set.db_models import AuditSet, AuditSetSharedDocument, AuditSetStatusEvent, get_db
@@ -97,35 +96,39 @@ def _auto_advance_workflow(
 
 # ── CB: release a document to the client ────────────────────────────────────
 
-class DocumentReleaseSchema(BaseModel):
-    label: str
-    document_type: str
-    file_path: str
-
-
 @router.post("/{audit_set_id}/documents/release")
-def release_document(
+async def release_document(
     audit_set_id: str,
-    payload: DocumentReleaseSchema,
+    label: str = Form(...),
+    document_type: str = Form(...),
+    file: UploadFile = File(...),
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     if current_user.role not in CB_ROLES:
         raise HTTPException(403, "Not authorized")
-    if payload.document_type not in ALLOWED_DOC_TYPES:
+    if document_type not in ALLOWED_DOC_TYPES:
         raise HTTPException(400, f"Invalid document_type. Expected one of: {sorted(ALLOWED_DOC_TYPES)}")
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
     if not audit_set:
         raise HTTPException(404, "Audit set not found")
-    if not os.path.exists(payload.file_path):
-        raise HTTPException(400, f"File not found on server: {payload.file_path}")
+
+    # Persist the uploaded file alongside auditor uploads, under a sibling folder
+    settings = get_settings()
+    upload_dir = os.path.join(settings.storage_base_path, "shared_docs", audit_set_id)
+    os.makedirs(upload_dir, exist_ok=True)
+    safe_name = f"{secrets.token_hex(6)}_{file.filename}"
+    file_path = os.path.join(upload_dir, safe_name)
+    content = await file.read()
+    with open(file_path, "wb") as f:
+        f.write(content)
 
     doc = AuditSetSharedDocument(
         audit_set_id=audit_set_id,
-        label=payload.label,
-        document_type=payload.document_type,
-        file_path=payload.file_path,
+        label=label,
+        document_type=document_type,
+        file_path=file_path,
         direction="cb_to_client",
         status="released",
         released_by=current_user.id,
@@ -143,13 +146,13 @@ def release_document(
             send_document_released(
                 to=client_user.email,
                 full_name=client_user.full_name,
-                document_label=payload.label,
+                document_label=label,
             )
         except Exception:
             pass
 
     # Auto-advance: releasing the quotation moves planning → quotation_sent
-    if payload.document_type == "quotation":
+    if document_type == "quotation":
         _auto_advance_workflow(
             db, auth_db, audit_set,
             expected_from="in_planning",

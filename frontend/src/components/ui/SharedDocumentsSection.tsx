@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import api from '@/lib/api'
 
 interface SharedDoc {
@@ -33,9 +33,10 @@ export function SharedDocumentsSection({ auditSetId }: { auditSetId: string }) {
   const [showForm, setShowForm] = useState(false)
   const [label, setLabel]     = useState('')
   const [docType, setDocType] = useState('quotation')
-  const [filePath, setFilePath] = useState('')
+  const [file, setFile]       = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError]     = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
 
   async function load() {
     try {
@@ -50,18 +51,19 @@ export function SharedDocumentsSection({ auditSetId }: { auditSetId: string }) {
 
   async function release() {
     setError('')
-    if (!label.trim() || !filePath.trim()) {
-      setError('Label and file path are required.')
-      return
-    }
+    if (!label.trim()) { setError('Label is required.'); return }
+    if (!file)         { setError('Please select a file to upload.'); return }
     setSubmitting(true)
     try {
-      await api.post(`/audit-sets/${auditSetId}/documents/release`, {
-        label: label.trim(),
-        document_type: docType,
-        file_path: filePath.trim(),
+      const fd = new FormData()
+      fd.append('label', label.trim())
+      fd.append('document_type', docType)
+      fd.append('file', file)
+      await api.post(`/audit-sets/${auditSetId}/documents/release`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
       })
-      setLabel(''); setFilePath(''); setDocType('quotation')
+      setLabel(''); setFile(null); setDocType('quotation')
+      if (fileRef.current) fileRef.current.value = ''
       setShowForm(false)
       await load()
     } catch (err: unknown) {
@@ -82,7 +84,7 @@ export function SharedDocumentsSection({ auditSetId }: { auditSetId: string }) {
       const url = window.URL.createObjectURL(r.data as Blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${docLabel}.docx`
+      a.download = docLabel
       document.body.appendChild(a)
       a.click()
       a.remove()
@@ -132,12 +134,13 @@ export function SharedDocumentsSection({ auditSetId }: { auditSetId: string }) {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500">Server file path</label>
+              <label className="block text-xs font-medium text-gray-500">File</label>
               <input
-                value={filePath}
-                onChange={(e) => setFilePath(e.target.value)}
-                placeholder="/path/to/generated.docx"
-                className="mt-1 w-full rounded-lg border px-3 py-1.5 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-[#1A4731]/30"
+                ref={fileRef}
+                type="file"
+                accept=".docx,.pdf"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                className="mt-1 w-full rounded-lg border px-3 py-1.5 text-sm text-gray-700 file:mr-2 file:rounded file:border-0 file:bg-gray-100 file:px-2 file:py-0.5 file:text-xs focus:outline-none"
               />
             </div>
           </div>
@@ -148,7 +151,7 @@ export function SharedDocumentsSection({ auditSetId }: { auditSetId: string }) {
             disabled={submitting}
             className="mt-3 rounded-lg bg-[#1A4731] px-4 py-1.5 text-sm font-medium text-white disabled:opacity-40"
           >
-            {submitting ? 'Releasing…' : 'Release to Client'}
+            {submitting ? 'Uploading…' : 'Release to Client'}
           </button>
         </div>
       )}

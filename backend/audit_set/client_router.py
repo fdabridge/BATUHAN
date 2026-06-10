@@ -221,8 +221,9 @@ def client_verify_otp(
     otp: str,
     request: Request,
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     from audit_set.documents_router import verify_sign_otp
     audit_set = _get_client_audit_set(current_user, db)
-    return verify_sign_otp(audit_set.id, doc_id, request, otp, db, current_user)
+    return verify_sign_otp(audit_set.id, doc_id, request, otp, db, auth_db, current_user)
