@@ -10,6 +10,7 @@ import {
   Users,
   Calculator,
   Inbox,
+  PenLine,
   UserCog,
   Settings,
   type LucideIcon,
@@ -115,8 +116,9 @@ const NAV_TOP: NavItemProps[] = [
 const CB_REVIEW_ROLES = new Set(['admin', 'planner', 'officer', 'executive'])
 
 const NAV_BOTTOM: NavItemProps[] = [
-  { icon: UserCog,  label: 'Users',    href: '/admin/users', active: false },
-  { icon: Settings, label: 'Settings', href: '/settings',    active: false },
+  { icon: UserCog,  label: 'Users',        href: '/admin/users',        active: false },
+  { icon: PenLine,  label: 'My Signature', href: '/settings/signature', active: false },
+  { icon: Settings, label: 'Settings',     href: '/settings',           active: false },
 ]
 
 // ── Sidebar ──────────────────────────────────────────────────────────────────

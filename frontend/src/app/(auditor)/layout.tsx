@@ -6,7 +6,8 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 
 const NAV = [
-  { href: '/auditor/dashboard', label: 'My Audits' },
+  { href: '/auditor/dashboard', label: 'My Audits'    },
+  { href: '/auditor/signature', label: 'My Signature' },
 ]
 
 export default function AuditorLayout({ children }: { children: React.ReactNode }) {

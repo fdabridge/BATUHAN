@@ -67,3 +67,14 @@ class PlatformUser(Base):
     last_login    = Column(DateTime, nullable=True)
     created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at    = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class UserSignature(Base):
+    __tablename__ = "user_signatures"
+
+    id         = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id    = Column(String, nullable=False, unique=True, index=True)  # soft FK → platform_users.id
+    image_data = Column(String, nullable=False)  # base64 PNG data URL (data:image/png;base64,...)
+    source     = Column(String, nullable=False)  # "drawn" | "uploaded"
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

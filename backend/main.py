@@ -35,6 +35,7 @@ from audit_set.nc_router import router as nc_router
 from audit_set.declaration_router import router as declaration_router
 from audit_set.report_router import router as report_router
 from audit_set.auditor_router import router as auditor_router
+from auth.user_signature_router import router as user_signature_router
 
 settings = get_settings()
 
@@ -99,6 +100,8 @@ app.include_router(apply_router)
 app.include_router(client_router)
 # Auditor portal — auth + assignment check enforced per-endpoint.
 app.include_router(auditor_router)
+# User signature profile — all portal users (CB / auditor / client).
+app.include_router(user_signature_router)
 
 
 # --- Startup: create DB tables + first-admin bootstrap ---
