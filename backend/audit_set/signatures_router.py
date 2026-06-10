@@ -56,17 +56,37 @@ def get_my_pending_signatures(
     db: Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
-    """All unsigned signature slots assigned to the current user. Powers the dashboard widget."""
+    """Unsigned signature slots assigned to (or claimable by) the current user."""
     if current_user.role not in CB_ROLES:
         raise HTTPException(403, "Not authorized")
 
-    sigs = (
+    # Slots explicitly assigned to me
+    assigned = (
         db.query(AuditDocumentSignature)
         .filter_by(signer_user_id=current_user.id)
         .filter(AuditDocumentSignature.signed_at.is_(None))
-        .order_by(AuditDocumentSignature.created_at)
         .all()
     )
+
+    # Unassigned slots this user is eligible to claim
+    eligible_labels: list[str] = []
+    if current_user.role in ("admin", "executive"):
+        eligible_labels.append("cb_cert_manager")
+    # cb_reviewer eligibility (EA-code check added in Prompt 14)
+    if current_user.role in ("admin", "executive", "auditor"):
+        eligible_labels.append("cb_reviewer")
+
+    unassigned: list[AuditDocumentSignature] = []
+    if eligible_labels:
+        unassigned = (
+            db.query(AuditDocumentSignature)
+            .filter(AuditDocumentSignature.signer_user_id.is_(None))
+            .filter(AuditDocumentSignature.signer_role_label.in_(eligible_labels))
+            .filter(AuditDocumentSignature.signed_at.is_(None))
+            .all()
+        )
+
+    sigs = assigned + unassigned
 
     results = []
     for s in sigs:
@@ -100,8 +120,23 @@ def request_cb_signature_otp(
     ).first()
     if not sig:
         raise HTTPException(404, "Signature request not found")
-    if sig.signer_user_id != current_user.id:
+
+    # Self-assign if the slot is unassigned and the caller is eligible
+    if sig.signer_user_id is None:
+        eligible = False
+        if sig.signer_role_label == "cb_cert_manager" and current_user.role in ("admin", "executive"):
+            eligible = True
+        if sig.signer_role_label == "cb_reviewer" and current_user.role in ("admin", "executive", "auditor"):
+            eligible = True
+        if not eligible:
+            raise HTTPException(403, "You are not eligible to sign this slot")
+        sig.signer_user_id = current_user.id
+        sig.signer_name    = current_user.full_name
+        sig.signer_email   = current_user.email
+        db.commit()
+    elif sig.signer_user_id != current_user.id:
         raise HTTPException(403, "This signature is not assigned to you")
+
     if sig.signed_at:
         raise HTTPException(400, "Already signed")
 
@@ -147,8 +182,22 @@ def verify_cb_signature(
     ).first()
     if not sig:
         raise HTTPException(404, "Signature request not found")
-    if sig.signer_user_id != current_user.id:
+
+    # Self-assign if unassigned and caller is eligible
+    if sig.signer_user_id is None:
+        eligible = False
+        if sig.signer_role_label == "cb_cert_manager" and current_user.role in ("admin", "executive"):
+            eligible = True
+        if sig.signer_role_label == "cb_reviewer" and current_user.role in ("admin", "executive", "auditor"):
+            eligible = True
+        if not eligible:
+            raise HTTPException(403, "You are not eligible to sign this slot")
+        sig.signer_user_id = current_user.id
+        sig.signer_name    = current_user.full_name
+        sig.signer_email   = current_user.email
+    elif sig.signer_user_id != current_user.id:
         raise HTTPException(403, "This signature is not assigned to you")
+
     if sig.signed_at:
         raise HTTPException(400, "Already signed")
     if not sig.otp_hash or not sig.otp_expires_at:
@@ -206,3 +255,99 @@ def verify_cb_signature(
                         pass
 
     return {"signed": True, "signed_at": sig.signed_at.isoformat()}
+
+
+
+@router.get("/{audit_set_id}/internal-signatures")
+def get_internal_signatures(
+    audit_set_id: str,
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """
+    Returns all internal-document signature slots (FR218, FR222) for this audit set.
+    CB only. Powers the InternalApprovalsSection on the client detail page.
+    """
+    if current_user.role not in CB_ROLES:
+        raise HTTPException(403, "Not authorized")
+
+    sigs = (
+        db.query(AuditDocumentSignature)
+        .filter_by(audit_set_id=audit_set_id)
+        .filter(AuditDocumentSignature.document_type.in_(["FR218", "FR222"]))
+        .order_by(AuditDocumentSignature.document_type, AuditDocumentSignature.order_index)
+        .all()
+    )
+
+    eligible_labels: set[str] = set()
+    if current_user.role in ("admin", "executive"):
+        eligible_labels.add("cb_cert_manager")
+    if current_user.role in ("admin", "executive", "auditor"):
+        eligible_labels.add("cb_reviewer")
+
+    return [
+        {
+            "id":                  s.id,
+            "document_type":       s.document_type,
+            "signer_role_label":   s.signer_role_label,
+            "signer_name":         s.signer_name,
+            "signer_user_id":      s.signer_user_id,
+            "is_signed":           s.signed_at is not None,
+            "signed_at":           s.signed_at.isoformat() if s.signed_at else None,
+            "is_mine":             s.signer_user_id == current_user.id,
+            "can_claim":           s.signer_user_id is None
+                                   and s.signer_role_label in eligible_labels
+                                   and s.signed_at is None,
+            "pending_appointment": s.signer_role_label == "cb_reviewer" and s.signer_user_id is None,
+            "required":            s.required,
+            "order_index":         s.order_index,
+        }
+        for s in sigs
+    ]
+
+
+@router.post("/{audit_set_id}/signatures/create-fr222")
+def create_fr222_signatures(
+    audit_set_id: str,
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """
+    Planner triggers creation of FR.222 Audit Programme signature slots.
+    Idempotent — if slots already exist, returns without creating duplicates.
+    """
+    if current_user.role not in {"admin", "planner"}:
+        raise HTTPException(403, "Only planners can create the audit programme signature")
+
+    existing = (
+        db.query(AuditDocumentSignature)
+        .filter_by(audit_set_id=audit_set_id, document_type="FR222")
+        .first()
+    )
+    if existing:
+        return {"created": False, "message": "FR.222 signature slots already exist"}
+
+    db.add(AuditDocumentSignature(
+        audit_set_id=audit_set_id,
+        document_id=None,
+        document_type="FR222",
+        signer_role_label="cb_planner",
+        signer_user_id=current_user.id,
+        signer_name=current_user.full_name,
+        signer_email=current_user.email,
+        required=True,
+        order_index=0,
+    ))
+    db.add(AuditDocumentSignature(
+        audit_set_id=audit_set_id,
+        document_id=None,
+        document_type="FR222",
+        signer_role_label="cb_cert_manager",
+        signer_user_id=None,
+        signer_name=None,
+        signer_email=None,
+        required=True,
+        order_index=1,
+    ))
+    db.commit()
+    return {"created": True}

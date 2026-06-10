@@ -10,6 +10,7 @@ import { useAuth } from '@/lib/auth'
 import { CertBadge } from '@/components/ui/CertBadge'
 import { MessageThread } from '@/components/ui/MessageThread'
 import { SharedDocumentsSection } from '@/components/ui/SharedDocumentsSection'
+import { InternalApprovalsSection } from '@/components/ui/InternalApprovalsSection'
 import { WorkflowStatusBar } from '@/components/ui/WorkflowStatusBar'
 import type { AuditSetResponse, StageResponse, ManDayResult, AuditorSummary, AuditorAvailabilityItem, RequiredScope } from '@/types'
 
@@ -1478,6 +1479,12 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
 
       {/* Shared Documents — Prompt 07 (additive, bottom of page) */}
       <SharedDocumentsSection auditSetId={id} />
+
+      {/* Internal CB Approvals — Prompt 13 (FR.218 / FR.222) */}
+      <InternalApprovalsSection
+        auditSetId={id}
+        workflowStatus={data.workflow_status ?? null}
+      />
     </div>
   )
 }

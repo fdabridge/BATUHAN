@@ -19,7 +19,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from audit_set.db_models import AuditSet, AuditSetStatusEvent, get_db as get_audit_db
+from audit_set.db_models import (
+    AuditDocumentSignature,
+    AuditSet,
+    AuditSetStatusEvent,
+    get_db as get_audit_db,
+)
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
 from email_service import send_client_status_update
@@ -136,6 +141,48 @@ def update_workflow_status(
     )
     db.add(event)
     db.commit()
+
+    # When a planner approves an application, seed the FR.218 (Application
+    # Review) signature slots. The cb_reviewer slot is only created when an
+    # FSMS/ISMS standard is in scope (it's filled by the committee in Prompt 14).
+    if from_status == "pending_review" and to_status == "in_planning":
+        db.add(AuditDocumentSignature(
+            audit_set_id=audit_set_id,
+            document_id=None,
+            document_type="FR218",
+            signer_role_label="cb_planner",
+            signer_user_id=current_user.id,
+            signer_name=current_user.full_name,
+            signer_email=current_user.email,
+            required=True,
+            order_index=0,
+        ))
+        fsms_isms = {"FSMS", "ISMS", "ISO 22000", "ISO 27001", "FSSC 22000"}
+        standards = set(audit_set.standards or [])
+        if standards & fsms_isms:
+            db.add(AuditDocumentSignature(
+                audit_set_id=audit_set_id,
+                document_id=None,
+                document_type="FR218",
+                signer_role_label="cb_reviewer",
+                signer_user_id=None,
+                signer_name=None,
+                signer_email=None,
+                required=True,
+                order_index=1,
+            ))
+        db.add(AuditDocumentSignature(
+            audit_set_id=audit_set_id,
+            document_id=None,
+            document_type="FR218",
+            signer_role_label="cb_cert_manager",
+            signer_user_id=None,
+            signer_name=None,
+            signer_email=None,
+            required=True,
+            order_index=2,
+        ))
+        db.commit()
 
     # Notify linked client account (silent failure — email is best-effort)
     client_user = auth_db.query(PlatformUser).filter_by(
