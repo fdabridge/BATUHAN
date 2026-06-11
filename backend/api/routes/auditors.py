@@ -141,15 +141,36 @@ def bulk_import_json(
 
     # ── Optional purge ──────────────────────────────────────────────────────
     if payload.replace_all:
+        from auditors.models import (
+            AuditorStandardQualification, AuditorEducation, AuditorLanguage,
+            AuditorWorkExperience, AuditorTrainingRecord, AuditorAuditLog,
+            AuditorWitnessRecord,
+        )
         existing_auditors = db.query(AuditorModel).all()
-        auditor_ids = {a.id for a in existing_auditors}
-        auth_db.query(PU).filter(
-            PU.auditor_id.in_(auditor_ids)
-        ).delete(synchronize_session=False)
-        auth_db.commit()
+        auditor_ids = [a.id for a in existing_auditors]
+
+        if auditor_ids:
+            # Delete linked PlatformUser accounts first
+            auth_db.query(PU).filter(
+                PU.auditor_id.in_(auditor_ids)
+            ).delete(synchronize_session=False)
+            auth_db.commit()
+
+            # Delete all child tables before auditors (bypass ORM cascade for bulk delete)
+            for child_model in (
+                AuditorStandardQualification, AuditorEducation, AuditorLanguage,
+                AuditorWorkExperience, AuditorTrainingRecord, AuditorAuditLog,
+                AuditorWitnessRecord,
+            ):
+                db.query(child_model).filter(
+                    child_model.auditor_id.in_(auditor_ids)
+                ).delete(synchronize_session=False)
+            db.commit()
+
+        # Now delete the auditors themselves
         db.query(AuditorModel).delete(synchronize_session=False)
         db.commit()
-        logger.info("[BulkImport] Purged all existing auditors")
+        logger.info("[BulkImport] Purged all existing auditors and child records")
 
     # ── Track used usernames for deduplication ──────────────────────────────
     existing_usernames: set[str] = {
@@ -238,15 +259,34 @@ def purge_all_auditors(
     Delete ALL auditor records and their linked portal accounts.
     Admin-only. Use before a clean re-import.
     """
-    from auditors.models import Auditor as AuditorModel
+    from auditors.models import (
+        Auditor as AuditorModel,
+        AuditorStandardQualification, AuditorEducation, AuditorLanguage,
+        AuditorWorkExperience, AuditorTrainingRecord, AuditorAuditLog,
+        AuditorWitnessRecord,
+    )
     from auth.db_models import PlatformUser as PU
 
     existing = db.query(AuditorModel).all()
-    auditor_ids = {a.id for a in existing}
-    deleted_users = auth_db.query(PU).filter(
-        PU.auditor_id.in_(auditor_ids)
-    ).delete(synchronize_session=False)
-    auth_db.commit()
+    auditor_ids = [a.id for a in existing]
+
+    deleted_users = 0
+    if auditor_ids:
+        deleted_users = auth_db.query(PU).filter(
+            PU.auditor_id.in_(auditor_ids)
+        ).delete(synchronize_session=False)
+        auth_db.commit()
+
+        for child_model in (
+            AuditorStandardQualification, AuditorEducation, AuditorLanguage,
+            AuditorWorkExperience, AuditorTrainingRecord, AuditorAuditLog,
+            AuditorWitnessRecord,
+        ):
+            db.query(child_model).filter(
+                child_model.auditor_id.in_(auditor_ids)
+            ).delete(synchronize_session=False)
+        db.commit()
+
     deleted_auditors = db.query(AuditorModel).delete(synchronize_session=False)
     db.commit()
     return {
