@@ -267,18 +267,28 @@ def _run_calculation(audit_set: AuditSet) -> dict | None:
         if not standards:
             return None
 
-        # ── Personnel ─────────────────────────────────────────────────────
+        # ── Personnel — IAF MD5 EPS bridge ──────────────────────────────────────
         p = audit_set.personnel or {}
-        full_time     = p.get("full_time", 0)
-        part_time     = p.get("part_time", 0)
-        subcontractors= p.get("subcontractors", 0)
-        seasonal      = p.get("seasonal", 0)
-        unskilled     = p.get("unskilled", 0)
+        full_time      = int(p.get("full_time", 0))
+        part_time      = int(p.get("part_time", 0))
+        subcontractors = int(p.get("subcontractors", 0))
+        seasonal       = int(p.get("seasonal", 0))
+        unskilled      = int(p.get("unskilled", 0))
 
-        total_employees     = full_time + part_time + subcontractors + seasonal + unskilled
-        repetitive_roles    = p.get("repetitive_roles", [])
-        repetitive_employees= sum(r.get("employee_count", 0) for r in repetitive_roles)
-        office_employees    = max(0, total_employees - repetitive_employees)
+        # Read FTE conversion factors from application_data (defaults are IAF MD5-aligned)
+        app_data = audit_set.application_data or {}
+        pt_factor               = float(app_data.get("part_time_fte_factor", 0.5))
+        subcontractors_in_scope = bool(app_data.get("subcontractors_in_scope", True))
+
+        # Convert part-time to FTE equivalent; subcontractors only counted when in scope
+        import math as _math
+        pt_fte             = int(_math.ceil(part_time * pt_factor))
+        sub_count          = subcontractors if subcontractors_in_scope else 0
+        total_employees    = full_time + pt_fte + sub_count + seasonal + unskilled
+
+        repetitive_roles     = p.get("repetitive_roles", [])
+        repetitive_employees = sum(r.get("employee_count", 0) for r in repetitive_roles)
+        office_employees     = max(0, total_employees - repetitive_employees)
 
         # ── Integration level (count YES booleans) ────────────────────────
         il = audit_set.integration_level or {}
@@ -296,14 +306,21 @@ def _run_calculation(audit_set: AuditSet) -> dict | None:
             if s.get("employee_count", 0) > 0
         ]
 
-        # ── EnMS energy data (ISO 50001) — first site that supplies it ────
+        # ── EnMS energy data (ISO 50001) ─────────────────────────────────────────
+        # Priority 1: explicit form data in application_data (most accurate)
+        # Priority 2: legacy sites[0].energy_tj (backward compat for existing audit sets)
         annual_energy_tj = num_energy_types = num_seus = None
-        for s in sites_raw:
-            if s.get("energy_tj") is not None:
-                annual_energy_tj  = float(s["energy_tj"])
-                num_energy_types  = s.get("energy_types")
-                num_seus          = s.get("seu_count")
-                break
+        if app_data.get("enms_annual_energy_tj") is not None:
+            annual_energy_tj = float(app_data["enms_annual_energy_tj"])
+            num_energy_types = app_data.get("enms_num_energy_types")
+            num_seus         = app_data.get("enms_num_seus")
+        else:
+            for s in sites_raw:
+                if s.get("energy_tj") is not None:
+                    annual_energy_tj  = float(s["energy_tj"])
+                    num_energy_types  = s.get("energy_types")
+                    num_seus          = s.get("seu_count")
+                    break
 
         # ── Default sector classifications (Medium) ───────────────────────
         classifications = [
@@ -315,14 +332,19 @@ def _run_calculation(audit_set: AuditSet) -> dict | None:
             for iso_name in standards
         ]
 
-        # ── Food chain categories — pulled from required_scope if already derived ─
+        # ── Food chain categories (ISO 22000 / FSSC 22000) ───────────────────────
+        # Priority 1: explicit categories from application form (most precise)
+        # Priority 2: keyword-derived categories from required_scope (for legacy sets)
         food_cats: list[str] = []
-        rs = getattr(audit_set, "required_scope", None) or {}
-        for iso_name, entry in rs.items():
-            if not isinstance(entry, dict):
-                continue
-            if entry.get("type") == "food":
-                food_cats.extend(entry.get("codes", []) or [])
+        if app_data.get("fsms_food_chain_categories"):
+            food_cats = list(app_data["fsms_food_chain_categories"])
+        else:
+            rs = getattr(audit_set, "required_scope", None) or {}
+            for _iso_name, entry in rs.items():
+                if not isinstance(entry, dict):
+                    continue
+                if entry.get("type") == "food":
+                    food_cats.extend(entry.get("codes", []) or [])
 
         form_data = ExtractedFormData(
             org_name=audit_set.company_name or "",
@@ -342,6 +364,8 @@ def _run_calculation(audit_set: AuditSet) -> dict | None:
             num_seus=num_seus,
             scope_integration_level=getattr(audit_set, "scope_integration_level", None),
             food_chain_categories=food_cats,
+            fsms_offsite_storage_count=int(app_data.get("fsms_offsite_storage_count", 0)),
+            fsms_separate_head_office=bool(app_data.get("fsms_separate_head_office", False)),
         )
 
         result = calculate(form_data)
@@ -452,6 +476,7 @@ def create_audit_set(db: Session, data: AuditSetCreateSchema) -> AuditSet:
         ea_technical_area=data.ea_technical_area,
         audit_language=data.audit_language,
         document_language=data.document_language or "turkish",
+        application_data=data.application_data.model_dump() if data.application_data else None,
     )
     db.add(audit_set)
     db.flush()  # populate audit_set.id before child rows
@@ -645,6 +670,9 @@ def update_planning(
         audit_set.document_language = data.document_language
     if data.application_date is not None:
         audit_set.application_date = data.application_date
+    if data.application_data is not None:
+        audit_set.application_data = data.application_data.model_dump()
+        flag_modified(audit_set, "application_data")
 
     # Upsert stages
     for stage_input in data.stages:

@@ -21,8 +21,26 @@ interface SiteRow { _key: string; address: string; employee_count: number }
 interface Step2Data {
   full_time: number; part_time: number; subcontractors: number; seasonal: number
   shift_1_count: number; shift_2_count: number; shift_3_count: number
+  shift_same_process: boolean
   multiSite: boolean; sites: SiteRow[]
   pairIntegration: Record<string, 'Full' | 'Partial' | 'None'>
+  // EnMS (ISO 50001)
+  enms_annual_energy_tj: string
+  enms_num_energy_types: string
+  enms_num_seus: string
+  // FSMS (ISO 22000 / FSSC 22000)
+  fsms_food_chain_categories: string[]
+  fsms_haccp_studies: string
+  fsms_offsite_storage_count: string
+  fsms_separate_head_office: boolean
+  fsms_fssc22000: boolean
+  fsms_seasonal_production: boolean
+  // ISMS (ISO 27001)
+  isms_technical_area: string
+  isms_data_role: string
+  // MDQMS (ISO 13485)
+  mdqms_device_classes: string[]
+  mdqms_regulatory_territories: string[]
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -85,8 +103,15 @@ const DEFAULT_S1: Step1Data = {
 const DEFAULT_S2: Step2Data = {
   full_time: 0, part_time: 0, subcontractors: 0, seasonal: 0,
   shift_1_count: 0, shift_2_count: 0, shift_3_count: 0,
+  shift_same_process: false,
   multiSite: false, sites: [{ _key: '1', address: '', employee_count: 0 }],
   pairIntegration: {},
+  enms_annual_energy_tj: '', enms_num_energy_types: '', enms_num_seus: '',
+  fsms_food_chain_categories: [], fsms_haccp_studies: '',
+  fsms_offsite_storage_count: '', fsms_separate_head_office: false,
+  fsms_fssc22000: false, fsms_seasonal_production: false,
+  isms_technical_area: '', isms_data_role: '',
+  mdqms_device_classes: [], mdqms_regulatory_territories: [],
 }
 
 // ── Step 1 — Company info ─────────────────────────────────────────────────────
@@ -337,6 +362,16 @@ function Step2({
           {numInput('shift_2_count', 'Shift 2 headcount')}
           {numInput('shift_3_count', 'Shift 3 headcount')}
         </div>
+        {(data.shift_1_count > 0 && data.shift_2_count > 0) && (
+          <label className="flex items-center gap-2 cursor-pointer col-span-full mt-2">
+            <input type="checkbox" checked={data.shift_same_process}
+              onChange={e => onChange({ shift_same_process: e.target.checked })}
+              className="w-4 h-4 accent-certiva-primary" />
+            <span className="text-sm text-gray-700">
+              All shifts perform the same process (IAF MD5 repetitive reduction may apply)
+            </span>
+          </label>
+        )}
       </div>
 
       {/* Sites */}
@@ -421,6 +456,173 @@ function Step2({
           </div>
         </div>
       )}
+
+      {/* ── EnMS panel — ISO 50001 ───────────────────────────────── */}
+      {standards.includes('ENMS') && (
+        <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-5 space-y-4">
+          <p className="text-sm font-semibold text-blue-900">⚡ ISO 50001 — Energy Profile</p>
+          <p className="text-xs text-blue-700">
+            Required for the ISO 50003 K-factor calculation. Used to select the correct audit time table.
+          </p>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className={lblCls}>Annual energy consumption</label>
+              <select className={inputCls} value={data.enms_annual_energy_tj}
+                onChange={e => onChange({ enms_annual_energy_tj: e.target.value })}>
+                <option value="">— Select range —</option>
+                <option value="10">≤ 20 TJ</option>
+                <option value="100">20–200 TJ</option>
+                <option value="1000">200–2,000 TJ</option>
+                <option value="5000">&gt; 2,000 TJ</option>
+              </select>
+            </div>
+            <div>
+              <label className={lblCls}>Number of energy types</label>
+              <select className={inputCls} value={data.enms_num_energy_types}
+                onChange={e => onChange({ enms_num_energy_types: e.target.value })}>
+                <option value="">— Select —</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4 or more</option>
+              </select>
+            </div>
+            <div>
+              <label className={lblCls}>Number of Significant Energy Uses (SEUs)</label>
+              <select className={inputCls} value={data.enms_num_seus}
+                onChange={e => onChange({ enms_num_seus: e.target.value })}>
+                <option value="">— Select —</option>
+                <option value="2">1–3 SEUs</option>
+                <option value="5">4–6 SEUs</option>
+                <option value="8">7–10 SEUs</option>
+                <option value="12">11–15 SEUs</option>
+                <option value="20">&gt; 15 SEUs</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── FSMS panel — ISO 22000 ───────────────────────────────── */}
+      {standards.includes('FSMS') && (
+        <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-5 space-y-4">
+          <p className="text-sm font-semibold text-blue-900">🍽️ ISO 22000 — Food Safety Details</p>
+          <div>
+            <label className={lblCls}>Food chain categories in scope</label>
+            <p className="text-xs text-gray-500 mb-2">Select all that apply (ISO 22003-1:2022 Annex B).</p>
+            <div className="grid grid-cols-1 gap-1 max-h-52 overflow-y-auto">
+              {[
+                { code: 'CI',   label: 'CI — Animal farming / perishable animal products' },
+                { code: 'CII',  label: 'CII — Perishable plant (fresh produce)' },
+                { code: 'CIII', label: 'CIII — Processed perishable / ready-to-eat' },
+                { code: 'CIV',  label: 'CIV — Ambient-stable food (bakery, confectionery, beverages)' },
+                { code: 'C0',   label: 'C0 — Slaughter / abattoir' },
+                { code: 'D',    label: 'D — Animal feed' },
+                { code: 'E',    label: 'E — Catering / food service' },
+                { code: 'FI',   label: 'FI — Food retail' },
+                { code: 'FII',  label: 'FII — Food wholesale / brokerage' },
+                { code: 'G',    label: 'G — Food storage / cold-chain logistics' },
+                { code: 'I',    label: 'I — Food packaging / food contact materials' },
+                { code: 'K',    label: 'K — Food additives / ingredients' },
+                { code: 'BIII', label: 'BIII — Plant pre-processing' },
+              ].map(cat => (
+                <label key={cat.code} className="flex items-center gap-2 cursor-pointer py-0.5">
+                  <input type="checkbox"
+                    checked={data.fsms_food_chain_categories.includes(cat.code)}
+                    onChange={() => onChange({
+                      fsms_food_chain_categories: data.fsms_food_chain_categories.includes(cat.code)
+                        ? data.fsms_food_chain_categories.filter(c => c !== cat.code)
+                        : [...data.fsms_food_chain_categories, cat.code]
+                    })}
+                    className="w-4 h-4 accent-certiva-primary shrink-0" />
+                  <span className="text-xs text-gray-700">{cat.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className={lblCls}>HACCP studies</label>
+              <input className={inputCls} type="number" min="0" placeholder="0"
+                value={data.fsms_haccp_studies}
+                onChange={e => onChange({ fsms_haccp_studies: e.target.value })} />
+            </div>
+            <div>
+              <label className={lblCls}>Off-site storage facilities in scope</label>
+              <input className={inputCls} type="number" min="0" placeholder="0"
+                value={data.fsms_offsite_storage_count}
+                onChange={e => onChange({ fsms_offsite_storage_count: e.target.value })} />
+              <p className="text-xs text-gray-400 mt-1">+0.25 audit day each (ISO 22003-1 §B.2.5)</p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {([
+              { key: 'fsms_separate_head_office', label: 'Head office separate from production site (+0.5 day)' },
+              { key: 'fsms_fssc22000',            label: 'FSSC 22000 scheme (+1.0 day reporting surcharge)' },
+              { key: 'fsms_seasonal_production',  label: 'Seasonal production' },
+            ] as { key: keyof Step2Data; label: string }[]).map(({ key, label }) => (
+              <label key={String(key)} className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={data[key] as boolean}
+                  onChange={e => onChange({ [key]: e.target.checked })}
+                  className="w-4 h-4 accent-certiva-primary" />
+                <span className="text-sm text-gray-700">{label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── ISMS panel — ISO 27001 ───────────────────────────────── */}
+      {standards.includes('ISMS') && (
+        <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-5 space-y-4">
+          <p className="text-sm font-semibold text-blue-900">🔐 ISO 27001 — ISMS Details</p>
+          <div className="grid grid-cols-1 gap-4">
+            <div>
+              <label className={lblCls}>Technical area (ISO/IEC 27006-1:2024)</label>
+              <select className={inputCls} value={data.isms_technical_area}
+                onChange={e => onChange({ isms_technical_area: e.target.value })}>
+                <option value="">— Select —</option>
+                <option value="A">A — Standard IT (office systems, cloud, ERP)</option>
+                <option value="B">B — Industrial / OT (ICS, SCADA, manufacturing IT)</option>
+                <option value="C">C — Telecom / service provider infrastructure</option>
+                <option value="D">D — Specialized (data centres, medical devices, critical infrastructure)</option>
+              </select>
+            </div>
+            <div>
+              <label className={lblCls}>Data role</label>
+              <select className={inputCls} value={data.isms_data_role}
+                onChange={e => onChange({ isms_data_role: e.target.value })}>
+                <option value="">— Select —</option>
+                <option value="Controller">Data Controller</option>
+                <option value="Processor">Data Processor</option>
+                <option value="Both">Both Controller and Processor</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MDQMS panel — ISO 13485 ──────────────────────────────── */}
+      {standards.includes('MDQMS') && (
+        <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-5 space-y-4">
+          <p className="text-sm font-semibold text-blue-900">🏥 ISO 13485 — Medical Device Details</p>
+          <div className="grid grid-cols-1 gap-1">
+            {['Class I (low risk)', 'Class IIa', 'Class IIb', 'Class III (high risk)', 'IVD', 'Active implants'].map(cls => (
+              <label key={cls} className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox"
+                  checked={data.mdqms_device_classes.includes(cls)}
+                  onChange={() => onChange({
+                    mdqms_device_classes: data.mdqms_device_classes.includes(cls)
+                      ? data.mdqms_device_classes.filter(c => c !== cls)
+                      : [...data.mdqms_device_classes, cls]
+                  })}
+                  className="w-4 h-4 accent-certiva-primary" />
+                <span className="text-sm text-gray-700">{cls}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -493,9 +695,27 @@ export default function NewClientPage() {
           subcontractors: s2.subcontractors, seasonal: s2.seasonal,
           shift_1_count: s2.shift_1_count, shift_2_count: s2.shift_2_count,
           shift_3_count: s2.shift_3_count,
+          shift_same_process: s2.shift_same_process,
         },
         sites,
         ...(s1.standards.length > 1 && { integration_level: deriveIntegrationLevel(s2.pairIntegration) }),
+        application_data: {
+          enms_annual_energy_tj:         s2.enms_annual_energy_tj    ? parseFloat(s2.enms_annual_energy_tj)    : null,
+          enms_num_energy_types:         s2.enms_num_energy_types     ? parseInt(s2.enms_num_energy_types)      : null,
+          enms_num_seus:                 s2.enms_num_seus             ? parseInt(s2.enms_num_seus)              : null,
+          fsms_food_chain_categories:    s2.fsms_food_chain_categories,
+          fsms_haccp_studies:            s2.fsms_haccp_studies        ? parseInt(s2.fsms_haccp_studies)         : null,
+          fsms_offsite_storage_count:    s2.fsms_offsite_storage_count ? parseInt(s2.fsms_offsite_storage_count) : 0,
+          fsms_separate_head_office:     s2.fsms_separate_head_office,
+          fsms_fssc22000:                s2.fsms_fssc22000,
+          fsms_seasonal_production:      s2.fsms_seasonal_production,
+          isms_technical_area:           s2.isms_technical_area  || null,
+          isms_data_role:                s2.isms_data_role        || null,
+          mdqms_device_classes:          s2.mdqms_device_classes,
+          mdqms_regulatory_territories:  s2.mdqms_regulatory_territories,
+          part_time_fte_factor:          0.5,
+          subcontractors_in_scope:       true,
+        },
       }
       const res = await api.post<AuditSetResponse>('/audit-sets/', payload)
       return res.data

@@ -73,6 +73,70 @@ class StageInput(BaseModel):
     status: str = "pending"
 
 
+class ApplicationDataSchema(BaseModel):
+    """Standard-specific inputs collected at application time.
+    Stored as JSON in audit_sets.application_data.
+    """
+    # ISO 50001 — EnMS energy profile (used for K-factor → complexity level)
+    enms_annual_energy_tj: Optional[float] = None       # annual energy consumption in TJ
+    enms_num_energy_types: Optional[int] = None         # number of distinct energy sources
+    enms_num_seus: Optional[int] = None                 # number of Significant Energy Uses
+
+    # ISO 22000 / FSSC 22000 — FSMS
+    fsms_food_chain_categories: list[str] = []          # e.g. ["CI", "CIV"] per ISO 22003-1:2022
+    fsms_haccp_studies: Optional[int] = None            # number of HACCP / food safety studies
+    fsms_offsite_storage_count: int = 0                 # off-site storage facilities in scope
+    fsms_separate_head_office: bool = False             # head office separate from production site
+    fsms_fssc22000: bool = False                        # FSSC 22000 add-on scheme requested
+    fsms_seasonal_production: bool = False              # seasonal production / seasonal workforce
+
+    # ISO 27001 — ISMS
+    isms_technical_area: Optional[str] = None           # "A" | "B" | "C" | "D" per ISO 27006-1
+    isms_data_role: Optional[str] = None                # "Controller" | "Processor" | "Both"
+    isms_it_complexity: Optional[str] = None            # "Low" | "Medium" | "High"
+    isms_business_complexity: Optional[str] = None      # "Low" | "Medium" | "High"
+
+    # ISO 13485 — MDQMS
+    mdqms_device_classes: list[str] = []                # e.g. ["Class I", "Class IIa", "Class IIb"]
+    mdqms_regulatory_territories: list[str] = []        # e.g. ["EU MDR 2017/745", "FDA 21 CFR 820"]
+
+    # Personnel — IAF MD5 FTE conversion
+    part_time_fte_factor: float = 0.5                   # fraction to multiply part-time count (default 0.5)
+    subcontractors_in_scope: bool = True                # whether subcontractors are counted in EPS
+
+
+class ApplicationDataSchema(BaseModel):
+    """Standard-specific inputs collected at application time.
+    Stored as JSON in audit_sets.application_data.
+    """
+    # ISO 50001 — EnMS energy profile (used for K-factor → complexity level)
+    enms_annual_energy_tj: Optional[float] = None       # annual energy consumption in TJ
+    enms_num_energy_types: Optional[int] = None         # number of distinct energy sources
+    enms_num_seus: Optional[int] = None                 # number of Significant Energy Uses
+
+    # ISO 22000 / FSSC 22000 — FSMS
+    fsms_food_chain_categories: list[str] = []          # e.g. ["CI", "CIV"] per ISO 22003-1:2022
+    fsms_haccp_studies: Optional[int] = None            # number of HACCP / food safety studies
+    fsms_offsite_storage_count: int = 0                 # off-site storage facilities in scope
+    fsms_separate_head_office: bool = False             # head office separate from production site
+    fsms_fssc22000: bool = False                        # FSSC 22000 add-on scheme requested
+    fsms_seasonal_production: bool = False              # seasonal production / seasonal workforce
+
+    # ISO 27001 — ISMS
+    isms_technical_area: Optional[str] = None           # "A" | "B" | "C" | "D" per ISO 27006-1
+    isms_data_role: Optional[str] = None                # "Controller" | "Processor" | "Both"
+    isms_it_complexity: Optional[str] = None            # "Low" | "Medium" | "High"
+    isms_business_complexity: Optional[str] = None      # "Low" | "Medium" | "High"
+
+    # ISO 13485 — MDQMS
+    mdqms_device_classes: list[str] = []                # e.g. ["Class I", "Class IIa", "Class IIb"]
+    mdqms_regulatory_territories: list[str] = []        # e.g. ["EU MDR 2017/745", "FDA 21 CFR 820"]
+
+    # Personnel — IAF MD5 FTE conversion
+    part_time_fte_factor: float = 0.5                   # fraction to multiply part-time count (default 0.5)
+    subcontractors_in_scope: bool = True                # whether subcontractors are counted in EPS
+
+
 # ── Create / Update input schemas ──────────────────────────────────────────
 
 class AuditSetCreateSchema(BaseModel):
@@ -102,6 +166,7 @@ class AuditSetCreateSchema(BaseModel):
     ea_technical_area: Optional[str] = None
     audit_language: Optional[str] = None
     document_language: Optional[str] = "turkish"
+    application_data: Optional[ApplicationDataSchema] = None   # ← ADD
 
 
 class AuditSetUpdatePlanningSchema(BaseModel):
@@ -118,6 +183,7 @@ class AuditSetUpdatePlanningSchema(BaseModel):
     audit_language: Optional[str] = None
     document_language: Optional[str] = None
     application_date: Optional[date] = None          # retroactive override — when the client actually applied
+    application_data: Optional[ApplicationDataSchema] = None   # ← ADD
     stages: list[StageInput] = []
 
 
@@ -177,6 +243,7 @@ class AuditSetResponse(BaseModel):
     required_scope: Optional[dict] = None            # per-standard derived scope codes
     scope_integration_level: Optional[str] = None   # "Low" | "Medium" | "High"
     personnel: Optional[dict] = None                # {full_time, part_time, subcontractors, seasonal, unskilled}
+    application_data: Optional[dict] = None          # standard-specific inputs (JSON column returns dict, not model)
     audit_language: Optional[str] = None
     document_language: Optional[str] = None
     workflow_status: Optional[str] = None

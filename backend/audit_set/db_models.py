@@ -69,6 +69,10 @@ def create_tables():
     _safe_add_column("visual_signature_placements", "signed_ip TEXT")
     # Prompt 33 — retroactive operation support
     _safe_add_column("audit_sets", "application_date DATE")
+    # Prompt 35 — standard-specific application data
+    _safe_add_column("audit_sets", "application_data JSON")
+    # Prompt 35 — standard-specific application data
+    _safe_add_column("audit_sets", "application_data JSON")
 
 
 # ---------------------------------------------------------------------------
@@ -150,6 +154,12 @@ class AuditSet(Base):
 
     # ── Application / Retroactive ─────────────────────────────────────────────
     application_date = Column(Date, nullable=True)   # when the client actually applied (set during retroactive entry)
+
+    # ── Standard-specific application data ────────────────────────────────────
+    application_data = Column(JSON, nullable=True)   # EnMS/FSMS/ISMS inputs from application form
+
+    # ── Standard-specific application data ────────────────────────────────────
+    application_data = Column(JSON, nullable=True)   # EnMS/FSMS/ISMS inputs from application form
 
     # ── Certificate ───────────────────────────────────────────────────────────
     cert_issued_date = Column(Date, nullable=True)

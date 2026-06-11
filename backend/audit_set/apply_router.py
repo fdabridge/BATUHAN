@@ -8,6 +8,7 @@ import string
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from passlib.context import CryptContext
@@ -25,25 +26,59 @@ ALLOWED_AUDIT_TYPES = {"initial", "surveillance", "recertification"}
 
 
 class ClientApplicationSchema(BaseModel):
-    # Company info
+    # ── Company info ──────────────────────────────────────────────────────
     company_name: str
     company_address: str
     city: str = ""
     country: str = ""
     phone: str = ""
     website: str = ""
-    # Contact person
+
+    # ── Contact person ────────────────────────────────────────────────────
     representative_name: str          # becomes representative + client account full_name
     representative_email: str         # becomes client account email
-    # Certification request
+
+    # ── Certification request ─────────────────────────────────────────────
     standards: list[str]              # subset of ALLOWED_STANDARDS
     audit_type: str                   # "initial" | "surveillance" | "recertification"
-    # Scope (simplified — CB will rewrite)
-    scope_description: str = ""       # free text, what the company does
-    # Personnel (rough)
+
+    # ── Scope ─────────────────────────────────────────────────────────────
+    scope_description: str = ""
+
+    # ── Personnel — IAF MD5 breakdown ─────────────────────────────────────
+    full_time_employees: int = 0           # permanent full-time workforce
+    part_time_employees: int = 0           # part-time employees (will be × 0.5 FTE)
+    subcontractor_employees: int = 0       # subcontractors (in scope of certification)
+    seasonal_employees: int = 0            # seasonal workforce at peak
+    shift_count: int = 1                   # number of production shifts
+    shift_same_process: bool = False       # same work repeated across shifts
+
+    # Legacy field — still accepted; used if full_time_employees is 0
     total_employees: int = 0
+
+    # ── Additional sites ──────────────────────────────────────────────────
     has_additional_sites: bool = False
     additional_site_count: int = 0
+
+    # ── ISO 50001 — EnMS energy profile ──────────────────────────────────
+    enms_annual_energy_tj: Optional[float] = None
+    enms_num_energy_types: Optional[int] = None
+    enms_num_seus: Optional[int] = None
+
+    # ── ISO 22000 / FSSC 22000 — FSMS ────────────────────────────────────
+    fsms_food_chain_categories: list[str] = []
+    fsms_haccp_studies: Optional[int] = None
+    fsms_offsite_storage_count: int = 0
+    fsms_separate_head_office: bool = False
+    fsms_fssc22000: bool = False
+    fsms_seasonal_production: bool = False
+
+    # ── ISO 27001 — ISMS ─────────────────────────────────────────────────
+    isms_technical_area: Optional[str] = None   # "A" | "B" | "C" | "D"
+    isms_data_role: Optional[str] = None        # "Controller" | "Processor" | "Both"
+
+    # ── ISO 13485 — MDQMS ────────────────────────────────────────────────
+    mdqms_device_classes: list[str] = []
 
 
 def _generate_password(length: int = 12) -> str:
@@ -95,6 +130,12 @@ def submit_application(
         for _ in range(payload.additional_site_count):
             sites.append({"address": "", "process": "", "employee_count": 0})
 
+    # Resolve effective full-time count (new fields take priority over legacy total_employees)
+    ft = payload.full_time_employees or payload.total_employees
+    pt = payload.part_time_employees
+    sub = payload.subcontractor_employees
+    seas = payload.seasonal_employees
+
     # Create AuditSet
     audit_set = AuditSet(
         plan_number=plan_number,
@@ -115,13 +156,32 @@ def submit_application(
         workflow_status="pending_review",
         submitted_via_portal=True,
         personnel={
-            "full_time": payload.total_employees,
-            "part_time": 0, "subcontractors": 0,
-            "seasonal": 0, "unskilled": 0,
-            "shift_count": 1, "shift_same_process": False,
+            "full_time":      ft,
+            "part_time":      pt,
+            "subcontractors": sub,
+            "seasonal":       seas,
+            "unskilled":      0,
+            "shift_count":    payload.shift_count,
+            "shift_same_process": payload.shift_same_process,
             "repetitive_roles": [],
         },
         sites=sites,
+        application_data={
+            "enms_annual_energy_tj":      payload.enms_annual_energy_tj,
+            "enms_num_energy_types":      payload.enms_num_energy_types,
+            "enms_num_seus":              payload.enms_num_seus,
+            "fsms_food_chain_categories": payload.fsms_food_chain_categories,
+            "fsms_haccp_studies":         payload.fsms_haccp_studies,
+            "fsms_offsite_storage_count": payload.fsms_offsite_storage_count,
+            "fsms_separate_head_office":  payload.fsms_separate_head_office,
+            "fsms_fssc22000":             payload.fsms_fssc22000,
+            "fsms_seasonal_production":   payload.fsms_seasonal_production,
+            "isms_technical_area":        payload.isms_technical_area,
+            "isms_data_role":             payload.isms_data_role,
+            "mdqms_device_classes":       payload.mdqms_device_classes,
+            "part_time_fte_factor":       0.5,
+            "subcontractors_in_scope":    True,
+        },
     )
     audit_db.add(audit_set)
     audit_db.flush()   # get audit_set.id

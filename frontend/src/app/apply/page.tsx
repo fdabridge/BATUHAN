@@ -3,67 +3,202 @@
 import { useState } from 'react'
 import axios from 'axios'
 
+// ── Constants ─────────────────────────────────────────────────────────────────
+
 const STANDARDS = [
-  { code: 'QMS',   label: 'ISO 9001:2015 — Quality Management' },
-  { code: 'EMS',   label: 'ISO 14001:2015 — Environmental Management' },
-  { code: 'OHSMS', label: 'ISO 45001:2018 — Occupational Health & Safety' },
-  { code: 'FSMS',  label: 'ISO 22000:2018 — Food Safety Management' },
-  { code: 'ISMS',  label: 'ISO/IEC 27001:2022 — Information Security' },
-  { code: 'ENMS',  label: 'ISO 50001:2018 — Energy Management' },
-  { code: 'MDQMS', label: 'ISO 13485:2016 — Medical Devices Quality' },
-  { code: 'ABMS',  label: 'ISO 37001:2016 — Anti-Bribery Management' },
+  { code: 'QMS',   label: 'ISO 9001:2015',      desc: 'Quality Management' },
+  { code: 'EMS',   label: 'ISO 14001:2015',     desc: 'Environmental Management' },
+  { code: 'OHSMS', label: 'ISO 45001:2018',     desc: 'Occupational Health & Safety' },
+  { code: 'FSMS',  label: 'ISO 22000:2018',     desc: 'Food Safety Management' },
+  { code: 'ISMS',  label: 'ISO/IEC 27001:2022', desc: 'Information Security' },
+  { code: 'ENMS',  label: 'ISO 50001:2018',     desc: 'Energy Management' },
+  { code: 'MDQMS', label: 'ISO 13485:2016',     desc: 'Medical Devices Quality' },
+  { code: 'ABMS',  label: 'ISO 37001:2016',     desc: 'Anti-Bribery Management' },
 ]
 
-const SCOPE_EXAMPLES = [
-  'Manufacturing and sales of dried fruits and roasted nuts',
-  'Design, development and production of electronic control units',
-  'Provision of road freight transport and logistics services',
-  'Construction and installation of mechanical systems',
+
+const FOOD_CHAIN_CATEGORIES = [
+  { code: 'CI',   label: 'CI — Animal farming / perishable animal products' },
+  { code: 'CII',  label: 'CII — Perishable plant products (fresh produce)' },
+  { code: 'CIII', label: 'CIII — Processed perishable / ready-to-eat' },
+  { code: 'CIV',  label: 'CIV — Ambient-stable food (bakery, confectionery, beverages, dried)' },
+  { code: 'C0',   label: 'C0 — Slaughter / primary processing of animal products' },
+  { code: 'D',    label: 'D — Production of animal feed / pet food' },
+  { code: 'E',    label: 'E — Catering / food service / restaurant' },
+  { code: 'FI',   label: 'FI — Food retail' },
+  { code: 'FII',  label: 'FII — Food wholesale / distribution / brokerage' },
+  { code: 'G',    label: 'G — Food storage / cold-chain logistics' },
+  { code: 'I',    label: 'I — Food packaging materials / food contact materials' },
+  { code: 'K',    label: 'K — Food chemicals / additives / ingredient manufacture' },
+  { code: 'BIII', label: 'BIII — Plant pre-processing (sorting, cleaning, packing whole plants)' },
 ]
+
+const MDQMS_DEVICE_CLASSES = [
+  'Class I (low risk)', 'Class IIa (medium risk)', 'Class IIb (medium-high risk)',
+  'Class III (high risk)', 'In-vitro diagnostics (IVD)', 'Active implantable devices',
+]
+
+const MDQMS_TERRITORIES = [
+  'EU MDR 2017/745', 'EU IVDR 2017/746', 'FDA 21 CFR 820',
+  'ISO 13485 only (non-regulatory)', 'MDSAP (multi-country)',
+]
+
+// ── Form state type ───────────────────────────────────────────────────────────
+
+interface FormState {
+  // Company
+  company_name: string; company_address: string; city: string; country: string
+  phone: string; website: string
+  // Contact
+  representative_name: string; representative_email: string
+  // Certification
+  standards: string[]; audit_type: string; scope_description: string
+  // Personnel — IAF MD5
+  full_time_employees: string; part_time_employees: string
+  subcontractor_employees: string; seasonal_employees: string
+  shift_count: string; shift_same_process: boolean
+  has_additional_sites: boolean; additional_site_count: string
+  // EnMS (ISO 50001)
+  enms_annual_energy_tj: string; enms_num_energy_types: string; enms_num_seus: string
+  // FSMS (ISO 22000 / FSSC 22000)
+  fsms_food_chain_categories: string[]; fsms_haccp_studies: string
+  fsms_offsite_storage_count: string; fsms_separate_head_office: boolean
+  fsms_fssc22000: boolean; fsms_seasonal_production: boolean
+  // ISMS (ISO 27001)
+  isms_technical_area: string; isms_data_role: string
+  // MDQMS (ISO 13485)
+  mdqms_device_classes: string[]; mdqms_regulatory_territories: string[]
+}
+
+const INITIAL: FormState = {
+  company_name: '', company_address: '', city: '', country: '',
+  phone: '', website: '',
+  representative_name: '', representative_email: '',
+  standards: [], audit_type: 'initial', scope_description: '',
+  full_time_employees: '', part_time_employees: '',
+  subcontractor_employees: '', seasonal_employees: '',
+  shift_count: '1', shift_same_process: false,
+  has_additional_sites: false, additional_site_count: '',
+  enms_annual_energy_tj: '', enms_num_energy_types: '', enms_num_seus: '',
+  fsms_food_chain_categories: [], fsms_haccp_studies: '',
+  fsms_offsite_storage_count: '', fsms_separate_head_office: false,
+  fsms_fssc22000: false, fsms_seasonal_production: false,
+  isms_technical_area: '', isms_data_role: '',
+  mdqms_device_classes: [], mdqms_regulatory_territories: [],
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function toggleArr<T>(arr: T[], val: T): T[] {
+  return arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val]
+}
+
+function pInt(s: string): number { return parseInt(s) || 0 }
+function pFloat(s: string): number | null {
+  const n = parseFloat(s); return isNaN(n) ? null : n
+}
+
+// ── Shared components ─────────────────────────────────────────────────────────
+
+const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A4731]/30 focus:border-[#1A4731]"
+const sectionHdCls = "text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4"
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      {hint && <p className="text-xs text-gray-400 mb-1">{hint}</p>}
+      {children}
+    </div>
+  )
+}
+
+function SectionPanel({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-5">
+      <h3 className="flex items-center gap-2 text-sm font-semibold text-blue-900 mb-4">
+        <span className="text-base">{icon}</span>{title}
+      </h3>
+      <div className="space-y-4">{children}</div>
+    </div>
+  )
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function ApplyPage() {
-  const [form, setForm] = useState({
-    company_name: '', company_address: '', city: '', country: '',
-    phone: '', website: '',
-    representative_name: '', representative_email: '',
-    standards: [] as string[],
-    audit_type: 'initial',
-    scope_description: '',
-    total_employees: '',
-    has_additional_sites: false,
-    additional_site_count: '',
-  })
+  const [form, setForm] = useState<FormState>(INITIAL)
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState('')
 
+  const sel = (patch: Partial<FormState>) => setForm(f => ({ ...f, ...patch }))
+  const hasStd = (code: string) => form.standards.includes(code)
+
   function toggleStandard(code: string) {
-    setForm(f => ({
-      ...f,
-      standards: f.standards.includes(code)
-        ? f.standards.filter(s => s !== code)
-        : [...f.standards, code],
-    }))
+    sel({ standards: toggleArr(form.standards, code) })
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    if (form.standards.length === 0) {
-      setError('Please select at least one standard.')
-      return
-    }
+    if (form.standards.length === 0) { setError('Please select at least one standard.'); return }
+    if (!form.representative_email) { setError('Email address is required.'); return }
+
     setLoading(true)
     try {
       const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
       await axios.post(`${apiBase}/apply`, {
-        ...form,
-        total_employees: parseInt(form.total_employees as string) || 0,
-        additional_site_count: parseInt(form.additional_site_count as string) || 0,
+        company_name:      form.company_name,
+        company_address:   form.company_address,
+        city:              form.city,
+        country:           form.country,
+        phone:             form.phone,
+        website:           form.website,
+        representative_name:  form.representative_name,
+        representative_email: form.representative_email,
+        standards:         form.standards,
+        audit_type:        form.audit_type,
+        scope_description: form.scope_description,
+        // Personnel
+        full_time_employees:      pInt(form.full_time_employees),
+        part_time_employees:      pInt(form.part_time_employees),
+        subcontractor_employees:  pInt(form.subcontractor_employees),
+        seasonal_employees:       pInt(form.seasonal_employees),
+        shift_count:              pInt(form.shift_count) || 1,
+        shift_same_process:       form.shift_same_process,
+        has_additional_sites:     form.has_additional_sites,
+        additional_site_count:    pInt(form.additional_site_count),
+        // EnMS
+        ...(hasStd('ENMS') && {
+          enms_annual_energy_tj:  pFloat(form.enms_annual_energy_tj),
+          enms_num_energy_types:  pInt(form.enms_num_energy_types) || null,
+          enms_num_seus:          pInt(form.enms_num_seus) || null,
+        }),
+        // FSMS
+        ...((hasStd('FSMS')) && {
+          fsms_food_chain_categories: form.fsms_food_chain_categories,
+          fsms_haccp_studies:      pInt(form.fsms_haccp_studies) || null,
+          fsms_offsite_storage_count: pInt(form.fsms_offsite_storage_count),
+          fsms_separate_head_office: form.fsms_separate_head_office,
+          fsms_fssc22000:          form.fsms_fssc22000,
+          fsms_seasonal_production: form.fsms_seasonal_production,
+        }),
+        // ISMS
+        ...(hasStd('ISMS') && {
+          isms_technical_area: form.isms_technical_area || null,
+          isms_data_role:      form.isms_data_role || null,
+        }),
+        // MDQMS
+        ...(hasStd('MDQMS') && {
+          mdqms_device_classes:           form.mdqms_device_classes,
+          mdqms_regulatory_territories:   form.mdqms_regulatory_territories,
+        }),
       })
       setSuccess(true)
-    } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Submission failed. Please try again.')
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setError(detail || 'Submission failed. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -83,10 +218,7 @@ export default function ApplyPage() {
             Thank you. We have received your application and will review it shortly.
             Login credentials have been sent to your email address.
           </p>
-          <a
-            href="/login"
-            className="inline-block bg-[#1A4731] text-white px-6 py-2.5 rounded-lg text-sm font-medium"
-          >
+          <a href="/login" className="inline-block bg-[#1A4731] text-white px-6 py-2.5 rounded-lg text-sm font-medium">
             Go to Portal Login
           </a>
         </div>
@@ -103,151 +235,359 @@ export default function ApplyPage() {
           <p className="text-gray-500 mt-1">Certification Application Form</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border p-8 space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
 
-          {/* Company Info */}
-          <section>
-            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Company Information</h2>
-            <div className="grid grid-cols-1 gap-4">
-              <Field label="Company Name *" required>
-                <input className={inputCls} value={form.company_name} onChange={e => setForm({...form, company_name: e.target.value})} required />
+          {/* ── 1. Company Information ─────────────────────────────────── */}
+          <div className="bg-white rounded-xl shadow-sm border p-6 space-y-4">
+            <h2 className={sectionHdCls}>Company Information</h2>
+            <Field label="Company Name *">
+              <input className={inputCls} value={form.company_name}
+                onChange={e => sel({ company_name: e.target.value })} required />
+            </Field>
+            <Field label="Company Address *">
+              <input className={inputCls} value={form.company_address}
+                onChange={e => sel({ company_address: e.target.value })} required />
+            </Field>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="City">
+                <input className={inputCls} value={form.city} onChange={e => sel({ city: e.target.value })} />
               </Field>
-              <Field label="Company Address *" required>
-                <input className={inputCls} value={form.company_address} onChange={e => setForm({...form, company_address: e.target.value})} required />
-              </Field>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="City">
-                  <input className={inputCls} value={form.city} onChange={e => setForm({...form, city: e.target.value})} />
-                </Field>
-                <Field label="Country">
-                  <input className={inputCls} value={form.country} onChange={e => setForm({...form, country: e.target.value})} />
-                </Field>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Phone">
-                  <input className={inputCls} type="tel" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} />
-                </Field>
-                <Field label="Website">
-                  <input className={inputCls} type="url" placeholder="https://" value={form.website} onChange={e => setForm({...form, website: e.target.value})} />
-                </Field>
-              </div>
-            </div>
-          </section>
-
-          {/* Contact Person */}
-          <section>
-            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Contact Person</h2>
-            <div className="grid grid-cols-1 gap-4">
-              <Field label="Full Name *" required>
-                <input className={inputCls} value={form.representative_name} onChange={e => setForm({...form, representative_name: e.target.value})} required />
-              </Field>
-              <Field label="Email Address *" required>
-                <input className={inputCls} type="email" value={form.representative_email} onChange={e => setForm({...form, representative_email: e.target.value})} required />
-                <p className="text-xs text-gray-400 mt-1">Your portal login credentials will be sent to this address.</p>
+              <Field label="Country">
+                <input className={inputCls} value={form.country} onChange={e => sel({ country: e.target.value })} />
               </Field>
             </div>
-          </section>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Phone">
+                <input className={inputCls} type="tel" value={form.phone} onChange={e => sel({ phone: e.target.value })} />
+              </Field>
+              <Field label="Website">
+                <input className={inputCls} type="url" placeholder="https://" value={form.website}
+                  onChange={e => sel({ website: e.target.value })} />
+              </Field>
+            </div>
+          </div>
 
+          {/* ── 2. Contact Person ─────────────────────────────────────── */}
+          <div className="bg-white rounded-xl shadow-sm border p-6 space-y-4">
+            <h2 className={sectionHdCls}>Contact Person</h2>
+            <Field label="Full Name *">
+              <input className={inputCls} value={form.representative_name}
+                onChange={e => sel({ representative_name: e.target.value })} required />
+            </Field>
+            <Field label="Email Address *" hint="Your portal login credentials will be sent to this address.">
+              <input className={inputCls} type="email" value={form.representative_email}
+                onChange={e => sel({ representative_email: e.target.value })} required />
+            </Field>
+          </div>
 
-          {/* Standards */}
-          <section>
-            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Standards Requested *</h2>
+          {/* ── 3. Standards Requested ────────────────────────────────── */}
+          <div className="bg-white rounded-xl shadow-sm border p-6">
+            <h2 className={sectionHdCls}>Standards Requested *</h2>
             <div className="grid grid-cols-1 gap-2">
               {STANDARDS.map(s => (
-                <label key={s.code} className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:bg-gray-50 transition-colors">
-                  <input
-                    type="checkbox"
-                    checked={form.standards.includes(s.code)}
-                    onChange={() => toggleStandard(s.code)}
-                    className="w-4 h-4 accent-[#1A4731]"
-                  />
-                  <span className="text-sm text-gray-700">{s.label}</span>
+                <label key={s.code} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                  hasStd(s.code) ? 'border-[#1A4731] bg-[#1A4731]/5' : 'border-gray-200 hover:bg-gray-50'
+                }`}>
+                  <input type="checkbox" checked={hasStd(s.code)} onChange={() => toggleStandard(s.code)}
+                    className="w-4 h-4 accent-[#1A4731]" />
+                  <div>
+                    <span className="text-sm font-medium text-gray-800">{s.label}</span>
+                    <span className="text-xs text-gray-500 ml-2">— {s.desc}</span>
+                  </div>
                 </label>
               ))}
             </div>
-          </section>
+          </div>
 
-          {/* Audit Type */}
-          <section>
-            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Audit Type *</h2>
+          {/* ── 4. Audit Type ─────────────────────────────────────────── */}
+          <div className="bg-white rounded-xl shadow-sm border p-6">
+            <h2 className={sectionHdCls}>Audit Type *</h2>
             <div className="grid grid-cols-3 gap-3">
               {[
-                {v:'initial', l:'Initial Certification'},
-                {v:'surveillance', l:'Surveillance'},
-                {v:'recertification', l:'Recertification'},
+                { v: 'initial',          l: 'Initial Certification' },
+                { v: 'surveillance',     l: 'Surveillance' },
+                { v: 'recertification',  l: 'Recertification' },
               ].map(opt => (
-                <label key={opt.v} className={`p-3 rounded-lg border text-center cursor-pointer text-sm transition-colors ${form.audit_type === opt.v ? 'bg-[#1A4731] text-white border-[#1A4731]' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
-                  <input type="radio" name="audit_type" value={opt.v} checked={form.audit_type === opt.v} onChange={e => setForm({...form, audit_type: e.target.value})} className="hidden" />
+                <label key={opt.v} className={`p-3 rounded-lg border text-center cursor-pointer text-sm transition-colors ${
+                  form.audit_type === opt.v ? 'bg-[#1A4731] text-white border-[#1A4731]' : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}>
+                  <input type="radio" name="audit_type" value={opt.v} checked={form.audit_type === opt.v}
+                    onChange={e => sel({ audit_type: e.target.value })} className="hidden" />
                   {opt.l}
                 </label>
               ))}
             </div>
-          </section>
+          </div>
 
-          {/* Scope */}
-          <section>
-            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-1">What Does Your Company Do? *</h2>
-            <p className="text-xs text-gray-400 mb-3">Describe your main activities. Examples: {SCOPE_EXAMPLES.slice(0,2).join('; ')}</p>
-            <textarea
-              className={`${inputCls} h-24 resize-none`}
-              placeholder={SCOPE_EXAMPLES[0]}
+          {/* ── 5. Scope ──────────────────────────────────────────────── */}
+          <div className="bg-white rounded-xl shadow-sm border p-6">
+            <h2 className={sectionHdCls}>What Does Your Company Do? *</h2>
+            <p className="text-xs text-gray-400 mb-3">
+              Describe your main activities (e.g. &ldquo;Manufacturing and sales of dried fruits&rdquo;).
+            </p>
+            <textarea className={`${inputCls} h-24 resize-none`}
               value={form.scope_description}
-              onChange={e => setForm({...form, scope_description: e.target.value})}
-              required
-            />
-          </section>
+              onChange={e => sel({ scope_description: e.target.value })} required />
+          </div>
 
-          {/* Employees */}
-          <section>
-            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Personnel</h2>
+          {/* ── 6. Personnel ──────────────────────────────────────────── */}
+          <div className="bg-white rounded-xl shadow-sm border p-6 space-y-4">
+            <h2 className={sectionHdCls}>Personnel</h2>
+            <p className="text-xs text-gray-500 -mt-2 mb-2">
+              Accurate personnel data is required to calculate your audit duration per IAF MD5.
+            </p>
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Total Number of Employees *" required>
-                <input className={inputCls} type="number" min="1" value={form.total_employees} onChange={e => setForm({...form, total_employees: e.target.value})} required />
+              <Field label="Full-time employees *" hint="Permanent workforce">
+                <input className={inputCls} type="number" min="0" value={form.full_time_employees}
+                  onChange={e => sel({ full_time_employees: e.target.value })} required />
+              </Field>
+              <Field label="Part-time employees" hint="Counted as 0.5 FTE each">
+                <input className={inputCls} type="number" min="0" value={form.part_time_employees}
+                  onChange={e => sel({ part_time_employees: e.target.value })} />
+              </Field>
+              <Field label="Subcontractors (in scope)" hint="Working under your management system">
+                <input className={inputCls} type="number" min="0" value={form.subcontractor_employees}
+                  onChange={e => sel({ subcontractor_employees: e.target.value })} />
+              </Field>
+              <Field label="Seasonal employees (peak)" hint="Maximum headcount during peak season">
+                <input className={inputCls} type="number" min="0" value={form.seasonal_employees}
+                  onChange={e => sel({ seasonal_employees: e.target.value })} />
               </Field>
             </div>
-            <label className="flex items-center gap-2 mt-4 cursor-pointer">
-              <input type="checkbox" checked={form.has_additional_sites} onChange={e => setForm({...form, has_additional_sites: e.target.checked})} className="w-4 h-4 accent-[#1A4731]" />
+
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Number of work shifts">
+                <select className={inputCls} value={form.shift_count}
+                  onChange={e => sel({ shift_count: e.target.value })}>
+                  <option value="1">1 shift</option>
+                  <option value="2">2 shifts</option>
+                  <option value="3">3 shifts</option>
+                </select>
+              </Field>
+              {parseInt(form.shift_count) > 1 && (
+                <Field label="Shifts run the same process">
+                  <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                    <input type="checkbox" checked={form.shift_same_process}
+                      onChange={e => sel({ shift_same_process: e.target.checked })}
+                      className="w-4 h-4 accent-[#1A4731]" />
+                    <span className="text-sm text-gray-700">Yes, same work in each shift</span>
+                  </label>
+                </Field>
+              )}
+            </div>
+
+            {/* Additional sites */}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={form.has_additional_sites}
+                onChange={e => sel({ has_additional_sites: e.target.checked })}
+                className="w-4 h-4 accent-[#1A4731]" />
               <span className="text-sm text-gray-700">We have additional sites / branches</span>
             </label>
             {form.has_additional_sites && (
-              <div className="mt-3">
-                <Field label="Number of Additional Sites">
-                  <input className={inputCls} type="number" min="1" value={form.additional_site_count} onChange={e => setForm({...form, additional_site_count: e.target.value})} />
+              <Field label="Number of additional sites">
+                <input className={inputCls} type="number" min="1" value={form.additional_site_count}
+                  onChange={e => sel({ additional_site_count: e.target.value })} />
+              </Field>
+            )}
+          </div>
+
+          {/* ── 7. Standard-specific sections (dynamic) ───────────────── */}
+
+          {/* ISO 50001 — EnMS Energy Profile */}
+          {hasStd('ENMS') && (
+            <SectionPanel title="ISO 50001 — Energy Management System Details" icon="⚡">
+              <p className="text-xs text-blue-700 -mt-2 mb-2">
+                Required to calculate audit duration using the ISO 50003 K-factor method.
+              </p>
+              <div className="grid grid-cols-1 gap-4">
+                <Field
+                  label="Annual energy consumption (TJ)"
+                  hint="Total energy used by all sites in scope, per year"
+                >
+                  <select className={inputCls} value={form.enms_annual_energy_tj}
+                    onChange={e => sel({ enms_annual_energy_tj: e.target.value })}>
+                    <option value="">— Select range —</option>
+                    <option value="10">≤ 20 TJ (small facility)</option>
+                    <option value="100">20–200 TJ (medium)</option>
+                    <option value="1000">200–2,000 TJ (large industrial)</option>
+                    <option value="5000">&gt; 2,000 TJ (very large / heavy industry)</option>
+                  </select>
+                </Field>
+                <Field
+                  label="Number of energy types (sources)"
+                  hint="e.g. electricity, natural gas, diesel, steam = 4"
+                >
+                  <select className={inputCls} value={form.enms_num_energy_types}
+                    onChange={e => sel({ enms_num_energy_types: e.target.value })}>
+                    <option value="">— Select —</option>
+                    <option value="1">1 energy type</option>
+                    <option value="2">2 energy types</option>
+                    <option value="3">3 energy types</option>
+                    <option value="4">4 or more energy types</option>
+                  </select>
+                </Field>
+                <Field
+                  label="Number of Significant Energy Uses (SEUs)"
+                  hint="Equipment / processes that account for the majority (≥80%) of energy consumption"
+                >
+                  <select className={inputCls} value={form.enms_num_seus}
+                    onChange={e => sel({ enms_num_seus: e.target.value })}>
+                    <option value="">— Select —</option>
+                    <option value="2">1–3 SEUs</option>
+                    <option value="5">4–6 SEUs</option>
+                    <option value="8">7–10 SEUs</option>
+                    <option value="12">11–15 SEUs</option>
+                    <option value="20">&gt; 15 SEUs</option>
+                  </select>
                 </Field>
               </div>
-            )}
-          </section>
-
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3">
-              {error}
-            </div>
+            </SectionPanel>
           )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-[#1A4731] text-white py-3 rounded-lg font-medium hover:bg-[#143828] transition-colors disabled:opacity-60"
-          >
-            {loading ? 'Submitting...' : 'Submit Application'}
-          </button>
+          {/* ISO 22000 / FSSC 22000 — FSMS Details */}
+          {hasStd('FSMS') && (
+            <SectionPanel title="ISO 22000 — Food Safety Management System Details" icon="🍽️">
+              <p className="text-xs text-blue-700 -mt-2 mb-2">
+                Required for audit duration calculation per ISO 22003-1:2022.
+              </p>
 
-          <p className="text-xs text-center text-gray-400">
-            Already have an account? <a href="/login" className="text-[#1A4731] underline">Sign in here</a>
-          </p>
+              {/* Food chain categories */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Food chain categories in scope *
+                </label>
+                <p className="text-xs text-gray-500 mb-2">Select all that apply.</p>
+                <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                  {FOOD_CHAIN_CATEGORIES.map(cat => (
+                    <label key={cat.code} className="flex items-start gap-2 cursor-pointer group">
+                      <input type="checkbox"
+                        checked={form.fsms_food_chain_categories.includes(cat.code)}
+                        onChange={() => sel({ fsms_food_chain_categories: toggleArr(form.fsms_food_chain_categories, cat.code) })}
+                        className="mt-0.5 w-4 h-4 accent-[#1A4731] shrink-0" />
+                      <span className="text-xs text-gray-700 group-hover:text-gray-900">{cat.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Number of HACCP / food safety studies" hint="Distinct HACCP plans in scope">
+                  <input className={inputCls} type="number" min="0" value={form.fsms_haccp_studies}
+                    onChange={e => sel({ fsms_haccp_studies: e.target.value })} />
+                </Field>
+                <Field label="Off-site storage facilities in scope" hint="+0.25 audit day each (ISO 22003-1 §B.2.5)">
+                  <input className={inputCls} type="number" min="0" value={form.fsms_offsite_storage_count}
+                    onChange={e => sel({ fsms_offsite_storage_count: e.target.value })} />
+                </Field>
+              </div>
+
+              <div className="space-y-2">
+                {[
+                  { key: 'fsms_separate_head_office' as const, label: 'Head office is separate from production site (+0.5 audit day)' },
+                  { key: 'fsms_fssc22000' as const,            label: 'Applying for FSSC 22000 certification scheme (+1.0 day reporting surcharge)' },
+                  { key: 'fsms_seasonal_production' as const,  label: 'Seasonal production (production stops for part of the year)' },
+                ].map(({ key, label }) => (
+                  <label key={key} className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={form[key] as boolean}
+                      onChange={e => sel({ [key]: e.target.checked } as Partial<FormState>)}
+                      className="w-4 h-4 accent-[#1A4731]" />
+                    <span className="text-sm text-gray-700">{label}</span>
+                  </label>
+                ))}
+              </div>
+            </SectionPanel>
+          )}
+
+          {/* ISO 27001 — ISMS Details */}
+          {hasStd('ISMS') && (
+            <SectionPanel title="ISO/IEC 27001 — Information Security Management System Details" icon="🔐">
+              <p className="text-xs text-blue-700 -mt-2 mb-2">
+                Used for EPS calculation per ISO/IEC 27006-1:2024 and technical area classification.
+              </p>
+              <Field
+                label="Technical area"
+                hint="Your organization's primary ISMS technical domain per ISO/IEC 27006-1"
+              >
+                <select className={inputCls} value={form.isms_technical_area}
+                  onChange={e => sel({ isms_technical_area: e.target.value })}>
+                  <option value="">— Select —</option>
+                  <option value="A">A — Standard IT (office-type: desktops, servers, cloud, HR/finance systems)</option>
+                  <option value="B">B — Industrial / OT systems (ICS, SCADA, manufacturing IT)</option>
+                  <option value="C">C — Telecom / service provider infrastructure</option>
+                  <option value="D">D — Specialized (data centres, crypto, medical devices, critical infrastructure)</option>
+                </select>
+              </Field>
+              <Field label="Data role under GDPR / data protection law">
+                <select className={inputCls} value={form.isms_data_role}
+                  onChange={e => sel({ isms_data_role: e.target.value })}>
+                  <option value="">— Select —</option>
+                  <option value="Controller">Data Controller (you decide the purpose of data processing)</option>
+                  <option value="Processor">Data Processor (you process data on behalf of others)</option>
+                  <option value="Both">Both Controller and Processor</option>
+                </select>
+              </Field>
+            </SectionPanel>
+          )}
+
+          {/* ISO 13485 — MDQMS Details */}
+          {hasStd('MDQMS') && (
+            <SectionPanel title="ISO 13485 — Medical Devices Quality System Details" icon="🏥">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Medical device class(es) in scope
+                </label>
+                <div className="space-y-1.5">
+                  {MDQMS_DEVICE_CLASSES.map(cls => (
+                    <label key={cls} className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox"
+                        checked={form.mdqms_device_classes.includes(cls)}
+                        onChange={() => sel({ mdqms_device_classes: toggleArr(form.mdqms_device_classes, cls) })}
+                        className="w-4 h-4 accent-[#1A4731]" />
+                      <span className="text-sm text-gray-700">{cls}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Regulatory framework(s) in scope
+                </label>
+                <div className="space-y-1.5">
+                  {MDQMS_TERRITORIES.map(t => (
+                    <label key={t} className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox"
+                        checked={form.mdqms_regulatory_territories.includes(t)}
+                        onChange={() => sel({ mdqms_regulatory_territories: toggleArr(form.mdqms_regulatory_territories, t) })}
+                        className="w-4 h-4 accent-[#1A4731]" />
+                      <span className="text-sm text-gray-700">{t}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </SectionPanel>
+          )}
+
+          {/* ── 8. Error + Submit ──────────────────────────────────────── */}
+          <div className="bg-white rounded-xl shadow-sm border p-6 space-y-4">
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3">
+                {error}
+              </div>
+            )}
+            <button
+              type="submit" disabled={loading}
+              className="w-full bg-[#1A4731] text-white py-3 rounded-lg font-medium hover:bg-[#143828] transition-colors disabled:opacity-60"
+            >
+              {loading ? 'Submitting…' : 'Submit Application'}
+            </button>
+            <p className="text-xs text-center text-gray-400">
+              Already have an account?{' '}
+              <a href="/login" className="text-[#1A4731] underline">Sign in here</a>
+            </p>
+          </div>
+
         </form>
       </div>
-    </div>
-  )
-}
-
-const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A4731]/30 focus:border-[#1A4731]"
-
-function Field({ label, children }: { label: string; children: React.ReactNode; required?: boolean }) {
-  return (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-      {children}
     </div>
   )
 }

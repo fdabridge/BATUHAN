@@ -239,6 +239,16 @@ def _lookup_standard(data: ExtractedFormData, standard: str) -> StandardAuditRes
         else:
             factor = 1.0
         init_t = round(init_t * factor, 2)
+
+        # ISO 22003-1:2022 §B.2 — mandatory on-site add-ons (before phase split)
+        iso22003_addon = 0.0
+        if data.fsms_offsite_storage_count and data.fsms_offsite_storage_count > 0:
+            iso22003_addon += round(0.25 * data.fsms_offsite_storage_count, 2)   # §B.2.5: +0.25/off-site storage
+        if data.fsms_separate_head_office:
+            iso22003_addon += 0.5                                                  # §B.2.6: +0.5 separate HQ
+        if iso22003_addon > 0:
+            init_t = round(init_t + iso22003_addon, 2)
+
         ph1 = round(init_t / 3 * 2) / 2
         ph2 = round(init_t - ph1, 2)
         surv = max(round(init_t / 3 * 2) / 2, 1.0)
@@ -251,6 +261,7 @@ def _lookup_standard(data: ExtractedFormData, standard: str) -> StandardAuditRes
             base_init=init_t, base_ph1=ph1, base_ph2=ph2,
             base_surv=surv, base_recert=recert_t,
             base_recert_ph1=r_ph1, base_recert_ph2=r_ph2,
+            haccp_addition=iso22003_addon if iso22003_addon > 0 else None,
         )
 
     elif _std_match(standard, "ISO 50001"):

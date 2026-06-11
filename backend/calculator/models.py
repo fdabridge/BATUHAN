@@ -63,6 +63,10 @@ class ExtractedFormData(BaseModel):
     # Used to apply the complexity factor to ISO 22000 / FSSC 22000 base time.
     food_chain_categories: list[str] = Field(default_factory=list)
 
+    # FSMS — ISO 22003-1:2022 mandatory on-site add-ons (separate from table base time)
+    fsms_offsite_storage_count: int = 0        # +0.25 auditor-day per off-site storage facility (§B.2.5)
+    fsms_separate_head_office: bool = False    # +0.5 auditor-day when HQ separate from production (§B.2.6)
+
     # Raw Claude response for traceability
     raw_extraction: str = ""
 
