@@ -27,6 +27,14 @@ interface Props {
   onSigned:     (sigKey: string) => void
 }
 
+function getSignatureSettingsUrl(): string {
+  if (typeof window === 'undefined') return '/settings/signature'
+  const p = window.location.pathname
+  if (p.startsWith('/client/'))  return '/client/signature'
+  if (p.startsWith('/auditor/')) return '/auditor/signature'
+  return '/settings/signature'
+}
+
 const SIG_KEY_LABELS: Record<string, string> = {
   CB_PLANNER:      'Planning Officer',
   CB_CERT_MANAGER: 'Certification Manager',
@@ -55,7 +63,7 @@ export function SignatureConfirmDialog({
 
     api.get('/me/signature')
       .then((r) => {
-        if (r.data?.has_signature && r.data?.image_data) {
+        if (r.data?.image_data) {
           setSigImage(r.data.image_data)
           setStage('preview')
         } else {
@@ -149,7 +157,7 @@ export function SignatureConfirmDialog({
                 You don&apos;t have a saved signature yet. Go to{' '}
                 <strong>Settings → My Signature</strong> to draw or upload your signature, then come back.
               </p>
-              <a href="/settings/signature" target="_blank" rel="noreferrer"
+              <a href={getSignatureSettingsUrl()} target="_blank" rel="noreferrer"
                 className="block w-full rounded-lg border-2 border-dashed border-[#1A4731] py-3 text-center
                   text-sm font-medium text-[#1A4731] hover:bg-[#1A4731]/5 transition-colors">
                 Set up my signature →

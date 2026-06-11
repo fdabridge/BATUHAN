@@ -10,6 +10,7 @@ interface PendingSig {
   company_name: string
   document_label: string
   document_type: string
+  document_id: string
 }
 
 export function PendingSignaturesWidget() {
@@ -87,18 +88,27 @@ export function PendingSignaturesWidget() {
                 </p>
               </div>
               {signingId !== sig.id && (
-                <button
-                  type="button"
-                  onClick={() => requestOtp(sig)}
-                  disabled={busy}
-                  className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
-                >
-                  Sign
-                </button>
+                sig.document_type === 'quotation' || sig.document_type === 'agreement' ? (
+                  <a
+                    href={`/viewer/shared_doc/${sig.document_id}`}
+                    className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#143828]"
+                  >
+                    Open to Sign
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => requestOtp(sig)}
+                    disabled={busy}
+                    className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+                  >
+                    Sign
+                  </button>
+                )
               )}
             </div>
 
-            {signingId === sig.id && (
+            {signingId === sig.id && sig.document_type !== 'quotation' && sig.document_type !== 'agreement' && (
               <div className="mt-3 rounded-lg border bg-gray-50 p-3">
                 {!otpSent ? (
                   <p className="text-xs text-gray-500">

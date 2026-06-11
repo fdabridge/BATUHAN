@@ -47,6 +47,9 @@ export function InternalApprovalsSection({
   const [otpValue, setOtpValue]   = useState('')
   const [error, setError]         = useState('')
   const [busy, setBusy]           = useState(false)
+  const [sigPreviewImage, setSigPreviewImage] = useState<string | null>(null)
+  const [sigPreviewSlot,  setSigPreviewSlot]  = useState<SigSlot | null>(null)
+  const [sigPreviewBusy,  setSigPreviewBusy]  = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -63,6 +66,35 @@ export function InternalApprovalsSection({
 
   const showSection = workflowStatus && workflowStatus !== 'pending_review'
   if (!showSection) return null
+
+  const FR222_STAGES = ['audit_scheduled', 'audit_in_progress', 'under_review', 'certified']
+  const showFR222 = workflowStatus != null && FR222_STAGES.includes(workflowStatus)
+
+  async function handleSignClick(slot: SigSlot) {
+    setSigPreviewBusy(true)
+    setSigPreviewSlot(null)
+    setSigPreviewImage(null)
+    try {
+      const r = await api.get('/me/signature')
+      if (r.data?.image_data) {
+        setSigPreviewImage(r.data.image_data)
+        setSigPreviewSlot(slot)
+      } else {
+        window.open('/settings/signature', '_blank')
+      }
+    } catch {
+      setSigPreviewSlot(slot)
+    } finally {
+      setSigPreviewBusy(false)
+    }
+  }
+
+  function handleConfirmSign() {
+    const slot = sigPreviewSlot
+    setSigPreviewSlot(null)
+    setSigPreviewImage(null)
+    if (slot) requestOtp(slot)
+  }
 
   async function createFR222() {
     setBusy(true)
@@ -125,12 +157,12 @@ export function InternalApprovalsSection({
   if (!loading && !hasFR218 && !hasFR222 && workflowStatus === 'pending_review') return null
 
   const rowProps = {
-    signingId, otpSent, otpValue, error, busy,
-    onSign: requestOtp,
-    onVerify: verifyOtp,
+    signingId, otpSent, otpValue, error, busy: busy || sigPreviewBusy,
+    onSign:      handleSignClick,
+    onVerify:    verifyOtp,
     onOtpChange: setOtpValue,
-    onCancel: () => { setSigningId(null); setOtpSent(false); setOtpValue('') },
-    onResend: requestOtp,
+    onCancel:    () => { setSigningId(null); setOtpSent(false); setOtpValue('') },
+    onResend:    requestOtp,
   }
 
   return (
@@ -160,36 +192,87 @@ export function InternalApprovalsSection({
           )}
         </div>
 
-        <div className="rounded-xl border bg-white p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <p className="text-sm font-medium text-gray-800">{DOC_LABELS['FR222']}</p>
-            {hasFR222 && fr222.every(s => s.is_signed) && (
-              <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
-                Fully Signed ✓
-              </span>
+        {showFR222 && (
+          <div className="rounded-xl border bg-white p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-sm font-medium text-gray-800">{DOC_LABELS['FR222']}</p>
+              {hasFR222 && fr222.every(s => s.is_signed) && (
+                <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
+                  Fully Signed ✓
+                </span>
+              )}
+            </div>
+            {loading ? (
+              <p className="text-xs text-gray-400">Loading…</p>
+            ) : !hasFR222 ? (
+              <div className="flex items-center gap-3">
+                <p className="text-xs text-gray-400">Not yet initiated.</p>
+                <button
+                  type="button"
+                  onClick={createFR222}
+                  disabled={busy}
+                  className="rounded-lg border border-[#1A4731] px-3 py-1.5 text-xs font-medium text-[#1A4731] hover:bg-green-50 disabled:opacity-40"
+                >
+                  Initiate Audit Programme Signing
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {fr222.map(slot => <SignerRow key={slot.id} slot={slot} {...rowProps} />)}
+              </div>
             )}
           </div>
-          {loading ? (
-            <p className="text-xs text-gray-400">Loading…</p>
-          ) : !hasFR222 ? (
-            <div className="flex items-center gap-3">
-              <p className="text-xs text-gray-400">Not yet initiated.</p>
+        )}
+      </div>
+
+      {sigPreviewSlot && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm overflow-hidden rounded-xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b px-5 py-4">
+              <p className="text-sm font-semibold text-gray-900">
+                Confirm signature — {ROLE_LABELS[sigPreviewSlot.signer_role_label] ?? sigPreviewSlot.signer_role_label}
+              </p>
               <button
                 type="button"
-                onClick={createFR222}
-                disabled={busy}
-                className="rounded-lg border border-[#1A4731] px-3 py-1.5 text-xs font-medium text-[#1A4731] hover:bg-green-50 disabled:opacity-40"
+                onClick={() => { setSigPreviewSlot(null); setSigPreviewImage(null) }}
+                className="text-gray-400 hover:text-gray-600"
+              >✕</button>
+            </div>
+            <div className="px-5 py-4 space-y-4">
+              <p className="text-sm text-gray-600">
+                Your saved signature will be recorded. Click <strong>Send verification code</strong> to continue.
+              </p>
+              {sigPreviewImage ? (
+                <div
+                  className="flex items-center justify-center rounded-lg p-4"
+                  style={{
+                    background: 'repeating-conic-gradient(#e5e7eb 0% 25%, #fff 0% 50%) 0 0 / 12px 12px',
+                    minHeight: 80,
+                  }}
+                >
+                  <img src={sigPreviewImage} alt="Your signature" className="max-h-16 max-w-full object-contain" />
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 italic">No signature image on file.</p>
+              )}
+              <button
+                type="button"
+                onClick={handleConfirmSign}
+                className="w-full rounded-lg bg-[#1A4731] py-2.5 text-sm font-medium text-white hover:bg-[#1A4731]/90"
               >
-                Initiate Audit Programme Signing
+                Send verification code
+              </button>
+              <button
+                type="button"
+                onClick={() => { setSigPreviewSlot(null); setSigPreviewImage(null) }}
+                className="w-full text-sm text-gray-500 hover:text-gray-700"
+              >
+                Cancel
               </button>
             </div>
-          ) : (
-            <div className="space-y-2">
-              {fr222.map(slot => <SignerRow key={slot.id} slot={slot} {...rowProps} />)}
-            </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

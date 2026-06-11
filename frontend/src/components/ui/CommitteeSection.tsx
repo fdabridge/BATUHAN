@@ -62,7 +62,8 @@ export function CommitteeSection({
 
   useEffect(() => { loadMembers() }, [loadMembers])
 
-  const showSection = workflowStatus && workflowStatus !== 'pending_review'
+  const COMMITTEE_STAGES = ['agreement_signed', 'audit_scheduled', 'audit_in_progress', 'under_review', 'certified']
+  const showSection = workflowStatus != null && COMMITTEE_STAGES.includes(workflowStatus)
   if (!showSection) return null
 
   async function openPicker(role: 'reviewer' | 'decision_maker') {

@@ -41,10 +41,11 @@ def get_my_signature(
     if not sig:
         return None
     return {
-        "image_data": sig.image_data,
-        "source":     sig.source,
-        "created_at": sig.created_at.isoformat(),
-        "updated_at": sig.updated_at.isoformat(),
+        "has_signature": True,
+        "image_data":    sig.image_data,
+        "source":        sig.source,
+        "created_at":    sig.created_at.isoformat(),
+        "updated_at":    sig.updated_at.isoformat(),
     }
 
 
