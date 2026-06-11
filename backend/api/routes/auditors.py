@@ -490,7 +490,8 @@ def get_available_auditors(
             )
         ]
 
-    # 3. Filter by ea_code (normalize to integer)
+    # 3. Filter by ea_code — read from AuditorStandardQualification.ea_codes (per-standard),
+    #    NOT from Auditor.ea_codes (top-level field is null for bulk-imported auditors).
     if ea_code:
         def _ea_int(code: str) -> Optional[int]:
             try:
@@ -499,10 +500,21 @@ def get_available_auditors(
                 return None
         target_ea = _ea_int(ea_code)
         if target_ea is not None:
-            all_auditors = [
-                a for a in all_auditors
-                if any(_ea_int(c) == target_ea for c in (a.ea_codes or []))
-            ]
+            sc_lower = (standard_code or '').lower()
+            filtered_by_ea = []
+            for a in all_auditors:
+                # Collect per-standard EA codes from matching qualification rows
+                sq_codes: list[str] = []
+                for q in a.standard_qualifications:
+                    if q.is_qualified is not False:
+                        # If a standard_code filter is active, only look at matching quals
+                        if not sc_lower or sc_lower in (q.standard_code or '').lower():
+                            sq_codes.extend(q.ea_codes or [])
+                # Fall back to top-level Auditor.ea_codes only when no per-standard codes exist
+                codes_to_check = sq_codes if sq_codes else (a.ea_codes or [])
+                if any(_ea_int(c) == target_ea for c in codes_to_check):
+                    filtered_by_ea.append(a)
+            all_auditors = filtered_by_ea
 
     # 4. Check bookings in audit_sets DB
     sets_db_gen = get_sets_db()
