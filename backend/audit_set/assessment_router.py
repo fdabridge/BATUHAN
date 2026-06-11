@@ -276,3 +276,24 @@ def verify_assessment_signature(
     db.commit()
 
     return {"signed": True, "signed_at": a.signed_at.isoformat()}
+
+
+# ── Client: direct-sign (no OTP) ─────────────────────────────────────────────
+
+@router.post("/client/my-audit-set/assessments/{aid}/sign/direct")
+def sign_assessment_direct(
+    aid: str,
+    db:           Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    a = _get_client_assessment(aid, current_user, db)
+    if a.signed_at:
+        raise HTTPException(400, "Assessment already signed")
+    if not a.rating:
+        raise HTTPException(400, "Rating must be set before signing — save a draft first")
+
+    a.signed_by = current_user.id
+    a.signed_at = datetime.utcnow()
+    db.commit()
+    db.refresh(a)
+    return _assessment_dict(a)

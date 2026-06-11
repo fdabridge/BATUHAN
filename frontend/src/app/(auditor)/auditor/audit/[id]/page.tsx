@@ -182,11 +182,9 @@ function AuditorNCFormsView({ auditSetId }: { auditSetId: string }) {
     id: string; stage_type: string; label: string; file_name: string | null; status: string;
     la_signed_at: string | null;
   }[]>([])
-  const [loading, setLoading] = useState(true)
-  const [otpState, setOtpState] = useState<Record<string, 'idle' | 'otp_sent' | 'done'>>({})
-  const [otpValues, setOtpValues] = useState<Record<string, string>>({})
-  const [messages, setMessages]   = useState<Record<string, string>>({})
-  const [busy, setBusy]           = useState<Record<string, boolean>>({})
+  const [loading, setLoading]   = useState(true)
+  const [signing, setSigning]   = useState<Record<string, boolean>>({})
+  const [signErrs, setSignErrs] = useState<Record<string, string>>({})
 
   const STAGE_LABELS: Record<string, string> = {
     stage_1: 'Stage 1', stage_2: 'Stage 2', surveillance: 'Surveillance',
@@ -211,37 +209,18 @@ function AuditorNCFormsView({ auditSetId }: { auditSetId: string }) {
     window.URL.revokeObjectURL(url)
   }
 
-  async function requestOtp(id: string) {
-    setBusy(b => ({ ...b, [id]: true }))
-    setMessages(m => ({ ...m, [id]: '' }))
+  async function handleSign(id: string) {
+    setSigning(s => ({ ...s, [id]: true }))
+    setSignErrs(e => ({ ...e, [id]: '' }))
     try {
-      await api.post(`/audit-sets/${auditSetId}/nc-forms/${id}/sign/la/request-otp`)
-      setOtpState(s => ({ ...s, [id]: 'otp_sent' }))
+      const r = await api.post(`/audit-sets/${auditSetId}/nc-forms/${id}/sign/la/direct`)
+      const updated = r.data as typeof forms[number]
+      setForms(prev => prev.map(f => f.id === id ? { ...f, ...updated } : f))
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setMessages(m => ({ ...m, [id]: detail || 'Failed to send code' }))
+      setSignErrs(e => ({ ...e, [id]: detail || 'Signing failed' }))
     } finally {
-      setBusy(b => ({ ...b, [id]: false }))
-    }
-  }
-
-  async function verifyOtp(id: string) {
-    setBusy(b => ({ ...b, [id]: true }))
-    setMessages(m => ({ ...m, [id]: '' }))
-    try {
-      await api.post(
-        `/audit-sets/${auditSetId}/nc-forms/${id}/sign/la/verify?otp=${otpValues[id] ?? ''}`,
-      )
-      setOtpState(s => ({ ...s, [id]: 'done' }))
-      setForms(prev => prev.map(f => f.id === id
-        ? { ...f, status: 'pending_client', la_signed_at: new Date().toISOString() }
-        : f
-      ))
-    } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setMessages(m => ({ ...m, [id]: detail || 'Invalid code' }))
-    } finally {
-      setBusy(b => ({ ...b, [id]: false }))
+      setSigning(s => ({ ...s, [id]: false }))
     }
   }
 
@@ -262,80 +241,45 @@ function AuditorNCFormsView({ auditSetId }: { auditSetId: string }) {
             Awaiting Your Signature
           </p>
           <div className="space-y-3">
-            {pending.map(f => {
-              const state = otpState[f.id] || 'idle'
-              return (
-                <div key={f.id} className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-                  <div className="mb-3 flex items-start justify-between">
-                    <div>
-                      <p className="font-medium text-gray-800">{f.label}</p>
-                      <p className="text-xs text-gray-400">
-                        {STAGE_LABELS[f.stage_type] ?? f.stage_type}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <a
-                        href={`/auditor/viewer/nc_form/${f.id}`}
-                        className="inline-flex items-center rounded-lg border border-[#1A4731] px-2.5 py-1
-                          text-xs font-medium text-[#1A4731] hover:bg-[#1A4731]/5 transition-colors"
-                      >
-                        Open
-                      </a>
-                      <button
-                        type="button"
-                        onClick={() => download(f.id, f.file_name)}
-                        className="text-xs text-[#1A4731] underline"
-                      >
-                        Download
-                      </button>
-                    </div>
+            {pending.map(f => (
+              <div key={f.id} className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <div className="mb-3 flex items-start justify-between">
+                  <div>
+                    <p className="font-medium text-gray-800">{f.label}</p>
+                    <p className="text-xs text-gray-400">
+                      {STAGE_LABELS[f.stage_type] ?? f.stage_type}
+                    </p>
                   </div>
-                  {state === 'idle' && (
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={`/auditor/viewer/nc_form/${f.id}`}
+                      className="inline-flex items-center rounded-lg border border-[#1A4731] px-2.5 py-1
+                        text-xs font-medium text-[#1A4731] hover:bg-[#1A4731]/5 transition-colors"
+                    >
+                      Open
+                    </a>
                     <button
                       type="button"
-                      onClick={() => requestOtp(f.id)}
-                      disabled={busy[f.id]}
-                      className="rounded-lg bg-[#1A4731] px-4 py-2 text-sm text-white disabled:opacity-40"
+                      onClick={() => download(f.id, f.file_name)}
+                      className="text-xs text-[#1A4731] underline"
                     >
-                      {busy[f.id] ? 'Sending…' : 'Sign NC Form'}
+                      Download
                     </button>
-                  )}
-                  {state === 'otp_sent' && (
-                    <div className="flex items-center gap-3">
-                      <input
-                        className="w-36 rounded-lg border px-3 py-2 text-center font-mono text-lg tracking-widest"
-                        placeholder="000000" maxLength={6}
-                        value={otpValues[f.id] ?? ''}
-                        onChange={e => setOtpValues(v => ({
-                          ...v, [f.id]: e.target.value.replace(/\D/g, ''),
-                        }))}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => verifyOtp(f.id)}
-                        disabled={(otpValues[f.id] ?? '').length !== 6 || busy[f.id]}
-                        className="rounded-lg bg-[#1A4731] px-4 py-2 text-sm text-white disabled:opacity-40"
-                      >
-                        {busy[f.id] ? '…' : 'Confirm'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => requestOtp(f.id)}
-                        className="text-xs text-gray-400 underline"
-                      >
-                        Resend
-                      </button>
-                    </div>
-                  )}
-                  {state === 'done' && (
-                    <p className="text-sm text-green-600 font-medium">Signed ✓ — client has been notified.</p>
-                  )}
-                  {messages[f.id] && (
-                    <p className="mt-1 text-xs text-red-500">{messages[f.id]}</p>
-                  )}
+                  </div>
                 </div>
-              )
-            })}
+                <button
+                  type="button"
+                  onClick={() => handleSign(f.id)}
+                  disabled={signing[f.id]}
+                  className="rounded-lg bg-[#1A4731] px-4 py-2 text-sm text-white disabled:opacity-40 hover:bg-[#143828]"
+                >
+                  {signing[f.id] ? 'Signing…' : 'Sign NC Form'}
+                </button>
+                {signErrs[f.id] && (
+                  <p className="mt-1 text-xs text-red-500">{signErrs[f.id]}</p>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -401,10 +345,8 @@ function AuditorDeclarationsView({
     auditor_ref_id: string | null; is_signed: boolean; signed_at: string | null
   }[]>([])
   const [loading, setLoading]   = useState(true)
-  const [otpState, setOtpState] = useState<Record<string, 'idle' | 'otp_sent' | 'done'>>({})
-  const [otpValues, setOtpValues] = useState<Record<string, string>>({})
-  const [messages, setMessages]   = useState<Record<string, string>>({})
-  const [busy, setBusy]           = useState<Record<string, boolean>>({})
+  const [signing, setSigning]   = useState<Record<string, boolean>>({})
+  const [signErrs, setSignErrs] = useState<Record<string, string>>({})
   const [confirmed, setConfirmed] = useState<Record<string, boolean>>({})
 
   const STAGE_LABELS: Record<string, string> = {
@@ -433,34 +375,19 @@ function AuditorDeclarationsView({
     d => !myPending.some(mp => mp.id === d.id)
   )
 
-  async function requestOtp(id: string) {
-    setBusy(b => ({ ...b, [id]: true }))
-    setMessages(m => ({ ...m, [id]: '' }))
+  async function handleSign(id: string) {
+    setSigning(s => ({ ...s, [id]: true }))
+    setSignErrs(e => ({ ...e, [id]: '' }))
     try {
-      await api.post(`/audit-sets/${auditSetId}/declarations/${id}/sign/request-otp`)
-      setOtpState(s => ({ ...s, [id]: 'otp_sent' }))
-    } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setMessages(m => ({ ...m, [id]: detail || 'Failed to send code' }))
-    } finally {
-      setBusy(b => ({ ...b, [id]: false }))
-    }
-  }
-
-  async function verifyOtp(id: string) {
-    setBusy(b => ({ ...b, [id]: true }))
-    setMessages(m => ({ ...m, [id]: '' }))
-    try {
-      await api.post(`/audit-sets/${auditSetId}/declarations/${id}/sign/verify?otp=${otpValues[id] ?? ''}`)
-      setOtpState(s => ({ ...s, [id]: 'done' }))
+      await api.post(`/audit-sets/${auditSetId}/declarations/${id}/sign/direct`)
       setDeclarations(prev => prev.map(d =>
         d.id === id ? { ...d, is_signed: true, signed_at: new Date().toISOString() } : d,
       ))
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setMessages(m => ({ ...m, [id]: detail || 'Invalid code' }))
+      setSignErrs(e => ({ ...e, [id]: detail || 'Signing failed' }))
     } finally {
-      setBusy(b => ({ ...b, [id]: false }))
+      setSigning(s => ({ ...s, [id]: false }))
     }
   }
 
@@ -474,97 +401,62 @@ function AuditorDeclarationsView({
         </p>
       )}
 
-      {myPending.map(d => {
-        const state = otpState[d.id] || 'idle'
-        return (
-          <div key={d.id} className="rounded-xl border border-amber-200 bg-white p-5">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <p className="font-semibold text-gray-800">Impartiality Declaration</p>
-                <p className="mt-0.5 text-xs text-gray-400">
-                  {STAGE_LABELS[d.stage_type] ?? d.stage_type} ·{' '}
-                  <span className={`rounded-full px-1.5 py-0.5 text-xs ${ROLE_COLOR[d.member_role] ?? ''}`}>
-                    {d.member_role}
-                  </span>
-                </p>
-              </div>
-              <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
-                Signature Required
-              </span>
-            </div>
-
-            <div className="mb-4 rounded-lg bg-gray-50 p-4">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                I, {d.member_name}, hereby declare that:
+      {myPending.map(d => (
+        <div key={d.id} className="rounded-xl border border-amber-200 bg-white p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <p className="font-semibold text-gray-800">Impartiality Declaration</p>
+              <p className="mt-0.5 text-xs text-gray-400">
+                {STAGE_LABELS[d.stage_type] ?? d.stage_type} ·{' '}
+                <span className={`rounded-full px-1.5 py-0.5 text-xs ${ROLE_COLOR[d.member_role] ?? ''}`}>
+                  {d.member_role}
+                </span>
               </p>
-              <ul className="space-y-1.5">
-                {DECLARATION_TEXT.map((line, i) => (
-                  <li key={i} className="flex gap-2 text-sm text-gray-700">
-                    <span className="mt-0.5 shrink-0 text-[#1A4731]">✓</span>
-                    <span>{line}</span>
-                  </li>
-                ))}
-              </ul>
             </div>
-
-            {state === 'idle' && (
-              <div className="mb-3">
-                <label className="flex cursor-pointer items-start gap-2 text-sm text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={confirmed[d.id] || false}
-                    onChange={e => setConfirmed(c => ({ ...c, [d.id]: e.target.checked }))}
-                    className="mt-0.5 accent-[#1A4731]"
-                  />
-                  I confirm the above declaration is true and accurate.
-                </label>
-              </div>
-            )}
-
-            {state === 'idle' && (
-              <button
-                type="button"
-                onClick={() => requestOtp(d.id)}
-                disabled={!confirmed[d.id] || busy[d.id]}
-                className="rounded-lg bg-[#1A4731] px-5 py-2.5 text-sm font-medium text-white disabled:opacity-40 hover:bg-[#143828]"
-              >
-                {busy[d.id] ? 'Sending code…' : 'Sign Declaration'}
-              </button>
-            )}
-
-            {state === 'otp_sent' && (
-              <div className="flex items-center gap-3">
-                <input
-                  className="w-36 rounded-lg border px-3 py-2 text-center font-mono text-lg tracking-widest focus:outline-none focus:ring-2 focus:ring-[#1A4731]/30"
-                  placeholder="000000" maxLength={6}
-                  value={otpValues[d.id] ?? ''}
-                  onChange={e => setOtpValues(v => ({
-                    ...v, [d.id]: e.target.value.replace(/\D/g, ''),
-                  }))}
-                />
-                <button
-                  type="button"
-                  onClick={() => verifyOtp(d.id)}
-                  disabled={(otpValues[d.id] ?? '').length !== 6 || busy[d.id]}
-                  className="rounded-lg bg-[#1A4731] px-4 py-2 text-sm text-white disabled:opacity-40"
-                >
-                  {busy[d.id] ? '…' : 'Confirm Signature'}
-                </button>
-                <button type="button" onClick={() => requestOtp(d.id)} className="text-xs text-gray-400 underline">
-                  Resend
-                </button>
-              </div>
-            )}
-
-            {state === 'done' && (
-              <p className="text-sm font-medium text-green-600">Declaration signed ✓</p>
-            )}
-            {messages[d.id] && (
-              <p className="mt-1 text-xs text-red-500">{messages[d.id]}</p>
-            )}
+            <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+              Signature Required
+            </span>
           </div>
-        )
-      })}
+
+          <div className="mb-4 rounded-lg bg-gray-50 p-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+              I, {d.member_name}, hereby declare that:
+            </p>
+            <ul className="space-y-1.5">
+              {DECLARATION_TEXT.map((line, i) => (
+                <li key={i} className="flex gap-2 text-sm text-gray-700">
+                  <span className="mt-0.5 shrink-0 text-[#1A4731]">✓</span>
+                  <span>{line}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="mb-3">
+            <label className="flex cursor-pointer items-start gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={confirmed[d.id] || false}
+                onChange={e => setConfirmed(c => ({ ...c, [d.id]: e.target.checked }))}
+                className="mt-0.5 accent-[#1A4731]"
+              />
+              I confirm the above declaration is true and accurate.
+            </label>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => handleSign(d.id)}
+            disabled={!confirmed[d.id] || signing[d.id]}
+            className="rounded-lg bg-[#1A4731] px-5 py-2.5 text-sm font-medium text-white disabled:opacity-40 hover:bg-[#143828]"
+          >
+            {signing[d.id] ? 'Signing…' : 'Sign Declaration'}
+          </button>
+          {signErrs[d.id] && (
+            <p className="mt-1 text-xs text-red-500">{signErrs[d.id]}</p>
+          )}
+        </div>
+      ))}
 
       {otherDeclarations.length > 0 && (
         <div>

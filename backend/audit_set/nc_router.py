@@ -288,6 +288,28 @@ def la_verify_otp(
     return {"signed": True, "status": "pending_client", "la_signed_at": nc.la_signed_at.isoformat()}
 
 
+# ── Lead Auditor: direct-sign (no OTP) ───────────────────────────────────────
+
+@router.post("/audit-sets/{audit_set_id}/nc-forms/{nid}/sign/la/direct")
+def la_sign_direct(
+    audit_set_id: str,
+    nid: str,
+    db:           Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    nc = db.query(AuditSetNCForm).filter_by(id=nid, audit_set_id=audit_set_id).first()
+    if not nc:
+        raise HTTPException(404, "NC form not found")
+    _check_la_authorization(nc, current_user, db)
+    if nc.la_signed_at:
+        raise HTTPException(400, "Already signed by Lead Auditor")
+
+    nc.la_signed_at = datetime.utcnow()
+    nc.status       = "pending_client"
+    db.commit()
+    db.refresh(nc)
+    return _nc_dict(nc)
+
 
 # ── Client: view, download, counter-sign ─────────────────────────────────────
 
@@ -400,3 +422,24 @@ def client_nc_verify_otp(
     db.commit()
 
     return {"signed": True, "status": "complete", "client_signed_at": nc.client_signed_at.isoformat()}
+
+
+# ── Client: direct-sign (no OTP) ─────────────────────────────────────────────
+
+@router.post("/client/my-audit-set/nc-forms/{nid}/sign/direct")
+def client_sign_direct(
+    nid: str,
+    db:           Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    nc = _get_client_nc(nid, current_user, db)
+    if nc.status not in ("pending_client",):
+        raise HTTPException(400, f"NC form status is '{nc.status}', expected 'pending_client'")
+    if nc.client_signed_at:
+        raise HTTPException(400, "Already signed by client")
+
+    nc.client_signed_at = datetime.utcnow()
+    nc.status           = "complete"
+    db.commit()
+    db.refresh(nc)
+    return _nc_dict(nc)

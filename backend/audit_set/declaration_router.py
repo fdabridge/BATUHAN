@@ -246,3 +246,32 @@ def declaration_verify_otp(
     db.commit()
 
     return {"signed": True, "signed_at": decl.signed_at.isoformat()}
+
+
+# ── Direct-sign (no OTP) ─────────────────────────────────────────────────────
+
+@router.post("/audit-sets/{audit_set_id}/declarations/{did}/sign/direct")
+def sign_declaration_direct(
+    audit_set_id: str,
+    did: str,
+    db:           Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    decl = db.query(AuditSetImpartialityDeclaration).filter_by(
+        id=did, audit_set_id=audit_set_id
+    ).first()
+    if not decl:
+        raise HTTPException(404, "Declaration not found")
+    if decl.signed_at:
+        raise HTTPException(400, "Declaration already signed")
+
+    # Authorization: admin bypass; auditors may only sign their own declaration
+    if current_user.role != "admin":
+        if not current_user.auditor_id or decl.auditor_ref_id != current_user.auditor_id:
+            raise HTTPException(403, "You may only sign your own declaration")
+
+    decl.signed_by = current_user.id
+    decl.signed_at = datetime.utcnow()
+    db.commit()
+    db.refresh(decl)
+    return _decl_dict(decl)

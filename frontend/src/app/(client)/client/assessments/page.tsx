@@ -75,8 +75,6 @@ function SignedCard({ assessment }: { assessment: Assessment }) {
 function AssessmentCard({ assessment, onSigned }: { assessment: Assessment; onSigned: () => void }) {
   const [rating, setRating]     = useState(assessment.rating ?? 0)
   const [comments, setComments] = useState(assessment.comments ?? '')
-  const [step, setStep]         = useState<'form' | 'otp' | 'done'>('form')
-  const [otp, setOtp]           = useState('')
   const [error, setError]       = useState('')
   const [busy, setBusy]         = useState(false)
 
@@ -84,8 +82,6 @@ function AssessmentCard({ assessment, onSigned }: { assessment: Assessment; onSi
 
   async function saveDraft() {
     if (!rating) return
-    setBusy(true)
-    setError('')
     try {
       await api.patch(`/client/my-audit-set/assessments/${assessment.id}/draft`, {
         rating,
@@ -93,12 +89,10 @@ function AssessmentCard({ assessment, onSigned }: { assessment: Assessment; onSi
       })
     } catch {
       // ignore — saving draft silently
-    } finally {
-      setBusy(false)
     }
   }
 
-  async function requestOtp() {
+  async function handleSign() {
     if (!rating) { setError('Please select a rating before signing'); return }
     setBusy(true)
     setError('')
@@ -107,64 +101,16 @@ function AssessmentCard({ assessment, onSigned }: { assessment: Assessment; onSi
         rating,
         comments: comments || null,
       })
-      await api.post(`/client/my-audit-set/assessments/${assessment.id}/sign/request-otp`)
-      setStep('otp')
-    } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setError(detail || 'Failed to send code')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function verifyOtp() {
-    setBusy(true)
-    setError('')
-    try {
-      await api.post(
-        `/client/my-audit-set/assessments/${assessment.id}/sign/verify?otp=${otp}`,
-      )
-      setStep('done')
+      await api.post(`/client/my-audit-set/assessments/${assessment.id}/sign/direct`)
       onSigned()
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setError(detail || 'Invalid code')
+      setError(detail || 'Signing failed')
     } finally {
       setBusy(false)
     }
   }
 
-  return (
-    <CardShell
-      assessment={assessment}
-      step={step} rating={rating} comments={comments} otp={otp} error={error} busy={busy}
-      setRating={setRating} setComments={setComments} setOtp={setOtp} setStep={setStep}
-      saveDraft={saveDraft} requestOtp={requestOtp} verifyOtp={verifyOtp}
-    />
-  )
-}
-
-interface CardShellProps {
-  assessment: Assessment
-  step:       'form' | 'otp' | 'done'
-  rating:     number
-  comments:   string
-  otp:        string
-  error:      string
-  busy:       boolean
-  setRating:   (n: number) => void
-  setComments: (s: string) => void
-  setOtp:      (s: string) => void
-  setStep:     (s: 'form' | 'otp' | 'done') => void
-  saveDraft:   () => void
-  requestOtp:  () => void
-  verifyOtp:   () => void
-}
-
-function CardShell({
-  assessment, step, rating, comments, otp, error, busy,
-  setRating, setComments, setOtp, setStep, saveDraft, requestOtp, verifyOtp,
-}: CardShellProps) {
   return (
     <div className="rounded-xl border bg-white p-5">
       <div className="mb-4">
@@ -174,86 +120,39 @@ function CardShell({
         </p>
       </div>
 
-      {step === 'form' && (
-        <div className="space-y-3">
-          <div>
-            <p className="mb-1.5 text-sm font-medium text-gray-700">Overall Rating</p>
-            <StarPicker value={rating} onChange={setRating} />
-            {rating > 0 && (
-              <p className="mt-1 text-xs text-gray-400">
-                {['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'][rating]}
-              </p>
-            )}
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Comments <span className="font-normal text-gray-400">(optional)</span>
-            </label>
-            <textarea
-              rows={3}
-              value={comments}
-              onChange={e => setComments(e.target.value)}
-              onBlur={saveDraft}
-              placeholder="Your feedback about this auditor's conduct and professionalism…"
-              className="w-full rounded-lg border px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#1A4731]/30"
-            />
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={requestOtp}
-              disabled={!rating || busy}
-              className="rounded-lg bg-[#1A4731] px-5 py-2.5 text-sm font-medium text-white disabled:opacity-40 hover:bg-[#143828]"
-            >
-              {busy ? 'Please wait…' : 'Submit & Sign'}
-            </button>
-            <p className="text-xs text-gray-400">
-              You will receive a 6-digit code by email.
+      <div className="space-y-3">
+        <div>
+          <p className="mb-1.5 text-sm font-medium text-gray-700">Overall Rating</p>
+          <StarPicker value={rating} onChange={setRating} />
+          {rating > 0 && (
+            <p className="mt-1 text-xs text-gray-400">
+              {['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'][rating]}
             </p>
-          </div>
-          {error && <p className="text-xs text-red-500">{error}</p>}
+          )}
         </div>
-      )}
-
-      {step === 'otp' && (
-        <div className="space-y-3">
-          <p className="text-sm text-gray-600">
-            A 6-digit verification code has been sent to your email:
-          </p>
-          <input
-            className="w-40 rounded-lg border px-3 py-2 text-center font-mono text-xl tracking-widest focus:outline-none focus:ring-2 focus:ring-[#1A4731]/30"
-            placeholder="000000"
-            maxLength={6}
-            value={otp}
-            onChange={e => setOtp(e.target.value.replace(/\D/g, ''))}
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700">
+            Comments <span className="font-normal text-gray-400">(optional)</span>
+          </label>
+          <textarea
+            rows={3}
+            value={comments}
+            onChange={e => setComments(e.target.value)}
+            onBlur={saveDraft}
+            placeholder="Your feedback about this auditor's conduct and professionalism…"
+            className="w-full rounded-lg border px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#1A4731]/30"
           />
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={verifyOtp}
-              disabled={otp.length !== 6 || busy}
-              className="rounded-lg bg-[#1A4731] px-5 py-2 text-sm font-medium text-white disabled:opacity-40"
-            >
-              {busy ? '…' : 'Confirm Signature'}
-            </button>
-            <button type="button" onClick={() => setStep('form')} className="text-sm text-gray-400">
-              Back
-            </button>
-            <button
-              type="button"
-              onClick={requestOtp}
-              className="text-xs text-gray-400 underline"
-            >
-              Resend code
-            </button>
-          </div>
-          {error && <p className="text-xs text-red-500">{error}</p>}
         </div>
-      )}
-
-      {step === 'done' && (
-        <p className="text-sm font-medium text-green-600">Assessment submitted and signed ✓</p>
-      )}
+        <button
+          type="button"
+          onClick={handleSign}
+          disabled={!rating || busy}
+          className="rounded-lg bg-[#1A4731] px-5 py-2.5 text-sm font-medium text-white disabled:opacity-40 hover:bg-[#143828]"
+        >
+          {busy ? 'Signing…' : 'Submit & Sign'}
+        </button>
+        {error && <p className="text-xs text-red-500">{error}</p>}
+      </div>
     </div>
   )
 }
