@@ -563,6 +563,10 @@ def _commit_existing_signing_record(
             sig_record.otp_hash       = None
             sig_record.otp_expires_at = None
 
+            # Flush pending ORM changes to the DB (session has autoflush=False)
+            # so the count below sees sig_record.signed_at as non-NULL.
+            db.flush()
+
             remaining = (
                 db.query(AuditDocumentSignature)
                 .filter_by(document_id=doc_id, required=True)
