@@ -129,8 +129,9 @@ function SectionPanel({ title, icon, children }: { title: string; icon: string; 
 export default function ApplyPage() {
   const [form, setForm] = useState<FormState>(INITIAL)
   const [loading, setLoading] = useState(false)
-  const [success, setSuccess] = useState(false)
-  const [error, setError] = useState('')
+  const [success, setSuccess]         = useState(false)
+  const [credentials, setCredentials] = useState<{ username: string; password: string } | null>(null)
+  const [error, setError]             = useState('')
 
   const sel = (patch: Partial<FormState>) => setForm(f => ({ ...f, ...patch }))
   const hasStd = (code: string) => form.standards.includes(code)
@@ -148,7 +149,7 @@ export default function ApplyPage() {
     setLoading(true)
     try {
       const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-      await axios.post(`${apiBase}/apply`, {
+      const res = await axios.post(`${apiBase}/apply`, {
         company_name:      form.company_name,
         company_address:   form.company_address,
         city:              form.city,
@@ -195,6 +196,10 @@ export default function ApplyPage() {
           mdqms_regulatory_territories:   form.mdqms_regulatory_territories,
         }),
       })
+      setCredentials({
+        username: res.data.username      || form.representative_email,
+        password: res.data.temp_password || '',
+      })
       setSuccess(true)
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
@@ -207,18 +212,75 @@ export default function ApplyPage() {
   if (success) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-        <div className="bg-white rounded-xl shadow-sm border p-10 max-w-md text-center">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
+        <div className="bg-white rounded-xl shadow-sm border p-10 max-w-lg w-full">
+          {/* Header */}
+          <div className="flex flex-col items-center text-center mb-8">
+            <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mb-4">
+              <svg className="w-7 h-7 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-bold text-gray-900 mb-1">Application Submitted</h2>
+            <p className="text-sm text-gray-500">
+              Thank you. Your application is under review.
+            </p>
           </div>
-          <h2 className="text-xl font-bold text-gray-900 mb-2">Application Submitted</h2>
-          <p className="text-gray-600 mb-6">
-            Thank you. We have received your application and will review it shortly.
-            Login credentials have been sent to your email address.
-          </p>
-          <a href="/login" className="inline-block bg-[#1A4731] text-white px-6 py-2.5 rounded-lg text-sm font-medium">
+
+          {/* Credentials box */}
+          {credentials && (
+            <div className="mb-8 rounded-xl border-2 border-amber-200 bg-amber-50 p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <svg className="w-4 h-4 text-amber-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                </svg>
+                <p className="text-sm font-semibold text-amber-800">
+                  Save your login credentials — you won&rsquo;t see them again
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                {/* Username row */}
+                <div className="flex items-center justify-between gap-3 rounded-lg bg-white border border-amber-200 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-0.5">Username</p>
+                    <p className="text-sm font-mono text-gray-800 truncate">{credentials.username}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard.writeText(credentials.username)}
+                    className="shrink-0 text-xs text-amber-700 hover:text-amber-900 font-medium border border-amber-300 rounded px-2 py-1"
+                  >
+                    Copy
+                  </button>
+                </div>
+
+                {/* Password row */}
+                <div className="flex items-center justify-between gap-3 rounded-lg bg-white border border-amber-200 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-0.5">Temporary Password</p>
+                    <p className="text-sm font-mono text-gray-800 tracking-widest">{credentials.password}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard.writeText(credentials.password)}
+                    className="shrink-0 text-xs text-amber-700 hover:text-amber-900 font-medium border border-amber-300 rounded px-2 py-1"
+                  >
+                    Copy
+                  </button>
+                </div>
+              </div>
+
+              <p className="mt-3 text-xs text-amber-700">
+                These credentials have also been sent to your email address as a backup.
+              </p>
+            </div>
+          )}
+
+          <a
+            href="/login"
+            className="block w-full text-center bg-[#1A4731] text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:opacity-90"
+          >
             Go to Portal Login
           </a>
         </div>

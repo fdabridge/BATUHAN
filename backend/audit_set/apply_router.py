@@ -203,6 +203,7 @@ def submit_application(
     temp_password = _generate_password()
     user = PlatformUser(
         email=payload.representative_email,
+        username=payload.representative_email,
         password_hash=pwd_ctx.hash(temp_password),
         full_name=payload.representative_name,
         role="client",
@@ -225,7 +226,9 @@ def submit_application(
     )
 
     return {
-        "success": True,
-        "message": "Application submitted successfully. Check your email for login credentials.",
-        "plan_number": plan_number,
+        "success":      True,
+        "message":      "Application submitted successfully.",
+        "plan_number":  plan_number,
+        "username":     payload.representative_email,
+        "temp_password": temp_password,
     }
