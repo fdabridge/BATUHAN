@@ -64,7 +64,6 @@ let _pdfjs: PdfjsLib | null = null
 async function getPdfjsLib(): Promise<PdfjsLib> {
   if (_pdfjs) return _pdfjs
   const pdfjs = await import('pdfjs-dist')
-  // @ts-expect-error GlobalWorkerOptions typing varies across versions
   pdfjs.GlobalWorkerOptions.workerSrc =
     '//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
   _pdfjs = pdfjs
