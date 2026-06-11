@@ -160,8 +160,19 @@ class AuditSet(Base):
     #   in_planning       → CB approved, doing man-days/auditor assignment
     #   quotation_sent    → FR.220 released to client portal
     #   agreement_signed  → FR.220 + FR.221 both signed by client
+    #
+    #   --- Initial certification only ---
+    #   stage1_scheduled   → Stage 1 audit dates confirmed
+    #   stage1_in_progress → Stage 1 audit underway
+    #   stage1_complete    → Stage 1 done, gate to Stage 2
+    #   stage2_scheduled   → Stage 2 audit dates confirmed
+    #   stage2_in_progress → Stage 2 audit underway
+    #
+    #   --- Surveillance / Recertification only ---
     #   audit_scheduled   → audit dates confirmed by both sides
     #   audit_in_progress → audit underway
+    #
+    #   --- Shared closing ---
     #   under_review      → auditor uploaded docs, CB technical review
     #   certified         → certificate issued
     # NULL = audit set created internally (not via client portal) — existing rows

@@ -69,7 +69,13 @@ export function MeetingAttendeesSection({
 
   useEffect(() => { load() }, [load])
 
-  const MEETING_STAGES = ['agreement_signed', 'audit_scheduled', 'audit_in_progress', 'under_review', 'certified']
+  const MEETING_STAGES = [
+    'agreement_signed',
+    'stage1_scheduled', 'stage1_in_progress', 'stage1_complete',
+    'stage2_scheduled', 'stage2_in_progress',
+    'audit_scheduled', 'audit_in_progress',
+    'under_review', 'certified',
+  ]
   const showSection = workflowStatus != null && MEETING_STAGES.includes(workflowStatus)
   if (!showSection) return null
 

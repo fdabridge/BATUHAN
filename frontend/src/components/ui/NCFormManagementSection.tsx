@@ -49,8 +49,10 @@ export function NCFormManagementSection({
   const [uploadMsg, setUploadMsg] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  // Show from audit_in_progress onwards
+  // Show from audit_scheduled / stage1_scheduled onwards
   const relevantStatuses = new Set([
+    'stage1_scheduled', 'stage1_in_progress', 'stage1_complete',
+    'stage2_scheduled', 'stage2_in_progress',
     'audit_scheduled', 'audit_in_progress', 'under_review', 'certified',
   ])
 

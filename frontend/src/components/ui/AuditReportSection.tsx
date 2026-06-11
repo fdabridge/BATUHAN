@@ -49,6 +49,8 @@ export function AuditReportSection({
   const [busy, setBusy]           = useState<Record<string, boolean>>({})
 
   const relevantStatuses = new Set([
+    'stage1_in_progress', 'stage1_complete',
+    'stage2_scheduled', 'stage2_in_progress',
     'audit_in_progress', 'under_review', 'certified',
   ])
 

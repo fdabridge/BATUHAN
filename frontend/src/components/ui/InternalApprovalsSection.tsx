@@ -63,7 +63,12 @@ export function InternalApprovalsSection({
   const showSection = workflowStatus && workflowStatus !== 'pending_review'
   if (!showSection) return null
 
-  const FR222_STAGES = ['audit_scheduled', 'audit_in_progress', 'under_review', 'certified']
+  const FR222_STAGES = [
+    'stage1_scheduled', 'stage1_in_progress', 'stage1_complete',
+    'stage2_scheduled', 'stage2_in_progress',
+    'audit_scheduled', 'audit_in_progress',
+    'under_review', 'certified',
+  ]
   const showFR222 = workflowStatus != null && FR222_STAGES.includes(workflowStatus)
 
   async function handleSignClick(slot: SigSlot) {

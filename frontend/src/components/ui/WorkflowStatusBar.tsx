@@ -5,13 +5,28 @@ import { useMutation } from '@tanstack/react-query'
 import api from '@/lib/api'
 
 interface WorkflowStatusBarProps {
-  auditSetId: string
-  currentStatus: string | null
+  auditSetId:      string
+  currentStatus:   string | null
   currentUserRole: string
-  onAdvanced: () => void
+  auditType:       string | null   // "initial" | "surveillance" | "recertification" | null
+  onAdvanced:      () => void
 }
 
-const STEPS = [
+const INITIAL_STEPS = [
+  { key: 'pending_review',     label: 'Pending'    },
+  { key: 'in_planning',        label: 'Planning'   },
+  { key: 'quotation_sent',     label: 'Quotation'  },
+  { key: 'agreement_signed',   label: 'Agreement'  },
+  { key: 'stage1_scheduled',   label: 'Stage 1'    },
+  { key: 'stage1_in_progress', label: 'S1 Audit'   },
+  { key: 'stage1_complete',    label: 'S1 Done'    },
+  { key: 'stage2_scheduled',   label: 'Stage 2'    },
+  { key: 'stage2_in_progress', label: 'S2 Audit'   },
+  { key: 'under_review',       label: 'Review'     },
+  { key: 'certified',          label: 'Certified'  },
+]
+
+const STANDARD_STEPS = [
   { key: 'pending_review',    label: 'Pending'    },
   { key: 'in_planning',       label: 'Planning'   },
   { key: 'quotation_sent',    label: 'Quotation'  },
@@ -22,16 +37,69 @@ const STEPS = [
   { key: 'certified',         label: 'Certified'  },
 ]
 
+function getSteps(auditType: string | null) {
+  return auditType === 'initial' ? INITIAL_STEPS : STANDARD_STEPS
+}
+
 interface ActionPanel {
   heading: string
   body:    string
   cta?:    { label: string; nextStatus: string; allowedRoles?: string[] }
 }
 
-const PANELS: Record<string, ActionPanel> = {
+const INITIAL_PANELS: Record<string, ActionPanel> = {
   in_planning: {
     heading: 'Ready to send quotation?',
-    body: "Download and generate the FR.220 quotation, then release it to the client using the Shared Documents section below. Once you release a document with type 'Quotation', the status advances automatically.",
+    body: "Download and generate the FR.220 quotation, then release it to the client using the Shared Documents section below. Once you release a Quotation document, the status advances automatically.",
+  },
+  quotation_sent: {
+    heading: 'Waiting for client signature',
+    body: 'The quotation has been sent. The client needs to sign it via their portal. Status will advance automatically when they sign.',
+  },
+  agreement_signed: {
+    heading: 'Agreement confirmed — ready for Stage 1',
+    body: 'The client has signed the agreement. Schedule the Stage 1 (document review) audit dates to proceed.',
+    cta: { label: 'Schedule Stage 1', nextStatus: 'stage1_scheduled' },
+  },
+  stage1_scheduled: {
+    heading: 'Stage 1 scheduled',
+    body: 'Stage 1 dates are confirmed. Mark as in progress when the Stage 1 audit begins.',
+    cta: { label: 'Mark Stage 1 In Progress', nextStatus: 'stage1_in_progress' },
+  },
+  stage1_in_progress: {
+    heading: 'Stage 1 audit in progress',
+    body: 'Stage 1 is underway. Once the Stage 1 readiness assessment is complete and the client is cleared for Stage 2, mark it as done.',
+    cta: { label: 'Mark Stage 1 Complete', nextStatus: 'stage1_complete' },
+  },
+  stage1_complete: {
+    heading: 'Stage 1 complete ✓',
+    body: 'Stage 1 is done. Schedule the Stage 2 (on-site) audit when dates are agreed.',
+    cta: { label: 'Schedule Stage 2', nextStatus: 'stage2_scheduled' },
+  },
+  stage2_scheduled: {
+    heading: 'Stage 2 scheduled',
+    body: 'Stage 2 dates are confirmed. Mark as in progress when the on-site audit begins.',
+    cta: { label: 'Mark Stage 2 In Progress', nextStatus: 'stage2_in_progress' },
+  },
+  stage2_in_progress: {
+    heading: 'Stage 2 audit in progress',
+    body: 'Stage 2 is underway. Status will advance to Under Review when the auditor uploads their completed documents.',
+  },
+  under_review: {
+    heading: 'Under review',
+    body: 'Audit documents are uploaded. The certification committee can now review and issue the certificate.',
+    cta: { label: 'Issue Certificate', nextStatus: 'certified', allowedRoles: ['admin', 'executive'] },
+  },
+  certified: {
+    heading: 'Certified ✓',
+    body: 'The certification has been issued.',
+  },
+}
+
+const STANDARD_PANELS: Record<string, ActionPanel> = {
+  in_planning: {
+    heading: 'Ready to send quotation?',
+    body: "Download and generate the FR.220 quotation, then release it to the client using the Shared Documents section below. Once you release a Quotation document, the status advances automatically.",
   },
   quotation_sent: {
     heading: 'Waiting for client signature',
@@ -39,12 +107,12 @@ const PANELS: Record<string, ActionPanel> = {
   },
   agreement_signed: {
     heading: 'Agreement confirmed',
-    body: 'The client has signed the agreement. Once audit dates are confirmed with the client, mark the audit as scheduled.',
+    body: 'The client has signed the agreement. Once audit dates are confirmed, mark the audit as scheduled.',
     cta: { label: 'Mark as Audit Scheduled', nextStatus: 'audit_scheduled' },
   },
   audit_scheduled: {
     heading: 'Audit is scheduled',
-    body: 'Audit dates are confirmed. When the audit begins, mark it as in progress.',
+    body: 'Audit dates are confirmed. Mark as in progress when the audit begins.',
     cta: { label: 'Mark as In Progress', nextStatus: 'audit_in_progress' },
   },
   audit_in_progress: {
@@ -62,7 +130,11 @@ const PANELS: Record<string, ActionPanel> = {
   },
 }
 
-export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, onAdvanced }: WorkflowStatusBarProps) {
+function getPanels(auditType: string | null) {
+  return auditType === 'initial' ? INITIAL_PANELS : STANDARD_PANELS
+}
+
+export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, auditType, onAdvanced }: WorkflowStatusBarProps) {
   const [errMsg, setErrMsg] = useState<string | null>(null)
 
   const { mutate: advance, isPending } = useMutation({
@@ -77,6 +149,9 @@ export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, 
       setErrMsg(detail ?? 'Failed to advance status')
     },
   })
+
+  const STEPS  = getSteps(auditType)
+  const PANELS = getPanels(auditType)
 
   if (!currentStatus || currentStatus === 'pending_review') return null
 

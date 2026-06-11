@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from audit_set.db_models import (
     AuditDocumentSignature,
     AuditSet,
+    AuditSetStage,
     AuditSetStatusEvent,
     get_db as get_audit_db,
 )
@@ -38,10 +39,20 @@ VALID_TRANSITIONS: dict[tuple[Optional[str], str], set[str]] = {
     ("pending_review",    "in_planning"):       {"admin", "planner"},
     ("in_planning",       "quotation_sent"):    {"admin", "planner"},
     ("quotation_sent",    "agreement_signed"):  {"admin", "planner", "client"},
+    # ── Surveillance / Recertification path (single-audit) ───────────────────
     ("agreement_signed",  "audit_scheduled"):   {"admin", "planner"},
     ("audit_scheduled",   "audit_in_progress"): {"admin", "planner", "auditor"},
     ("audit_in_progress", "under_review"):      {"admin", "planner", "auditor"},
-    ("under_review",      "certified"):         {"admin", "executive"},
+    # ── Initial certification — Stage 1 ──────────────────────────────────────
+    ("agreement_signed",   "stage1_scheduled"):   {"admin", "planner"},
+    ("stage1_scheduled",   "stage1_in_progress"): {"admin", "planner", "auditor"},
+    ("stage1_in_progress", "stage1_complete"):    {"admin", "planner", "auditor"},
+    # ── Initial certification — Stage 2 ──────────────────────────────────────
+    ("stage1_complete",    "stage2_scheduled"):   {"admin", "planner"},
+    ("stage2_scheduled",   "stage2_in_progress"): {"admin", "planner", "auditor"},
+    ("stage2_in_progress", "under_review"):       {"admin", "planner", "auditor"},
+    # ── Shared closing ────────────────────────────────────────────────────────
+    ("under_review",       "certified"):          {"admin", "executive"},
 }
 
 CB_REVIEW_ROLES = {"admin", "planner", "officer", "executive"}
@@ -132,6 +143,17 @@ def update_workflow_status(
         raise HTTPException(403, f"Role '{current_user.role}' cannot make this transition")
 
     audit_set.workflow_status = to_status
+
+    # When Stage 1 is marked complete, close out the Stage 1 AuditSetStage row.
+    if to_status == "stage1_complete":
+        stage1_row = (
+            db.query(AuditSetStage)
+            .filter_by(audit_set_id=audit_set_id, stage_type="stage_1")
+            .first()
+        )
+        if stage1_row:
+            stage1_row.status = "complete"
+
     event = AuditSetStatusEvent(
         audit_set_id=audit_set_id,
         from_status=from_status,

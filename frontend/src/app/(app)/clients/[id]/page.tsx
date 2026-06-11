@@ -1429,6 +1429,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
           auditSetId={id}
           currentStatus={data.workflow_status}
           currentUserRole={currentUser?.role ?? ''}
+          auditType={data.audit_type ?? null}
           onAdvanced={invalidate}
         />
       )}
