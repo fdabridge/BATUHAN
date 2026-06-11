@@ -133,16 +133,16 @@ export default function LoginPage() {
               className="text-gray-700"
               style={{ fontSize: 12, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase' }}
             >
-              Email
+              Username
             </label>
             <Input
               id="email"
-              type="email"
-              placeholder="you@example.com"
+              type="text"
+              placeholder="username or email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              autoComplete="email"
+              autoComplete="username"
             />
           </div>
 
@@ -179,7 +179,7 @@ export default function LoginPage() {
           {/* 4 — Error state */}
           {error && (
             <p className="text-center text-red-600" style={{ fontSize: 13 }}>
-              Invalid email or password.
+              Invalid username or password.
             </p>
           )}
 

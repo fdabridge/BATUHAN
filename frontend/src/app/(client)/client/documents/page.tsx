@@ -26,12 +26,6 @@ export default function ClientDocumentsPage() {
   const [docs, setDocs]       = useState<SharedDoc[]>([])
   const [loading, setLoading] = useState(true)
 
-  const [signingDoc, setSigningDoc] = useState<string | null>(null)
-  const [otpSent, setOtpSent]       = useState(false)
-  const [otpValue, setOtpValue]     = useState('')
-  const [signError, setSignError]   = useState('')
-  const [signLoading, setSignLoading] = useState(false)
-
   async function loadDocs() {
     try {
       const r = await api.get<SharedDoc[]>('/client/my-audit-set/documents')
@@ -60,43 +54,6 @@ export default function ClientDocumentsPage() {
       window.URL.revokeObjectURL(url)
     } catch {
       alert('Could not download document.')
-    }
-  }
-
-  async function requestOtp(docId: string) {
-    setSigningDoc(docId)
-    setOtpSent(false)
-    setSignError('')
-    setSignLoading(true)
-    try {
-      await api.post(`/client/my-audit-set/documents/${docId}/sign/request-otp`)
-      setOtpSent(true)
-    } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })
-        ?.response?.data?.detail
-      setSignError(detail || 'Failed to send OTP')
-    } finally {
-      setSignLoading(false)
-    }
-  }
-
-  async function submitOtp(docId: string) {
-    setSignLoading(true)
-    setSignError('')
-    try {
-      await api.post(
-        `/client/my-audit-set/documents/${docId}/sign/verify?otp=${otpValue}`,
-      )
-      setSigningDoc(null)
-      setOtpValue('')
-      setOtpSent(false)
-      await loadDocs()
-    } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })
-        ?.response?.data?.detail
-      setSignError(detail || 'Invalid code')
-    } finally {
-      setSignLoading(false)
     }
   }
 
@@ -144,7 +101,7 @@ export default function ClientDocumentsPage() {
                   className="inline-flex items-center gap-1.5 rounded-lg border border-[#1A4731] px-3 py-1.5
                     text-sm font-medium text-[#1A4731] hover:bg-[#1A4731]/5 transition-colors"
                 >
-                  Open
+                  {doc.status !== 'signed' ? 'Open to Sign' : 'Open'}
                 </a>
                 <button
                   type="button"
@@ -153,77 +110,12 @@ export default function ClientDocumentsPage() {
                 >
                   Download
                 </button>
-                {doc.status !== 'signed' && (
-                  <button
-                    type="button"
-                    onClick={() => requestOtp(doc.id)}
-                    className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-sm text-white transition-colors hover:bg-[#143828]"
-                  >
-                    Sign Document
-                  </button>
-                )}
                 {doc.status === 'signed' && doc.signed_at && (
                   <span className="text-xs text-gray-400">
                     Signed on {fmtDate(doc.signed_at)}
                   </span>
                 )}
               </div>
-
-              {signingDoc === doc.id && (
-                <div className="mt-4 rounded-lg border bg-gray-50 p-4">
-                  {!otpSent ? (
-                    <p className="text-sm text-gray-600">
-                      {signLoading
-                        ? 'Sending code…'
-                        : 'Sending a 6-digit code to your email…'}
-                    </p>
-                  ) : (
-                    <div>
-                      <p className="mb-2 text-sm font-medium text-gray-700">
-                        Enter the 6-digit code sent to your email:
-                      </p>
-                      <div className="flex gap-2">
-                        <input
-                          className="w-36 rounded-lg border px-3 py-2 text-center font-mono text-sm tracking-widest focus:outline-none focus:ring-2 focus:ring-[#1A4731]/30"
-                          placeholder="000000"
-                          maxLength={6}
-                          value={otpValue}
-                          onChange={(e) => setOtpValue(e.target.value.replace(/\D/g, ''))}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => submitOtp(doc.id)}
-                          disabled={otpValue.length !== 6 || signLoading}
-                          className="rounded-lg bg-[#1A4731] px-4 py-2 text-sm text-white disabled:opacity-40"
-                        >
-                          {signLoading ? '…' : 'Confirm'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSigningDoc(null)
-                            setOtpSent(false)
-                            setOtpValue('')
-                          }}
-                          className="px-2 text-sm text-gray-400"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => requestOtp(doc.id)}
-                        className="mt-2 text-xs text-gray-400 underline"
-                      >
-                        Resend code
-                      </button>
-                    </div>
-                  )}
-                  {signError && (
-                    <p className="mt-2 text-xs text-red-500">{signError}</p>
-                  )}
-                </div>
-              )}
             </div>
           ))}
         </div>

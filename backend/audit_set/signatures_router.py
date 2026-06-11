@@ -6,9 +6,7 @@ Prompt 12 covers: cb_planner signs quotation + agreement.
 Future prompts extend this to cb_cert_manager, lead_auditor, committee, guests.
 """
 from __future__ import annotations
-import hashlib
-import secrets
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -17,18 +15,12 @@ from audit_set.db_models import (
     AuditDocumentSignature, AuditSetSharedDocument, AuditSet,
     AuditSetStatusEvent, get_db,
 )
-from auth.db_models import PlatformUser, get_db as get_auth_db
+from auth.db_models import PlatformUser
 from auth.dependencies import get_current_user
-from email_service import send_document_released, send_otp_code
 
 router = APIRouter(prefix="/audit-sets", tags=["signatures"])
 
-CB_ROLES   = {"admin", "planner", "officer", "executive"}
-OTP_EXPIRY = 10  # minutes
-
-
-def _hash_otp(otp: str) -> str:
-    return hashlib.sha256(otp.encode()).hexdigest()
+CB_ROLES = {"admin", "planner", "officer", "executive"}
 
 
 def _sig_to_dict(s: AuditDocumentSignature, doc_label: str = "",
@@ -103,13 +95,15 @@ def get_my_pending_signatures(
     return results
 
 
-@router.post("/{audit_set_id}/signatures/{sig_id}/request-otp")
-def request_cb_signature_otp(
+@router.post("/{audit_set_id}/signatures/{sig_id}/sign-direct")
+def sign_direct(
     audit_set_id: str,
-    sig_id: str,
-    db: Session = Depends(get_db),
+    sig_id:       str,
+    request:      Request,
+    db:           Session      = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
+    """Direct sign for FR218/FR222 internal slots — no OTP required."""
     if current_user.role not in CB_ROLES:
         raise HTTPException(403, "Not authorized")
 
@@ -117,100 +111,35 @@ def request_cb_signature_otp(
         id=sig_id, audit_set_id=audit_set_id
     ).first()
     if not sig:
-        raise HTTPException(404, "Signature request not found")
+        raise HTTPException(404, "Signature slot not found")
 
     # Self-assign if the slot is unassigned and the caller is eligible.
-    # NOTE: cb_reviewer is no longer self-assignable — appointment required (Prompt 14).
     if sig.signer_user_id is None:
-        eligible = False
-        if sig.signer_role_label == "cb_cert_manager" and current_user.role in ("admin", "executive"):
-            eligible = True
-        if not eligible:
-            raise HTTPException(403, "You are not eligible to sign this slot")
-        sig.signer_user_id = current_user.id
-        sig.signer_name    = current_user.full_name
-        sig.signer_email   = current_user.email
-        db.commit()
-    elif sig.signer_user_id != current_user.id:
-        raise HTTPException(403, "This signature is not assigned to you")
-
-    if sig.signed_at:
-        raise HTTPException(400, "Already signed")
-
-    otp = f"{secrets.randbelow(900000) + 100000}"
-    sig.otp_hash = _hash_otp(otp)
-    sig.otp_expires_at = datetime.utcnow() + timedelta(minutes=OTP_EXPIRY)
-    db.commit()
-
-    doc_label = sig.document_type.title()
-    if sig.document_id:
-        doc = db.query(AuditSetSharedDocument).filter_by(id=sig.document_id).first()
-        if doc:
-            doc_label = doc.label
-
-    try:
-        send_otp_code(
-            to=current_user.email,
-            full_name=current_user.full_name,
-            otp=otp,
-            document_label=doc_label,
+        eligible = (
+            sig.signer_role_label == "cb_cert_manager"
+            and current_user.role in ("admin", "executive")
         )
-    except Exception:
-        pass
-
-    return {"message": f"OTP sent to {current_user.email}. Valid for {OTP_EXPIRY} minutes."}
-
-
-@router.post("/{audit_set_id}/signatures/{sig_id}/verify")
-def verify_cb_signature(
-    audit_set_id: str,
-    sig_id: str,
-    otp: str,
-    request: Request,
-    db: Session = Depends(get_db),
-    auth_db: Session = Depends(get_auth_db),
-    current_user: PlatformUser = Depends(get_current_user),
-):
-    if current_user.role not in CB_ROLES:
-        raise HTTPException(403, "Not authorized")
-
-    sig = db.query(AuditDocumentSignature).filter_by(
-        id=sig_id, audit_set_id=audit_set_id
-    ).first()
-    if not sig:
-        raise HTTPException(404, "Signature request not found")
-
-    # Self-assign if unassigned and caller is eligible.
-    # NOTE: cb_reviewer is no longer self-assignable — appointment required (Prompt 14).
-    if sig.signer_user_id is None:
-        eligible = False
-        if sig.signer_role_label == "cb_cert_manager" and current_user.role in ("admin", "executive"):
-            eligible = True
         if not eligible:
             raise HTTPException(403, "You are not eligible to sign this slot")
         sig.signer_user_id = current_user.id
         sig.signer_name    = current_user.full_name
         sig.signer_email   = current_user.email
     elif sig.signer_user_id != current_user.id:
-        raise HTTPException(403, "This signature is not assigned to you")
+        raise HTTPException(403, "This signature slot is not assigned to you")
 
     if sig.signed_at:
         raise HTTPException(400, "Already signed")
-    if not sig.otp_hash or not sig.otp_expires_at:
-        raise HTTPException(400, "No pending OTP. Request one first.")
-    if datetime.utcnow() > sig.otp_expires_at:
-        raise HTTPException(400, "OTP expired. Please request a new one.")
-    if _hash_otp(otp.strip()) != sig.otp_hash:
-        raise HTTPException(400, "Invalid OTP code.")
 
-    sig.signed_at = datetime.utcnow()
-    sig.signed_ip = request.client.host if request.client else None
-    sig.otp_hash = None
+    sig.signed_at      = datetime.utcnow()
+    sig.signed_ip      = request.client.host if request.client else None
+    sig.otp_hash       = None
     sig.otp_expires_at = None
-    db.commit()
 
-    # If all required signatures on the underlying document are now collected,
-    # flip the document to "released" and advance the workflow + notify client.
+    # Flush before count so the updated signed_at is visible.
+    db.flush()
+
+    # If this slot has a linked shared document, check whether all required
+    # signatures are now collected and release the document if so.
     if sig.document_id:
         doc = db.query(AuditSetSharedDocument).filter_by(id=sig.document_id).first()
         if doc and doc.status == "pending_cb_signature":
@@ -223,7 +152,6 @@ def verify_cb_signature(
             if remaining == 0:
                 doc.status = "released"
                 audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
-
                 if audit_set and doc.document_type == "quotation":
                     if audit_set.workflow_status == "in_planning":
                         audit_set.workflow_status = "quotation_sent"
@@ -232,24 +160,10 @@ def verify_cb_signature(
                             from_status="in_planning",
                             to_status="quotation_sent",
                             triggered_by=current_user.id,
-                            notes="Quotation signed by CB planner and released to client",
+                            notes="Quotation signed by CB planner and released (direct sign)",
                         ))
 
-                db.commit()
-
-                client_user = auth_db.query(PlatformUser).filter_by(
-                    audit_set_id=audit_set_id, role="client"
-                ).first()
-                if client_user:
-                    try:
-                        send_document_released(
-                            to=client_user.email,
-                            full_name=client_user.full_name,
-                            document_label=doc.label,
-                        )
-                    except Exception:
-                        pass
-
+    db.commit()
     return {"signed": True, "signed_at": sig.signed_at.isoformat()}
 
 

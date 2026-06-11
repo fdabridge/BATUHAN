@@ -42,10 +42,6 @@ export function InternalApprovalsSection({
 }) {
   const [slots, setSlots]         = useState<SigSlot[]>([])
   const [loading, setLoading]     = useState(true)
-  const [signingId, setSigningId] = useState<string | null>(null)
-  const [otpSent, setOtpSent]     = useState(false)
-  const [otpValue, setOtpValue]   = useState('')
-  const [error, setError]         = useState('')
   const [busy, setBusy]           = useState(false)
   const [sigPreviewImage, setSigPreviewImage] = useState<string | null>(null)
   const [sigPreviewSlot,  setSigPreviewSlot]  = useState<SigSlot | null>(null)
@@ -89,11 +85,21 @@ export function InternalApprovalsSection({
     }
   }
 
-  function handleConfirmSign() {
+  async function handleConfirmSign() {
     const slot = sigPreviewSlot
     setSigPreviewSlot(null)
     setSigPreviewImage(null)
-    if (slot) requestOtp(slot)
+    if (!slot) return
+    setBusy(true)
+    try {
+      await api.post(`/audit-sets/${auditSetId}/signatures/${slot.id}/sign-direct`)
+      await load()
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      alert(detail || 'Failed to sign. Please try again.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function createFR222() {
@@ -104,39 +110,6 @@ export function InternalApprovalsSection({
     } catch (e: unknown) {
       const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       alert(detail || 'Failed to create FR.222 signatures')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function requestOtp(slot: SigSlot) {
-    setSigningId(slot.id)
-    setOtpSent(false)
-    setError('')
-    setBusy(true)
-    try {
-      await api.post(`/audit-sets/${auditSetId}/signatures/${slot.id}/request-otp`)
-      setOtpSent(true)
-    } catch (e: unknown) {
-      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setError(detail || 'Failed to send code')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function verifyOtp(slot: SigSlot) {
-    setBusy(true)
-    setError('')
-    try {
-      await api.post(`/audit-sets/${auditSetId}/signatures/${slot.id}/verify?otp=${otpValue}`)
-      setSigningId(null)
-      setOtpValue('')
-      setOtpSent(false)
-      await load()
-    } catch (e: unknown) {
-      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setError(detail || 'Invalid code')
     } finally {
       setBusy(false)
     }
@@ -157,12 +130,8 @@ export function InternalApprovalsSection({
   if (!loading && !hasFR218 && !hasFR222 && workflowStatus === 'pending_review') return null
 
   const rowProps = {
-    signingId, otpSent, otpValue, error, busy: busy || sigPreviewBusy,
-    onSign:      handleSignClick,
-    onVerify:    verifyOtp,
-    onOtpChange: setOtpValue,
-    onCancel:    () => { setSigningId(null); setOtpSent(false); setOtpValue('') },
-    onResend:    requestOtp,
+    busy: busy || sigPreviewBusy,
+    onSign: handleSignClick,
   }
 
   return (
@@ -240,7 +209,7 @@ export function InternalApprovalsSection({
             </div>
             <div className="px-5 py-4 space-y-4">
               <p className="text-sm text-gray-600">
-                Your saved signature will be recorded. Click <strong>Send verification code</strong> to continue.
+                Your saved signature will be recorded. Click <strong>Sign</strong> to confirm.
               </p>
               {sigPreviewImage ? (
                 <div
@@ -258,9 +227,10 @@ export function InternalApprovalsSection({
               <button
                 type="button"
                 onClick={handleConfirmSign}
-                className="w-full rounded-lg bg-[#1A4731] py-2.5 text-sm font-medium text-white hover:bg-[#1A4731]/90"
+                disabled={busy}
+                className="w-full rounded-lg bg-[#1A4731] py-2.5 text-sm font-medium text-white hover:bg-[#1A4731]/90 disabled:opacity-40"
               >
-                Send verification code
+                {busy ? 'Signing…' : 'Sign'}
               </button>
               <button
                 type="button"
@@ -278,23 +248,12 @@ export function InternalApprovalsSection({
 }
 
 function SignerRow({
-  slot, signingId, otpSent, otpValue, error, busy,
-  onSign, onVerify, onOtpChange, onCancel, onResend,
+  slot, busy, onSign,
 }: {
-  slot: SigSlot
-  signingId: string | null
-  otpSent: boolean
-  otpValue: string
-  error: string
-  busy: boolean
+  slot:   SigSlot
+  busy:   boolean
   onSign: (s: SigSlot) => void
-  onVerify: (s: SigSlot) => void
-  onOtpChange: (v: string) => void
-  onCancel: () => void
-  onResend: (s: SigSlot) => void
 }) {
-  const isActive = signingId === slot.id
-
   return (
     <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
       <div className="flex items-center justify-between">
@@ -317,7 +276,7 @@ function SignerRow({
             <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">✓</span>
           ) : slot.pending_appointment ? (
             <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-500">Pending</span>
-          ) : (slot.is_mine || slot.can_claim) && !isActive ? (
+          ) : (slot.is_mine || slot.can_claim) ? (
             <button
               type="button"
               onClick={() => onSign(slot)}
@@ -331,35 +290,6 @@ function SignerRow({
           ) : null}
         </div>
       </div>
-
-      {isActive && (
-        <div className="mt-2 rounded border bg-white p-2">
-          {!otpSent ? (
-            <p className="text-xs text-gray-500">{busy ? 'Sending code…' : 'Sending 6-digit code to your email…'}</p>
-          ) : (
-            <div className="flex items-center gap-2">
-              <input
-                className="w-28 rounded border px-2 py-1 text-center font-mono text-sm tracking-widest focus:outline-none focus:ring-2 focus:ring-[#1A4731]/30"
-                placeholder="000000"
-                maxLength={6}
-                value={otpValue}
-                onChange={e => onOtpChange(e.target.value.replace(/\D/g, ''))}
-              />
-              <button
-                type="button"
-                onClick={() => onVerify(slot)}
-                disabled={otpValue.length !== 6 || busy}
-                className="rounded bg-[#1A4731] px-2.5 py-1 text-xs text-white disabled:opacity-40"
-              >
-                {busy ? '…' : 'Confirm'}
-              </button>
-              <button type="button" onClick={onCancel} className="text-xs text-gray-400">Cancel</button>
-              <button type="button" onClick={() => onResend(slot)} className="text-xs text-gray-400 underline">Resend</button>
-            </div>
-          )}
-          {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
-        </div>
-      )}
     </div>
   )
 }

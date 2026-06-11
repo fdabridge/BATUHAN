@@ -50,6 +50,7 @@ def create_tables():
     Base.metadata.create_all(bind=engine)
     # Safe migrations — added after initial deployment
     _safe_add_column_auth("platform_users", "audit_set_id VARCHAR")
+    _safe_add_column_auth("platform_users", "username VARCHAR")
 
 
 class PlatformUser(Base):
@@ -57,6 +58,7 @@ class PlatformUser(Base):
 
     id            = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     email         = Column(String, unique=True, nullable=False, index=True)
+    username      = Column(String, nullable=True, index=True)
     password_hash = Column(String, nullable=False)
     full_name     = Column(String, nullable=False)
     role          = Column(String, nullable=False)

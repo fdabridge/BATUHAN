@@ -28,6 +28,7 @@ class UserCreateSchema(BaseModel):
     full_name: str
     role: str           # must be one of VALID_ROLES
     auditor_id: str | None = None
+    username: str | None = None
 
 
 class UserUpdateSchema(BaseModel):
@@ -35,11 +36,13 @@ class UserUpdateSchema(BaseModel):
     role: str | None = None
     is_active: bool | None = None
     auditor_id: str | None = None
+    username: str | None = None
 
 
 class UserResponse(BaseModel):
     id: str
     email: str
+    username: str | None
     full_name: str
     role: str
     is_active: bool

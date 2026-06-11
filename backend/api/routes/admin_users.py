@@ -39,7 +39,7 @@ def admin_create_user(
 ):
     if body.role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of {sorted(VALID_ROLES)}")
-    user = create_user(db, body.email, body.password, body.full_name, body.role, body.auditor_id)
+    user = create_user(db, body.email, body.password, body.full_name, body.role, body.auditor_id, body.username)
     return user
 
 

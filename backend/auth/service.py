@@ -55,6 +55,10 @@ def get_user_by_email(db: Session, email: str) -> PlatformUser | None:
     return db.query(PlatformUser).filter(PlatformUser.email == email).first()
 
 
+def get_user_by_username(db: Session, username: str) -> PlatformUser | None:
+    return db.query(PlatformUser).filter(PlatformUser.username == username).first()
+
+
 def get_user_by_id(db: Session, user_id: str) -> PlatformUser | None:
     return db.query(PlatformUser).filter(PlatformUser.id == user_id).first()
 
@@ -73,6 +77,7 @@ def create_user(
     full_name: str,
     role: str,
     auditor_id: str | None = None,
+    username: str | None = None,
 ) -> PlatformUser:
     user = PlatformUser(
         email=email,
@@ -80,6 +85,7 @@ def create_user(
         full_name=full_name,
         role=role,
         auditor_id=auditor_id,
+        username=username,
     )
     db.add(user)
     db.commit()
@@ -87,7 +93,7 @@ def create_user(
     return user
 
 
-_UPDATABLE = {"full_name", "role", "is_active", "auditor_id"}
+_UPDATABLE = {"full_name", "role", "is_active", "auditor_id", "username"}
 
 
 def update_user(db: Session, user_id: str, **fields) -> PlatformUser | None:
@@ -113,9 +119,10 @@ def change_password(db: Session, user_id: str, new_password: str) -> bool:
     return True
 
 
-def authenticate(db: Session, email: str, password: str) -> PlatformUser | None:
-    """Return user if credentials are valid and account is active, else None."""
-    user = get_user_by_email(db, email)
+def authenticate(db: Session, identifier: str, password: str) -> PlatformUser | None:
+    """Return user if credentials are valid and account is active, else None.
+    Accepts username or email as identifier."""
+    user = get_user_by_username(db, identifier) or get_user_by_email(db, identifier)
     if not user or not user.is_active:
         return None
     if not verify_password(password, user.password_hash):

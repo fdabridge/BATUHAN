@@ -19,10 +19,8 @@ document_type values:
 """
 from __future__ import annotations
 
-import hashlib
 import os
-import secrets
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
@@ -46,13 +44,9 @@ from audit_set.db_models import (
 from audit_set.doc_converter import prepare_document
 from auth.db_models import PlatformUser, UserSignature, get_db as get_auth_db
 from auth.dependencies import get_current_user
-from email_service import send_document_released, send_otp_code, send_client_status_update
-
 router = APIRouter(prefix="/viewer", tags=["viewer"])
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-
-OTP_EXPIRY = 10  # minutes
 
 CB_ROLES = {"admin", "planner", "officer", "executive"}
 
@@ -65,23 +59,12 @@ ROLE_TO_SIG: dict[str, str] = {
 SIG_TO_ROLE: dict[str, str] = {v: k for k, v in ROLE_TO_SIG.items()}
 
 
-def _hash_otp(otp: str) -> str:
-    return hashlib.sha256(otp.encode()).hexdigest()
-
-
 # ── Pydantic request bodies ───────────────────────────────────────────────────
 
-class SignOtpRequest(BaseModel):
+class SignConfirmRequest(BaseModel):
     document_type: str
     doc_id:        str
     sig_key:       str
-
-
-class SignVerifyRequest(BaseModel):
-    document_type: str
-    doc_id:        str
-    sig_key:       str
-    otp:           str
 
 
 # ── Helper ────────────────────────────────────────────────────────────────────
@@ -588,19 +571,6 @@ def _commit_existing_signing_record(
                             notes="Quotation signed by CB planner and released via viewer",
                         ))
                 db.commit()
-
-                client_user = auth_db.query(PlatformUser).filter_by(
-                    audit_set_id=doc.audit_set_id, role="client",
-                ).first()
-                if client_user:
-                    try:
-                        send_document_released(
-                            to=client_user.email,
-                            full_name=client_user.full_name,
-                            document_label=doc.label,
-                        )
-                    except Exception:
-                        pass
             else:
                 db.commit()
 
@@ -617,22 +587,6 @@ def _commit_existing_signing_record(
             report.la_otp_expires = None
             report.status         = "pending_review"
             db.commit()
-
-            member = db.query(AuditSetCommitteeMember).filter_by(
-                audit_set_id=report.audit_set_id, role="reviewer",
-            ).first()
-            if member:
-                try:
-                    send_otp_code(
-                        to=member.user_email,
-                        full_name=member.user_name,
-                        otp="[REVIEW NOTIFICATION]",
-                        document_label=(
-                            f"{report.report_form} — {report.label} is ready for your review"
-                        ),
-                    )
-                except Exception:
-                    pass
 
         elif sig_key == "CB_REVIEWER" and not report.reviewer_signed_at:
             report.reviewer_user_id     = current_user.id
@@ -658,22 +612,6 @@ def _commit_existing_signing_record(
                     ),
                 ))
                 db.commit()
-                try:
-                    client_user = auth_db.query(PlatformUser).filter_by(
-                        audit_set_id=report.audit_set_id, role="client",
-                    ).first()
-                    if client_user:
-                        send_client_status_update(
-                            to=client_user.email,
-                            full_name=client_user.full_name,
-                            new_status="certified",
-                            notes=(
-                                "Your audit report has been reviewed and approved "
-                                "by the certification committee."
-                            ),
-                        )
-                except Exception:
-                    pass
 
     elif document_type == "nc_form":
         nc = db.query(AuditSetNCForm).filter_by(id=doc_id).first()
@@ -688,19 +626,6 @@ def _commit_existing_signing_record(
             nc.la_otp_expires = None
             nc.status         = "pending_client"
             db.commit()
-
-            client_user = auth_db.query(PlatformUser).filter_by(
-                audit_set_id=nc.audit_set_id, role="client",
-            ).first()
-            if client_user:
-                try:
-                    send_document_released(
-                        to=client_user.email,
-                        full_name=client_user.full_name,
-                        document_label=f"NC Form: {nc.label}",
-                    )
-                except Exception:
-                    pass
 
         elif sig_key == "CLIENT" and not nc.client_signed_at:
             nc.client_user_id     = current_user.id
@@ -751,21 +676,32 @@ def viewer_signing_status(
     }
 
 
-# ── New endpoint: POST /viewer/sign/request-otp ───────────────────────────────
+# ── New endpoint: POST /viewer/sign/confirm ───────────────────────────────────
 
-@router.post("/sign/request-otp")
-def sign_request_otp(
-    body:         SignOtpRequest,
+@router.post("/sign/confirm")
+def sign_confirm(
+    body:         SignConfirmRequest,
+    request:      Request,
     db:           Session      = Depends(get_db),
-    auth_db:      Session      = Depends(get_auth_db),  # noqa: F841
+    auth_db:      Session      = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     """
-    Validate authorization, create/update a pending VisualSignaturePlacement,
-    generate an OTP, and email it to the user.
+    Direct sign endpoint — no OTP required.
+    Validates authorization, records VisualSignaturePlacement with the user's
+    saved signature image, then mirrors the event into workflow/legal tables
+    via _commit_existing_signing_record.
     """
     _assert_can_sign(body.document_type, body.doc_id, body.sig_key, current_user, db)
 
+    user_sig = auth_db.query(UserSignature).filter_by(user_id=current_user.id).first()
+    if not user_sig:
+        raise HTTPException(
+            400,
+            "No signature on file. Go to Settings → My Signature to set one up, then try again.",
+        )
+
+    # Reuse or create the pending VisualSignaturePlacement row.
     vsp = (
         db.query(VisualSignaturePlacement)
         .filter_by(
@@ -786,63 +722,8 @@ def sign_request_otp(
         )
         db.add(vsp)
 
-    otp = f"{secrets.randbelow(900000) + 100000}"
-    vsp.otp_hash    = _hash_otp(otp)
-    vsp.otp_expires = datetime.utcnow() + timedelta(minutes=OTP_EXPIRY)
-    db.commit()
-
-    doc_label = _get_doc_label(body.document_type, body.doc_id, db)
-    try:
-        send_otp_code(
-            to=current_user.email,
-            full_name=current_user.full_name,
-            otp=otp,
-            document_label=doc_label,
-        )
-    except Exception:
-        pass
-
-    return {"message": f"Verification code sent to {current_user.email}. Valid for {OTP_EXPIRY} minutes."}
-
-
-# ── New endpoint: POST /viewer/sign/verify ────────────────────────────────────
-
-@router.post("/sign/verify")
-def sign_verify(
-    body:         SignVerifyRequest,
-    request:      Request,
-    db:           Session      = Depends(get_db),
-    auth_db:      Session      = Depends(get_auth_db),
-    current_user: PlatformUser = Depends(get_current_user),
-):
-    """
-    Verify OTP, record VisualSignaturePlacement with the user's signature image,
-    then mirror the signing event into the existing legal/workflow signing tables.
-    """
-    vsp = (
-        db.query(VisualSignaturePlacement)
-        .filter_by(
-            document_type=body.document_type,
-            doc_id=body.doc_id,
-            sig_key=body.sig_key,
-            user_id=current_user.id,
-        )
-        .filter(VisualSignaturePlacement.signed_at.is_(None))
-        .first()
-    )
-    if not vsp:
-        raise HTTPException(400, "No pending signing session. Please request a verification code first.")
-    if not vsp.otp_hash or not vsp.otp_expires:
-        raise HTTPException(400, "No verification code is pending. Please request one first.")
-    if datetime.utcnow() > vsp.otp_expires:
-        raise HTTPException(400, "Verification code expired. Please request a new one.")
-    if _hash_otp(body.otp.strip()) != vsp.otp_hash:
-        raise HTTPException(400, "Invalid code. Please check and try again.")
-
-    user_sig = auth_db.query(UserSignature).filter_by(user_id=current_user.id).first()
-
     ip = request.client.host if request.client else None
-    vsp.signature_image = user_sig.image_data if user_sig else None
+    vsp.signature_image = user_sig.image_data
     vsp.otp_hash        = None
     vsp.otp_expires     = None
     vsp.signed_at       = datetime.utcnow()
