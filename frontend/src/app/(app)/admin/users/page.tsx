@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Key, Loader2, Pencil, Plus, ShieldOff, Trash2, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Key, Loader2, Pencil, Plus, ShieldOff, Trash2, Upload, X } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { useAuth } from '@/lib/auth'
@@ -118,12 +118,12 @@ function CreateUserModal({
   open, onClose, onSuccess,
 }: { open: boolean; onClose: () => void; onSuccess: () => void }) {
   const [form, setForm] = useState<AdminUserCreatePayload>({
-    full_name: '', email: '', password: '', role: 'planner',
+    full_name: '', username: '', email: '', password: '', role: 'planner',
   })
   const [err, setErr] = useState<string | null>(null)
 
   useEffect(() => {
-    if (open) { setForm({ full_name: '', email: '', password: '', role: 'planner' }); setErr(null) }
+    if (open) { setForm({ full_name: '', username: '', email: '', password: '', role: 'planner' }); setErr(null) }
   }, [open])
 
   const m = useMutation({
@@ -136,11 +136,11 @@ function CreateUserModal({
   function handleSubmit(ev: React.FormEvent) {
     ev.preventDefault()
     setErr(null)
-    if (!form.full_name.trim() || !form.email.trim() || !form.password) {
+    if (!form.full_name.trim() || !form.email.trim() || !form.password || !form.username?.trim()) {
       setErr('All fields are required.')
       return
     }
-    m.mutate({ ...form, full_name: form.full_name.trim(), email: form.email.trim() })
+    m.mutate({ ...form, full_name: form.full_name.trim(), email: form.email.trim(), username: form.username?.trim() })
   }
 
   return (
@@ -150,6 +150,16 @@ function CreateUserModal({
           <label className={lblCls}>Full name *</label>
           <input type="text" value={form.full_name}
             onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))} className={inputCls} />
+        </div>
+        <div>
+          <label className={lblCls}>Username * <span className="font-normal text-gray-400">(used to log in)</span></label>
+          <input
+            type="text"
+            value={form.username ?? ''}
+            onChange={(e) => setForm((f) => ({ ...f, username: e.target.value.trim() }))}
+            className={inputCls}
+            placeholder="e.g. john.smith"
+          />
         </div>
         <div>
           <label className={lblCls}>Email *</label>
@@ -355,6 +365,132 @@ function AccessDeniedCard() {
 }
 
 
+// ── Bulk import ───────────────────────────────────────────────────────────────
+
+interface BulkImportResult {
+  summary: { total_rows: number; created: number; skipped: number; errors: number }
+  created: { row: number; username: string; full_name: string; role: string; user_id: string; auditor_id: string | null }[]
+  skipped: { row: number; username: string; reason: string }[]
+  errors:  { row: number; username: string; reason: string }[]
+}
+
+function BulkImportModal({
+  open, onClose, onSuccess,
+}: { open: boolean; onClose: () => void; onSuccess: () => void }) {
+  const [file,    setFile]    = useState<File | null>(null)
+  const [result,  setResult]  = useState<BulkImportResult | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (open) { setFile(null); setResult(null); setError(null) }
+  }, [open])
+
+  async function handleImport() {
+    if (!file) { setError('Please select a CSV file.'); return }
+    setLoading(true)
+    setError(null)
+    setResult(null)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const r = await api.post<BulkImportResult>('/admin/users/bulk-import', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      setResult(r.data)
+      if (r.data.summary.created > 0) onSuccess()
+    } catch (e) {
+      setError(extractDetail(e, 'Import failed.'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Modal open={open} title="Bulk import users" onClose={onClose}>
+      <div className="space-y-4">
+        {/* Format guide */}
+        <div className="rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
+          <p className="mb-1 font-medium text-gray-700">Expected CSV columns:</p>
+          <code className="block leading-5 text-gray-500">
+            full_name, username, email, password, role,<br />
+            standards, ea_codes, accreditation_bodies, technical_depth
+          </code>
+          <p className="mt-2 text-gray-400">
+            Pipe-separate multiple values: <code>ISO 9001|ISO 14001</code><br />
+            Leave auditor columns blank for non-auditor rows.<br />
+            Rows with existing usernames are skipped (safe to re-run).
+          </p>
+        </div>
+
+        {/* File input */}
+        <div>
+          <label className={lblCls}>CSV file *</label>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".csv,text/csv"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm
+              text-gray-700 file:mr-2 file:rounded file:border-0 file:bg-gray-100
+              file:px-2 file:py-0.5 file:text-xs focus:outline-none"
+          />
+        </div>
+
+        {error && (
+          <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            {error}
+          </div>
+        )}
+
+        {/* Result summary */}
+        {result && (
+          <div className="space-y-2">
+            <div className="grid grid-cols-3 gap-2 text-center text-xs">
+              <div className="rounded-lg bg-green-50 p-2">
+                <p className="text-lg font-semibold text-green-700">{result.summary.created}</p>
+                <p className="text-green-600">Created</p>
+              </div>
+              <div className="rounded-lg bg-gray-50 p-2">
+                <p className="text-lg font-semibold text-gray-600">{result.summary.skipped}</p>
+                <p className="text-gray-500">Skipped</p>
+              </div>
+              <div className={`rounded-lg p-2 ${result.summary.errors > 0 ? 'bg-red-50' : 'bg-gray-50'}`}>
+                <p className={`text-lg font-semibold ${result.summary.errors > 0 ? 'text-red-600' : 'text-gray-600'}`}>
+                  {result.summary.errors}
+                </p>
+                <p className={result.summary.errors > 0 ? 'text-red-500' : 'text-gray-500'}>Errors</p>
+              </div>
+            </div>
+
+            {result.errors.length > 0 && (
+              <div className="max-h-32 overflow-y-auto rounded border border-red-100 bg-red-50 p-2">
+                {result.errors.map((e, i) => (
+                  <p key={i} className="text-xs text-red-600">
+                    Row {e.row} ({e.username}): {e.reason}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={handleImport}
+          disabled={!file || loading}
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-certiva-primary
+            px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
+        >
+          {loading && <Loader2 size={14} className="animate-spin" />}
+          {loading ? 'Importing…' : 'Import'}
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function AdminUsersPage() {
@@ -362,6 +498,7 @@ export default function AdminUsersPage() {
   const queryClient = useQueryClient()
 
   const [createOpen,    setCreateOpen]    = useState(false)
+  const [bulkOpen,      setBulkOpen]      = useState(false)
   const [editTarget,    setEditTarget]    = useState<AdminUser | null>(null)
   const [resetTarget,   setResetTarget]   = useState<AdminUser | null>(null)
   const [toast,         setToast]         = useState<string | null>(null)
@@ -412,12 +549,21 @@ export default function AdminUsersPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-gray-800" style={{ fontSize: 22, fontWeight: 500 }}>User management</h1>
-        <button
-          type="button" onClick={() => setCreateOpen(true)}
-          className="flex items-center gap-1 rounded-lg bg-certiva-primary px-3 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
-          <Plus size={14} /> Add user
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button" onClick={() => setBulkOpen(true)}
+            className="flex items-center gap-1 rounded-lg border border-certiva-primary px-3 py-2
+              text-sm font-medium text-certiva-primary hover:bg-certiva-primary/5"
+          >
+            <Upload size={14} /> Bulk import
+          </button>
+          <button
+            type="button" onClick={() => setCreateOpen(true)}
+            className="flex items-center gap-1 rounded-lg bg-certiva-primary px-3 py-2 text-sm font-medium text-white hover:opacity-90"
+          >
+            <Plus size={14} /> Add user
+          </button>
+        </div>
       </div>
 
       {/* Summary stats */}
@@ -433,6 +579,7 @@ export default function AdminUsersPage() {
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-medium text-gray-500">
               <th className="px-4 py-3">User</th>
+              <th className="px-4 py-3">Username</th>
               <th className="px-4 py-3">Email</th>
               <th className="px-4 py-3">Role</th>
               <th className="px-4 py-3">Status</th>
@@ -442,15 +589,15 @@ export default function AdminUsersPage() {
           </thead>
           <tbody>
             {isLoading && (
-              <tr><td colSpan={6} className="py-10 text-center text-sm text-gray-400">
+              <tr><td colSpan={7} className="py-10 text-center text-sm text-gray-400">
                 <Loader2 size={16} className="mx-auto animate-spin" />
               </td></tr>
             )}
             {isError && (
-              <tr><td colSpan={6} className="py-10 text-center text-sm text-red-500">Failed to load users.</td></tr>
+              <tr><td colSpan={7} className="py-10 text-center text-sm text-red-500">Failed to load users.</td></tr>
             )}
             {!isLoading && !isError && users.length === 0 && (
-              <tr><td colSpan={6} className="py-10 text-center text-sm text-gray-400">No users yet.</td></tr>
+              <tr><td colSpan={7} className="py-10 text-center text-sm text-gray-400">No users yet.</td></tr>
             )}
             {users.map((u) => {
               const isSelf = currentUser?.id === u.id
@@ -462,6 +609,7 @@ export default function AdminUsersPage() {
                       <span className="text-gray-800" style={{ fontWeight: 500 }}>{u.full_name}</span>
                     </div>
                   </td>
+                  <td className="px-4 py-3 font-mono text-xs text-gray-500">{u.username ?? '—'}</td>
                   <td className="px-4 py-3 text-gray-500" style={{ fontSize: 13 }}>{u.email}</td>
                   <td className="px-4 py-3"><RolePill role={u.role} /></td>
                   <td className="px-4 py-3"><StatusBadge active={u.is_active} /></td>
@@ -499,6 +647,11 @@ export default function AdminUsersPage() {
       </div>
 
       {/* Modals */}
+      <BulkImportModal
+        open={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        onSuccess={invalidate}
+      />
       <CreateUserModal
         open={createOpen}
         onClose={() => setCreateOpen(false)}

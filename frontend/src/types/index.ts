@@ -380,6 +380,7 @@ export type UserRole = 'admin' | 'planner' | 'auditor' | 'officer' | 'executive'
 export interface AdminUser {
   id:           string
   email:        string
+  username:     string | null
   full_name:    string
   role:         UserRole
   is_active:    boolean
@@ -393,6 +394,7 @@ export interface AdminUserCreatePayload {
   password:    string
   full_name:   string
   role:        UserRole
+  username?:   string
   auditor_id?: string | null
 }
 
