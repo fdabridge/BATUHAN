@@ -57,6 +57,8 @@ export function MeetingAttendeesSection({
   })
   const [busy, setBusy]   = useState(false)
   const [error, setError] = useState('')
+  const [signing, setSigning] = useState<Record<string, boolean>>({})
+  const [signErr, setSignErr] = useState<Record<string, string>>({})
 
   const load = useCallback(async () => {
     try {
@@ -113,12 +115,21 @@ export function MeetingAttendeesSection({
     }
   }
 
-  async function resendInvite(id: string) {
+  async function handleDirectSign(attId: string, meetingType: 'opening' | 'closing') {
+    const key = `${attId}-${meetingType}`
+    setSigning(s => ({ ...s, [key]: true }))
+    setSignErr(e => ({ ...e, [key]: '' }))
     try {
-      await api.post(`/audit-sets/${auditSetId}/meeting-attendees/${id}/resend`)
-      alert('Invite resent.')
-    } catch {
-      alert('Resend failed.')
+      const r = await api.post<Attendee>(
+        `/audit-sets/${auditSetId}/meeting-attendees/${attId}/sign-direct`,
+        { meeting_type: meetingType }
+      )
+      setAttendees(prev => prev.map(a => (a.id === attId ? r.data : a)))
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setSignErr(e => ({ ...e, [key]: detail || 'Failed' }))
+    } finally {
+      setSigning(s => ({ ...s, [key]: false }))
     }
   }
 
@@ -202,7 +213,7 @@ export function MeetingAttendeesSection({
               {busy ? 'Adding…' : 'Add & Send Invite'}
             </button>
             <p className="text-xs text-gray-400">
-              A signing link will be emailed to the attendee immediately.
+              Use "Mark Signed" next to each attendee to record their attendance directly.
             </p>
           </div>
           {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
@@ -213,7 +224,7 @@ export function MeetingAttendeesSection({
         <p className="text-xs text-gray-400">Loading…</p>
       ) : attendees.length === 0 ? (
         <div className="rounded-xl border bg-white px-4 py-6 text-center text-xs text-gray-400">
-          No attendees registered yet. Add them above — each receives a personal signing link.
+          No attendees registered yet. Add them above and use "Mark Signed" to record attendance.
         </div>
       ) : (
         <div className="space-y-3">
@@ -238,14 +249,33 @@ export function MeetingAttendeesSection({
                     </div>
                     <div className="flex items-center gap-2 flex-wrap justify-end">
                       <SignBadge signed={a.opening_signed} label="Opening" />
+                      {!a.opening_signed && (
+                        <button
+                          type="button"
+                          onClick={() => handleDirectSign(a.id, 'opening')}
+                          disabled={signing[`${a.id}-opening`]}
+                          className="rounded px-2 py-0.5 text-xs text-certiva-primary border border-certiva-primary hover:bg-certiva-primary/5 disabled:opacity-50"
+                        >
+                          {signing[`${a.id}-opening`] ? '…' : 'Mark Signed'}
+                        </button>
+                      )}
+                      {signErr[`${a.id}-opening`] && (
+                        <span className="text-xs text-red-500">{signErr[`${a.id}-opening`]}</span>
+                      )}
                       <SignBadge signed={a.closing_signed} label="Closing" />
-                      <button
-                        type="button"
-                        onClick={() => resendInvite(a.id)}
-                        className="text-xs text-gray-400 hover:text-[#1A4731] underline"
-                      >
-                        Resend
-                      </button>
+                      {!a.closing_signed && (
+                        <button
+                          type="button"
+                          onClick={() => handleDirectSign(a.id, 'closing')}
+                          disabled={signing[`${a.id}-closing`]}
+                          className="rounded px-2 py-0.5 text-xs text-certiva-primary border border-certiva-primary hover:bg-certiva-primary/5 disabled:opacity-50"
+                        >
+                          {signing[`${a.id}-closing`] ? '…' : 'Mark Signed'}
+                        </button>
+                      )}
+                      {signErr[`${a.id}-closing`] && (
+                        <span className="text-xs text-red-500">{signErr[`${a.id}-closing`]}</span>
+                      )}
                       {!a.opening_signed && !a.closing_signed && (
                         <button
                           type="button"

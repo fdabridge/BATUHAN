@@ -132,6 +132,44 @@ def add_attendee(
     return _att_dict(attendee)
 
 
+class DirectSignSchema(BaseModel):
+    meeting_type: str  # "opening" | "closing"
+
+
+@protected_router.post("/{audit_set_id}/meeting-attendees/{att_id}/sign-direct")
+def sign_attendee_direct(
+    audit_set_id: str,
+    att_id: str,
+    body: DirectSignSchema,
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    if current_user.role not in ALLOWED_ROLES:
+        raise HTTPException(403, "Not authorized")
+    if body.meeting_type not in ("opening", "closing"):
+        raise HTTPException(400, "meeting_type must be 'opening' or 'closing'")
+
+    att = db.query(AuditSetMeetingAttendee).filter_by(
+        id=att_id, audit_set_id=audit_set_id
+    ).first()
+    if not att:
+        raise HTTPException(404, "Attendee not found")
+
+    now = datetime.utcnow()
+    if body.meeting_type == "opening":
+        if att.opening_signed_at:
+            raise HTTPException(400, "Opening meeting already marked as signed")
+        att.opening_signed_at = now
+    else:
+        if att.closing_signed_at:
+            raise HTTPException(400, "Closing meeting already marked as signed")
+        att.closing_signed_at = now
+
+    db.commit()
+    db.refresh(att)
+    return _att_dict(att)
+
+
 @protected_router.delete("/{audit_set_id}/meeting-attendees/{att_id}")
 def remove_attendee(
     audit_set_id: str,

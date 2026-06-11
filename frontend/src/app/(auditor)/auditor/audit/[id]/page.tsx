@@ -625,10 +625,8 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
   const [uploading, setUploading] = useState(false)
   const [uploadMsg, setUploadMsg] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
-  const [otpState, setOtpState] = useState<Record<string, 'idle' | 'otp_sent' | 'done'>>({})
-  const [otpValues, setOtpValues] = useState<Record<string, string>>({})
-  const [messages, setMessages]   = useState<Record<string, string>>({})
-  const [busy, setBusy]           = useState<Record<string, boolean>>({})
+  const [signing, setSigning]   = useState<Record<string, boolean>>({})
+  const [signMsg, setSignMsg]   = useState<Record<string, string>>({})
 
   const STAGE_LABELS: Record<string, string> = {
     stage_1: 'Stage 1', stage_2: 'Stage 2',
@@ -689,28 +687,11 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
     }
   }
 
-  async function requestOtp(id: string) {
-    setBusy(b => ({ ...b, [id]: true }))
-    setMessages(m => ({ ...m, [id]: '' }))
+  async function handleSignReport(id: string) {
+    setSigning(s => ({ ...s, [id]: true }))
+    setSignMsg(m => ({ ...m, [id]: '' }))
     try {
-      await api.post(`/audit-sets/${auditSetId}/audit-reports/${id}/sign/la/request-otp`)
-      setOtpState(s => ({ ...s, [id]: 'otp_sent' }))
-    } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setMessages(m => ({ ...m, [id]: detail || 'Failed to send code' }))
-    } finally {
-      setBusy(b => ({ ...b, [id]: false }))
-    }
-  }
-
-  async function verifyOtp(id: string) {
-    setBusy(b => ({ ...b, [id]: true }))
-    setMessages(m => ({ ...m, [id]: '' }))
-    try {
-      await api.post(
-        `/audit-sets/${auditSetId}/audit-reports/${id}/sign/la/verify?otp=${otpValues[id] ?? ''}`,
-      )
-      setOtpState(s => ({ ...s, [id]: 'done' }))
+      await api.post(`/audit-sets/${auditSetId}/audit-reports/${id}/sign/la/direct`)
       setReports(prev => prev.map(r =>
         r.id === id
           ? { ...r, status: 'pending_review', la_signed_at: new Date().toISOString() }
@@ -718,9 +699,9 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
       ))
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setMessages(m => ({ ...m, [id]: detail || 'Invalid code' }))
+      setSignMsg(m => ({ ...m, [id]: detail || 'Signing failed' }))
     } finally {
-      setBusy(b => ({ ...b, [id]: false }))
+      setSigning(s => ({ ...s, [id]: false }))
     }
   }
 
@@ -808,8 +789,7 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
             Awaiting Your Signature
           </p>
           {pending.map(r => {
-            const state = otpState[r.id] || 'idle'
-            const cfg   = STATUS_CONFIG[r.status] ?? { label: r.status, chip: '' }
+            const cfg = STATUS_CONFIG[r.status] ?? { label: r.status, chip: '' }
             return (
               <div key={r.id} className="rounded-xl border border-amber-200 bg-amber-50 p-4">
                 <div className="mb-3 flex items-start justify-between">
@@ -839,50 +819,17 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
                     </button>
                   </div>
                 </div>
-                {state === 'idle' && (
-                  <button
-                    type="button"
-                    onClick={() => requestOtp(r.id)}
-                    disabled={busy[r.id]}
-                    className="rounded-lg bg-[#1A4731] px-4 py-2 text-sm text-white disabled:opacity-40"
-                  >
-                    {busy[r.id] ? 'Sending…' : 'Sign Report'}
-                  </button>
-                )}
-                {state === 'otp_sent' && (
-                  <div className="flex items-center gap-3">
-                    <input
-                      className="w-36 rounded-lg border px-3 py-2 text-center font-mono text-lg tracking-widest"
-                      placeholder="000000" maxLength={6}
-                      value={otpValues[r.id] ?? ''}
-                      onChange={e => setOtpValues(v => ({
-                        ...v, [r.id]: e.target.value.replace(/\D/g, ''),
-                      }))}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => verifyOtp(r.id)}
-                      disabled={(otpValues[r.id] ?? '').length !== 6 || busy[r.id]}
-                      className="rounded-lg bg-[#1A4731] px-4 py-2 text-sm text-white disabled:opacity-40"
-                    >
-                      {busy[r.id] ? '…' : 'Confirm'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => requestOtp(r.id)}
-                      className="text-xs text-gray-400 underline"
-                    >
-                      Resend
-                    </button>
-                  </div>
-                )}
-                {state === 'done' && (
-                  <p className="text-sm font-medium text-green-600">
-                    Report signed ✓ — sent to CB for review.
-                  </p>
-                )}
-                {messages[r.id] && (
-                  <p className="mt-1 text-xs text-red-500">{messages[r.id]}</p>
+                <button
+                  type="button"
+                  onClick={() => handleSignReport(r.id)}
+                  disabled={signing[r.id]}
+                  className="flex items-center gap-1.5 rounded-lg bg-[#1A4731] px-4 py-2 text-sm text-white disabled:opacity-40"
+                >
+                  {signing[r.id] && <span className="animate-spin text-sm">⟳</span>}
+                  {signing[r.id] ? 'Signing…' : 'Sign Report'}
+                </button>
+                {signMsg[r.id] && (
+                  <p className="mt-1 text-xs text-red-500">{signMsg[r.id]}</p>
                 )}
               </div>
             )

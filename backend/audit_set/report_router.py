@@ -297,6 +297,33 @@ def la_verify_otp(
     }
 
 
+# ── Lead Auditor: direct-sign (no OTP) ──────────────────────────────────────
+
+@router.post("/audit-sets/{audit_set_id}/audit-reports/{rid}/sign/la/direct")
+def la_sign_direct(
+    audit_set_id: str,
+    rid: str,
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    report = db.query(AuditSetAuditReport).filter_by(
+        id=rid, audit_set_id=audit_set_id
+    ).first()
+    if not report:
+        raise HTTPException(404, "Report not found")
+    _check_la_auth(report, current_user, db)
+    if report.la_signed_at:
+        raise HTTPException(400, "Report already signed by Lead Auditor")
+    if report.status not in ("pending_la",):
+        raise HTTPException(400, f"Report status is '{report.status}', expected 'pending_la'")
+
+    report.la_signed_at = datetime.utcnow()
+    report.status       = "pending_review"
+    db.commit()
+    db.refresh(report)
+    return _report_dict(report)
+
+
 # ── Committee Reviewer: approve party 2 ──────────────────────────────────────
 
 def _check_reviewer_auth(
@@ -425,3 +452,36 @@ def review_verify_otp(
         "reviewer_signed_at": report.reviewer_signed_at.isoformat(),
         "workflow_advanced": audit_set.workflow_status == "certified" if audit_set else False,
     }
+
+
+# ── Committee Reviewer: direct-approve (no OTP) ──────────────────────────────
+
+@router.post("/audit-sets/{audit_set_id}/audit-reports/{rid}/sign/review/direct")
+def review_sign_direct(
+    audit_set_id: str,
+    rid: str,
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    # Admin and executive can always approve.
+    # Other roles must be a registered Committee Reviewer for this audit set.
+    if current_user.role not in ("admin", "executive"):
+        reviewer = _get_committee_reviewer(audit_set_id, current_user, db)
+        if not reviewer:
+            raise HTTPException(403, "You are not a registered reviewer for this audit set")
+
+    report = db.query(AuditSetAuditReport).filter_by(
+        id=rid, audit_set_id=audit_set_id
+    ).first()
+    if not report:
+        raise HTTPException(404, "Report not found")
+    if report.status == "approved":
+        raise HTTPException(400, "Report already approved")
+    if report.status != "pending_review":
+        raise HTTPException(400, f"Report status is '{report.status}', expected 'pending_review'")
+
+    report.reviewer_signed_at = datetime.utcnow()
+    report.status             = "approved"
+    db.commit()
+    db.refresh(report)
+    return _report_dict(report, can_review=False)
