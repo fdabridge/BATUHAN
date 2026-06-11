@@ -154,6 +154,8 @@ export interface AuditSetResponse {
   // Client portal workflow (Prompt 01 — null on internally created sets)
   workflow_status?: string | null
   submitted_via_portal?: boolean
+  // Retroactive operation support (Prompt 33)
+  application_date?: string | null
 }
 
 // ── Jobs (AI report pipeline) ─────────────────────────────────────────────────

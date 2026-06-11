@@ -117,6 +117,7 @@ class AuditSetUpdatePlanningSchema(BaseModel):
     scope_integration_level: Optional[str] = None  # "Low" | "Medium" | "High"
     audit_language: Optional[str] = None
     document_language: Optional[str] = None
+    application_date: Optional[date] = None          # retroactive override — when the client actually applied
     stages: list[StageInput] = []
 
 
@@ -180,6 +181,7 @@ class AuditSetResponse(BaseModel):
     document_language: Optional[str] = None
     workflow_status: Optional[str] = None
     submitted_via_portal: bool = False
+    application_date: Optional[date] = None          # retroactive override
     stages: list[StageResponse]
     created_at: datetime
     updated_at: datetime

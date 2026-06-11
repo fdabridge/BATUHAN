@@ -13,6 +13,7 @@ in audit_set_status_events for ISO 17021-1 §9.5 traceability and (if a client
 account is linked) a templated email is fired via email_service.
 """
 from __future__ import annotations
+from datetime import date, datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -61,6 +62,7 @@ CB_REVIEW_ROLES = {"admin", "planner", "officer", "executive"}
 class WorkflowUpdateSchema(BaseModel):
     workflow_status: str
     notes: Optional[str] = None
+    effective_date: Optional[date] = None    # override the transition timestamp (retroactive mode)
 
 
 @router.get("/pending-applications")
@@ -154,11 +156,22 @@ def update_workflow_status(
         if stage1_row:
             stage1_row.status = "complete"
 
+    # Retroactive mode: use caller-supplied date if provided, else record now.
+    if payload.effective_date:
+        effective_ts = datetime(
+            payload.effective_date.year,
+            payload.effective_date.month,
+            payload.effective_date.day,
+        )
+    else:
+        effective_ts = datetime.utcnow()
+
     event = AuditSetStatusEvent(
         audit_set_id=audit_set_id,
         from_status=from_status,
         to_status=to_status,
         triggered_by=current_user.id,
+        triggered_at=effective_ts,
         notes=payload.notes,
     )
     db.add(event)

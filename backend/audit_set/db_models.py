@@ -67,6 +67,8 @@ def create_tables():
     _safe_add_column("visual_signature_placements", "otp_hash TEXT")
     _safe_add_column("visual_signature_placements", "otp_expires TIMESTAMP")
     _safe_add_column("visual_signature_placements", "signed_ip TEXT")
+    # Prompt 33 — retroactive operation support
+    _safe_add_column("audit_sets", "application_date DATE")
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +147,9 @@ class AuditSet(Base):
     # document_language: report language, only meaningful for TURKAK ("turkish"|"english").
     audit_language    = Column(String, nullable=True)
     document_language = Column(String, default="turkish")
+
+    # ── Application / Retroactive ─────────────────────────────────────────────
+    application_date = Column(Date, nullable=True)   # when the client actually applied (set during retroactive entry)
 
     # ── Certificate ───────────────────────────────────────────────────────────
     cert_issued_date = Column(Date, nullable=True)

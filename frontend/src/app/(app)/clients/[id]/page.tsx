@@ -301,6 +301,22 @@ const MD11_COLORS: Record<string, { bg: string; text: string; border: string }> 
   High:   { bg: '#FEF2F2', text: '#991B1B', border: '#FECACA' },
 }
 
+function RetroactiveBanner() {
+  return (
+    <div className="mb-4 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+      <span className="mt-0.5 text-base leading-none text-amber-500">⚠</span>
+      <div>
+        <p className="text-sm font-semibold text-amber-800">Retroactive Operation Mode</p>
+        <p className="mt-0.5 text-xs text-amber-700">
+          Historical data entry is active. Use the <strong>Effective date</strong> field
+          next to each workflow button to record when transitions actually occurred.
+          Stage dates and certificate dates are already freely editable.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 function PlanOverview({
   data,
   auditSetId,
@@ -320,6 +336,27 @@ function PlanOverview({
   const [nacEmptyMsg, setNacEmptyMsg] = useState(false)
   // Keep textarea in sync with server value after PUT round-trips invalidate the query.
   useEffect(() => { setNacText(data.non_applicable_clauses ?? '') }, [data.non_applicable_clauses])
+
+  // Application date — retroactive override
+  const [appDate, setAppDate] = useState<string>(
+    data.application_date ? String(data.application_date) : ''
+  )
+  const [appDateSaved, setAppDateSaved] = useState(false)
+  useEffect(() => {
+    setAppDate(data.application_date ? String(data.application_date) : '')
+  }, [data.application_date])
+
+  const { mutate: saveAppDate, isPending: savingAppDate } = useMutation({
+    mutationFn: () =>
+      api.put(`/audit-sets/${auditSetId}/planning`, {
+        application_date: appDate || null,
+      }),
+    onSuccess: () => {
+      onInvalidate()
+      setAppDateSaved(true)
+      setTimeout(() => setAppDateSaved(false), 2000)
+    },
+  })
 
   const p = data.personnel
   const personnelStr = p
@@ -410,6 +447,33 @@ function PlanOverview({
           )}
         </div>
       </div>
+
+      {/* Application date — retroactive override */}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <label className="text-xs font-medium text-gray-600">Application date</label>
+        <input
+          type="date"
+          value={appDate}
+          onChange={e => setAppDate(e.target.value)}
+          className="rounded border border-gray-200 px-2 py-1 text-sm focus:border-[#1A4731] focus:outline-none"
+        />
+        <button
+          type="button"
+          onClick={() => saveAppDate()}
+          disabled={savingAppDate}
+          className="rounded-lg bg-[#1A4731] px-3 py-1 text-xs font-medium text-white hover:bg-[#143828] disabled:opacity-50"
+        >
+          {appDateSaved ? 'Saved ✓' : savingAppDate ? 'Saving…' : 'Save'}
+        </button>
+        {data.application_date && (
+          <span className="text-xs text-gray-400">
+            Currently: {new Date(data.application_date).toLocaleDateString('en-GB', {
+              day: 'numeric', month: 'short', year: 'numeric',
+            })}
+          </span>
+        )}
+      </div>
+
       <div className="grid grid-cols-3 gap-x-6 gap-y-5">
         <LabeledField label="Standards">
           <div className="mt-0.5 flex flex-wrap gap-1.5">
@@ -1398,6 +1462,9 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
           <button onClick={() => setDeleteError(null)} className="text-xs text-red-600 hover:opacity-70">Dismiss</button>
         </div>
       )}
+
+      {/* Retroactive mode — always shown, no off switch */}
+      <RetroactiveBanner />
 
       {/* Client portal application — show approval banner when pending */}
       {data.workflow_status === 'pending_review' && (

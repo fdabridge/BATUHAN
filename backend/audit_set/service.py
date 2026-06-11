@@ -643,6 +643,8 @@ def update_planning(
         audit_set.audit_language = data.audit_language
     if data.document_language is not None:
         audit_set.document_language = data.document_language
+    if data.application_date is not None:
+        audit_set.application_date = data.application_date
 
     # Upsert stages
     for stage_input in data.stages:

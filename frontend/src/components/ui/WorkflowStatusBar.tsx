@@ -136,12 +136,17 @@ function getPanels(auditType: string | null) {
 
 export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, auditType, onAdvanced }: WorkflowStatusBarProps) {
   const [errMsg, setErrMsg] = useState<string | null>(null)
+  // Retroactive mode — date picker for recording when transitions actually happened.
+  const [effectiveDate, setEffectiveDate] = useState<string>(
+    () => new Date().toISOString().slice(0, 10)   // YYYY-MM-DD, defaults to today
+  )
 
   const { mutate: advance, isPending } = useMutation({
-    mutationFn: (nextStatus: string) =>
+    mutationFn: ({ nextStatus, date }: { nextStatus: string; date: string }) =>
       api.patch(`/audit-sets/${auditSetId}/workflow-status`, {
         workflow_status: nextStatus,
         notes: 'Advanced from workflow status bar',
+        effective_date: date,
       }),
     onSuccess: () => { setErrMsg(null); onAdvanced() },
     onError: (e: unknown) => {
@@ -196,15 +201,27 @@ export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, 
           <h3 className="text-sm font-semibold text-gray-900">{panel.heading}</h3>
           <p className="mt-1 text-sm text-gray-600">{panel.body}</p>
           {panel.cta && ctaAllowed && (
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={() => advance(panel.cta!.nextStatus)}
-              className="mt-3 rounded-lg px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
-              style={{ background: '#1A4731' }}
-            >
-              {isPending ? 'Saving…' : panel.cta.label}
-            </button>
+            <div>
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={() => advance({ nextStatus: panel.cta!.nextStatus, date: effectiveDate })}
+                className="mt-3 rounded-lg px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
+                style={{ background: '#1A4731' }}
+              >
+                {isPending ? 'Saving…' : panel.cta.label}
+              </button>
+              {/* Retroactive date picker — always visible, no off switch */}
+              <div className="mt-2 flex items-center gap-2">
+                <label className="text-xs text-gray-500">Effective date:</label>
+                <input
+                  type="date"
+                  value={effectiveDate}
+                  onChange={e => setEffectiveDate(e.target.value)}
+                  className="rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-700 focus:border-[#1A4731] focus:outline-none"
+                />
+              </div>
+            </div>
           )}
           {errMsg && <p className="mt-2 text-sm text-red-600">{errMsg}</p>}
         </div>
