@@ -1,8 +1,17 @@
 'use client'
 
+import { useCallback, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
-import { CertivaDocumentViewer, type DocumentType } from '@/components/CertivaDocumentViewer'
+import api from '@/lib/api'
+import {
+  CertivaDocumentViewer,
+  type DocumentType,
+  type SignatureOverride,
+} from '@/components/CertivaDocumentViewer'
+import { SignatureConfirmDialog } from '@/components/SignatureConfirmDialog'
+
+const VALID_TYPES: DocumentType[] = ['shared_doc', 'audit_report', 'nc_form']
 
 export default function ViewerPage() {
   const params = useParams()
@@ -10,8 +19,26 @@ export default function ViewerPage() {
   const documentType = params.type as DocumentType
   const docId        = params.id   as string
 
-  const validTypes: DocumentType[] = ['shared_doc', 'audit_report', 'nc_form']
-  if (!validTypes.includes(documentType)) {
+  const [overrides,    setOverrides]    = useState<SignatureOverride[]>([])
+  const [activeSigKey, setActiveSigKey] = useState<string | null>(null)
+  const [docPrepared,  setDocPrepared]  = useState(false)
+
+  const loadStatus = useCallback(async () => {
+    try {
+      const r = await api.get('/viewer/signing-status', {
+        params: { document_type: documentType, doc_id: docId },
+      })
+      setOverrides(r.data.fields ?? [])
+    } catch {
+      // fail silently — boxes default to "pending"
+    }
+  }, [documentType, docId])
+
+  useEffect(() => {
+    if (docPrepared) loadStatus()
+  }, [docPrepared, loadStatus])
+
+  if (!VALID_TYPES.includes(documentType)) {
     return (
       <div className="p-8 text-sm text-red-600">
         Unknown document type: <code>{documentType}</code>
@@ -21,7 +48,7 @@ export default function ViewerPage() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      {/* Header bar */}
+      {/* Header */}
       <div className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-6 py-3 shadow-sm">
         <button
           type="button"
@@ -36,13 +63,23 @@ export default function ViewerPage() {
         </span>
       </div>
 
-      {/* Viewer */}
       <CertivaDocumentViewer
         documentType={documentType}
         docId={docId}
-        onSignatureClick={(sigKey) => {
-          // Prompt 25 will replace this with the signing modal
-          alert(`Signing flow for [${sigKey}] — will be wired in Prompt 25.`)
+        signatureOverrides={overrides}
+        onSignatureClick={(sigKey) => setActiveSigKey(sigKey)}
+        onPrepared={() => setDocPrepared(true)}
+      />
+
+      <SignatureConfirmDialog
+        isOpen={activeSigKey !== null}
+        sigKey={activeSigKey ?? ''}
+        documentType={documentType}
+        docId={docId}
+        onClose={() => setActiveSigKey(null)}
+        onSigned={(sk) => {
+          setActiveSigKey(null)
+          loadStatus()
         }}
       />
     </div>

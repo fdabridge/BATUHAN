@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  ChevronLeft, ChevronRight, CheckCircle2, Clock,
+  ChevronLeft, ChevronRight, CheckCircle2, Clock, Lock,
   Loader2, PenLine, AlertTriangle,
 } from 'lucide-react'
 import api from '@/lib/api'
@@ -20,7 +20,7 @@ import api from '@/lib/api'
 
 export type DocumentType = 'shared_doc' | 'audit_report' | 'nc_form'
 
-export type SigStatus = 'pending' | 'current_user' | 'signed'
+export type SigStatus = 'pending' | 'current_user' | 'signed' | 'blocked'
 
 export interface SignatureOverride {
   sig_key:          string
@@ -34,6 +34,7 @@ interface CertivaDocumentViewerProps {
   docId:               string
   signatureOverrides?: SignatureOverride[]
   onSignatureClick?:   (sigKey: string) => void
+  onPrepared?:         () => void
 }
 
 interface RawField {
@@ -126,6 +127,18 @@ function SignatureBox({
     )
   }
 
+  if (status === 'blocked') {
+    return (
+      <div style={style} className="pointer-events-none flex flex-col items-center justify-center
+        gap-1 rounded border border-dashed border-gray-300 bg-gray-50/80">
+        <Lock size={13} className="text-gray-300" />
+        <span className="text-center text-[10px] text-gray-400 leading-tight px-1">
+          {sigLabel(field.sig_key)}<br />Waiting for prior signer
+        </span>
+      </div>
+    )
+  }
+
   return (
     <div style={style} className="pointer-events-none flex flex-col items-center justify-center
       gap-1 rounded border border-dashed border-gray-400 bg-white/70">
@@ -144,6 +157,7 @@ export function CertivaDocumentViewer({
   docId,
   signatureOverrides = [],
   onSignatureClick,
+  onPrepared,
 }: CertivaDocumentViewerProps) {
   const [viewerState, setViewerState] = useState<'idle' | 'preparing' | 'loading' | 'ready' | 'error'>('idle')
   const [errorMsg,    setErrorMsg]    = useState('')
@@ -170,6 +184,7 @@ export function CertivaDocumentViewer({
         ])
         if (cancelled) return
         setRawFields((prepareRes.data.fields as RawField[]) ?? [])
+        onPrepared?.()
         setViewerState('loading')
 
         const pdfRes = await api.get('/viewer/pdf', {
@@ -308,15 +323,18 @@ export function CertivaDocumentViewer({
                   return (
                     <div key={sig_key} className="flex items-center gap-2">
                       <span className={`h-2.5 w-2.5 rounded-full ${
-                        ov.status === 'signed'       ? 'bg-emerald-500'
+                        ov.status === 'signed'         ? 'bg-emerald-500'
                         : ov.status === 'current_user' ? 'bg-[#1A4731] animate-pulse'
+                        : ov.status === 'blocked'      ? 'bg-gray-200'
                         : 'bg-gray-300'
                       }`} />
                       <span className="text-sm text-gray-700">{sigLabel(sig_key)}</span>
                       <span className="text-xs text-gray-400">
                         {ov.status === 'signed'
                           ? (ov.signer_name ? `✓ ${ov.signer_name}` : '✓ Signed')
-                          : ov.status === 'current_user' ? 'Your signature' : 'Awaiting'}
+                          : ov.status === 'current_user' ? 'Your signature'
+                          : ov.status === 'blocked'      ? 'Waiting for prior signer'
+                          : 'Awaiting'}
                       </span>
                     </div>
                   )

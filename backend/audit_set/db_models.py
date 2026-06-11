@@ -63,6 +63,10 @@ def create_tables():
     # Client portal additions
     _safe_add_column("audit_sets", "workflow_status VARCHAR")
     _safe_add_column("audit_sets", "submitted_via_portal BOOLEAN DEFAULT 0")
+    # Prompt 25 — visual signing placements (guard columns added after first deploy)
+    _safe_add_column("visual_signature_placements", "otp_hash TEXT")
+    _safe_add_column("visual_signature_placements", "otp_expires TIMESTAMP")
+    _safe_add_column("visual_signature_placements", "signed_ip TEXT")
 
 
 # ---------------------------------------------------------------------------
@@ -539,3 +543,30 @@ class DocumentSignatureField(Base):
     page_width   = Column(Float, nullable=False)
     page_height  = Column(Float, nullable=False)
     created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Table 14 — visual_signature_placements
+# Records the visual signature placement for each [SIG:KEY] field.
+# Created when a user completes OTP verification via the in-portal viewer.
+# One row per (document_type, doc_id, sig_key) — upserted on re-sign.
+# Separate from the existing signing tables (AuditDocumentSignature,
+# AuditSetSharedDocument.signed_at, etc.) — those remain the legal/workflow
+# source of truth. This table stores the signature IMAGE for PDF flattening
+# (Prompt 26) and for display in the viewer.
+# ---------------------------------------------------------------------------
+
+class VisualSignaturePlacement(Base):
+    __tablename__ = "visual_signature_placements"
+
+    id              = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    document_type   = Column(String, nullable=False)   # shared_doc | audit_report | nc_form
+    doc_id          = Column(String, nullable=False, index=True)
+    sig_key         = Column(String, nullable=False)   # CB_PLANNER | CB_REVIEWER | etc.
+    user_id         = Column(String, nullable=False)   # PlatformUser.id who placed it
+    signature_image = Column(Text, nullable=True)      # base64 PNG data-URL snapshot at sign time
+    otp_hash        = Column(String, nullable=True)    # sha256; cleared after use
+    otp_expires     = Column(DateTime, nullable=True)  # cleared after use
+    signed_at       = Column(DateTime, nullable=True)  # set on successful OTP verification
+    signed_ip       = Column(String, nullable=True)
+    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
