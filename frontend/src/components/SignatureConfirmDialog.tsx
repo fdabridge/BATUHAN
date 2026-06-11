@@ -42,12 +42,17 @@ const SIG_KEY_LABELS: Record<string, string> = {
   AUDITOR_MEMBER:  'Audit Team Member',
 }
 
+function todayIso() {
+  return new Date().toISOString().slice(0, 10)
+}
+
 export function SignatureConfirmDialog({
   isOpen, sigKey, documentType, docId, onClose, onSigned,
 }: Props) {
-  const [stage,    setStage]    = useState<Stage>('loading')
-  const [sigImage, setSigImage] = useState<string | null>(null)
-  const [errorMsg, setErrorMsg] = useState('')
+  const [stage,      setStage]      = useState<Stage>('loading')
+  const [sigImage,   setSigImage]   = useState<string | null>(null)
+  const [errorMsg,   setErrorMsg]   = useState('')
+  const [signedDate, setSignedDate] = useState(todayIso)
 
   useEffect(() => {
     if (!isOpen) return
@@ -78,6 +83,7 @@ export function SignatureConfirmDialog({
         document_type: documentType,
         doc_id:        docId,
         sig_key:       sigKey,
+        signed_date:   signedDate || todayIso(),
       })
       setStage('success')
       setTimeout(() => onSigned(sigKey), 1400)
@@ -140,6 +146,15 @@ export function SignatureConfirmDialog({
                 Your saved signature will be placed on the document. Click{' '}
                 <strong>Sign Document</strong> to proceed.
               </p>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Signing date</label>
+                <input
+                  type="date"
+                  value={signedDate}
+                  onChange={(e) => setSignedDate(e.target.value)}
+                  className="rounded border border-gray-200 px-2 py-1 text-sm text-gray-700 focus:border-[#1A4731] focus:outline-none"
+                />
+              </div>
               <div className="flex items-center justify-center rounded-lg p-4" style={{
                 background: 'repeating-conic-gradient(#e5e7eb 0% 25%, #fff 0% 50%) 0 0 / 12px 12px',
                 minHeight: 90,

@@ -479,42 +479,77 @@ def get_available_auditors(
     # 1. Fetch all active auditors
     all_auditors = db.query(Auditor).filter(Auditor.is_active == True).all()
 
-    # 2. Filter by standard_code (partial, case-insensitive)
-    if standard_code:
-        sc_lower = standard_code.lower()
-        all_auditors = [
-            a for a in all_auditors
-            if any(
-                q.is_qualified is not False and sc_lower in (q.standard_code or '').lower()
-                for q in a.standard_qualifications
-            )
-        ]
+    # 2 & 3. Qualification filter.
+    # When required_scope is provided (integrated audit with multiple standards / codes),
+    # use it as the single comprehensive filter: include any auditor who covers AT LEAST
+    # ONE required (standard, code/category) pair — so the full team can collectively
+    # cover everything.  The single ea_code / standard_code params are legacy fallbacks
+    # used when required_scope is absent.
+    if req_cat:
+        def _q_std_norm(s: str) -> str:
+            return (s or '').lower().replace('iso ', '').replace(' ', '')
 
-    # 3. Filter by ea_code — read from AuditorStandardQualification.ea_codes (per-standard),
-    #    NOT from Auditor.ea_codes (top-level field is null for bulk-imported auditors).
-    if ea_code:
-        def _ea_int(code: str) -> Optional[int]:
-            try:
-                return int(code.strip().upper().replace('EA', '').replace(' ', ''))
-            except (ValueError, AttributeError):
-                return None
-        target_ea = _ea_int(ea_code)
-        if target_ea is not None:
-            sc_lower = (standard_code or '').lower()
-            filtered_by_ea = []
-            for a in all_auditors:
-                # Collect per-standard EA codes from matching qualification rows
-                sq_codes: list[str] = []
-                for q in a.standard_qualifications:
-                    if q.is_qualified is not False:
-                        # If a standard_code filter is active, only look at matching quals
-                        if not sc_lower or sc_lower in (q.standard_code or '').lower():
-                            sq_codes.extend(q.ea_codes or [])
-                # Fall back to top-level Auditor.ea_codes only when no per-standard codes exist
-                codes_to_check = sq_codes if sq_codes else (a.ea_codes or [])
-                if any(_ea_int(c) == target_ea for c in codes_to_check):
-                    filtered_by_ea.append(a)
-            all_auditors = filtered_by_ea
+        def _auditor_covers_any_required(auditor, req: dict) -> bool:
+            for iso_std, entry in req.items():
+                scope_type    = entry.get('type', 'ea')
+                required_codes: list[str] = entry.get('codes', [])
+                std_norm = _q_std_norm(iso_std)
+                qual = next(
+                    (q for q in auditor.standard_qualifications
+                     if q.is_qualified is not False
+                     and std_norm in _q_std_norm(q.standard_code or '')),
+                    None,
+                )
+                if not qual:
+                    continue
+                if not required_codes:
+                    # Standard with no code system (ISO 37001 etc.) — qualification alone is enough
+                    return True
+                if scope_type in ('food', 'medical', 'sector', 'energy'):
+                    raw = qual.scope_category or ''
+                    auditor_codes = [c.strip() for c in raw.split(',') if c.strip()]
+                else:  # ea
+                    auditor_codes = qual.ea_codes or []
+                if any(c in auditor_codes for c in required_codes):
+                    return True
+            return False
+
+        all_auditors = [a for a in all_auditors if _auditor_covers_any_required(a, req_cat)]
+    else:
+        # Legacy fallback: single standard_code + ea_code filter
+        # 2. Filter by standard_code (partial, case-insensitive)
+        if standard_code:
+            sc_lower = standard_code.lower()
+            all_auditors = [
+                a for a in all_auditors
+                if any(
+                    q.is_qualified is not False and sc_lower in (q.standard_code or '').lower()
+                    for q in a.standard_qualifications
+                )
+            ]
+
+        # 3. Filter by ea_code — read from AuditorStandardQualification.ea_codes (per-standard),
+        #    NOT from Auditor.ea_codes (top-level field is null for bulk-imported auditors).
+        if ea_code:
+            def _ea_int(code: str) -> Optional[int]:
+                try:
+                    return int(code.strip().upper().replace('EA', '').replace(' ', ''))
+                except (ValueError, AttributeError):
+                    return None
+            target_ea = _ea_int(ea_code)
+            if target_ea is not None:
+                sc_lower = (standard_code or '').lower()
+                filtered_by_ea = []
+                for a in all_auditors:
+                    sq_codes: list[str] = []
+                    for q in a.standard_qualifications:
+                        if q.is_qualified is not False:
+                            if not sc_lower or sc_lower in (q.standard_code or '').lower():
+                                sq_codes.extend(q.ea_codes or [])
+                    codes_to_check = sq_codes if sq_codes else (a.ea_codes or [])
+                    if any(_ea_int(c) == target_ea for c in codes_to_check):
+                        filtered_by_ea.append(a)
+                all_auditors = filtered_by_ea
 
     # 4. Check bookings in audit_sets DB
     sets_db_gen = get_sets_db()
@@ -609,16 +644,9 @@ def get_available_auditors(
     finally:
         sets_db.close()
 
-    # When required_scope is provided, exclude auditors who cover zero codes — they
-    # contribute nothing to this audit. Unavailable (date conflict) auditors who DO
-    # cover at least one required code are kept (shown greyed-out in UI).
-    if req_cat:
-        result = [
-            a for a in result
-            if a.covered_scope and any(codes for codes in a.covered_scope.values())
-        ]
-
     # Sort: available first, then by name
+    # (When req_cat was provided, the pre-filter above already ensures every returned
+    # auditor covers at least one required code, so no second-pass filtering is needed.)
     result.sort(key=lambda a: (0 if a.available else 1, a.name))
     return result
 

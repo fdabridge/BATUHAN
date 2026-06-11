@@ -20,7 +20,8 @@ document_type values:
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, date
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
@@ -65,6 +66,7 @@ class SignConfirmRequest(BaseModel):
     document_type: str
     doc_id:        str
     sig_key:       str
+    signed_date:   Optional[date] = None  # user-selected signing date; defaults to today
 
 
 # ── Helper ────────────────────────────────────────────────────────────────────
@@ -496,9 +498,10 @@ def _commit_existing_signing_record(
     ip: str | None,
     db: Session,
     auth_db: Session,
+    signed_at: Optional[datetime] = None,
 ) -> None:
     """Update existing signing tables so workflow/legal state stays consistent."""
-    now = datetime.utcnow()
+    now = signed_at if signed_at is not None else datetime.utcnow()
 
     if document_type == "shared_doc":
         if sig_key == "CLIENT":
@@ -723,15 +726,20 @@ def sign_confirm(
         db.add(vsp)
 
     ip = request.client.host if request.client else None
+    signed_at = (
+        datetime.combine(body.signed_date, datetime.min.time())
+        if body.signed_date else datetime.utcnow()
+    )
     vsp.signature_image = user_sig.image_data
     vsp.otp_hash        = None
     vsp.otp_expires     = None
-    vsp.signed_at       = datetime.utcnow()
+    vsp.signed_at       = signed_at
     vsp.signed_ip       = ip
     db.commit()
 
     _commit_existing_signing_record(
         body.document_type, body.doc_id, body.sig_key, current_user, ip, db, auth_db,
+        signed_at=signed_at,
     )
 
     return {

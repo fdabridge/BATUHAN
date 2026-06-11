@@ -6,9 +6,11 @@ Prompt 12 covers: cb_planner signs quotation + agreement.
 Future prompts extend this to cb_cert_manager, lead_auditor, committee, guests.
 """
 from __future__ import annotations
-from datetime import datetime
+from datetime import datetime, date
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from audit_set.db_models import (
@@ -21,6 +23,10 @@ from auth.dependencies import get_current_user
 router = APIRouter(prefix="/audit-sets", tags=["signatures"])
 
 CB_ROLES = {"admin", "planner", "officer", "executive"}
+
+
+class SignDirectBody(BaseModel):
+    signed_date: Optional[date] = None  # user-selected signing date; defaults to today
 
 
 def _sig_to_dict(s: AuditDocumentSignature, doc_label: str = "",
@@ -100,6 +106,7 @@ def sign_direct(
     audit_set_id: str,
     sig_id:       str,
     request:      Request,
+    body:         SignDirectBody = Body(default_factory=SignDirectBody),
     db:           Session      = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
@@ -130,7 +137,10 @@ def sign_direct(
     if sig.signed_at:
         raise HTTPException(400, "Already signed")
 
-    sig.signed_at      = datetime.utcnow()
+    sig.signed_at      = (
+        datetime.combine(body.signed_date, datetime.min.time())
+        if body.signed_date else datetime.utcnow()
+    )
     sig.signed_ip      = request.client.host if request.client else None
     sig.otp_hash       = None
     sig.otp_expires_at = None

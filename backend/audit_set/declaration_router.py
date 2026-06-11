@@ -13,9 +13,11 @@ Endpoints:
 from __future__ import annotations
 import hashlib
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from audit_set.db_models import (
@@ -250,10 +252,15 @@ def declaration_verify_otp(
 
 # ── Direct-sign (no OTP) ─────────────────────────────────────────────────────
 
+class SignDeclarationDirectBody(BaseModel):
+    signed_date: Optional[date] = None  # user-selected signing date; defaults to today
+
+
 @router.post("/audit-sets/{audit_set_id}/declarations/{did}/sign/direct")
 def sign_declaration_direct(
     audit_set_id: str,
     did: str,
+    body:         SignDeclarationDirectBody = Body(default_factory=SignDeclarationDirectBody),
     db:           Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
@@ -271,7 +278,10 @@ def sign_declaration_direct(
             raise HTTPException(403, "You may only sign your own declaration")
 
     decl.signed_by = current_user.id
-    decl.signed_at = datetime.utcnow()
+    decl.signed_at = (
+        datetime.combine(body.signed_date, datetime.min.time())
+        if body.signed_date else datetime.utcnow()
+    )
     db.commit()
     db.refresh(decl)
     return _decl_dict(decl)

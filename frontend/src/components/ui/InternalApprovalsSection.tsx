@@ -46,6 +46,7 @@ export function InternalApprovalsSection({
   const [sigPreviewImage, setSigPreviewImage] = useState<string | null>(null)
   const [sigPreviewSlot,  setSigPreviewSlot]  = useState<SigSlot | null>(null)
   const [sigPreviewBusy,  setSigPreviewBusy]  = useState(false)
+  const [signedDate, setSignedDate] = useState(() => new Date().toISOString().slice(0, 10))
 
   const load = useCallback(async () => {
     try {
@@ -97,7 +98,9 @@ export function InternalApprovalsSection({
     if (!slot) return
     setBusy(true)
     try {
-      await api.post(`/audit-sets/${auditSetId}/signatures/${slot.id}/sign-direct`)
+      await api.post(`/audit-sets/${auditSetId}/signatures/${slot.id}/sign-direct`, {
+        signed_date: signedDate || new Date().toISOString().slice(0, 10),
+      })
       await load()
     } catch (e: unknown) {
       const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
@@ -216,6 +219,15 @@ export function InternalApprovalsSection({
               <p className="text-sm text-gray-600">
                 Your saved signature will be recorded. Click <strong>Sign</strong> to confirm.
               </p>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Signing date</label>
+                <input
+                  type="date"
+                  value={signedDate}
+                  onChange={(e) => setSignedDate(e.target.value)}
+                  className="rounded border border-gray-200 px-2 py-1 text-sm text-gray-700 focus:border-[#1A4731] focus:outline-none"
+                />
+              </div>
               {sigPreviewImage ? (
                 <div
                   className="flex items-center justify-center rounded-lg p-4"
