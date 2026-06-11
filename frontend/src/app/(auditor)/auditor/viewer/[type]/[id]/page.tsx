@@ -13,7 +13,7 @@ import { SignatureConfirmDialog } from '@/components/SignatureConfirmDialog'
 
 const VALID_TYPES: DocumentType[] = ['shared_doc', 'audit_report', 'nc_form']
 
-export default function ViewerPage() {
+export default function AuditorViewerPage() {
   const params = useParams()
   const router = useRouter()
   const documentType = params.type as DocumentType
@@ -30,9 +30,7 @@ export default function ViewerPage() {
         params: { document_type: documentType, doc_id: docId },
       })
       setOverrides(r.data.fields ?? [])
-    } catch {
-      // fail silently — boxes default to "pending"
-    }
+    } catch { /* silent */ }
   }, [documentType, docId])
 
   useEffect(() => {
@@ -48,11 +46,8 @@ export default function ViewerPage() {
       })
       const url = window.URL.createObjectURL(r.data as Blob)
       const a   = document.createElement('a')
-      a.href     = url
-      a.download = 'document_signed.pdf'
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
+      a.href = url; a.download = 'document_signed.pdf'
+      document.body.appendChild(a); a.click(); a.remove()
       window.URL.revokeObjectURL(url)
     } catch {
       alert('Could not download signed PDF. Please try again.')
@@ -71,7 +66,6 @@ export default function ViewerPage() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      {/* Header */}
       <div className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-6 py-3 shadow-sm">
         <button
           type="button"
@@ -111,7 +105,7 @@ export default function ViewerPage() {
         documentType={documentType}
         docId={docId}
         onClose={() => setActiveSigKey(null)}
-        onSigned={(sk) => {
+        onSigned={() => {
           setActiveSigKey(null)
           loadStatus()
         }}

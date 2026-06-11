@@ -139,6 +139,13 @@ export default function ClientDocumentsPage() {
               </div>
 
               <div className="mt-4 flex items-center gap-2">
+                <a
+                  href={`/client/viewer/shared_doc/${doc.id}`}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#1A4731] px-3 py-1.5
+                    text-sm font-medium text-[#1A4731] hover:bg-[#1A4731]/5 transition-colors"
+                >
+                  Open
+                </a>
                 <button
                   type="button"
                   onClick={() => downloadDoc(doc.id, doc.label)}

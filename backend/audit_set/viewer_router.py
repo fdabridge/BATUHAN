@@ -25,7 +25,8 @@ import secrets
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
+from audit_set.pdf_flattener import flatten_document
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -172,6 +173,44 @@ def serve_viewer_pdf(
         pdf_path,
         media_type="application/pdf",
         filename=os.path.basename(pdf_path),
+    )
+
+
+# ── Download signed PDF ───────────────────────────────────────────────────────
+
+@router.get("/download-signed")
+def download_signed_pdf(
+    document_type: str          = Query(...),
+    doc_id:        str          = Query(...),
+    db:            Session      = Depends(get_db),
+    auth_db:       Session      = Depends(get_auth_db),  # noqa: F841
+    current_user:  PlatformUser = Depends(get_current_user),
+):
+    """
+    Returns a flattened PDF with all completed VisualSignaturePlacements burned in.
+    Falls back to the raw converted PDF if no visual placements exist.
+
+    Requires the document to have been prepared first (/viewer/prepare).
+    Accessible by any authenticated user (CB, auditor, client).
+    """
+    try:
+        pdf_bytes = flatten_document(document_type, doc_id, db)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            404,
+            "PDF not ready. Open the document in the viewer first.",
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(500, f"Failed to generate signed PDF: {exc}") from exc
+
+    doc_label = _get_doc_label(document_type, doc_id, db)
+    safe_name = "".join(c if c.isalnum() or c in " .-" else "_" for c in doc_label)[:60]
+    filename  = f"{safe_name}_signed.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

@@ -13,7 +13,7 @@ import { SignatureConfirmDialog } from '@/components/SignatureConfirmDialog'
 
 const VALID_TYPES: DocumentType[] = ['shared_doc', 'audit_report', 'nc_form']
 
-export default function ViewerPage() {
+export default function ClientViewerPage() {
   const params = useParams()
   const router = useRouter()
   const documentType = params.type as DocumentType
@@ -31,7 +31,7 @@ export default function ViewerPage() {
       })
       setOverrides(r.data.fields ?? [])
     } catch {
-      // fail silently — boxes default to "pending"
+      // fail silently
     }
   }, [documentType, docId])
 
@@ -97,6 +97,7 @@ export default function ViewerPage() {
         </button>
       </div>
 
+      {/* PDF Viewer */}
       <CertivaDocumentViewer
         documentType={documentType}
         docId={docId}
@@ -105,13 +106,14 @@ export default function ViewerPage() {
         onPrepared={() => setDocPrepared(true)}
       />
 
+      {/* Signing dialog */}
       <SignatureConfirmDialog
         isOpen={activeSigKey !== null}
         sigKey={activeSigKey ?? ''}
         documentType={documentType}
         docId={docId}
         onClose={() => setActiveSigKey(null)}
-        onSigned={(sk) => {
+        onSigned={() => {
           setActiveSigKey(null)
           loadStatus()
         }}

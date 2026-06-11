@@ -273,13 +273,22 @@ function AuditorNCFormsView({ auditSetId }: { auditSetId: string }) {
                         {STAGE_LABELS[f.stage_type] ?? f.stage_type}
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => download(f.id, f.file_name)}
-                      className="text-xs text-[#1A4731] underline"
-                    >
-                      Download
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={`/auditor/viewer/nc_form/${f.id}`}
+                        className="inline-flex items-center rounded-lg border border-[#1A4731] px-2.5 py-1
+                          text-xs font-medium text-[#1A4731] hover:bg-[#1A4731]/5 transition-colors"
+                      >
+                        Open
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => download(f.id, f.file_name)}
+                        className="text-xs text-[#1A4731] underline"
+                      >
+                        Download
+                      </button>
+                    </div>
                   </div>
                   {state === 'idle' && (
                     <button
@@ -346,13 +355,22 @@ function AuditorNCFormsView({ auditSetId }: { auditSetId: string }) {
                     {f.status === 'complete' ? 'Both parties signed' : 'Awaiting client'}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => download(f.id, f.file_name)}
-                  className="text-xs text-[#1A4731] underline"
-                >
-                  Download
-                </button>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={`/auditor/viewer/nc_form/${f.id}`}
+                    className="inline-flex items-center rounded-lg border border-[#1A4731] px-2.5 py-1
+                      text-xs font-medium text-[#1A4731] hover:bg-[#1A4731]/5 transition-colors"
+                  >
+                    Open
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => download(f.id, f.file_name)}
+                    className="text-xs text-[#1A4731] underline"
+                  >
+                    Download
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -805,6 +823,13 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
                     <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${cfg.chip}`}>
                       {cfg.label}
                     </span>
+                    <a
+                      href={`/auditor/viewer/audit_report/${r.id}`}
+                      className="inline-flex items-center rounded-lg border border-[#1A4731] px-2.5 py-1
+                        text-xs font-medium text-[#1A4731] hover:bg-[#1A4731]/5 transition-colors"
+                    >
+                      Open
+                    </a>
                     <button
                       type="button"
                       onClick={() => download(r.id, r.file_name)}
@@ -885,6 +910,13 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
                     <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${cfg.chip}`}>
                       {cfg.label}
                     </span>
+                    <a
+                      href={`/auditor/viewer/audit_report/${r.id}`}
+                      className="inline-flex items-center rounded-lg border border-[#1A4731] px-2.5 py-1
+                        text-xs font-medium text-[#1A4731] hover:bg-[#1A4731]/5 transition-colors"
+                    >
+                      Open
+                    </a>
                     <button
                       type="button"
                       onClick={() => download(r.id, r.file_name)}
