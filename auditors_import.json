@@ -1,0 +1,6039 @@
+[
+  {
+    "name": "Adil Murat Sayar",
+    "role": "Auditor",
+    "field_of_expertise": "Gıda Mühendisi",
+    "ea_codes": [
+      "EA 3",
+      "EA 30"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-10-11",
+        "ea_codes": [
+          "EA 3",
+          "EA 30"
+        ],
+        "experience_years": 30
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-10-11",
+        "scope_category": "CI, CII, CIII, CIV, E",
+        "ea_codes": [],
+        "experience_years": 30
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-10-11",
+        "ea_codes": [
+          "EA 3",
+          "EA 30"
+        ],
+        "experience_years": 30
+      }
+    ]
+  },
+  {
+    "name": "Ahmet Anıl Ceylan",
+    "role": "Technical Expert",
+    "field_of_expertise": "Mimar",
+    "ea_codes": [
+      "EA 16",
+      "EA 28",
+      "EA 34"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2018-03-11",
+        "ea_codes": [
+          "EA 16",
+          "EA 28",
+          "EA 34"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2018-03-11",
+        "ea_codes": [
+          "EA 16",
+          "EA 28",
+          "EA 34"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Ahmet Yakup Boran",
+    "role": "Auditor",
+    "field_of_expertise": "Kimya Öğretmeni",
+    "ea_codes": [
+      "EA 4",
+      "EA 12",
+      "EA 19",
+      "EA 23",
+      "EA 29",
+      "EA 33",
+      "EA 34",
+      "EA 35",
+      "EA 37"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-11",
+        "ea_codes": [
+          "EA 4",
+          "EA 12",
+          "EA 19",
+          "EA 23",
+          "EA 29",
+          "EA 33",
+          "EA 34",
+          "EA 35",
+          "EA 37"
+        ],
+        "experience_years": 20
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-11",
+        "ea_codes": [
+          "EA 4",
+          "EA 12",
+          "EA 19",
+          "EA 23",
+          "EA 29",
+          "EA 33",
+          "EA 34",
+          "EA 35",
+          "EA 37"
+        ],
+        "experience_years": 20
+      }
+    ]
+  },
+  {
+    "name": "Ali Rıza Tali",
+    "role": "Auditor",
+    "field_of_expertise": "Makine Mühendisliği",
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "ISMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2019-06-25",
+        "ea_codes": [],
+        "experience_years": 6
+      },
+      {
+        "standard_code": "MDQMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2019-06-25",
+        "ea_codes": [],
+        "experience_years": 6
+      }
+    ]
+  },
+  {
+    "name": "Altan Çakıcı",
+    "role": "Technical Expert",
+    "field_of_expertise": "Metalurji Malzeme Mühendisi",
+    "ea_codes": [
+      "EA 19"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-06-08",
+        "ea_codes": [
+          "EA 19"
+        ],
+        "experience_years": 6
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-06-08",
+        "ea_codes": [
+          "EA 19"
+        ],
+        "experience_years": 6
+      }
+    ]
+  },
+  {
+    "name": "Altuğ Solmaz",
+    "role": "Technical Expert",
+    "field_of_expertise": "Mermer Ustası",
+    "ea_codes": [
+      "EA 5",
+      "EA 15",
+      "EA 29"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-09",
+        "ea_codes": [
+          "EA 15"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-09",
+        "ea_codes": [
+          "EA 5",
+          "EA 29"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Anton Gurin",
+    "role": "Auditor",
+    "field_of_expertise": "Biyolog",
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2023-01-31",
+        "ea_codes": [],
+        "experience_years": 3
+      }
+    ]
+  },
+  {
+    "name": "Aras Güzgülü",
+    "role": "Technical Expert",
+    "field_of_expertise": "Deri Ustası",
+    "ea_codes": [
+      "EA 5",
+      "EA 35"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-28",
+        "ea_codes": [
+          "EA 5"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-28",
+        "ea_codes": [
+          "EA 5",
+          "EA 35"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Aslan Aslan",
+    "role": "Auditor",
+    "field_of_expertise": "Makine Mühendisliği",
+    "ea_codes": [
+      "EA 1",
+      "EA 2",
+      "EA 3",
+      "EA 4",
+      "EA 5",
+      "EA 6",
+      "EA 7",
+      "EA 8",
+      "EA 9",
+      "EA 10",
+      "EA 11",
+      "EA 12",
+      "EA 13",
+      "EA 14",
+      "EA 15",
+      "EA 16",
+      "EA 17",
+      "EA 18",
+      "EA 19",
+      "EA 20",
+      "EA 21",
+      "EA 22",
+      "EA 23",
+      "EA 24",
+      "EA 25",
+      "EA 26",
+      "EA 27",
+      "EA 28",
+      "EA 29",
+      "EA 30",
+      "EA 31",
+      "EA 32",
+      "EA 33",
+      "EA 34",
+      "EA 35",
+      "EA 36",
+      "EA 37",
+      "EA 38",
+      "EA 39"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "ABMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-23",
+        "ea_codes": [],
+        "experience_years": 30
+      },
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-23",
+        "ea_codes": [
+          "EA 2",
+          "EA 15",
+          "EA 16",
+          "EA 17",
+          "EA 18",
+          "EA 19",
+          "EA 28",
+          "EA 31",
+          "EA 34",
+          "EA 35",
+          "EA 36",
+          "EA 37"
+        ],
+        "experience_years": 30
+      },
+      {
+        "standard_code": "ENMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-23",
+        "ea_codes": [],
+        "experience_years": 30
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-23",
+        "ea_codes": [
+          "EA 1",
+          "EA 2",
+          "EA 3",
+          "EA 4",
+          "EA 5",
+          "EA 6",
+          "EA 7",
+          "EA 8",
+          "EA 9",
+          "EA 10",
+          "EA 11",
+          "EA 12",
+          "EA 13",
+          "EA 14",
+          "EA 15",
+          "EA 16",
+          "EA 17",
+          "EA 18",
+          "EA 19",
+          "EA 20",
+          "EA 21",
+          "EA 22",
+          "EA 23",
+          "EA 24",
+          "EA 25",
+          "EA 26",
+          "EA 27",
+          "EA 28",
+          "EA 29",
+          "EA 30",
+          "EA 31",
+          "EA 32",
+          "EA 33",
+          "EA 34",
+          "EA 35",
+          "EA 36",
+          "EA 37",
+          "EA 38",
+          "EA 39"
+        ],
+        "experience_years": 30
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-23",
+        "ea_codes": [
+          "EA 2",
+          "EA 15",
+          "EA 16",
+          "EA 17",
+          "EA 18",
+          "EA 19",
+          "EA 28",
+          "EA 31",
+          "EA 34",
+          "EA 35",
+          "EA 36",
+          "EA 37"
+        ],
+        "experience_years": 30
+      }
+    ]
+  },
+  {
+    "name": "Aslı Abay",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 3",
+      "EA 14",
+      "EA 17",
+      "EA 19",
+      "EA 34",
+      "EA 37"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 3",
+          "EA 14",
+          "EA 17",
+          "EA 19",
+          "EA 34",
+          "EA 37"
+        ]
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 3",
+          "EA 14",
+          "EA 17",
+          "EA 19",
+          "EA 34",
+          "EA 37"
+        ]
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 3",
+          "EA 14",
+          "EA 17",
+          "EA 19",
+          "EA 34",
+          "EA 37"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Aslı BÜGER",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 1",
+      "EA 2",
+      "EA 3",
+      "EA 4",
+      "EA 5",
+      "EA 6",
+      "EA 7",
+      "EA 8",
+      "EA 9",
+      "EA 10",
+      "EA 11",
+      "EA 12",
+      "EA 13",
+      "EA 14",
+      "EA 15",
+      "EA 16",
+      "EA 17",
+      "EA 18",
+      "EA 19",
+      "EA 20",
+      "EA 21",
+      "EA 22",
+      "EA 23",
+      "EA 24",
+      "EA 25",
+      "EA 26",
+      "EA 27",
+      "EA 28",
+      "EA 29",
+      "EA 30",
+      "EA 31",
+      "EA 32",
+      "EA 33",
+      "EA 34",
+      "EA 35",
+      "EA 36",
+      "EA 37",
+      "EA 38",
+      "EA 39"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2023-01-22",
+        "ea_codes": [
+          "EA 1",
+          "EA 3",
+          "EA 14",
+          "EA 18",
+          "EA 29"
+        ]
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2023-01-22",
+        "ea_codes": [
+          "EA 1",
+          "EA 2",
+          "EA 3",
+          "EA 4",
+          "EA 5",
+          "EA 6",
+          "EA 7",
+          "EA 8",
+          "EA 9",
+          "EA 10",
+          "EA 11",
+          "EA 12",
+          "EA 13",
+          "EA 14",
+          "EA 15",
+          "EA 16",
+          "EA 17",
+          "EA 18",
+          "EA 19",
+          "EA 20",
+          "EA 21",
+          "EA 22",
+          "EA 23",
+          "EA 24",
+          "EA 25",
+          "EA 26",
+          "EA 27",
+          "EA 28",
+          "EA 29",
+          "EA 30",
+          "EA 31",
+          "EA 32",
+          "EA 33",
+          "EA 34",
+          "EA 35",
+          "EA 36",
+          "EA 37",
+          "EA 38",
+          "EA 39"
+        ]
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2023-01-22",
+        "ea_codes": [
+          "EA 1",
+          "EA 3"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Aslı Büger",
+    "role": "Auditor",
+    "field_of_expertise": "Ziraat Mühendisi",
+    "ea_codes": [
+      "EA 35"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2023-01-22",
+        "ea_codes": [
+          "EA 35"
+        ],
+        "experience_years": 2
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2023-01-22",
+        "ea_codes": [],
+        "experience_years": 2
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2023-01-22",
+        "ea_codes": [],
+        "experience_years": 2
+      }
+    ]
+  },
+  {
+    "name": "Atıl GEDİK",
+    "role": "Auditor",
+    "field_of_expertise": "Gıda Mühendisi",
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-06-05",
+        "ea_codes": [],
+        "experience_years": 15
+      }
+    ]
+  },
+  {
+    "name": "Aylin Gül",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 32",
+      "EA 35"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2019-01-10",
+        "ea_codes": [
+          "EA 32",
+          "EA 35"
+        ]
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2019-01-10",
+        "ea_codes": [
+          "EA 32",
+          "EA 35"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Belgin Çakıroğlu",
+    "role": "Technical Expert",
+    "field_of_expertise": "İdari İşler",
+    "ea_codes": [
+      "EA 25"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2021-09-20",
+        "ea_codes": [
+          "EA 25"
+        ],
+        "experience_years": 3
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2021-09-20",
+        "ea_codes": [
+          "EA 25"
+        ],
+        "experience_years": 3
+      }
+    ]
+  },
+  {
+    "name": "Burak Demirkol",
+    "role": "Auditor",
+    "field_of_expertise": "Gıda Mühendisi",
+    "ea_codes": [
+      "EA 3",
+      "EA 18",
+      "EA 29",
+      "EA 30",
+      "EA 31"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-03-27",
+        "ea_codes": [
+          "EA 3",
+          "EA 18"
+        ],
+        "experience_years": 3
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-03-27",
+        "scope_category": "CI, CII, CIV, E, FI, FII, GI, GII",
+        "ea_codes": [],
+        "experience_years": 3
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-03-27",
+        "ea_codes": [
+          "EA 3",
+          "EA 29",
+          "EA 30",
+          "EA 31"
+        ],
+        "experience_years": 3
+      }
+    ]
+  },
+  {
+    "name": "Burak Matheos",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 18"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 18"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Burcu Ertürkalp",
+    "role": "Auditor",
+    "field_of_expertise": "Kamu Yönetimi",
+    "ea_codes": [
+      "EA 17",
+      "EA 18",
+      "EA 19",
+      "EA 29"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2019-07-08",
+        "ea_codes": [
+          "EA 17",
+          "EA 18",
+          "EA 19",
+          "EA 29"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2019-07-08",
+        "ea_codes": [
+          "EA 17",
+          "EA 18",
+          "EA 19",
+          "EA 29"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2019-07-08",
+        "ea_codes": [
+          "EA 17",
+          "EA 18",
+          "EA 19",
+          "EA 29"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Bülent Kurtaç",
+    "role": "Technical Expert",
+    "field_of_expertise": "Kaynak ustası",
+    "ea_codes": [
+      "EA 18"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-08",
+        "ea_codes": [
+          "EA 18"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-08",
+        "ea_codes": [],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-08",
+        "ea_codes": [
+          "EA 18"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Bülent Kurtaç TU",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2018-01-08",
+        "scope_category": "J",
+        "ea_codes": []
+      }
+    ]
+  },
+  {
+    "name": "Caner Çetin",
+    "role": "Technical Expert",
+    "field_of_expertise": "Marangoz",
+    "ea_codes": [
+      "EA 6"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-10",
+        "ea_codes": [
+          "EA 6"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-10",
+        "ea_codes": [
+          "EA 6"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Cansu Ege Kuzu",
+    "role": "Technical Expert",
+    "field_of_expertise": "Halkla ilişkiler",
+    "ea_codes": [
+      "EA 35",
+      "EA 37"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2018-03-12",
+        "ea_codes": [
+          "EA 35",
+          "EA 37"
+        ],
+        "experience_years": 5
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2018-03-12",
+        "ea_codes": [
+          "EA 35",
+          "EA 37"
+        ],
+        "experience_years": 5
+      }
+    ]
+  },
+  {
+    "name": "Cem Denizer",
+    "role": "Auditor",
+    "field_of_expertise": "Otomotiv",
+    "ea_codes": [
+      "EA 14",
+      "EA 15",
+      "EA 17",
+      "EA 18",
+      "EA 22",
+      "EA 29"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2018-10-10",
+        "ea_codes": [
+          "EA 14",
+          "EA 15",
+          "EA 17",
+          "EA 18",
+          "EA 22",
+          "EA 29"
+        ],
+        "experience_years": 15
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2018-10-10",
+        "ea_codes": [
+          "EA 14",
+          "EA 15",
+          "EA 17",
+          "EA 18",
+          "EA 22",
+          "EA 29"
+        ],
+        "experience_years": 15
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2018-10-10",
+        "ea_codes": [
+          "EA 15",
+          "EA 17",
+          "EA 18",
+          "EA 22",
+          "EA 29"
+        ],
+        "experience_years": 15
+      }
+    ]
+  },
+  {
+    "name": "Denis Pyatkov (Piatkov)",
+    "role": "Auditor",
+    "field_of_expertise": "Gıda Teknolojileri",
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-03-24",
+        "scope_category": "CI, CIV, I, K",
+        "ea_codes": [],
+        "experience_years": 10
+      }
+    ]
+  },
+  {
+    "name": "Deniz Güner",
+    "role": "Technical Expert",
+    "field_of_expertise": "Bilgi işlem",
+    "ea_codes": [
+      "EA 8",
+      "EA 33",
+      "EA 35"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-08",
+        "ea_codes": [
+          "EA 8",
+          "EA 33",
+          "EA 35"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-08",
+        "ea_codes": [
+          "EA 8",
+          "EA 33",
+          "EA 35"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Dilhan Ünal",
+    "role": "Technical Expert",
+    "field_of_expertise": "İşletme",
+    "ea_codes": [
+      "EA 4",
+      "EA 28",
+      "EA 32"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-26",
+        "ea_codes": [
+          "EA 4",
+          "EA 28",
+          "EA 32"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-26",
+        "ea_codes": [
+          "EA 4",
+          "EA 28",
+          "EA 32"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Du Hoang Phi",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 3",
+      "EA 15",
+      "EA 31"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2021-01-25",
+        "scope_category": "CI, CII, CIII",
+        "ea_codes": []
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2021-01-25",
+        "ea_codes": [
+          "EA 3",
+          "EA 15",
+          "EA 31"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Durmuş Sağlam",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 27"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-13",
+        "ea_codes": [
+          "EA 27"
+        ]
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-13",
+        "scope_category": "H.01",
+        "ea_codes": []
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-13",
+        "ea_codes": [
+          "EA 27"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Elif Dinç",
+    "role": "Auditor",
+    "field_of_expertise": "Bilgisayar Teknolojisi Programlama",
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "ISMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2018-09-16",
+        "ea_codes": [],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "MDQMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2018-09-16",
+        "ea_codes": [],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Elif Duman",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 1",
+      "EA 3",
+      "EA 4",
+      "EA 12"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-10",
+        "ea_codes": [
+          "EA 1",
+          "EA 4",
+          "EA 12"
+        ]
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-10",
+        "scope_category": "BI, DI, DIIa, DIIb, K",
+        "ea_codes": []
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-10",
+        "ea_codes": [
+          "EA 1",
+          "EA 3",
+          "EA 4",
+          "EA 12"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Elif Duman Gökdemir",
+    "role": "Technical Expert",
+    "field_of_expertise": "Ziraat Mühendisi",
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-10",
+        "ea_codes": [],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-10",
+        "ea_codes": [],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-10",
+        "ea_codes": [],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Elzbieta Maria Nitecka",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-03-26",
+        "ea_codes": []
+      }
+    ]
+  },
+  {
+    "name": "Emrullah Ceyhan",
+    "role": "Technical Expert",
+    "field_of_expertise": "Ayakkabı ustası",
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-05",
+        "ea_codes": [],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-05",
+        "ea_codes": [],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Emrullah Ceylan",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 5"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-05",
+        "ea_codes": [
+          "EA 5"
+        ]
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-05",
+        "ea_codes": [
+          "EA 5"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Engin Şenel",
+    "role": "Auditor",
+    "field_of_expertise": "Turizm otelcilik",
+    "ea_codes": [
+      "EA 28",
+      "EA 29",
+      "EA 30",
+      "EA 31",
+      "EA 35",
+      "EA 39"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2020-01-20",
+        "ea_codes": [
+          "EA 28",
+          "EA 29",
+          "EA 30",
+          "EA 31",
+          "EA 35",
+          "EA 39"
+        ],
+        "experience_years": 24
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2020-01-20",
+        "ea_codes": [
+          "EA 28",
+          "EA 29",
+          "EA 30",
+          "EA 31",
+          "EA 35",
+          "EA 39"
+        ],
+        "experience_years": 24
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2020-01-20",
+        "ea_codes": [
+          "EA 28",
+          "EA 29",
+          "EA 30",
+          "EA 31",
+          "EA 35",
+          "EA 39"
+        ],
+        "experience_years": 24
+      }
+    ]
+  },
+  {
+    "name": "Erkan Tulukçuoğlu",
+    "role": "Technical Expert",
+    "field_of_expertise": "PTT Kamu Personeli",
+    "ea_codes": [
+      "EA 31",
+      "EA 32"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-05",
+        "ea_codes": [
+          "EA 31"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-05",
+        "ea_codes": [
+          "EA 32"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Erol Öziyi",
+    "role": "Auditor",
+    "field_of_expertise": "Gıda Mühendisi",
+    "ea_codes": [
+      "EA 3",
+      "EA 14",
+      "EA 30",
+      "EA 31",
+      "EA 35"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-28",
+        "ea_codes": [
+          "EA 3",
+          "EA 14",
+          "EA 30",
+          "EA 31",
+          "EA 35"
+        ],
+        "experience_years": 25
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-28",
+        "scope_category": "CI, CIV, E, FI, GI, GII, H, I",
+        "ea_codes": [],
+        "experience_years": 25
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-28",
+        "ea_codes": [
+          "EA 3",
+          "EA 14",
+          "EA 30",
+          "EA 31",
+          "EA 35"
+        ],
+        "experience_years": 25
+      }
+    ]
+  },
+  {
+    "name": "Essam Adeeb",
+    "role": "Auditor",
+    "field_of_expertise": "Kimyager",
+    "ea_codes": [
+      "EA 4",
+      "EA 12",
+      "EA 17"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-11-18",
+        "ea_codes": [
+          "EA 4",
+          "EA 12",
+          "EA 17"
+        ],
+        "experience_years": 6
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-11-18",
+        "ea_codes": [
+          "EA 4",
+          "EA 12",
+          "EA 17"
+        ],
+        "experience_years": 6
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-11-18",
+        "ea_codes": [
+          "EA 4",
+          "EA 12",
+          "EA 17"
+        ],
+        "experience_years": 6
+      }
+    ]
+  },
+  {
+    "name": "Evren Geçkin",
+    "role": "Technical Expert",
+    "field_of_expertise": "Tarım Makineleri Mühendisi",
+    "ea_codes": [
+      "EA 17",
+      "EA 22"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-03",
+        "ea_codes": [
+          "EA 22"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-03",
+        "scope_category": "J",
+        "ea_codes": [],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-03",
+        "ea_codes": [
+          "EA 17",
+          "EA 22"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Fadhıl Najı Abdulrahman Alnema",
+    "role": "Auditor",
+    "field_of_expertise": "Ziraat Mühendisi",
+    "ea_codes": [
+      "EA 3",
+      "EA 12",
+      "EA 14",
+      "EA 15",
+      "EA 16",
+      "EA 17",
+      "EA 18",
+      "EA 19",
+      "EA 28",
+      "EA 29",
+      "EA 33",
+      "EA 34",
+      "EA 35",
+      "EA 36",
+      "EA 37"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-08-20",
+        "ea_codes": [
+          "EA 3",
+          "EA 12",
+          "EA 14",
+          "EA 15",
+          "EA 16",
+          "EA 17",
+          "EA 18",
+          "EA 19",
+          "EA 28",
+          "EA 29",
+          "EA 33",
+          "EA 34",
+          "EA 35",
+          "EA 36",
+          "EA 37"
+        ],
+        "experience_years": 10
+      },
+      {
+        "standard_code": "ENMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-08-20",
+        "ea_codes": [],
+        "experience_years": 10
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-08-20",
+        "ea_codes": [
+          "EA 3",
+          "EA 12",
+          "EA 14",
+          "EA 15",
+          "EA 16",
+          "EA 17",
+          "EA 18",
+          "EA 19",
+          "EA 28",
+          "EA 29",
+          "EA 33",
+          "EA 34",
+          "EA 35",
+          "EA 36",
+          "EA 37"
+        ],
+        "experience_years": 10
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-08-20",
+        "ea_codes": [
+          "EA 3",
+          "EA 12",
+          "EA 14",
+          "EA 15",
+          "EA 16",
+          "EA 17",
+          "EA 18",
+          "EA 19",
+          "EA 28",
+          "EA 29",
+          "EA 33",
+          "EA 34",
+          "EA 35",
+          "EA 36",
+          "EA 37"
+        ],
+        "experience_years": 10
+      }
+    ]
+  },
+  {
+    "name": "Faruk Bilgin",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 22"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-02-28",
+        "ea_codes": [
+          "EA 22"
+        ]
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-02-28",
+        "scope_category": "J",
+        "ea_codes": []
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-02-28",
+        "ea_codes": [
+          "EA 22"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Faruk Çubukçu",
+    "role": "Auditor",
+    "field_of_expertise": "Bilgi Teknolojileri",
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "ISMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2019-07-16",
+        "ea_codes": [],
+        "experience_years": 8
+      },
+      {
+        "standard_code": "MDQMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2019-07-16",
+        "ea_codes": [],
+        "experience_years": 8
+      }
+    ]
+  },
+  {
+    "name": "Fatih Kılıç",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 4",
+      "EA 14",
+      "EA 29"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 4",
+          "EA 14",
+          "EA 29"
+        ]
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 4",
+          "EA 14",
+          "EA 29"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Fatma Yılmaz",
+    "role": "Technical Expert",
+    "field_of_expertise": "İşletmeci",
+    "ea_codes": [
+      "EA 23",
+      "EA 29",
+      "EA 31"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-06",
+        "ea_codes": [
+          "EA 23",
+          "EA 29",
+          "EA 31"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-06",
+        "ea_codes": [
+          "EA 23",
+          "EA 29",
+          "EA 31"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Fehime Gamze Uçar",
+    "role": "Auditor",
+    "field_of_expertise": "İşletme",
+    "ea_codes": [
+      "EA 12",
+      "EA 14",
+      "EA 17",
+      "EA 29"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-18",
+        "ea_codes": [
+          "EA 12",
+          "EA 14",
+          "EA 17",
+          "EA 29"
+        ],
+        "experience_years": 20
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-18",
+        "ea_codes": [
+          "EA 12",
+          "EA 14",
+          "EA 17",
+          "EA 29"
+        ],
+        "experience_years": 20
+      }
+    ]
+  },
+  {
+    "name": "Gökhan Çuna",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 14",
+      "EA 17",
+      "EA 29"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "ISMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": []
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 14",
+          "EA 17",
+          "EA 29"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Gülden Cırık",
+    "role": "Auditor",
+    "field_of_expertise": "Makine / İşletme",
+    "ea_codes": [
+      "EA 14",
+      "EA 17",
+      "EA 18",
+      "EA 19",
+      "EA 22",
+      "EA 23",
+      "EA 29",
+      "EA 34"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2018-10-02",
+        "ea_codes": [
+          "EA 14",
+          "EA 17",
+          "EA 18",
+          "EA 19",
+          "EA 22",
+          "EA 23",
+          "EA 29",
+          "EA 34"
+        ],
+        "experience_years": 12
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2018-10-02",
+        "ea_codes": [
+          "EA 14",
+          "EA 17",
+          "EA 18",
+          "EA 19",
+          "EA 22",
+          "EA 23",
+          "EA 29",
+          "EA 34"
+        ],
+        "experience_years": 12
+      }
+    ]
+  },
+  {
+    "name": "Gürhan Dur",
+    "role": "Technical Expert",
+    "field_of_expertise": "Marangoz",
+    "ea_codes": [
+      "EA 6",
+      "EA 15"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-12",
+        "ea_codes": [
+          "EA 6",
+          "EA 15"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-12",
+        "ea_codes": [
+          "EA 6",
+          "EA 15"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Gürhan Kuzu",
+    "role": "Auditor",
+    "field_of_expertise": "Gıda Mühendisi",
+    "ea_codes": [
+      "EA 3"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-27",
+        "ea_codes": [],
+        "experience_years": 15
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-27",
+        "scope_category": "CI, CII, CIV",
+        "ea_codes": [],
+        "experience_years": 15
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-27",
+        "ea_codes": [
+          "EA 3"
+        ],
+        "experience_years": 15
+      }
+    ]
+  },
+  {
+    "name": "Hacı Osman Semsekçi",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 1",
+      "EA 2",
+      "EA 3",
+      "EA 4",
+      "EA 5",
+      "EA 6",
+      "EA 7",
+      "EA 8",
+      "EA 9",
+      "EA 10",
+      "EA 11",
+      "EA 12",
+      "EA 13",
+      "EA 14",
+      "EA 15",
+      "EA 16",
+      "EA 17",
+      "EA 18",
+      "EA 19",
+      "EA 20",
+      "EA 21",
+      "EA 22",
+      "EA 23",
+      "EA 24",
+      "EA 25",
+      "EA 26",
+      "EA 27",
+      "EA 28",
+      "EA 29",
+      "EA 30",
+      "EA 31",
+      "EA 32",
+      "EA 33",
+      "EA 34",
+      "EA 35",
+      "EA 36",
+      "EA 37",
+      "EA 38",
+      "EA 39"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2024-09-01",
+        "ea_codes": [
+          "EA 3",
+          "EA 14",
+          "EA 17",
+          "EA 18",
+          "EA 24",
+          "EA 34"
+        ]
+      },
+      {
+        "standard_code": "ENMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2024-09-01",
+        "ea_codes": []
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2024-09-01",
+        "ea_codes": [
+          "EA 1",
+          "EA 2",
+          "EA 3",
+          "EA 4",
+          "EA 5",
+          "EA 6",
+          "EA 7",
+          "EA 8",
+          "EA 9",
+          "EA 10",
+          "EA 11",
+          "EA 12",
+          "EA 13",
+          "EA 14",
+          "EA 15",
+          "EA 16",
+          "EA 17",
+          "EA 18",
+          "EA 19",
+          "EA 20",
+          "EA 21",
+          "EA 22",
+          "EA 23",
+          "EA 24",
+          "EA 25",
+          "EA 26",
+          "EA 27",
+          "EA 28",
+          "EA 29",
+          "EA 30",
+          "EA 31",
+          "EA 32",
+          "EA 33",
+          "EA 34",
+          "EA 35",
+          "EA 36",
+          "EA 37",
+          "EA 38",
+          "EA 39"
+        ]
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2024-09-01",
+        "ea_codes": [
+          "EA 3",
+          "EA 14",
+          "EA 17",
+          "EA 19",
+          "EA 24",
+          "EA 34"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Hakan Ataş",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 31",
+      "EA 35",
+      "EA 37"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 31",
+          "EA 35",
+          "EA 37"
+        ]
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 31",
+          "EA 35",
+          "EA 37"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Hakan Genel",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 33"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-05",
+        "ea_codes": [
+          "EA 33"
+        ]
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-05",
+        "ea_codes": [
+          "EA 33"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Halit Serkan Kırbaş",
+    "role": "Auditor",
+    "field_of_expertise": "Maliye",
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2018-04-14",
+        "ea_codes": [],
+        "experience_years": 16
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2018-04-14",
+        "ea_codes": [],
+        "experience_years": 16
+      }
+    ]
+  },
+  {
+    "name": "Hasan Eryılmaz",
+    "role": "Auditor",
+    "field_of_expertise": "Veteriner Hekim",
+    "ea_codes": [
+      "EA 1",
+      "EA 3",
+      "EA 12",
+      "EA 17",
+      "EA 18",
+      "EA 22",
+      "EA 23",
+      "EA 29",
+      "EA 30",
+      "EA 35",
+      "EA 36",
+      "EA 38",
+      "EA 39"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "ABMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-27",
+        "ea_codes": [],
+        "experience_years": 20
+      },
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-27",
+        "ea_codes": [
+          "EA 1",
+          "EA 3",
+          "EA 12",
+          "EA 17",
+          "EA 18",
+          "EA 22",
+          "EA 23",
+          "EA 29",
+          "EA 30",
+          "EA 35",
+          "EA 36",
+          "EA 38",
+          "EA 39"
+        ],
+        "experience_years": 20
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-27",
+        "scope_category": "A1, AII, B1, CI, CII, CIII, CIV, DI-, DIIa-, DIIb, E, H, I, K",
+        "ea_codes": [],
+        "experience_years": 20
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-27",
+        "ea_codes": [
+          "EA 1",
+          "EA 3",
+          "EA 12",
+          "EA 17",
+          "EA 18",
+          "EA 22",
+          "EA 23",
+          "EA 29",
+          "EA 30",
+          "EA 35",
+          "EA 36",
+          "EA 38",
+          "EA 39"
+        ],
+        "experience_years": 20
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-27",
+        "ea_codes": [
+          "EA 1",
+          "EA 3",
+          "EA 12",
+          "EA 17",
+          "EA 18",
+          "EA 22",
+          "EA 23",
+          "EA 29",
+          "EA 30",
+          "EA 35",
+          "EA 36",
+          "EA 38",
+          "EA 39"
+        ],
+        "experience_years": 20
+      }
+    ]
+  },
+  {
+    "name": "Hasibe Fatma Eren",
+    "role": "Technical Expert",
+    "field_of_expertise": "Gıda Mühendisi",
+    "ea_codes": [
+      "EA 3",
+      "EA 14",
+      "EA 30"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-09",
+        "ea_codes": [
+          "EA 3",
+          "EA 14",
+          "EA 30"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-09",
+        "scope_category": "E, I",
+        "ea_codes": [],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-09",
+        "ea_codes": [
+          "EA 3",
+          "EA 14",
+          "EA 30"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Hatice Demirel",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 14",
+      "EA 17",
+      "EA 18",
+      "EA 19",
+      "EA 28",
+      "EA 29",
+      "EA 34"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-27",
+        "ea_codes": [
+          "EA 14",
+          "EA 17",
+          "EA 18",
+          "EA 19",
+          "EA 28",
+          "EA 29",
+          "EA 34"
+        ]
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-27",
+        "ea_codes": [
+          "EA 14",
+          "EA 17",
+          "EA 18",
+          "EA 19",
+          "EA 28",
+          "EA 29",
+          "EA 34"
+        ]
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-27",
+        "ea_codes": [
+          "EA 14",
+          "EA 17",
+          "EA 18",
+          "EA 19",
+          "EA 28",
+          "EA 29",
+          "EA 34"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Hatice Demirel Korkmaz",
+    "role": "Auditor",
+    "field_of_expertise": "Makine Mühendisi",
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-27",
+        "ea_codes": [],
+        "experience_years": 25
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-27",
+        "ea_codes": [],
+        "experience_years": 25
+      }
+    ]
+  },
+  {
+    "name": "Hatice Tulukçuoğlu",
+    "role": "Technical Expert",
+    "field_of_expertise": "Kargo Dağıtım Şefi",
+    "ea_codes": [
+      "EA 31"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-05",
+        "ea_codes": [
+          "EA 31"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-05",
+        "ea_codes": [
+          "EA 31"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Hilal Öztürk",
+    "role": "Auditor",
+    "field_of_expertise": "Gıda Mühendisliği",
+    "ea_codes": [
+      "EA 3",
+      "EA 30"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2018-07-05",
+        "ea_codes": [
+          "EA 3",
+          "EA 30"
+        ],
+        "experience_years": 6
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2018-07-05",
+        "scope_category": "CI, E",
+        "ea_codes": [],
+        "experience_years": 6
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2018-07-05",
+        "ea_codes": [
+          "EA 3",
+          "EA 30"
+        ],
+        "experience_years": 6
+      }
+    ]
+  },
+  {
+    "name": "Hülya Demirçelen",
+    "role": "Technical Expert",
+    "field_of_expertise": "Organizasyon İşletmeciliği",
+    "ea_codes": [
+      "EA 35",
+      "EA 39"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-03",
+        "ea_codes": [
+          "EA 35",
+          "EA 39"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-03",
+        "ea_codes": [
+          "EA 35",
+          "EA 39"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Julia Getman",
+    "role": "Auditor",
+    "field_of_expertise": "Biyolog",
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2023-01-31",
+        "ea_codes": [],
+        "experience_years": 13
+      }
+    ]
+  },
+  {
+    "name": "Kamil Serhan Bilman",
+    "role": "Auditor",
+    "field_of_expertise": "Bilgisayar Mühendisi",
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "ISMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2019-12-10",
+        "ea_codes": [],
+        "experience_years": 4
+      }
+    ]
+  },
+  {
+    "name": "Kharkalis Halina",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 3",
+      "EA 7",
+      "EA 14"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "scope_category": "CIV, I",
+        "ea_codes": []
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 3",
+          "EA 7",
+          "EA 14"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Koburul İslam",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 3",
+      "EA 14",
+      "EA 19",
+      "EA 28",
+      "EA 29",
+      "EA 31",
+      "EA 33",
+      "EA 35"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 3",
+          "EA 14",
+          "EA 19",
+          "EA 28",
+          "EA 29",
+          "EA 31",
+          "EA 33",
+          "EA 35"
+        ]
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 3",
+          "EA 14",
+          "EA 19",
+          "EA 28",
+          "EA 29",
+          "EA 31",
+          "EA 33",
+          "EA 35"
+        ]
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 3",
+          "EA 14",
+          "EA 19",
+          "EA 28",
+          "EA 29",
+          "EA 31",
+          "EA 33",
+          "EA 35"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Levent Kar",
+    "role": "Technical Expert",
+    "field_of_expertise": "Tedarikçi Geliştirme Müdürü",
+    "ea_codes": [
+      "EA 5",
+      "EA 35",
+      "EA 39"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2021-09-18",
+        "ea_codes": [
+          "EA 5",
+          "EA 35",
+          "EA 39"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2021-09-18",
+        "ea_codes": [
+          "EA 5",
+          "EA 35",
+          "EA 39"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Marieta Kostolna",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-03-26",
+        "ea_codes": []
+      }
+    ]
+  },
+  {
+    "name": "Martına Oravcová",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-03-30",
+        "ea_codes": []
+      }
+    ]
+  },
+  {
+    "name": "Md Manuil Islam",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 3",
+      "EA 12",
+      "EA 13"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 3",
+          "EA 12",
+          "EA 13"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Md Mauil Islam",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "scope_category": "K",
+        "ea_codes": []
+      }
+    ]
+  },
+  {
+    "name": "Medya Sönmez",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 3",
+      "EA 12",
+      "EA 29"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "scope_category": "K",
+        "ea_codes": []
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 3",
+          "EA 12",
+          "EA 29"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Mehmet Yılmaz",
+    "role": "Auditor",
+    "field_of_expertise": "BilgisayarTeknolojisi",
+    "ea_codes": [
+      "EA 33"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "ISMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2021-11-08",
+        "ea_codes": [],
+        "experience_years": 13
+      },
+      {
+        "standard_code": "MDQMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2021-11-08",
+        "ea_codes": [],
+        "experience_years": 13
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2021-11-08",
+        "ea_codes": [
+          "EA 33"
+        ],
+        "experience_years": 13
+      }
+    ]
+  },
+  {
+    "name": "Meltem Fikriye TUTCU",
+    "role": "Auditor",
+    "field_of_expertise": "Gıda Mühendisi",
+    "ea_codes": [
+      "EA 1",
+      "EA 3",
+      "EA 29",
+      "EA 30",
+      "EA 35"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-06-15",
+        "ea_codes": [
+          "EA 1",
+          "EA 3",
+          "EA 29",
+          "EA 30",
+          "EA 35"
+        ],
+        "experience_years": 11
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-06-15",
+        "ea_codes": [],
+        "experience_years": 11
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-06-15",
+        "ea_codes": [
+          "EA 1",
+          "EA 3",
+          "EA 29",
+          "EA 30",
+          "EA 35"
+        ],
+        "experience_years": 11
+      }
+    ]
+  },
+  {
+    "name": "Meltem Fikriye Tutcu",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-06-15",
+        "scope_category": "A1, CI, CII, CIV, DI-, DIIb, E, FI, GI, I",
+        "ea_codes": []
+      }
+    ]
+  },
+  {
+    "name": "Meltem Türkmenel",
+    "role": "Auditor",
+    "field_of_expertise": "Gıda Mühendisi",
+    "ea_codes": [
+      "EA 1",
+      "EA 3"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-06-15",
+        "ea_codes": [
+          "EA 1",
+          "EA 3"
+        ],
+        "experience_years": 6
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-06-15",
+        "scope_category": "A1, CI, DI",
+        "ea_codes": [],
+        "experience_years": 6
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-06-15",
+        "ea_codes": [],
+        "experience_years": 6
+      }
+    ]
+  },
+  {
+    "name": "Meryem Çördük",
+    "role": "Technical Expert",
+    "field_of_expertise": "Su Ürünleri Mühendisi",
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2022-02-25",
+        "ea_codes": [],
+        "experience_years": 2
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2022-02-25",
+        "scope_category": "A1I, H",
+        "ea_codes": [],
+        "experience_years": 2
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2022-02-25",
+        "ea_codes": [],
+        "experience_years": 2
+      }
+    ]
+  },
+  {
+    "name": "Mesure Yıldız Dokuyucu",
+    "role": "Technical Expert",
+    "field_of_expertise": "Kimya Mühendisi",
+    "ea_codes": [
+      "EA 4"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-05",
+        "ea_codes": [
+          "EA 4"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-05",
+        "ea_codes": [
+          "EA 4"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Metin Acar",
+    "role": "Technical Expert",
+    "field_of_expertise": "Endüstri Mühendisi",
+    "ea_codes": [
+      "EA 7",
+      "EA 25",
+      "EA 39"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-26",
+        "ea_codes": [
+          "EA 7",
+          "EA 25",
+          "EA 39"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-26",
+        "ea_codes": [
+          "EA 7",
+          "EA 25",
+          "EA 39"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Metin Ayten",
+    "role": "Auditor",
+    "field_of_expertise": "Muhasebeci",
+    "ea_codes": [
+      "EA 4",
+      "EA 7",
+      "EA 28",
+      "EA 29"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-09",
+        "ea_codes": [
+          "EA 4",
+          "EA 7",
+          "EA 28",
+          "EA 29"
+        ],
+        "experience_years": 16
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-09",
+        "ea_codes": [
+          "EA 4",
+          "EA 7",
+          "EA 28",
+          "EA 29"
+        ],
+        "experience_years": 16
+      }
+    ]
+  },
+  {
+    "name": "Mohammad Shahadat Hossain",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 17",
+      "EA 19",
+      "EA 29",
+      "EA 33",
+      "EA 35"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2024-08-07",
+        "ea_codes": []
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2024-08-07",
+        "ea_codes": [
+          "EA 17",
+          "EA 19",
+          "EA 29",
+          "EA 33",
+          "EA 35"
+        ]
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2024-08-07",
+        "ea_codes": [
+          "EA 17",
+          "EA 19",
+          "EA 29",
+          "EA 33",
+          "EA 35"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Muhammed Gökhan Öztürk",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 20",
+      "EA 34"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-24",
+        "ea_codes": [
+          "EA 20"
+        ]
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-24",
+        "ea_codes": [
+          "EA 20",
+          "EA 34"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "MuhammedKılınç",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 2",
+      "EA 15"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-24",
+        "ea_codes": [
+          "EA 2",
+          "EA 15"
+        ]
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-24",
+        "ea_codes": [
+          "EA 2",
+          "EA 15"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Muhammet Gökhan Öztürk",
+    "role": "Technical Expert",
+    "field_of_expertise": "Gemi inşaat Mühendisi",
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2021-09-18",
+        "ea_codes": [],
+        "experience_years": 2
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2021-09-18",
+        "ea_codes": [],
+        "experience_years": 2
+      }
+    ]
+  },
+  {
+    "name": "Murat Kümüştekin",
+    "role": "Technical Expert",
+    "field_of_expertise": "İşletmeci",
+    "ea_codes": [
+      "EA 9"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-28",
+        "ea_codes": [
+          "EA 9"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2016-12-28",
+        "ea_codes": [
+          "EA 9"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Murat Şahin",
+    "role": "Auditor",
+    "field_of_expertise": "Makine Mühendisi",
+    "ea_codes": [
+      "EA 14",
+      "EA 17",
+      "EA 18",
+      "EA 19",
+      "EA 29",
+      "EA 34"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-05",
+        "ea_codes": [
+          "EA 14",
+          "EA 17",
+          "EA 18",
+          "EA 19",
+          "EA 34"
+        ],
+        "experience_years": 13
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-05",
+        "ea_codes": [
+          "EA 14",
+          "EA 17",
+          "EA 18",
+          "EA 19",
+          "EA 29",
+          "EA 34"
+        ],
+        "experience_years": 13
+      }
+    ]
+  },
+  {
+    "name": "Mustafa Kurutaç",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 18"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2018-01-08",
+        "ea_codes": [
+          "EA 18"
+        ]
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2018-01-08",
+        "ea_codes": [
+          "EA 18"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Mustafa Tanır",
+    "role": "Technical Expert",
+    "field_of_expertise": "Veteriner Hekim",
+    "ea_codes": [
+      "EA 38"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-16",
+        "ea_codes": [
+          "EA 38"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-16",
+        "scope_category": "H",
+        "ea_codes": [],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-16",
+        "ea_codes": [
+          "EA 38"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "NevresBağlıoğlu",
+    "role": "Auditor",
+    "field_of_expertise": "Gıda Mühendisi",
+    "ea_codes": [
+      "EA 3",
+      "EA 30"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2019-05-28",
+        "ea_codes": [
+          "EA 3",
+          "EA 30"
+        ],
+        "experience_years": 6
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2019-05-28",
+        "scope_category": "CI, CII, CIV, DI, DIIa-DIIb, E, K",
+        "ea_codes": [],
+        "experience_years": 6
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2019-05-28",
+        "ea_codes": [
+          "EA 3",
+          "EA 30"
+        ],
+        "experience_years": 6
+      }
+    ]
+  },
+  {
+    "name": "Nguyen Huy Vu",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 14"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2021-02-04",
+        "ea_codes": [
+          "EA 14"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Nilgün Karakuş Tuğyan",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 10",
+      "EA 12",
+      "EA 14",
+      "EA 22",
+      "EA 29"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2018-05-22",
+        "ea_codes": [
+          "EA 10",
+          "EA 12",
+          "EA 14",
+          "EA 22",
+          "EA 29"
+        ]
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2018-05-22",
+        "ea_codes": [
+          "EA 10",
+          "EA 12",
+          "EA 14",
+          "EA 22",
+          "EA 29"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Nurgül BOYRAZ",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 3"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2023-01-25",
+        "scope_category": "CIV",
+        "ea_codes": []
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2023-01-25",
+        "ea_codes": [
+          "EA 3"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Nurgül Boyraz",
+    "role": "Auditor",
+    "field_of_expertise": "Gıda Teknikeri",
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2023-01-10",
+        "ea_codes": [],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2023-01-10",
+        "ea_codes": [],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2023-01-10",
+        "ea_codes": [],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Oktay Şenay",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 23"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "MDQMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": []
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 23"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Osman Levent Demirci",
+    "role": "Auditor",
+    "field_of_expertise": "Tekstil Mühendisi",
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2023-05-24",
+        "ea_codes": [],
+        "experience_years": 25
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2023-05-24",
+        "ea_codes": [],
+        "experience_years": 25
+      }
+    ]
+  },
+  {
+    "name": "Oğuz Aksu",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 17",
+      "EA 29"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 17",
+          "EA 29"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Peter Bekheet",
+    "role": "Auditor",
+    "field_of_expertise": "Kimyager",
+    "ea_codes": [
+      "EA 12"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-11-19",
+        "ea_codes": [
+          "EA 12"
+        ],
+        "experience_years": 6
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-11-19",
+        "ea_codes": [
+          "EA 12"
+        ],
+        "experience_years": 6
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-11-19",
+        "ea_codes": [
+          "EA 12"
+        ],
+        "experience_years": 6
+      }
+    ]
+  },
+  {
+    "name": "Rafah Jamal Ahmed",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 12"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 12"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Rebeka Sultana",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 4",
+      "EA 17",
+      "EA 19",
+      "EA 22",
+      "EA 28",
+      "EA 29",
+      "EA 31",
+      "EA 33",
+      "EA 34",
+      "EA 35",
+      "EA 39"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2024-08-07",
+        "ea_codes": [
+          "EA 4",
+          "EA 34"
+        ]
+      },
+      {
+        "standard_code": "ISMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2024-08-07",
+        "ea_codes": []
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2024-08-07",
+        "ea_codes": [
+          "EA 4",
+          "EA 34"
+        ]
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2024-08-07",
+        "ea_codes": [
+          "EA 4",
+          "EA 17",
+          "EA 19",
+          "EA 22",
+          "EA 28",
+          "EA 29",
+          "EA 31",
+          "EA 33",
+          "EA 34",
+          "EA 35",
+          "EA 39"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Recep Erman DURİ",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 1",
+      "EA 3",
+      "EA 6",
+      "EA 12",
+      "EA 17",
+      "EA 19",
+      "EA 30"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2023-06-24",
+        "ea_codes": [
+          "EA 1",
+          "EA 3",
+          "EA 12",
+          "EA 30"
+        ]
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2023-06-24",
+        "scope_category": "A1, CI, CIV, DI, DIIa-DIIb, E, H, I, K",
+        "ea_codes": []
+      },
+      {
+        "standard_code": "ISMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2023-06-24",
+        "ea_codes": []
+      },
+      {
+        "standard_code": "MDQMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2023-06-24",
+        "ea_codes": []
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2023-06-24",
+        "ea_codes": [
+          "EA 1",
+          "EA 3",
+          "EA 12",
+          "EA 30"
+        ]
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2023-06-24",
+        "ea_codes": [
+          "EA 1",
+          "EA 3",
+          "EA 6",
+          "EA 12",
+          "EA 17",
+          "EA 19",
+          "EA 30"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Sabiha Akter",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 4"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 4"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Sait Kaya Kars",
+    "role": "Auditor",
+    "field_of_expertise": "Elektrik Teknisyeni",
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-10-08",
+        "ea_codes": [],
+        "experience_years": 30
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-10-08",
+        "ea_codes": [],
+        "experience_years": 30
+      }
+    ]
+  },
+  {
+    "name": "Serdar Gezer",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 39"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "MDQMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": []
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 39"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Serhan Bilman",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 33"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "ISMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": []
+      },
+      {
+        "standard_code": "MDQMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": []
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 33"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Serhat Gerim",
+    "role": "Auditor",
+    "field_of_expertise": "İşletme",
+    "ea_codes": [
+      "EA 30",
+      "EA 31",
+      "EA 32",
+      "EA 35",
+      "EA 39"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2019-08-31",
+        "ea_codes": [
+          "EA 30",
+          "EA 31",
+          "EA 32",
+          "EA 35",
+          "EA 39"
+        ],
+        "experience_years": 13
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2019-08-31",
+        "ea_codes": [
+          "EA 30",
+          "EA 31",
+          "EA 32",
+          "EA 35",
+          "EA 39"
+        ],
+        "experience_years": 13
+      }
+    ]
+  },
+  {
+    "name": "Serkan GÜRKAN",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 22",
+      "EA 28",
+      "EA 34"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-07-20",
+        "ea_codes": [
+          "EA 22",
+          "EA 28",
+          "EA 34"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Serkan Kırbaş",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 17",
+      "EA 18",
+      "EA 22",
+      "EA 23",
+      "EA 29",
+      "EA 33",
+      "EA 34",
+      "EA 35"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2018-04-14",
+        "ea_codes": [
+          "EA 17",
+          "EA 18",
+          "EA 22",
+          "EA 29",
+          "EA 33",
+          "EA 35"
+        ]
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2018-04-14",
+        "ea_codes": [
+          "EA 17",
+          "EA 18",
+          "EA 22",
+          "EA 23",
+          "EA 29",
+          "EA 33",
+          "EA 34",
+          "EA 35"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Serkan Paça",
+    "role": "Technical Expert",
+    "field_of_expertise": "Reklamcı",
+    "ea_codes": [
+      "EA 9"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-02",
+        "ea_codes": [
+          "EA 9"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-02",
+        "ea_codes": [
+          "EA 9"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Serkan Tutcu",
+    "role": "Technical Expert",
+    "field_of_expertise": "Kimyager",
+    "ea_codes": [
+      "EA 10",
+      "EA 12",
+      "EA 34"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-02-02",
+        "ea_codes": [
+          "EA 10",
+          "EA 12"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-02-02",
+        "ea_codes": [
+          "EA 10",
+          "EA 12",
+          "EA 34"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Serpil Baştaş",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 3",
+      "EA 29",
+      "EA 30"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-09-05",
+        "ea_codes": [
+          "EA 3",
+          "EA 29",
+          "EA 30"
+        ]
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-09-05",
+        "scope_category": "CI, CIII, CIV, E, FI",
+        "ea_codes": []
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-09-05",
+        "ea_codes": [
+          "EA 3",
+          "EA 29",
+          "EA 30"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Serpil Baştaş Öz",
+    "role": "Auditor",
+    "field_of_expertise": "Gıda Mühendisi",
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-09-05",
+        "ea_codes": [],
+        "experience_years": 18
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-09-05",
+        "ea_codes": [],
+        "experience_years": 18
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-09-05",
+        "ea_codes": [],
+        "experience_years": 18
+      }
+    ]
+  },
+  {
+    "name": "Sevgin Aydın",
+    "role": "Auditor",
+    "field_of_expertise": "Kimya Mühendisi",
+    "ea_codes": [
+      "EA 4",
+      "EA 12",
+      "EA 14",
+      "EA 20",
+      "EA 29",
+      "EA 39"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-03-04",
+        "ea_codes": [
+          "EA 4",
+          "EA 12",
+          "EA 14",
+          "EA 20",
+          "EA 29",
+          "EA 39"
+        ],
+        "experience_years": 20
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-03-04",
+        "ea_codes": [
+          "EA 4",
+          "EA 12",
+          "EA 14",
+          "EA 20",
+          "EA 29"
+        ],
+        "experience_years": 20
+      }
+    ]
+  },
+  {
+    "name": "Sourav Mitra",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-07-17",
+        "ea_codes": []
+      }
+    ]
+  },
+  {
+    "name": "Tran Van Duong",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 3",
+      "EA 14",
+      "EA 17"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2021-01-30",
+        "ea_codes": [
+          "EA 3",
+          "EA 14",
+          "EA 17"
+        ]
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2021-01-30",
+        "ea_codes": [
+          "EA 3",
+          "EA 14",
+          "EA 17"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Tuğçe Bakanay",
+    "role": "Technical Expert",
+    "field_of_expertise": "Gıda Mühendisi",
+    "ea_codes": [
+      "EA 3",
+      "EA 30"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-02-17",
+        "ea_codes": [
+          "EA 3",
+          "EA 30"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-02-17",
+        "scope_category": "CIII, CIV, E",
+        "ea_codes": [],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-02-17",
+        "ea_codes": [
+          "EA 3",
+          "EA 30"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Tülin Ay",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 3",
+      "EA 7",
+      "EA 9",
+      "EA 12",
+      "EA 14",
+      "EA 24",
+      "EA 30",
+      "EA 39"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2020-01-18",
+        "ea_codes": [
+          "EA 3",
+          "EA 7",
+          "EA 9",
+          "EA 12",
+          "EA 14",
+          "EA 24",
+          "EA 30",
+          "EA 39"
+        ]
+      },
+      {
+        "standard_code": "ENMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2020-01-18",
+        "ea_codes": []
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2020-01-18",
+        "scope_category": "CIV, E, I",
+        "ea_codes": []
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2020-01-18",
+        "ea_codes": [
+          "EA 3",
+          "EA 7",
+          "EA 9",
+          "EA 12",
+          "EA 14",
+          "EA 24",
+          "EA 30",
+          "EA 39"
+        ]
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2020-01-18",
+        "ea_codes": [
+          "EA 3",
+          "EA 7",
+          "EA 9",
+          "EA 14",
+          "EA 24",
+          "EA 30",
+          "EA 39"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Tülin Ay Oktay",
+    "role": "Auditor",
+    "field_of_expertise": "Gıda Mühendisi",
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2020-01-18",
+        "ea_codes": [],
+        "experience_years": 13
+      },
+      {
+        "standard_code": "ENMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2020-01-18",
+        "ea_codes": [],
+        "experience_years": 13
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2020-01-18",
+        "ea_codes": [],
+        "experience_years": 13
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2020-01-18",
+        "ea_codes": [],
+        "experience_years": 13
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2020-01-18",
+        "ea_codes": [],
+        "experience_years": 13
+      }
+    ]
+  },
+  {
+    "name": "Uğur Burç",
+    "role": "Technical Expert",
+    "field_of_expertise": "Makine Kalfası",
+    "ea_codes": [
+      "EA 18"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2018-01-08",
+        "ea_codes": [
+          "EA 18"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2018-01-08",
+        "scope_category": "J",
+        "ea_codes": [],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2018-01-08",
+        "ea_codes": [
+          "EA 18"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Vedat Ateş",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 28",
+      "EA 29"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 28",
+          "EA 29"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Victor Manuel Rodriguez Gonzalez",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-03-31",
+        "ea_codes": []
+      }
+    ]
+  },
+  {
+    "name": "Yahya Ok",
+    "role": "Auditor",
+    "field_of_expertise": "İşletme",
+    "ea_codes": [
+      "EA 2",
+      "EA 3",
+      "EA 4",
+      "EA 6",
+      "EA 12",
+      "EA 14",
+      "EA 15",
+      "EA 19",
+      "EA 23",
+      "EA 25",
+      "EA 29",
+      "EA 33"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2021-09-20",
+        "ea_codes": [
+          "EA 2",
+          "EA 3",
+          "EA 4",
+          "EA 6",
+          "EA 12",
+          "EA 14",
+          "EA 15",
+          "EA 19",
+          "EA 23",
+          "EA 25",
+          "EA 29",
+          "EA 33"
+        ],
+        "experience_years": 5
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2021-09-20",
+        "scope_category": "CIV",
+        "ea_codes": [],
+        "experience_years": 5
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2021-09-20",
+        "ea_codes": [
+          "EA 2",
+          "EA 3",
+          "EA 4",
+          "EA 6",
+          "EA 12",
+          "EA 14",
+          "EA 15",
+          "EA 19",
+          "EA 23",
+          "EA 25",
+          "EA 29",
+          "EA 33"
+        ],
+        "experience_years": 5
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2021-09-20",
+        "ea_codes": [
+          "EA 2",
+          "EA 3",
+          "EA 4",
+          "EA 6",
+          "EA 12",
+          "EA 14",
+          "EA 15",
+          "EA 19",
+          "EA 23",
+          "EA 25",
+          "EA 29",
+          "EA 33"
+        ],
+        "experience_years": 5
+      }
+    ]
+  },
+  {
+    "name": "Yakup Özdemir",
+    "role": "Technical Expert",
+    "field_of_expertise": "Ziraat Mühendisi",
+    "ea_codes": [
+      "EA 35",
+      "EA 37"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2018-03-12",
+        "ea_codes": [
+          "EA 37"
+        ],
+        "experience_years": 5
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2018-03-12",
+        "ea_codes": [
+          "EA 35",
+          "EA 37"
+        ],
+        "experience_years": 5
+      }
+    ]
+  },
+  {
+    "name": "Yasin Köroğlu",
+    "role": "Technical Expert",
+    "field_of_expertise": "Asker",
+    "ea_codes": [
+      "EA 35",
+      "EA 39"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-06",
+        "ea_codes": [
+          "EA 35",
+          "EA 39"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-06",
+        "ea_codes": [
+          "EA 35",
+          "EA 39"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Yeliz Yılmaz",
+    "role": "Auditor",
+    "field_of_expertise": "Gıda Mühendisi",
+    "ea_codes": [
+      "EA 1",
+      "EA 3",
+      "EA 12",
+      "EA 14",
+      "EA 30",
+      "EA 39"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2019-11-07",
+        "ea_codes": [
+          "EA 1",
+          "EA 3",
+          "EA 12",
+          "EA 14",
+          "EA 30"
+        ],
+        "experience_years": 19
+      },
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2019-11-07",
+        "scope_category": "BI, CI, E, FI, I, K",
+        "ea_codes": [],
+        "experience_years": 19
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2019-11-07",
+        "ea_codes": [
+          "EA 1",
+          "EA 3",
+          "EA 12",
+          "EA 14",
+          "EA 30",
+          "EA 39"
+        ],
+        "experience_years": 19
+      }
+    ]
+  },
+  {
+    "name": "Yener Cengiz",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 14",
+      "EA 17",
+      "EA 28",
+      "EA 29"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 14",
+          "EA 17",
+          "EA 28",
+          "EA 29"
+        ]
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 14",
+          "EA 17",
+          "EA 28",
+          "EA 29"
+        ]
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 14",
+          "EA 17",
+          "EA 28",
+          "EA 29"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Yulia Petrenko",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 3",
+      "EA 7",
+      "EA 14"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "FSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-11-14",
+        "scope_category": "A1, CI, CIV, I, K",
+        "ea_codes": []
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-11-14",
+        "ea_codes": [
+          "EA 3",
+          "EA 7",
+          "EA 14"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Yusuf Bayat",
+    "role": "Auditor",
+    "field_of_expertise": "Kimyager",
+    "ea_codes": [
+      "EA 4",
+      "EA 9",
+      "EA 14",
+      "EA 17",
+      "EA 18",
+      "EA 29"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2021-09-07",
+        "ea_codes": [
+          "EA 14",
+          "EA 18",
+          "EA 29"
+        ],
+        "experience_years": 13
+      },
+      {
+        "standard_code": "ISMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2021-09-07",
+        "ea_codes": [],
+        "experience_years": 13
+      },
+      {
+        "standard_code": "MDQMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2021-09-07",
+        "ea_codes": [],
+        "experience_years": 13
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2021-09-07",
+        "ea_codes": [
+          "EA 14",
+          "EA 18",
+          "EA 29"
+        ],
+        "experience_years": 13
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2021-09-07",
+        "ea_codes": [
+          "EA 4",
+          "EA 9",
+          "EA 14",
+          "EA 17"
+        ],
+        "experience_years": 13
+      }
+    ]
+  },
+  {
+    "name": "Yusuf Yılmaz",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 4",
+      "EA 9",
+      "EA 14",
+      "EA 17"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2021-09-07",
+        "ea_codes": [
+          "EA 4",
+          "EA 9",
+          "EA 14",
+          "EA 17"
+        ]
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2021-09-07",
+        "ea_codes": [
+          "EA 4",
+          "EA 9",
+          "EA 14",
+          "EA 17"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Zeena Mohammed Abdulraheem",
+    "role": "Auditor",
+    "field_of_expertise": "Elektirik Mühendisi",
+    "ea_codes": [
+      "EA 12",
+      "EA 14",
+      "EA 15",
+      "EA 16",
+      "EA 17",
+      "EA 18",
+      "EA 19",
+      "EA 28",
+      "EA 34",
+      "EA 35",
+      "EA 36",
+      "EA 37"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-04-01",
+        "ea_codes": [
+          "EA 12",
+          "EA 14",
+          "EA 15",
+          "EA 16",
+          "EA 17",
+          "EA 18",
+          "EA 19",
+          "EA 28",
+          "EA 34",
+          "EA 35",
+          "EA 36",
+          "EA 37"
+        ],
+        "experience_years": 5
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-04-01",
+        "ea_codes": [
+          "EA 12",
+          "EA 14",
+          "EA 15",
+          "EA 16",
+          "EA 17",
+          "EA 18",
+          "EA 19",
+          "EA 28",
+          "EA 34",
+          "EA 35",
+          "EA 36",
+          "EA 37"
+        ],
+        "experience_years": 5
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2022-04-01",
+        "ea_codes": [
+          "EA 12",
+          "EA 14",
+          "EA 15",
+          "EA 16",
+          "EA 17",
+          "EA 18",
+          "EA 19",
+          "EA 28",
+          "EA 34",
+          "EA 35",
+          "EA 36",
+          "EA 37"
+        ],
+        "experience_years": 5
+      }
+    ]
+  },
+  {
+    "name": "Zeliha Çiğdem Ergincan",
+    "role": "Auditor",
+    "field_of_expertise": "Endüstri Mühendisi",
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2018-01-03",
+        "ea_codes": [],
+        "experience_years": 20
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2018-01-03",
+        "ea_codes": [],
+        "experience_years": 20
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2018-01-03",
+        "ea_codes": [],
+        "experience_years": 20
+      }
+    ]
+  },
+  {
+    "name": "Çağlar Civelekoğlu",
+    "role": "Auditor",
+    "field_of_expertise": "Bilgisayar Teknolojisi Programlama",
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "ISMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2021-01-08",
+        "ea_codes": [],
+        "experience_years": 4
+      },
+      {
+        "standard_code": "MDQMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2021-01-08",
+        "ea_codes": [],
+        "experience_years": 4
+      }
+    ]
+  },
+  {
+    "name": "Çağrı Polat",
+    "role": "Auditor",
+    "field_of_expertise": "Elektrik Elektronik Mühendisi",
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "ISMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-07-26",
+        "ea_codes": [],
+        "experience_years": 11
+      },
+      {
+        "standard_code": "MDQMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2017-07-26",
+        "ea_codes": [],
+        "experience_years": 11
+      }
+    ]
+  },
+  {
+    "name": "Çiğdem Ergincan",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 4",
+      "EA 15",
+      "EA 17",
+      "EA 18",
+      "EA 19",
+      "EA 26",
+      "EA 28",
+      "EA 29"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2018-01-03",
+        "ea_codes": [
+          "EA 4",
+          "EA 15",
+          "EA 17",
+          "EA 18",
+          "EA 19",
+          "EA 26",
+          "EA 28",
+          "EA 29"
+        ]
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2018-01-03",
+        "ea_codes": [
+          "EA 4",
+          "EA 15",
+          "EA 17",
+          "EA 18",
+          "EA 19",
+          "EA 26",
+          "EA 28",
+          "EA 29"
+        ]
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2018-01-03",
+        "ea_codes": [
+          "EA 4",
+          "EA 15",
+          "EA 17",
+          "EA 18",
+          "EA 19",
+          "EA 26",
+          "EA 28",
+          "EA 29"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Ömer Gün",
+    "role": "Auditor",
+    "field_of_expertise": "Elektrik Mühendisi",
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2023-05-24",
+        "ea_codes": [],
+        "experience_years": 25
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2023-05-24",
+        "ea_codes": [],
+        "experience_years": 25
+      }
+    ]
+  },
+  {
+    "name": "Ömre Yılmaz",
+    "role": "Technical Expert",
+    "field_of_expertise": "İşletmeci",
+    "ea_codes": [
+      "EA 23",
+      "EA 24",
+      "EA 29"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-02",
+        "ea_codes": [
+          "EA 23",
+          "EA 24",
+          "EA 29"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-02",
+        "ea_codes": [
+          "EA 23",
+          "EA 24",
+          "EA 29"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Ünal ÖRS",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 28",
+      "EA 34"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2023-07-02",
+        "ea_codes": [
+          "EA 28",
+          "EA 34"
+        ]
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2023-07-02",
+        "ea_codes": [
+          "EA 28",
+          "EA 34"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "İsmail Altındal",
+    "role": "Auditor",
+    "field_of_expertise": null,
+    "ea_codes": [
+      "EA 6",
+      "EA 28",
+      "EA 29"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 6",
+          "EA 28",
+          "EA 29"
+        ]
+      },
+      {
+        "standard_code": "OHSMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": null,
+        "ea_codes": [
+          "EA 6",
+          "EA 28",
+          "EA 29"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "İsmail Murat ÇAĞATAY",
+    "role": "Auditor",
+    "field_of_expertise": "Matematik Mühendisi",
+    "ea_codes": null,
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "ISMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Lead Auditor",
+        "is_qualified": true,
+        "last_verified_date": "2020-10-18",
+        "ea_codes": [],
+        "experience_years": 6
+      }
+    ]
+  },
+  {
+    "name": "Şakir Koruk",
+    "role": "Technical Expert",
+    "field_of_expertise": "Gazeteci",
+    "ea_codes": [
+      "EA 8"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-02",
+        "ea_codes": [
+          "EA 8"
+        ],
+        "experience_years": 7
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2017-01-02",
+        "ea_codes": [
+          "EA 8"
+        ],
+        "experience_years": 7
+      }
+    ]
+  },
+  {
+    "name": "Şevval Su Özel",
+    "role": "Technical Expert",
+    "field_of_expertise": "Uluslararası İlişkiler Uzmanı",
+    "ea_codes": [
+      "EA 29",
+      "EA 33"
+    ],
+    "accreditation_bodies": [
+      "UAF"
+    ],
+    "standard_qualifications": [
+      {
+        "standard_code": "EMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2023-03-01",
+        "ea_codes": [],
+        "experience_years": 1
+      },
+      {
+        "standard_code": "QMS",
+        "accreditation_body": "UAF",
+        "technical_depth": "Technical Expert",
+        "is_qualified": true,
+        "last_verified_date": "2023-03-01",
+        "ea_codes": [
+          "EA 29",
+          "EA 33"
+        ],
+        "experience_years": 1
+      }
+    ]
+  }
+]

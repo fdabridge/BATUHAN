@@ -11,6 +11,8 @@ Routes:
 """
 from __future__ import annotations
 import logging
+import secrets
+import string
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
@@ -35,11 +37,54 @@ from auditors.extractor import extract_auditor_from_document
 from auditors.eligibility import check_eligibility
 from auditors.clause_assignment import suggest_clause_assignment, ClauseAssignmentRequest
 from auditors.audit_plan import generate_audit_plan, AuditPlanInput
-from auth.db_models import PlatformUser
+from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import require_admin, require_planner, require_auditor, require_any
+from auth.service import create_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+# ── Bulk import helpers ───────────────────────────────────────────────────────
+
+class BulkAuditorEntry(BaseModel):
+    """One auditor entry in the JSON bulk import payload."""
+    name: str
+    role: Optional[str] = None
+    field_of_expertise: Optional[str] = None
+    ea_codes: Optional[list[str]] = None
+    accreditation_bodies: Optional[list[str]] = None
+    standard_qualifications: list = []
+
+    username: Optional[str] = None
+    password: Optional[str] = None
+
+
+class BulkAuditorImportPayload(BaseModel):
+    auditors: list[BulkAuditorEntry]
+    replace_all: bool = False
+
+
+def _make_username(name: str) -> str:
+    """'Ahmet Yakup Boran' -> 'ahmet.boran'"""
+    import unicodedata, re  # noqa: F401
+    replacements = {'ş': 's', 'ğ': 'g', 'ı': 'i', 'ö': 'o', 'ü': 'u', 'ç': 'c',
+                    'Ş': 'S', 'Ğ': 'G', 'İ': 'I', 'Ö': 'O', 'Ü': 'U', 'Ç': 'C'}
+    n = name.strip()
+    for k, v in replacements.items():
+        n = n.replace(k, v)
+    n = unicodedata.normalize('NFKD', n).encode('ascii', 'ignore').decode()
+    parts = [p.lower() for p in n.split() if p.strip()]
+    if len(parts) == 0:
+        return 'user'
+    if len(parts) == 1:
+        return parts[0]
+    return f"{parts[0]}.{parts[-1]}"
+
+
+def _gen_password(length: int = 10) -> str:
+    alphabet = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 
 @router.post("/ingest")
@@ -71,6 +116,143 @@ def create(
     """Create a new auditor profile from a JSON body."""
     auditor = create_auditor(db, payload)
     return auditor
+
+
+@router.post("/bulk-import-json")
+def bulk_import_json(
+    payload: BulkAuditorImportPayload,
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    _: PlatformUser = Depends(require_admin),
+):
+    """
+    Import auditors from structured JSON.
+    Each entry creates an Auditor profile (with per-standard EA codes) AND
+    a PlatformUser account linked to it.
+
+    Set replace_all=true to purge all existing auditor records and their
+    linked platform user accounts before importing (clean slate).
+
+    Returns the full credentials list so usernames/passwords can be saved.
+    """
+    from auditors.schemas import StandardQualificationItem
+    from auditors.models import Auditor as AuditorModel
+    from auth.db_models import PlatformUser as PU
+
+    # ── Optional purge ──────────────────────────────────────────────────────
+    if payload.replace_all:
+        existing_auditors = db.query(AuditorModel).all()
+        auditor_ids = {a.id for a in existing_auditors}
+        auth_db.query(PU).filter(
+            PU.auditor_id.in_(auditor_ids)
+        ).delete(synchronize_session=False)
+        auth_db.commit()
+        db.query(AuditorModel).delete(synchronize_session=False)
+        db.commit()
+        logger.info("[BulkImport] Purged all existing auditors")
+
+    # ── Track used usernames for deduplication ──────────────────────────────
+    existing_usernames: set[str] = {
+        u.username for u in auth_db.query(PU).all() if u.username
+    }
+
+    created: list[dict] = []
+    skipped: list[dict] = []
+    errors:  list[dict] = []
+
+    for i, entry in enumerate(payload.auditors):
+        base_uname = entry.username or _make_username(entry.name)
+        uname = base_uname
+        suffix = 2
+        while uname in existing_usernames:
+            uname = f"{base_uname}{suffix}"
+            suffix += 1
+        existing_usernames.add(uname)
+
+        pw = entry.password or _gen_password()
+
+        sq_items = []
+        for sq in entry.standard_qualifications:
+            if isinstance(sq, dict):
+                sq_items.append(StandardQualificationItem(**sq))
+            else:
+                sq_items.append(sq)
+
+        create_schema = AuditorCreateSchema(
+            name=entry.name,
+            role=entry.role,
+            field_of_expertise=entry.field_of_expertise,
+            ea_codes=entry.ea_codes,
+            accreditation_bodies=entry.accreditation_bodies,
+            standard_qualifications=sq_items,
+        )
+
+        try:
+            auditor = create_auditor(db, create_schema)
+
+            email = f"{uname}@certiva.internal"
+            user = create_user(
+                db=auth_db,
+                email=email,
+                password=pw,
+                full_name=entry.name,
+                role="auditor",
+                auditor_id=auditor.id,
+                username=uname,
+            )
+
+            created.append({
+                "index":      i,
+                "name":       entry.name,
+                "username":   uname,
+                "password":   pw,
+                "email":      email,
+                "auditor_id": auditor.id,
+                "user_id":    user.id,
+            })
+            logger.info("[BulkImport] Created auditor %s (username=%s)", entry.name, uname)
+
+        except Exception as exc:
+            logger.exception("[BulkImport] Failed for %s: %s", entry.name, exc)
+            errors.append({"index": i, "name": entry.name, "reason": str(exc)})
+
+    return {
+        "summary": {
+            "total":   len(payload.auditors),
+            "created": len(created),
+            "skipped": len(skipped),
+            "errors":  len(errors),
+        },
+        "credentials": created,
+        "errors": errors,
+    }
+
+
+@router.delete("/purge-all")
+def purge_all_auditors(
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    _: PlatformUser = Depends(require_admin),
+):
+    """
+    Delete ALL auditor records and their linked portal accounts.
+    Admin-only. Use before a clean re-import.
+    """
+    from auditors.models import Auditor as AuditorModel
+    from auth.db_models import PlatformUser as PU
+
+    existing = db.query(AuditorModel).all()
+    auditor_ids = {a.id for a in existing}
+    deleted_users = auth_db.query(PU).filter(
+        PU.auditor_id.in_(auditor_ids)
+    ).delete(synchronize_session=False)
+    auth_db.commit()
+    deleted_auditors = db.query(AuditorModel).delete(synchronize_session=False)
+    db.commit()
+    return {
+        "deleted_auditors": deleted_auditors,
+        "deleted_users": deleted_users,
+    }
 
 
 @router.get("/", response_model=list[AuditorSummarySchema])

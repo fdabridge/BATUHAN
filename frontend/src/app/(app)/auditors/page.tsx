@@ -573,6 +573,116 @@ function AddAuditorPanel({ onClose, onCreated }: { onClose: () => void; onCreate
   )
 }
 
+// ── JSON Bulk Import ──────────────────────────────────────────────────────────
+
+function JsonImportButton() {
+  const [loading, setLoading] = useState(false)
+  const [result, setResult]   = useState<null | { summary: Record<string, number>; credentials: Record<string, string>[]; errors: Record<string, unknown>[] }>(null)
+  const [err, setErr]         = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const queryClient = useQueryClient()
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setLoading(true); setErr(null); setResult(null)
+    try {
+      const text = await file.text()
+      const auditors = JSON.parse(text)
+      const res = await api.post('/auditors/bulk-import-json', {
+        auditors,
+        replace_all: true,
+      })
+      setResult(res.data)
+      queryClient.invalidateQueries({ queryKey: ['auditors-dashboard'] })
+      queryClient.invalidateQueries({ queryKey: ['auditors-active'] })
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setErr(detail ?? 'Import failed.')
+    } finally {
+      setLoading(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  function downloadCredentials() {
+    if (!result) return
+    const header = 'full_name,username,password\n'
+    const rows = result.credentials.map(c => `"${c.name}","${c.username}","${c.password}"`)
+    const blob = new Blob([header + rows.join('\n')], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url; a.download = 'auditor_credentials.csv'; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  return (
+    <>
+      <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={handleFile} />
+      <button
+        type="button"
+        onClick={() => fileRef.current?.click()}
+        disabled={loading}
+        className="flex items-center gap-1 rounded-lg border border-certiva-primary px-3 py-1.5
+          text-sm font-medium text-certiva-primary hover:bg-certiva-primary/5 disabled:opacity-50"
+      >
+        {loading ? <Loader2 size={14} className="animate-spin" /> : null}
+        {loading ? 'Importing…' : 'Import JSON'}
+      </button>
+
+      {(result || err) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-white shadow-xl p-6">
+            {err && (
+              <div className="text-sm text-red-700 mb-4">{err}</div>
+            )}
+            {result && (
+              <>
+                <h2 className="text-base font-semibold text-gray-800 mb-3">Import complete</h2>
+                <div className="grid grid-cols-3 gap-3 text-center text-xs mb-4">
+                  <div className="rounded-lg bg-green-50 p-3">
+                    <p className="text-2xl font-bold text-green-700">{result.summary.created}</p>
+                    <p className="text-green-600">Created</p>
+                  </div>
+                  <div className="rounded-lg bg-gray-50 p-3">
+                    <p className="text-2xl font-bold text-gray-600">{result.summary.skipped ?? 0}</p>
+                    <p className="text-gray-500">Skipped</p>
+                  </div>
+                  <div className={`rounded-lg p-3 ${result.errors.length > 0 ? 'bg-red-50' : 'bg-gray-50'}`}>
+                    <p className={`text-2xl font-bold ${result.errors.length > 0 ? 'text-red-600' : 'text-gray-600'}`}>{result.errors.length}</p>
+                    <p className={result.errors.length > 0 ? 'text-red-500' : 'text-gray-500'}>Errors</p>
+                  </div>
+                </div>
+                {result.errors.length > 0 && (
+                  <div className="mb-3 max-h-24 overflow-y-auto rounded border border-red-100 bg-red-50 p-2 text-xs text-red-600">
+                    {result.errors.map((e, i) => (
+                      <p key={i}>{String(e.name)}: {String(e.reason)}</p>
+                    ))}
+                  </div>
+                )}
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+                  Download the credentials CSV now — passwords cannot be recovered later.
+                </p>
+                <button
+                  onClick={downloadCredentials}
+                  className="mb-2 w-full rounded-lg bg-certiva-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                >
+                  Download credentials CSV
+                </button>
+              </>
+            )}
+            <button
+              onClick={() => { setResult(null); setErr(null) }}
+              className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function AuditorsPage() {
@@ -605,14 +715,17 @@ export default function AuditorsPage() {
       {/* Header */}
       <div className="mb-5 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-800">Auditors</h1>
-        <button
-          type="button"
-          onClick={() => setAdding(true)}
-          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
-          style={{ background: '#1A4731' }}
-        >
-          <Plus size={14} /> Add auditor
-        </button>
+        <div className="flex items-center gap-2">
+          <JsonImportButton />
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+            style={{ background: '#1A4731' }}
+          >
+            <Plus size={14} /> Add auditor
+          </button>
+        </div>
       </div>
 
       {/* Stat row */}
