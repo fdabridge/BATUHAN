@@ -290,6 +290,21 @@ def _lookup_standard(data: ExtractedFormData, standard: str) -> StandardAuditRes
             base_recert_ph1=r_ph1, base_recert_ph2=r_ph2,
         )
 
+    elif _std_match(standard, "ISO 37001"):
+        # ISO 37001 (ABMS — Anti-Bribery Management System) proxy:
+        # No dedicated IAF table exists; use ISO 9001 Medium Risk as proxy per CB practice.
+        table = ISO9001_TABLES["Medium"]
+        row = lookup_eps(table, eps)
+        if not row:
+            raise ValueError(f"EPS {eps} out of range for ISO 37001 (proxy)")
+        _, _, init_t, ph1, ph2, surv, recert_t, r_ph1, r_ph2 = row
+        return StandardAuditResult(
+            standard=standard, category="ABMS (ISO 9001 Medium proxy)", eps=eps,
+            base_init=init_t, base_ph1=ph1, base_ph2=ph2,
+            base_surv=surv, base_recert=recert_t,
+            base_recert_ph1=r_ph1, base_recert_ph2=r_ph2,
+        )
+
     else:
         raise ValueError(f"Unsupported standard: {standard}")
 
@@ -427,9 +442,10 @@ def calculate(data: ExtractedFormData) -> CalculationResult:
 
     eps_display = _eps_standard(data, data.standards[0]) if data.standards else 0.0
 
-    # FSSC 22000 reporting/preparation surcharge (separate from on-site time)
+    # FSSC 22000 reporting/preparation surcharge (separate from on-site time).
+    # Triggered when "FSSC 22000" is an explicit standard OR when the FSSC add-on flag is set.
     fssc_surcharge: float | None = None
-    if any(_std_match(s, "FSSC 22000") for s in data.standards):
+    if any(_std_match(s, "FSSC 22000") for s in data.standards) or data.fsms_fssc22000:
         fssc_surcharge = FSSC_REPORTING_SURCHARGE_DAYS
 
     return CalculationResult(

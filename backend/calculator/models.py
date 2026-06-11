@@ -66,6 +66,7 @@ class ExtractedFormData(BaseModel):
     # FSMS — ISO 22003-1:2022 mandatory on-site add-ons (separate from table base time)
     fsms_offsite_storage_count: int = 0        # +0.25 auditor-day per off-site storage facility (§B.2.5)
     fsms_separate_head_office: bool = False    # +0.5 auditor-day when HQ separate from production (§B.2.6)
+    fsms_fssc22000: bool = False               # FSSC 22000 add-on requested (triggers reporting surcharge)
 
     # Raw Claude response for traceability
     raw_extraction: str = ""

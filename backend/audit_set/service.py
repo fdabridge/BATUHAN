@@ -3,6 +3,7 @@ BATUHAN — Audit Set: Service layer (CRUD + calculation bridge).
 """
 from __future__ import annotations
 import json
+import math
 import uuid
 import logging
 from datetime import date
@@ -281,8 +282,7 @@ def _run_calculation(audit_set: AuditSet) -> dict | None:
         subcontractors_in_scope = bool(app_data.get("subcontractors_in_scope", True))
 
         # Convert part-time to FTE equivalent; subcontractors only counted when in scope
-        import math as _math
-        pt_fte             = int(_math.ceil(part_time * pt_factor))
+        pt_fte             = int(math.ceil(part_time * pt_factor))
         sub_count          = subcontractors if subcontractors_in_scope else 0
         total_employees    = full_time + pt_fte + sub_count + seasonal + unskilled
 
@@ -364,8 +364,10 @@ def _run_calculation(audit_set: AuditSet) -> dict | None:
             num_seus=num_seus,
             scope_integration_level=getattr(audit_set, "scope_integration_level", None),
             food_chain_categories=food_cats,
+            haccp_studies=int(app_data.get("fsms_haccp_studies") or 0) or None,
             fsms_offsite_storage_count=int(app_data.get("fsms_offsite_storage_count", 0)),
             fsms_separate_head_office=bool(app_data.get("fsms_separate_head_office", False)),
+            fsms_fssc22000=bool(app_data.get("fsms_fssc22000", False)),
         )
 
         result = calculate(form_data)
@@ -379,15 +381,23 @@ def _run_calculation(audit_set: AuditSet) -> dict | None:
 def _writeback_personnel_split(audit_set: AuditSet) -> None:
     """Merge derived office_employees + repetitive_employees back into the
     personnel JSON so downstream document generation can read them directly.
-    Uses the same derivation as _run_calculation."""
+    Uses the same FTE derivation as _run_calculation (pt_factor, subcontractors_in_scope)."""
     p = dict(audit_set.personnel or {})
-    full_time      = p.get("full_time", 0)
-    part_time      = p.get("part_time", 0)
-    subcontractors = p.get("subcontractors", 0)
-    seasonal       = p.get("seasonal", 0)
-    unskilled      = p.get("unskilled", 0)
+    app_data = audit_set.application_data or {}
 
-    total_employees      = full_time + part_time + subcontractors + seasonal + unskilled
+    full_time      = int(p.get("full_time", 0))
+    part_time      = int(p.get("part_time", 0))
+    subcontractors = int(p.get("subcontractors", 0))
+    seasonal       = int(p.get("seasonal", 0))
+    unskilled      = int(p.get("unskilled", 0))
+
+    pt_factor               = float(app_data.get("part_time_fte_factor", 0.5))
+    subcontractors_in_scope = bool(app_data.get("subcontractors_in_scope", True))
+
+    pt_fte    = int(math.ceil(part_time * pt_factor))
+    sub_count = subcontractors if subcontractors_in_scope else 0
+
+    total_employees      = full_time + pt_fte + sub_count + seasonal + unskilled
     repetitive_roles     = p.get("repetitive_roles", [])
     repetitive_employees = sum(r.get("employee_count", 0) for r in repetitive_roles)
     office_employees     = max(0, total_employees - repetitive_employees)

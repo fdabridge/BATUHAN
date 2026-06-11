@@ -75,6 +75,7 @@ export interface StandardAuditResult {
   base_recert_ph1: number
   base_recert_ph2: number
   site_addition: number
+  haccp_addition?: number | null   // FSMS only — mandatory add-ons (off-site storage, separate HQ)
 }
 
 /** Full IAF MD 5 calculation result (mirrors backend CalculationResult) */
@@ -156,6 +157,8 @@ export interface AuditSetResponse {
   submitted_via_portal?: boolean
   // Retroactive operation support (Prompt 33)
   application_date?: string | null
+  // Standard-specific application form data (Prompt 35)
+  application_data?: Record<string, unknown> | null
 }
 
 // ── Jobs (AI report pipeline) ─────────────────────────────────────────────────
