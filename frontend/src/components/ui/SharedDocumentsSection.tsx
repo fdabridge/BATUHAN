@@ -202,6 +202,13 @@ export function SharedDocumentsSection({ auditSetId }: { auditSetId: string }) {
                       ? 'Pending release'
                       : 'Awaiting Signature'}
                   </span>
+                  <a
+                    href={`/viewer/shared_doc/${d.id}`}
+                    className="rounded-lg border border-[#1A4731] px-2.5 py-1 text-xs
+                      font-medium text-[#1A4731] hover:bg-[#F0FAF4]"
+                  >
+                    Open
+                  </a>
                   <button
                     type="button"
                     onClick={() => downloadDoc(d.id, d.label)}
