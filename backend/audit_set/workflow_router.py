@@ -65,6 +65,28 @@ class WorkflowUpdateSchema(BaseModel):
     effective_date: Optional[date] = None    # override the transition timestamp (retroactive mode)
 
 
+# The full set of statuses that can be set via the jump endpoint.
+VALID_JUMP_STATUSES = {
+    "in_planning",
+    "quotation_sent",
+    "agreement_signed",
+    "stage1_scheduled",
+    "stage1_in_progress",
+    "stage1_complete",
+    "stage2_scheduled",
+    "stage2_in_progress",
+    "audit_scheduled",
+    "audit_in_progress",
+    "under_review",
+    "certified",
+}
+
+
+class WorkflowJumpSchema(BaseModel):
+    target_status: str
+    effective_date: Optional[date] = None   # defaults to now if omitted
+
+
 @router.get("/pending-applications")
 def list_pending_applications(
     db: Session = Depends(get_audit_db),
@@ -232,6 +254,58 @@ def update_workflow_status(
         )
 
     return {"workflow_status": to_status, "updated": True}
+
+
+@router.post("/{audit_set_id}/workflow-status/jump")
+def jump_workflow_status(
+    audit_set_id: str,
+    payload: WorkflowJumpSchema,
+    db: Session = Depends(get_audit_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """
+    Retroactive operation: set workflow_status directly, bypassing transition rules.
+    Admin and planner only. Creates a single status event with the supplied date.
+    Does NOT fire the side effects of normal transitions (FR.218 seeding, etc.).
+    """
+    if current_user.role not in {"admin", "planner"}:
+        raise HTTPException(403, "Only admin and planner can jump workflow status")
+
+    if payload.target_status not in VALID_JUMP_STATUSES:
+        raise HTTPException(400, f"Unknown status: {payload.target_status}")
+
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    if not audit_set:
+        raise HTTPException(404, "Audit set not found")
+
+    from_status = audit_set.workflow_status
+    if from_status == payload.target_status:
+        raise HTTPException(400, "Audit set is already at that status")
+
+    audit_set.workflow_status = payload.target_status
+
+    if payload.effective_date:
+        effective_ts = datetime(
+            payload.effective_date.year,
+            payload.effective_date.month,
+            payload.effective_date.day,
+        )
+    else:
+        effective_ts = datetime.utcnow()
+
+    event = AuditSetStatusEvent(
+        audit_set_id=audit_set_id,
+        from_status=from_status,
+        to_status=payload.target_status,
+        triggered_by=current_user.id,
+        triggered_at=effective_ts,
+        notes="Retroactive jump — set by admin",
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(audit_set)
+
+    return {"id": audit_set.id, "workflow_status": audit_set.workflow_status}
 
 
 @router.delete("/{audit_set_id}")

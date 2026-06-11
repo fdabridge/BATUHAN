@@ -155,10 +155,103 @@ export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, 
     },
   })
 
+  // Jump panel — used when workflow_status is null (internal audit sets)
+  const [jumpStatus,  setJumpStatus]  = useState('certified')
+  const [jumpDate,    setJumpDate]    = useState(() => new Date().toISOString().slice(0, 10))
+  const [jumpPending, setJumpPending] = useState(false)
+  const [jumpErr,     setJumpErr]     = useState<string | null>(null)
+
+  async function handleJump() {
+    setJumpPending(true)
+    setJumpErr(null)
+    try {
+      await api.post(`/audit-sets/${auditSetId}/workflow-status/jump`, {
+        target_status: jumpStatus,
+        effective_date: jumpDate,
+      })
+      onAdvanced()
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setJumpErr(detail || 'Failed to set status')
+    } finally {
+      setJumpPending(false)
+    }
+  }
+
   const STEPS  = getSteps(auditType)
   const PANELS = getPanels(auditType)
 
-  if (!currentStatus || currentStatus === 'pending_review') return null
+  if (currentStatus === 'pending_review') return null
+
+  if (!currentStatus) {
+    // Workflow not started yet. Show jump panel for admin/planner only.
+    if (currentUserRole !== 'admin' && currentUserRole !== 'planner') return null
+
+    return (
+      <div className="rounded-xl border border-gray-200 bg-white p-5 mb-2">
+        <p className="text-sm font-semibold text-gray-800">Portal workflow not started</p>
+        <p className="mt-1 text-xs text-gray-500">
+          This audit set was created internally. Set its current workflow status to activate
+          the portal view — use a historical date for retroactive clients.
+        </p>
+
+        <div className="mt-4 flex flex-wrap items-end gap-3">
+          {/* Status selector */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">
+              Current status
+            </label>
+            <select
+              value={jumpStatus}
+              onChange={e => setJumpStatus(e.target.value)}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:border-[#1A4731] focus:outline-none"
+            >
+              <option value="in_planning">In Planning</option>
+              <option value="quotation_sent">Quotation Sent</option>
+              <option value="agreement_signed">Agreement Signed</option>
+              <option value="stage1_scheduled">Stage 1 Scheduled</option>
+              <option value="stage1_in_progress">Stage 1 In Progress</option>
+              <option value="stage1_complete">Stage 1 Complete</option>
+              <option value="stage2_scheduled">Stage 2 Scheduled</option>
+              <option value="stage2_in_progress">Stage 2 In Progress</option>
+              <option value="audit_scheduled">Audit Scheduled</option>
+              <option value="audit_in_progress">Audit In Progress</option>
+              <option value="under_review">Under Review</option>
+              <option value="certified">Certified ✓</option>
+            </select>
+          </div>
+
+          {/* Date picker */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">
+              Effective date
+            </label>
+            <input
+              type="date"
+              value={jumpDate}
+              onChange={e => setJumpDate(e.target.value)}
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 focus:border-[#1A4731] focus:outline-none"
+            />
+          </div>
+
+          {/* Apply button */}
+          <button
+            type="button"
+            onClick={handleJump}
+            disabled={jumpPending}
+            className="rounded-lg px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
+            style={{ background: '#1A4731' }}
+          >
+            {jumpPending ? 'Applying…' : 'Activate Workflow'}
+          </button>
+        </div>
+
+        {jumpErr && (
+          <p className="mt-2 text-xs text-red-500">{jumpErr}</p>
+        )}
+      </div>
+    )
+  }
 
   const currentIdx = STEPS.findIndex((s) => s.key === currentStatus)
   const panel      = PANELS[currentStatus]
