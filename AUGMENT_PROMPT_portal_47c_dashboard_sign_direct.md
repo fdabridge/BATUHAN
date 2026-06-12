@@ -1,3 +1,30 @@
+# AUGMENT PROMPT — Portal 47c: Dashboard Sign Button Uses sign-direct for FR218/FR222
+
+## Problem
+
+`frontend/src/components/ui/PendingSignaturesWidget.tsx`
+
+When a CB user clicks "Sign" on the dashboard for an FR218 or FR222 slot, the widget
+falls into the OTP branch (`requestOtp` → `/request-otp`). FR218/FR222 slots have no
+OTP path — they use `sign-direct`. The result is "Not Found" and the CM/planner
+can never sign from the dashboard.
+
+`quotation` and `agreement` types correctly route to the viewer. Everything else
+falls to OTP. FR218/FR222 need a third branch: `sign-direct` with the same
+signature-preview modal that `InternalApprovalsSection` uses.
+
+---
+
+## Fix — `frontend/src/components/ui/PendingSignaturesWidget.tsx`
+
+Replace the entire file with the version below. Changes:
+- Add `sigPreviewSlot`, `sigPreviewImage`, `signedDate` state
+- Internal document types (`FR218`, `FR222`) → fetch `/me/signature` → show
+  preview modal → call `sign-direct`. No OTP.
+- `quotation` / `agreement` → Open to Sign (unchanged).
+- Anything else → OTP (unchanged, for future use).
+
+```tsx
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -17,17 +44,19 @@ interface PendingSig {
 const INTERNAL_TYPES = new Set(['FR218', 'FR222'])
 
 export function PendingSignaturesWidget() {
-  const [sigs, setSigs]                       = useState<PendingSig[]>([])
-  const [loading, setLoading]                 = useState(true)
-  const [busy, setBusy]                       = useState(false)
+  const [sigs, setSigs]                     = useState<PendingSig[]>([])
+  const [loading, setLoading]               = useState(true)
+  const [busy, setBusy]                     = useState(false)
 
-  const [otpSigningId, setOtpSigningId]       = useState<string | null>(null)
-  const [otpSent, setOtpSent]                 = useState(false)
-  const [otpValue, setOtpValue]               = useState('')
+  // OTP flow (non-internal, non-viewer docs)
+  const [otpSigningId, setOtpSigningId]     = useState<string | null>(null)
+  const [otpSent, setOtpSent]               = useState(false)
+  const [otpValue, setOtpValue]             = useState('')
 
-  const [sigPreviewSlot, setSigPreviewSlot]   = useState<PendingSig | null>(null)
+  // sign-direct flow (FR218, FR222)
+  const [sigPreviewSlot, setSigPreviewSlot] = useState<PendingSig | null>(null)
   const [sigPreviewImage, setSigPreviewImage] = useState<string | null>(null)
-  const [signedDate, setSignedDate]           = useState(() => new Date().toISOString().slice(0, 10))
+  const [signedDate, setSignedDate]         = useState(() => new Date().toISOString().slice(0, 10))
 
   const [error, setError] = useState('')
 
@@ -44,6 +73,8 @@ export function PendingSignaturesWidget() {
 
   useEffect(() => { load() }, [])
 
+  // ── sign-direct flow ──────────────────────────────────────────────────────
+
   async function openDirectSign(sig: PendingSig) {
     setError('')
     setBusy(true)
@@ -51,7 +82,9 @@ export function PendingSignaturesWidget() {
     setSigPreviewImage(null)
     try {
       const r = await api.get('/me/signature')
-      if (r.data?.image_data) setSigPreviewImage(r.data.image_data)
+      if (r.data?.image_data) {
+        setSigPreviewImage(r.data.image_data)
+      }
       setSigPreviewSlot(sig)
     } catch {
       setSigPreviewSlot(sig)
@@ -81,6 +114,8 @@ export function PendingSignaturesWidget() {
     }
   }
 
+  // ── OTP flow (kept for future doc types) ─────────────────────────────────
+
   async function requestOtp(sig: PendingSig) {
     setOtpSigningId(sig.id)
     setOtpSent(false)
@@ -101,7 +136,9 @@ export function PendingSignaturesWidget() {
     setBusy(true)
     setError('')
     try {
-      await api.post(`/audit-sets/${sig.audit_set_id}/signatures/${sig.id}/verify?otp=${otpValue}`)
+      await api.post(
+        `/audit-sets/${sig.audit_set_id}/signatures/${sig.id}/verify?otp=${otpValue}`,
+      )
       setOtpSigningId(null)
       setOtpValue('')
       setOtpSent(false)
@@ -116,7 +153,6 @@ export function PendingSignaturesWidget() {
 
   if (loading || sigs.length === 0) return null
 
-
   return (
     <>
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-5">
@@ -125,9 +161,10 @@ export function PendingSignaturesWidget() {
         </h2>
         <div className="space-y-3">
           {sigs.map((sig) => {
-            const isInternal   = INTERNAL_TYPES.has(sig.document_type)
-            const isViewer     = sig.document_type === 'quotation' || sig.document_type === 'agreement'
+            const isInternal = INTERNAL_TYPES.has(sig.document_type)
+            const isViewer   = sig.document_type === 'quotation' || sig.document_type === 'agreement'
             const isOtpSigning = otpSigningId === sig.id
+
             return (
               <div key={sig.id} className="rounded-lg border border-amber-100 bg-white p-4">
                 <div className="flex items-center justify-between">
@@ -138,6 +175,7 @@ export function PendingSignaturesWidget() {
                     </p>
                   </div>
 
+                  {/* ── Viewer (quotation / agreement) ── */}
                   {isViewer && sig.document_id && (
                     <a
                       href={`/viewer/shared_doc/${sig.document_id}`}
@@ -147,6 +185,7 @@ export function PendingSignaturesWidget() {
                     </a>
                   )}
 
+                  {/* ── sign-direct (FR218, FR222) ── */}
                   {isInternal && !isOtpSigning && (
                     <button
                       type="button"
@@ -158,6 +197,7 @@ export function PendingSignaturesWidget() {
                     </button>
                   )}
 
+                  {/* ── OTP (everything else) ── */}
                   {!isInternal && !isViewer && !isOtpSigning && (
                     <button
                       type="button"
@@ -170,6 +210,7 @@ export function PendingSignaturesWidget() {
                   )}
                 </div>
 
+                {/* OTP entry panel */}
                 {isOtpSigning && (
                   <div className="mt-3 rounded-lg border bg-gray-50 p-3">
                     {!otpSent ? (
@@ -218,6 +259,7 @@ export function PendingSignaturesWidget() {
         </div>
       </div>
 
+      {/* sign-direct confirmation modal */}
       {sigPreviewSlot && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-sm overflow-hidden rounded-xl bg-white shadow-2xl">
@@ -287,3 +329,21 @@ export function PendingSignaturesWidget() {
     </>
   )
 }
+```
+
+---
+
+## What NOT to change
+
+- Do not touch `InternalApprovalsSection.tsx` — it already works correctly.
+- Do not touch `signatures_router.py` — backend is correct after Portal 47b.
+- Do not touch any other file.
+
+---
+
+## Verification
+
+1. Log in as **Certification Manager** → Dashboard shows "Pending Signatures (1) — Fr218"
+2. Click **Sign** → signature preview modal opens (no OTP, no "Not Found")
+3. Confirm date → click Sign → ✓ slot signed
+4. After planner also signs → workflow auto-advances to `fr218_complete`
