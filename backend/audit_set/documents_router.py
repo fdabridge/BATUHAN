@@ -168,8 +168,8 @@ async def release_document(
             audit_set_id=audit_set_id,
             document_id=doc.id,
             document_type=document_type,
-            signer_role_label="gm",      # GM of IFC Global is the sole CB signatory for FR.220/FR.221
-            signer_user_id=None,         # unassigned — any GM user can claim and sign
+            signer_role_label="cb_planner",  # matches [SIG:CB_PLANNER] in DOCX template
+            signer_user_id=None,             # unassigned — planner or GM can claim and sign
             signer_name=None,
             signer_email=None,
             required=True,

@@ -268,8 +268,8 @@ def _assert_can_sign(
                 raise HTTPException(403, "This signature slot is assigned to a different user")
             if sig_record.signer_user_id is None:
                 eligible = (
-                    role_label == "cb_cert_manager"
-                    and current_user.role in ("admin", "executive")
+                    (role_label == "cb_cert_manager" and current_user.role in ("admin", "executive"))
+                    or (role_label == "cb_planner" and current_user.role in ("planner", "gm", "admin"))
                 )
                 if not eligible:
                     raise HTTPException(403, "This signature slot is not assigned to you")
@@ -415,7 +415,10 @@ def _get_field_status(
         if sig_record.signer_user_id == current_user.id:
             return _result("current_user")
         if sig_record.signer_user_id is None:
-            can_claim = (role_label == "cb_cert_manager" and current_user.role in ("admin", "executive"))
+            can_claim = (
+                (role_label == "cb_cert_manager" and current_user.role in ("admin", "executive"))
+                or (role_label == "cb_planner" and current_user.role in ("planner", "gm", "admin"))
+            )
             if can_claim:
                 return _result("current_user")
         return _result("pending")

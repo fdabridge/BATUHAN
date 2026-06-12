@@ -205,10 +205,14 @@ function computeCoverage(
   teamMembers: TeamMember[],
   allAuditors: AuditorAvailabilityItem[],
   requiredScope?: RequiredScope | null,
+  teNames?: Set<string>,
 ): CoverageResult[] {
   const teamAuditors = allAuditors.filter(
     (a) => teamMembers.some((m) => (m.id ? m.id === a.id : m.name === a.name))
   )
+
+  const labelName = (name: string | null) =>
+    name && teNames?.has(name) ? `${name} (TE)` : name
 
   return requiredStandards.map((std) => {
     const stdNorm = std.toLowerCase().replace('iso ', '').replace(/\s/g, '')
@@ -218,10 +222,11 @@ function computeCoverage(
     // ── Per-code check when requiredScope is available ──────────────────────
     if (rsEntry && rsEntry.codes.length > 0) {
       const codeResults = rsEntry.codes.map((code) => {
-        const coveredBy = teamAuditors.find((a) => {
+        const coveringAuditor = teamAuditors.find((a) => {
           const cs = a.covered_scope?.[std]
           return cs && cs.includes(code)
-        })?.name ?? null
+        })
+        const coveredBy = labelName(coveringAuditor?.name ?? null)
         return { code, coveredBy }
       })
       const allCodesCovered = codeResults.every((r) => r.coveredBy !== null)
@@ -262,7 +267,7 @@ function computeCoverage(
     return {
       standard: std,
       covered: !!cover,
-      coveredBy: cover?.name ?? null,
+      coveredBy: labelName(cover?.name ?? null),
       reason,
     }
   })
@@ -800,13 +805,15 @@ function StageCard({
 
   const resolvedStandards = resolvedStds
 
-  // Coverage computation — lead + additional auditors only, NOT technical experts (per spec Part 5)
+  // Coverage: full team (lead + auditors + TEs) collectively covers all required codes (IAF MD 11)
   const teamMembers: TeamMember[] = [
     ...(edit.lead_auditor_name ? [{ id: edit.lead_auditor_id, name: edit.lead_auditor_name }] : []),
     ...edit.auditors,
+    ...edit.technical_experts,
   ]
+  const teNameSet = new Set(edit.technical_experts.map((te) => te.name))
   const coverageResults = (resolvedStandards.length > 0 && (availableAuditors ?? []).length > 0)
-    ? computeCoverage(resolvedStandards, eaCode, teamMembers, availableAuditors ?? [], requiredScope)
+    ? computeCoverage(resolvedStandards, eaCode, teamMembers, availableAuditors ?? [], requiredScope, teNameSet)
     : []
   const allCovered = coverageResults.length === 0 || coverageResults.every((r) => r.covered)
 
