@@ -22,7 +22,7 @@ from auth.dependencies import get_current_user
 
 router = APIRouter(prefix="/audit-sets", tags=["signatures"])
 
-CB_ROLES = {"admin", "planner", "officer", "executive"}
+CB_ROLES = {"admin", "planner", "officer", "executive", "gm"}
 
 
 class SignDirectBody(BaseModel):
@@ -71,6 +71,8 @@ def get_my_pending_signatures(
     eligible_labels: list[str] = []
     if current_user.role in ("admin", "executive"):
         eligible_labels.append("cb_cert_manager")
+    if current_user.role == "gm":
+        eligible_labels.append("gm")
 
     unassigned: list[AuditDocumentSignature] = []
     if eligible_labels:
@@ -123,8 +125,8 @@ def sign_direct(
     # Self-assign if the slot is unassigned and the caller is eligible.
     if sig.signer_user_id is None:
         eligible = (
-            sig.signer_role_label == "cb_cert_manager"
-            and current_user.role in ("admin", "executive")
+            (sig.signer_role_label == "cb_cert_manager" and current_user.role in ("admin", "executive"))
+            or (sig.signer_role_label == "gm" and current_user.role == "gm")
         )
         if not eligible:
             raise HTTPException(403, "You are not eligible to sign this slot")
@@ -203,6 +205,8 @@ def get_internal_signatures(
     eligible_labels: set[str] = set()
     if current_user.role in ("admin", "executive"):
         eligible_labels.add("cb_cert_manager")
+    if current_user.role == "gm":
+        eligible_labels.add("gm")
 
     return [
         {

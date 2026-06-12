@@ -38,7 +38,7 @@ from email_service import (
 
 router = APIRouter(tags=["audit_reports"])
 
-CB_ROLES      = {"admin", "planner", "officer", "executive"}
+CB_ROLES      = {"admin", "planner", "officer", "executive", "gm"}
 UPLOAD_ROLES  = {"auditor", "admin", "planner"}
 AUDITOR_ROLES = {"auditor", "admin"}
 OTP_EXPIRY    = 10  # minutes

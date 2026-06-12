@@ -29,7 +29,7 @@ from email_service import send_impartiality_declaration_request, send_otp_code
 
 router = APIRouter(tags=["declarations"])
 
-CB_ROLES      = {"admin", "planner", "officer", "executive"}
+CB_ROLES      = {"admin", "planner", "officer", "executive", "gm"}
 AUDITOR_ROLES = {"auditor", "admin"}
 OTP_EXPIRY    = 10  # minutes
 

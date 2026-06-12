@@ -49,7 +49,7 @@ router = APIRouter(prefix="/viewer", tags=["viewer"])
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-CB_ROLES = {"admin", "planner", "officer", "executive"}
+CB_ROLES = {"admin", "planner", "officer", "executive", "gm"}
 
 ROLE_TO_SIG: dict[str, str] = {
     "cb_planner":      "CB_PLANNER",

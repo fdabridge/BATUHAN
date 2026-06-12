@@ -30,7 +30,7 @@ from email_service import send_otp_code
 
 router = APIRouter(tags=["assessments"])
 
-CB_ROLES   = {"admin", "planner", "officer", "executive"}
+CB_ROLES   = {"admin", "planner", "officer", "executive", "gm"}
 OTP_EXPIRY = 10  # minutes
 
 

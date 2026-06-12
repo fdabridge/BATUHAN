@@ -28,7 +28,7 @@ from email_service import send_client_status_update, send_document_released, sen
 
 router = APIRouter(prefix="/audit-sets", tags=["documents"])
 
-CB_ROLES = {"admin", "planner", "officer", "executive"}
+CB_ROLES = {"admin", "planner", "officer", "executive", "gm"}
 AUDITOR_UPLOAD_ROLES = {"auditor", "admin", "planner"}
 ALLOWED_DOC_TYPES = {"quotation", "agreement", "certificate", "audit_plan"}
 
@@ -56,7 +56,10 @@ def _doc_to_dict(d: AuditSetSharedDocument, db: Session | None = None) -> dict:
     if db is not None and d.document_type in ("quotation", "agreement"):
         cb_sig = (
             db.query(AuditDocumentSignature)
-            .filter_by(document_id=d.id, signer_role_label="cb_planner")
+            .filter(
+                AuditDocumentSignature.document_id == d.id,
+                AuditDocumentSignature.signer_role_label.in_(["gm", "cb_planner"]),
+            )
             .first()
         )
         if cb_sig:
@@ -165,10 +168,10 @@ async def release_document(
             audit_set_id=audit_set_id,
             document_id=doc.id,
             document_type=document_type,
-            signer_role_label="cb_planner",
-            signer_user_id=current_user.id,
-            signer_name=current_user.full_name,
-            signer_email=current_user.email,
+            signer_role_label="gm",      # GM of IFC Global is the sole CB signatory for FR.220/FR.221
+            signer_user_id=None,         # unassigned — any GM user can claim and sign
+            signer_name=None,
+            signer_email=None,
             required=True,
             order_index=0,
         )

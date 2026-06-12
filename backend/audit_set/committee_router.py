@@ -22,7 +22,7 @@ from auth.dependencies import get_current_user
 
 router = APIRouter(prefix="/audit-sets", tags=["committee"])
 
-CB_ROLES = {"admin", "planner", "officer", "executive"}
+CB_ROLES = {"admin", "planner", "officer", "executive", "gm"}
 
 
 def _collect_stage_auditor_ids(stages: list) -> set[str]:

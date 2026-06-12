@@ -380,7 +380,7 @@ export interface AuditPlanInput {
 
 // ── Admin user management ─────────────────────────────────────────────────────
 
-export type UserRole = 'admin' | 'planner' | 'auditor' | 'officer' | 'executive'
+export type UserRole = 'admin' | 'planner' | 'auditor' | 'officer' | 'executive' | 'gm'
 
 export interface AdminUser {
   id:           string
