@@ -48,15 +48,25 @@ interface RawField {
 // ── Labels ────────────────────────────────────────────────────────────────────
 
 const SIG_LABELS: Record<string, string> = {
-  CB_PLANNER:      'Planning Officer',
-  CB_REVIEWER:     'Committee Reviewer',
-  CB_CERT_MANAGER: 'Certification Manager',
-  LEAD_AUDITOR:    'Lead Auditor',
-  CLIENT:          'Organisation Representative',
-  AUDITOR_MEMBER:  'Audit Team Member',
-  GM:              'General Manager',
+  CB_PLANNER:         'Planning Officer',
+  CB_REVIEWER:        'Committee Reviewer',
+  CB_CERT_MANAGER:    'Certification Manager',
+  LEAD_AUDITOR:       'Lead Auditor',
+  CLIENT:             'Organisation Representative',
+  AUDITOR_MEMBER:     'Audit Team Member',
+  GM:                 'General Manager',
+  COMMITTEE_CHAIR:    'Committee Chairperson',
+  COMMITTEE_MEMBER_1: 'Committee Member 1',
+  COMMITTEE_MEMBER_2: 'Committee Member 2',
+  CERT_MANAGER_FR233: 'Certification Manager (FR.233)',
 }
-function sigLabel(key: string) { return SIG_LABELS[key] ?? key }
+function sigLabel(key: string) {
+  if (SIG_LABELS[key]) return SIG_LABELS[key]
+  // Portal 49a Part 2: dynamic ORG_OPENING_<uuid> / ORG_CLOSING_<uuid> keys.
+  if (key.startsWith('ORG_OPENING_'))  return 'Organisation Attendee (Opening)'
+  if (key.startsWith('ORG_CLOSING_'))  return 'Organisation Attendee (Closing)'
+  return key
+}
 
 // ── PDF.js lazy loader (CDN worker — avoids Next.js bundler issues) ────────────
 

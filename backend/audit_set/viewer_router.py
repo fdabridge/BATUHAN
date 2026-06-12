@@ -20,6 +20,7 @@ document_type values:
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime, date
 from typing import Optional
 
@@ -38,6 +39,7 @@ from audit_set.db_models import (
     AuditSetSharedDocument,
     AuditSetStage,
     AuditSetStatusEvent,
+    ClientOrgEmployee,
     DocumentSignatureField,
     VisualSignaturePlacement,
     get_db,
@@ -59,6 +61,16 @@ ROLE_TO_SIG: dict[str, str] = {
     "gm":              "GM",
 }
 SIG_TO_ROLE: dict[str, str] = {v: k for k, v in ROLE_TO_SIG.items()}
+
+# Portal 49a Part 2 — FR.225 organisation-personnel signature slots.
+# Format: ORG_OPENING_ORG_EMP_<uuid> or ORG_CLOSING_ORG_EMP_<uuid>
+ORG_SIG_RE = re.compile(
+    r"^ORG_(OPENING|CLOSING)_ORG_EMP_([0-9a-fA-F-]{36})$"
+)
+
+# Portal 49a Part 3 — FR.233 certification committee signature slots.
+COMMITTEE_SIG_KEYS = {"COMMITTEE_CHAIR", "COMMITTEE_MEMBER_1", "COMMITTEE_MEMBER_2"}
+CERT_MANAGER_FR233_KEY = "CERT_MANAGER_FR233"
 
 
 # ── Pydantic request bodies ───────────────────────────────────────────────────
@@ -219,6 +231,42 @@ def _get_doc_label(document_type: str, doc_id: str, db: Session) -> str:
     return "Document"
 
 
+# ── Helper: committee sig permission (Portal 49a Part 3) ─────────────────────
+
+def _check_committee_sig(
+    sig_key: str, audit_set_id: str, current_user: PlatformUser, db: Session,
+) -> None:
+    """Raise HTTPException(403) if `current_user` may not sign `sig_key` on FR.233."""
+    if sig_key == CERT_MANAGER_FR233_KEY:
+        if current_user.role not in ("admin", "executive"):
+            raise HTTPException(
+                403, "Only the Certification Manager may sign this slot",
+            )
+        return
+
+    members = (
+        db.query(AuditSetCommitteeMember)
+        .filter_by(audit_set_id=audit_set_id)
+        .order_by(AuditSetCommitteeMember.appointed_at)
+        .all()
+    )
+    chair = next((m for m in members if m.role == "decision_maker"), None)
+    non_chairs = [m for m in members if m is not chair]
+
+    expected_user_id: str | None = None
+    if sig_key == "COMMITTEE_CHAIR":
+        expected_user_id = chair.user_id if chair else None
+    elif sig_key == "COMMITTEE_MEMBER_1":
+        expected_user_id = non_chairs[0].user_id if len(non_chairs) > 0 else None
+    elif sig_key == "COMMITTEE_MEMBER_2":
+        expected_user_id = non_chairs[1].user_id if len(non_chairs) > 1 else None
+
+    if expected_user_id is None:
+        raise HTTPException(400, f"No committee member assigned for '{sig_key}'")
+    if expected_user_id != current_user.id:
+        raise HTTPException(403, "This signature slot is assigned to a different committee member")
+
+
 # ── Helper: _assert_can_sign ──────────────────────────────────────────────────
 
 def _assert_can_sign(
@@ -248,6 +296,30 @@ def _assert_can_sign(
                 )
             if doc.signed_at:
                 raise HTTPException(400, "Document already signed")
+
+        elif ORG_SIG_RE.match(sig_key):
+            # Portal 49a Part 2 — FR.225 organisation-personnel signing.
+            # The client user signs on behalf of one of their roster employees;
+            # the stored snapshot is the employee's own saved signature image.
+            if current_user.role != "client":
+                raise HTTPException(403, "Only the client account may sign organisation slots")
+            if current_user.audit_set_id != doc.audit_set_id:
+                raise HTTPException(403, "This document is not for your audit set")
+            employee_id = ORG_SIG_RE.match(sig_key).group(2)
+            emp = db.query(ClientOrgEmployee).filter_by(id=employee_id, is_active=True).first()
+            if not emp or emp.client_user_id != current_user.id:
+                raise HTTPException(404, "Employee not in your roster")
+            if not emp.signature_data:
+                raise HTTPException(
+                    400,
+                    f"{emp.full_name} has no signature on file. "
+                    "Go to Employees, upload their signature, then try again.",
+                )
+
+        elif sig_key in COMMITTEE_SIG_KEYS or sig_key == CERT_MANAGER_FR233_KEY:
+            # Portal 49a Part 3 — FR.233 committee signing handled below by
+            # _check_committee_sig (needs audit_set_id, computed from doc).
+            _check_committee_sig(sig_key, doc.audit_set_id, current_user, db)
 
         else:
             if current_user.role not in CB_ROLES:
@@ -547,6 +619,61 @@ def _commit_existing_signing_record(
                     db=db,
                 )
 
+        elif ORG_SIG_RE.match(sig_key):
+            # Portal 49a Part 2 — placement was already saved in sign_confirm.
+            # No workflow status change is associated with org-attendee signing.
+            return
+
+        elif sig_key in COMMITTEE_SIG_KEYS or sig_key == CERT_MANAGER_FR233_KEY:
+            # Portal 49a Part 3 — FR.233 signing. Placement is already saved.
+            # Update AuditSetFR233Record and (for the CM slot) the audit set's
+            # workflow status.
+            from audit_set.db_models import AuditSetFR233Record
+            doc = db.query(AuditSetSharedDocument).filter_by(id=doc_id).first()
+            if not doc:
+                return
+            record = db.query(AuditSetFR233Record).filter_by(
+                audit_set_id=doc.audit_set_id,
+            ).first()
+            if record and record.status == "pending":
+                record.status = "signing"
+
+            if sig_key == CERT_MANAGER_FR233_KEY:
+                # Require all committee slots signed first.
+                committee_signed = (
+                    db.query(VisualSignaturePlacement)
+                    .filter_by(document_type="shared_doc", doc_id=doc_id)
+                    .filter(VisualSignaturePlacement.sig_key.in_(list(COMMITTEE_SIG_KEYS)))
+                    .filter(VisualSignaturePlacement.signed_at.isnot(None))
+                    .count()
+                )
+                committee_total = len({
+                    row.sig_key for row in (
+                        db.query(DocumentSignatureField.sig_key)
+                        .filter(DocumentSignatureField.docx_path == os.path.abspath(doc.file_path or ""))
+                        .filter(DocumentSignatureField.sig_key.in_(list(COMMITTEE_SIG_KEYS)))
+                        .distinct()
+                        .all()
+                    )
+                })
+                if committee_total > 0 and committee_signed >= committee_total:
+                    if record:
+                        record.status = "complete"
+                    audit_set = db.query(AuditSet).filter_by(id=doc.audit_set_id).first()
+                    if audit_set and audit_set.workflow_status != "certified":
+                        old = audit_set.workflow_status
+                        audit_set.workflow_status  = "certified"
+                        audit_set.cert_issued_date = now.date()
+                        db.add(AuditSetStatusEvent(
+                            audit_set_id=doc.audit_set_id,
+                            from_status=old,
+                            to_status="certified",
+                            triggered_by=current_user.id,
+                            notes="FR.233 signed by Certification Manager",
+                        ))
+            db.commit()
+            return
+
         else:
             role_label = SIG_TO_ROLE.get(sig_key)
             if not role_label:
@@ -617,22 +744,10 @@ def _commit_existing_signing_record(
             report.reviewer_otp_expires = None
             report.status               = "approved"
             db.commit()
-
-            audit_set = db.query(AuditSet).filter_by(id=report.audit_set_id).first()
-            if audit_set and audit_set.workflow_status == "under_review":
-                audit_set.workflow_status  = "certified"
-                audit_set.cert_issued_date = now.date()
-                db.add(AuditSetStatusEvent(
-                    audit_set_id=report.audit_set_id,
-                    from_status="under_review",
-                    to_status="certified",
-                    triggered_by=current_user.id,
-                    notes=(
-                        f"Audit report '{report.report_form} — {report.label}' "
-                        "approved by committee reviewer via viewer"
-                    ),
-                ))
-                db.commit()
+            # Portal 49a Part 3: the CB reviewer signing the audit report no
+            # longer auto-advances the set to ``certified``. Certification now
+            # requires the Cert Manager to sign FR.233 (see shared_doc branch
+            # below for CERT_MANAGER_FR233).
 
     elif document_type == "nc_form":
         nc = db.query(AuditSetNCForm).filter_by(id=doc_id).first()
@@ -715,12 +830,23 @@ def sign_confirm(
     """
     _assert_can_sign(body.document_type, body.doc_id, body.sig_key, current_user, db)
 
-    user_sig = auth_db.query(UserSignature).filter_by(user_id=current_user.id).first()
-    if not user_sig:
-        raise HTTPException(
-            400,
-            "No signature on file. Go to Settings → My Signature to set one up, then try again.",
-        )
+    # Resolve the signature image to embed. For ORG_OPENING_*/ORG_CLOSING_* the
+    # image is the employee's saved signature; for everything else it is the
+    # current user's UserSignature.
+    org_match = ORG_SIG_RE.match(body.sig_key)
+    if org_match:
+        emp = db.query(ClientOrgEmployee).filter_by(id=org_match.group(2)).first()
+        if not emp or not emp.signature_data:
+            raise HTTPException(400, "Employee signature missing — re-upload and try again.")
+        signature_image_b64 = emp.signature_data
+    else:
+        user_sig = auth_db.query(UserSignature).filter_by(user_id=current_user.id).first()
+        if not user_sig:
+            raise HTTPException(
+                400,
+                "No signature on file. Go to Settings → My Signature to set one up, then try again.",
+            )
+        signature_image_b64 = user_sig.image_data
 
     # Reuse or create the pending VisualSignaturePlacement row.
     vsp = (
@@ -748,7 +874,7 @@ def sign_confirm(
         datetime.combine(body.signed_date, datetime.min.time())
         if body.signed_date else datetime.utcnow()
     )
-    vsp.signature_image = user_sig.image_data
+    vsp.signature_image = signature_image_b64
     vsp.otp_hash        = None
     vsp.otp_expires     = None
     vsp.signed_at       = signed_at

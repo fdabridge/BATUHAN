@@ -171,15 +171,49 @@ def apply_checkbox_selection(docx_bytes: bytes, standards_codes: list[str]) -> b
         return docx_bytes
 
 
+def _resolve_org_attendees(audit_set, db) -> list[dict]:
+    """Portal 49a — resolve the client's active ClientOrgEmployee roster for
+    FR.225 docxtpl injection. Returns ``[]`` if no client is linked or no DB
+    session is available."""
+    if db is None or audit_set is None:
+        return []
+    try:
+        from audit_set.db_models import ClientOrgEmployee
+        from auth.db_models import PlatformUser, SessionLocal as AuthSessionLocal
+        auth_db = AuthSessionLocal()
+        try:
+            client = (
+                auth_db.query(PlatformUser)
+                .filter_by(role="client", audit_set_id=audit_set.id)
+                .first()
+            )
+            if not client:
+                return []
+            employees = (
+                db.query(ClientOrgEmployee)
+                .filter_by(client_user_id=client.id, is_active=True)
+                .order_by(ClientOrgEmployee.created_at)
+                .all()
+            )
+            return [
+                {"name": e.full_name, "role": e.role_title, "sig_key": f"ORG_EMP_{e.id}"}
+                for e in employees
+            ]
+        finally:
+            auth_db.close()
+    except Exception:  # pragma: no cover — defensive: never break the packager
+        logger.warning("[Packager] org_attendees resolution failed", exc_info=True)
+        return []
+
+
 def build_audit_set_zip(audit_set, db) -> bytes:
     """Build the full rendered-document ZIP for an `AuditSet`."""
-    del db  # audit-sets session not needed; auditors use their own session
-
     document_set, missing_templates = resolve_document_set(audit_set)
     stages_by_type = {s.stage_type: s for s in (audit_set.stages or [])}
     required_scope = audit_set.required_scope or {}
     standards_codes = audit_set.standards or []
     auditor_lookup = _build_auditor_lookup(audit_set)
+    org_attendees = _resolve_org_attendees(audit_set, db)
 
     raw_name = (audit_set.company_name or "Unknown")[:20].replace(" ", "_")
     company_slug = f"Set_{audit_set.plan_number}_{raw_name}"
@@ -192,7 +226,7 @@ def build_audit_set_zip(audit_set, db) -> bytes:
             if stage is None:
                 continue
 
-            ctx = build_base_context(audit_set, stage)
+            ctx = build_base_context(audit_set, stage, org_attendees=org_attendees)
             ctx.update(build_auditor_scope_strings(stage, auditor_lookup, required_scope))
             # EA-code fallback for FR.224 display when the auditor profile is incomplete.
             if not ctx.get("lead_auditor_codes"):

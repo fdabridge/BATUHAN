@@ -181,14 +181,27 @@ FR224_MAP = {
 
 
 # ---------------------------------------------------------------------------
-# FR.225 — Opening / Closing Meeting Form (header only)
+# FR.225 — Opening / Closing Meeting Form
+# Table 0: header (company, standards, audit type)
+# Table 1: meeting dates row
+# Table 2: participants
+#   rows 0-1  : "Organization Personnel" header + column labels
+#   rows 2-5  : REPLACED by docxtpl {%tr for emp in org_attendees %} loop
+#               Each loop row: col0={{ emp.name }}, col1={{ emp.role }},
+#               col2=[SIG:ORG_OPENING_{{ emp.sig_key }}],
+#               col3=[SIG:ORG_CLOSING_{{ emp.sig_key }}]
+#   row 6     : "Audit Team" separator
+#   rows 7+   : lead auditor + auditors/TEs (existing Jinja2 rows, unchanged)
 # ---------------------------------------------------------------------------
 FR225_MAP = {
-    "company_name":     (0, 0, 1),
-    "standards_str":    (0, 1, 1),
-    "audit_type_str":   (0, 1, 3),
-    "stage_1_date":     (1, 0, 1),    # Opening meeting date
-    "stage_2_date":     (1, 0, 4),    # Closing meeting date
+    "company_name":          (0, 0, 1),
+    "standards_str":         (0, 1, 1),
+    "audit_type_str":        (0, 1, 3),
+    "opening_meeting_date":  (1, 0, 1),    # Table 1 row 0 col 1
+    "closing_meeting_date":  (1, 0, 4),    # Table 1 row 0 col 4
+    # org_attendees is a list[dict] passed as a docxtpl context variable (not a cell coord):
+    # [{"name": str, "role": str, "sig_key": str}, ...]
+    # The template loop handles it — no coordinate entry here.
 }
 
 
@@ -276,10 +289,53 @@ FR234_MAP = {
 
 # ---------------------------------------------------------------------------
 # FR.211 — Lead Auditor / Auditor Assessment Form
+# NOTE: FR.211 is included in the blank set ZIP for the client to fill manually.
+# It is NOT auto-generated or uploaded by the system.
+# UPLOAD FLOW: Client uploads one filled FR.211 per auditor/TE:
+#   - Stage 1 batch: after Cert Manager clicks "Stage 1 appropriate"
+#   - Stage 2 batch: after Cert Manager approves certification decision
+# VISIBILITY: CB can see; auditors/TEs CANNOT see this document.
+# SIGNING: Client signs only (visual signature). No auditor signature.
 # ---------------------------------------------------------------------------
 FR211_MAP = {
     "lead_auditor_name":     (0, 0, 1),
-    "stage_1_date":          (0, 1, 1),    # Audit Date/s — caller may override
+    "stage_1_date":          (0, 1, 1),    # Audit Date/s — caller may override with stage date
     "company_name":          (0, 2, 1),
     "standards_str":         (0, 3, 1),
+}
+
+
+# ---------------------------------------------------------------------------
+# FR.233 — Review and Decision Form
+# Table 0: audit header (14 rows × 4 cols)
+# Table 1: scope (2 rows × 1 col)
+# Table 2: review checklist — filled manually by reviewer, no pre-fill coords
+# Table 3: committee signatures (7 rows × 6 cols)
+#   row 1: Chairperson  row 2: Member  row 3: Member
+#   row 6: Certification Manager approval
+# ---------------------------------------------------------------------------
+FR233_MAP = {
+    # Table 0 — audit header
+    "plan_number":            (0, 0, 1),   # Project Number
+    "company_name":           (0, 1, 1),   # Organization
+    "company_address":        (0, 2, 1),   # Address
+    "standards_str":          (0, 3, 1),   # Standard(s)
+    "ea_code":                (0, 4, 1),   # EA/IAF Code / Category / Technical Area
+    "audit_team_str":         (0, 6, 1),   # Audit Team (lead auditor + team member names)
+    "stage_1_date":           (0, 7, 1),   # Stage 1 Audit Date
+    "stage_2_date":           (0, 7, 3),   # Stage 2 / Surveillance / Re-cert Audit Date
+    "stage_1_report_date":    (0, 8, 1),   # Stage 1 Report Date
+    "stage_2_report_date":    (0, 8, 3),   # Stage 2 / Surveillance Report Date
+    "decision_date":          (0, 9, 1),   # Decision Date
+    # Table 1 — scope
+    "scope_en":               (1, 1, 0),   # Scope value cell (row 1, only column)
+    # Table 3 — committee members (name col=1, EA col=3, sign col=5 handled by viewer [SIG:])
+    "committee_chair_name":   (3, 1, 1),
+    "committee_chair_ea":     (3, 1, 3),
+    "committee_member1_name": (3, 2, 1),
+    "committee_member1_ea":   (3, 2, 3),
+    "committee_member2_name": (3, 3, 1),
+    "committee_member2_ea":   (3, 3, 3),
+    # Signature slots in Table 3: [SIG:COMMITTEE_CHAIR], [SIG:COMMITTEE_MEMBER_1],
+    # [SIG:COMMITTEE_MEMBER_2], [SIG:CERT_MANAGER] — placed by viewer at col 5.
 }

@@ -617,3 +617,18 @@ class ClientOrgEmployee(Base):
     is_active       = Column(Boolean, default=True, nullable=False)
     created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at      = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+# ─── Portal 49a Part 3 — FR.233 Review & Decision record ──────────────────────
+
+class AuditSetFR233Record(Base):
+    __tablename__ = "audit_set_fr233_records"
+
+    id            = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    audit_set_id  = Column(String, ForeignKey("audit_sets.id"), nullable=False, unique=True)
+    # FK → audit_set_shared_documents.id once the FR.233 has been generated
+    document_id   = Column(String, nullable=True)
+    # "pending" → "signing" → "complete"
+    status        = Column(String, default="pending", nullable=False)
+    created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at    = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

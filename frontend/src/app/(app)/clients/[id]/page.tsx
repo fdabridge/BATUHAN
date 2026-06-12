@@ -12,6 +12,7 @@ import { MessageThread } from '@/components/ui/MessageThread'
 import { SharedDocumentsSection } from '@/components/ui/SharedDocumentsSection'
 import { InternalApprovalsSection } from '@/components/ui/InternalApprovalsSection'
 import { CommitteeSection } from '@/components/ui/CommitteeSection'
+import { FR233Panel } from '@/components/ui/FR233Panel'
 import { MeetingAttendeesSection } from '@/components/ui/MeetingAttendeesSection'
 import { AssessmentManagementSection } from '@/components/ui/AssessmentManagementSection'
 import { NCFormManagementSection } from '@/components/ui/NCFormManagementSection'
@@ -1639,6 +1640,12 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
 
       {/* Certification Committee — Prompt 14 (reviewer / decision maker appointments) */}
       <CommitteeSection
+        auditSetId={id}
+        workflowStatus={data.workflow_status ?? null}
+      />
+
+      {/* FR.233 Review & Decision — Portal 49a Part 3 */}
+      <FR233Panel
         auditSetId={id}
         workflowStatus={data.workflow_status ?? null}
       />

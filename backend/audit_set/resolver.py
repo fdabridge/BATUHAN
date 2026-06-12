@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 from audit_set.field_maps import (
     FR211_MAP, FR218_MAP, FR222_MAP, FR223_MAP,
-    FR224_MAP, FR225_MAP, FR230_MAP, FR231_MAP, FR232_MAP, FR234_MAP,
+    FR224_MAP, FR225_MAP, FR230_MAP, FR231_MAP, FR232_MAP, FR233_MAP, FR234_MAP,
 )
 
 
@@ -212,6 +212,12 @@ def _build_stage_2(needs_base, needs_mdqms, needs_isms, sub: str, missing: list[
     if needs_base:  _add(specs, seen, "FR.211", "base",  sub, FR211_MAP, "stage_2", missing)
     if needs_mdqms: _add(specs, seen, "FR.211", "mdqms", sub, FR211_MAP, "stage_2", missing)
     if needs_isms:  _add(specs, seen, "FR.211", "isms",  sub, FR211_MAP, "stage_2", missing)
+
+    # FR.233 — Review & Decision Form (certification committee; included once per audit)
+    primary = "base" if needs_base else ("mdqms" if needs_mdqms else ("isms" if needs_isms else None))
+    if primary:
+        _add(specs, seen, "FR.233", primary, sub, FR233_MAP, "stage_2", missing)
+
     return specs
 
 
@@ -227,6 +233,12 @@ def _build_surveillance(needs_base, needs_mdqms, needs_isms, sub: str, missing: 
         if needs_base:  _add(specs, seen, fr, "base",  sub, fmap, "surveillance", missing)
         if needs_mdqms: _add(specs, seen, fr, "mdqms", sub, fmap, "surveillance", missing)
         if needs_isms:  _add(specs, seen, fr, "isms",  sub, fmap, "surveillance", missing)
+
+    # FR.233 — Review & Decision Form (certification committee)
+    primary = "base" if needs_base else ("mdqms" if needs_mdqms else ("isms" if needs_isms else None))
+    if primary:
+        _add(specs, seen, "FR.233", primary, sub, FR233_MAP, "surveillance", missing)
+
     return specs
 
 

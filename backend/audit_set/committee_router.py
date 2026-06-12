@@ -14,8 +14,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from audit_set.db_models import (
-    AuditSet, AuditSetCommitteeMember, AuditSetStage,
-    AuditDocumentSignature, get_db,
+    AuditSet, AuditSetCommitteeMember, AuditSetFR233Record, AuditSetSharedDocument,
+    AuditSetStage, AuditDocumentSignature, VisualSignaturePlacement, get_db,
 )
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
@@ -23,6 +23,7 @@ from auth.dependencies import get_current_user
 router = APIRouter(prefix="/audit-sets", tags=["committee"])
 
 CB_ROLES = {"admin", "planner", "officer", "executive", "gm"}
+CM_ROLES = {"admin", "executive"}   # roles that act as Certification Manager
 
 
 def _collect_stage_auditor_ids(stages: list) -> set[str]:
@@ -275,3 +276,168 @@ def remove_committee_member(
     db.delete(member)
     db.commit()
     return {"removed": True}
+
+
+# ── Portal 49a Part 3 — FR.233 Review & Decision Form ─────────────────────────
+
+@router.post("/{audit_set_id}/fr233/generate")
+def generate_fr233(
+    audit_set_id: str,
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """Render FR.233 from the blank template, persist it as a SharedDocument and
+    upsert the AuditSetFR233Record. Idempotent: re-running overwrites the file
+    and resets status to ``signing``."""
+    import os
+    from datetime import datetime
+    from audit_set.fr233_generator import render_fr233_bytes
+    from config.settings import get_settings
+
+    if current_user.role not in {"admin", "planner", "executive"}:
+        raise HTTPException(403, "Only Planner or Certification Manager may generate FR.233")
+
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    if not audit_set:
+        raise HTTPException(404, "Audit set not found")
+
+    allowed_statuses = {
+        "stage2_complete", "committee_review", "under_review",
+        "stage2_in_progress",
+    }
+    if audit_set.workflow_status not in allowed_statuses:
+        raise HTTPException(
+            400,
+            f"FR.233 cannot be generated while workflow_status='{audit_set.workflow_status}'. "
+            "Complete Stage 2 first.",
+        )
+
+    members = db.query(AuditSetCommitteeMember).filter_by(audit_set_id=audit_set_id).count()
+    if members < 1:
+        raise HTTPException(400, "Appoint at least one committee member before generating FR.233")
+
+    try:
+        docx_bytes = render_fr233_bytes(audit_set, db)
+    except Exception as exc:
+        raise HTTPException(500, f"FR.233 render failed: {exc}")
+
+    settings = get_settings()
+    out_dir = os.path.join(settings.storage_base_path, "shared_docs", audit_set_id)
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, f"FR233_{audit_set.plan_number or audit_set_id}.docx")
+    with open(out_path, "wb") as f:
+        f.write(docx_bytes)
+
+    record = db.query(AuditSetFR233Record).filter_by(audit_set_id=audit_set_id).first()
+    doc = None
+    if record and record.document_id:
+        doc = db.query(AuditSetSharedDocument).filter_by(id=record.document_id).first()
+    if doc is None:
+        doc = AuditSetSharedDocument(
+            audit_set_id=audit_set_id,
+            label=f"FR.233 Review & Decision — {audit_set.plan_number or ''}".strip(" —"),
+            document_type="fr233",
+            file_path=out_path,
+            direction="cb_to_client",
+            status="released",
+            released_by=current_user.id,
+            released_at=datetime.utcnow(),
+        )
+        db.add(doc)
+        db.flush()
+    else:
+        doc.file_path  = out_path
+        doc.status     = "released"
+        doc.released_by= current_user.id
+        doc.released_at= datetime.utcnow()
+        # Old PDF + extracted SIG fields are stale — drop them so the viewer
+        # re-converts and re-extracts from the new DOCX on next open.
+        pdf_path = os.path.splitext(out_path)[0] + ".pdf"
+        if os.path.exists(pdf_path):
+            try:    os.remove(pdf_path)
+            except Exception: pass
+        from audit_set.db_models import DocumentSignatureField
+        db.query(DocumentSignatureField).filter_by(docx_path=os.path.abspath(out_path)).delete()
+
+    if record is None:
+        record = AuditSetFR233Record(
+            audit_set_id=audit_set_id, document_id=doc.id, status="signing",
+        )
+        db.add(record)
+    else:
+        record.document_id = doc.id
+        record.status      = "signing"
+
+    if audit_set.workflow_status in {"stage2_complete", "stage2_in_progress"}:
+        old = audit_set.workflow_status
+        audit_set.workflow_status = "committee_review"
+        from audit_set.db_models import AuditSetStatusEvent
+        db.add(AuditSetStatusEvent(
+            audit_set_id=audit_set_id, from_status=old, to_status="committee_review",
+            triggered_by=current_user.id, notes="FR.233 generated; committee review opened",
+        ))
+
+    db.commit()
+    return {
+        "generated":    True,
+        "document_id":  doc.id,
+        "fr233_status": record.status,
+    }
+
+
+@router.get("/{audit_set_id}/fr233")
+def get_fr233_status(
+    audit_set_id: str,
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    if current_user.role not in CB_ROLES:
+        raise HTTPException(403, "Not authorized")
+
+    record = db.query(AuditSetFR233Record).filter_by(audit_set_id=audit_set_id).first()
+    members = (
+        db.query(AuditSetCommitteeMember)
+        .filter_by(audit_set_id=audit_set_id)
+        .order_by(AuditSetCommitteeMember.appointed_at)
+        .all()
+    )
+
+    # Per-slot signed lookup from VisualSignaturePlacement (the source of truth
+    # for committee signing — populated by /viewer/sign/confirm).
+    placements = []
+    if record and record.document_id:
+        placements = (
+            db.query(VisualSignaturePlacement)
+            .filter_by(document_type="shared_doc", doc_id=record.document_id)
+            .filter(VisualSignaturePlacement.signed_at.isnot(None))
+            .all()
+        )
+    signed_keys = {p.sig_key for p in placements}
+
+    chair = next((m for m in members if m.role == "decision_maker"), None)
+    regulars = [m for m in members if m is not chair]
+    slot_for_member = {}
+    if chair: slot_for_member[chair.id] = "COMMITTEE_CHAIR"
+    if len(regulars) > 0: slot_for_member[regulars[0].id] = "COMMITTEE_MEMBER_1"
+    if len(regulars) > 1: slot_for_member[regulars[1].id] = "COMMITTEE_MEMBER_2"
+
+    return {
+        "status":             record.status if record else "pending",
+        "document_id":        record.document_id if record else None,
+        "members": [
+            {
+                "id":         m.id,
+                "user_id":    m.user_id,
+                "user_name":  m.user_name,
+                "role":       m.role,
+                "sig_key":    slot_for_member.get(m.id),
+                "ea_codes":   m.ea_codes_at_appointment or [],
+                "signed":     slot_for_member.get(m.id) in signed_keys,
+            }
+            for m in members
+        ],
+        "cert_manager_signed": "CERT_MANAGER_FR233" in signed_keys,
+        "all_committee_signed": all(
+            slot_for_member.get(m.id) in signed_keys for m in members if slot_for_member.get(m.id)
+        ) and bool(members),
+    }

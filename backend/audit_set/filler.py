@@ -215,8 +215,15 @@ def _normalize_site(s: dict) -> dict:
     return d
 
 
-def build_base_context(audit_set, stage) -> dict:
-    """Build the complete Jinja2 render context for one stage render."""
+def build_base_context(audit_set, stage, org_attendees: list | None = None) -> dict:
+    """Build the complete Jinja2 render context for one stage render.
+
+    `org_attendees` (Portal 49a) is an optional list of dicts shaped as
+    ``{"name": str, "role": str, "sig_key": str}`` used by the FR.225
+    organisation-personnel docxtpl loop. Callers that have access to a DB
+    session resolve this from the client's ClientOrgEmployee roster; tests
+    and other paths can leave it as None (renders as an empty loop).
+    """
     man_day = audit_set.man_day_result or {}
     personnel = audit_set.personnel or {}
     sites_raw = audit_set.sites or []
@@ -396,6 +403,8 @@ def build_base_context(audit_set, stage) -> dict:
         "auditors": stage.auditors or [],
         "technical_experts": stage.technical_experts or [],
         "observers": stage.observers or [],
+        # Portal 49a — FR.225 org attendees (rendered via {%tr for emp in org_attendees %})
+        "org_attendees": org_attendees or [],
         # Personnel
         "personnel": personnel,
         "total_employees": total_employees,
