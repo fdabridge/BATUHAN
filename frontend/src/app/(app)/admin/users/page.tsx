@@ -7,7 +7,7 @@ import api from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import type {
   AdminResetPasswordPayload, AdminUser, AdminUserCreatePayload,
-  AdminUserUpdatePayload, UserRole,
+  AdminUserUpdatePayload, AuditorSummary, UserRole,
 } from '@/types'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -140,6 +140,12 @@ function CreateUserModal({
     onError:   (e) => setErr(extractDetail(e, 'Failed to create user.')),
   })
 
+  const { data: auditorList } = useQuery<AuditorSummary[]>({
+    queryKey: ['auditors-list'],
+    queryFn:  () => api.get<AuditorSummary[]>('/auditors/?active_only=false').then((r) => r.data),
+    enabled:  open && form.role === 'auditor',
+  })
+
   function handleSubmit(ev: React.FormEvent) {
     ev.preventDefault()
     setErr(null)
@@ -185,6 +191,23 @@ function CreateUserModal({
             {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>
         </div>
+        {form.role === 'auditor' && (
+          <div>
+            <label className={lblCls}>Auditor record <span className="font-normal text-gray-400">(optional — links to auditor profile)</span></label>
+            <select
+              value={form.auditor_id ?? ''}
+              onChange={(e) => setForm((f) => ({ ...f, auditor_id: e.target.value || null }))}
+              className={inputCls}
+            >
+              <option value="">— not linked —</option>
+              {(auditorList ?? []).map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {err && <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{err}</div>}
 
@@ -208,7 +231,12 @@ function EditUserModal({
 
   useEffect(() => {
     if (user) {
-      setForm({ full_name: user.full_name, role: user.role, is_active: user.is_active })
+      setForm({
+        full_name:  user.full_name,
+        role:       user.role,
+        is_active:  user.is_active,
+        auditor_id: user.auditor_id ?? null,
+      })
       setErr(null)
     }
   }, [user])
@@ -218,6 +246,12 @@ function EditUserModal({
       api.put<AdminUser>(`/admin/users/${user!.id}`, payload).then((r) => r.data),
     onSuccess: () => { onSuccess(); onClose() },
     onError:   (e) => setErr(extractDetail(e, 'Failed to update user.')),
+  })
+
+  const { data: auditorList } = useQuery<AuditorSummary[]>({
+    queryKey: ['auditors-list'],
+    queryFn:  () => api.get<AuditorSummary[]>('/auditors/?active_only=false').then((r) => r.data),
+    enabled:  !!user,
   })
 
   function handleSubmit(ev: React.FormEvent) {
@@ -244,6 +278,28 @@ function EditUserModal({
             {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>
         </div>
+        {form.role === 'auditor' && (
+          <div>
+            <label className={lblCls}>
+              Auditor record <span className="font-normal text-gray-400">(links this login to an auditor profile)</span>
+            </label>
+            <select
+              value={form.auditor_id ?? ''}
+              onChange={(e) => setForm((f) => ({ ...f, auditor_id: e.target.value || null }))}
+              className={inputCls}
+            >
+              <option value="">— not linked —</option>
+              {(auditorList ?? []).map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+            {form.auditor_id && (
+              <p className="mt-1 text-xs text-gray-400">ID: {form.auditor_id}</p>
+            )}
+          </div>
+        )}
         <div className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2">
           <span className="text-sm text-gray-700">Active</span>
           <Switch checked={!!form.is_active}
