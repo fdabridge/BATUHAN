@@ -137,6 +137,7 @@ def check_fr218_completion(
         triggered_at=effective_ts or datetime.utcnow(),
         notes="Auto-advanced: FR.218 fully signed by all required parties",
     ))
+    db.commit()
     return True
 
 
