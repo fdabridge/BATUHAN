@@ -11,6 +11,7 @@ import type {
 } from '@/types'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
+// portal 46 — Certification Manager + Client added to roles dropdown
 
 const ROLES: { value: UserRole; label: string }[] = [
   { value: 'admin',                 label: 'Admin' },
