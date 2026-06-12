@@ -856,9 +856,22 @@ export default function AuditorAuditDetail() {
       a.remove()
       window.URL.revokeObjectURL(url)
     } catch (e: unknown) {
-      const detail = (e as { response?: { data?: { detail?: string } } })
-        ?.response?.data?.detail
-      alert(detail || 'Download failed')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const anyErr = e as any
+      let detail = 'Download failed.'
+      const body = anyErr?.response?.data
+      if (body instanceof Blob) {
+        try {
+          const txt    = await body.text()
+          const parsed = JSON.parse(txt)
+          if (parsed?.detail) detail = String(parsed.detail)
+        } catch { /* keep default */ }
+      } else if (anyErr?.response?.data?.detail) {
+        detail = String(anyErr.response.data.detail)
+      } else if (anyErr?.message) {
+        detail = String(anyErr.message)
+      }
+      alert(detail)
     } finally {
       setDownloading(false)
     }

@@ -1385,12 +1385,32 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
     setDownloading(true)
     try {
       const res = await api.get(`/audit-sets/${id}/download`, { responseType: 'blob' })
-      const url = URL.createObjectURL(res.data as Blob)
+      const url = window.URL.createObjectURL(res.data as Blob)
       const a   = document.createElement('a')
       a.href     = url
       a.download = `Set_${data.plan_number}_${data.company_name}.zip`
+      document.body.appendChild(a)
       a.click()
-      URL.revokeObjectURL(url)
+      a.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (e: unknown) {
+      // Error responses arrive as a Blob because responseType is 'blob'.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const anyErr = e as any
+      let detail = 'Download failed.'
+      const body = anyErr?.response?.data
+      if (body instanceof Blob) {
+        try {
+          const txt    = await body.text()
+          const parsed = JSON.parse(txt)
+          if (parsed?.detail) detail = String(parsed.detail)
+        } catch { /* keep default */ }
+      } else if (anyErr?.response?.data?.detail) {
+        detail = String(anyErr.response.data.detail)
+      } else if (anyErr?.message) {
+        detail = String(anyErr.message)
+      }
+      alert(detail)
     } finally {
       setDownloading(false)
     }
