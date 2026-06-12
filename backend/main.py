@@ -179,6 +179,52 @@ def on_startup():
     except Exception as exc:
         logger.warning("[BATUHAN] Portal 47 backfill skipped: %s", exc)
 
+    # Portal 47e — backfill: any audit set at fr218_in_progress where all required
+    # FR.218 slots are already signed should advance to fr218_complete.
+    try:
+        from audit_set.db_models import (
+            AuditSet, AuditDocumentSignature, AuditSetStatusEvent,
+            get_db as audit_get_db,
+        )
+        from datetime import datetime as _dt
+        adb2 = next(audit_get_db())
+        try:
+            stuck218 = adb2.query(AuditSet).filter_by(workflow_status="fr218_in_progress").all()
+            completed = 0
+            for aset in stuck218:
+                total = (
+                    adb2.query(AuditDocumentSignature)
+                    .filter_by(audit_set_id=aset.id, document_type="FR218", required=True)
+                    .count()
+                )
+                unsigned = (
+                    adb2.query(AuditDocumentSignature)
+                    .filter_by(audit_set_id=aset.id, document_type="FR218", required=True)
+                    .filter(AuditDocumentSignature.signed_at.is_(None))
+                    .count()
+                )
+                if total > 0 and unsigned == 0:
+                    aset.workflow_status = "fr218_complete"
+                    adb2.add(AuditSetStatusEvent(
+                        audit_set_id=aset.id,
+                        from_status="fr218_in_progress",
+                        to_status="fr218_complete",
+                        triggered_by="system_backfill",
+                        triggered_at=_dt.utcnow(),
+                        notes="Portal 47e backfill: all FR.218 slots were signed, advancing to fr218_complete",
+                    ))
+                    completed += 1
+            adb2.commit()
+            if completed:
+                logger.info(
+                    "[BATUHAN] Portal 47e backfill: %d audit set(s) advanced to fr218_complete",
+                    completed,
+                )
+        finally:
+            adb2.close()
+    except Exception as exc:
+        logger.warning("[BATUHAN] Portal 47e backfill skipped: %s", exc)
+
     logger.info("All DB tables initialised.")
 
 
