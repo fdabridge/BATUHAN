@@ -593,3 +593,27 @@ class VisualSignaturePlacement(Base):
     signed_at       = Column(DateTime, nullable=True)  # set on successful OTP verification
     signed_ip       = Column(String, nullable=True)
     created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+
+# ---------------------------------------------------------------------------
+# Portal 49a — client_org_employees
+# Roster of named employees managed by a client-role PlatformUser. Used to
+# populate the "Organisation Personnel" rows on FR.225 Opening/Closing meeting
+# forms and similar org-side signature fields.
+# Signature image follows the UserSignature pattern: base64 PNG data URL
+# stored directly in this row (no filesystem storage).
+# ---------------------------------------------------------------------------
+
+class ClientOrgEmployee(Base):
+    __tablename__ = "client_org_employees"
+
+    id              = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    client_user_id  = Column(String, nullable=False, index=True)   # soft FK → platform_users.id (role=client)
+    full_name       = Column(String, nullable=False)
+    role_title      = Column(String, nullable=False)               # e.g. "Quality Manager"
+    signature_data  = Column(Text, nullable=True)                  # base64 PNG data URL (data:image/png;base64,...)
+    signature_source= Column(String, nullable=True)                # "drawn" | "uploaded"
+    is_active       = Column(Boolean, default=True, nullable=False)
+    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at      = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

@@ -37,6 +37,7 @@ from audit_set.report_router import router as report_router
 from audit_set.viewer_router import router as viewer_router
 from audit_set.auditor_router import router as auditor_router
 from auth.user_signature_router import router as user_signature_router
+from audit_set.employee_router import router as employee_router
 from health_router import router as health_full_router
 
 settings = get_settings()
@@ -105,6 +106,7 @@ app.include_router(client_router)
 app.include_router(auditor_router)
 # User signature profile — all portal users (CB / auditor / client).
 app.include_router(user_signature_router)
+app.include_router(employee_router)
 # Full system health check — calculator smoke tests + DB connectivity (Prompt 36).
 app.include_router(health_full_router)
 

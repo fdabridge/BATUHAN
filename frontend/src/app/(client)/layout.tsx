@@ -10,6 +10,7 @@ const NAV = [
   { href: '/client/documents',   label: 'Documents'     },
   { href: '/client/assessments', label: 'Assessments'   },
   { href: '/client/messages',    label: 'Messages'      },
+  { href: '/client/employees',   label: 'Employees'     },
   { href: '/client/signature',   label: 'My Signature'  },
 ]
 
