@@ -64,6 +64,7 @@ export function CommitteeSection({
 
   const COMMITTEE_STAGES = [
     'agreement_signed',
+    'fr218_in_progress', 'fr218_complete',
     'stage1_scheduled', 'stage1_in_progress', 'stage1_complete',
     'stage2_scheduled', 'stage2_in_progress',
     'audit_scheduled', 'audit_in_progress',

@@ -50,6 +50,7 @@ export function DeclarationManagementSection({
 
   const relevantStatuses = new Set([
     'in_planning', 'quotation_sent', 'agreement_signed',
+    'fr218_in_progress', 'fr218_complete',
     'stage1_scheduled', 'stage1_in_progress', 'stage1_complete',
     'stage2_scheduled', 'stage2_in_progress',
     'audit_scheduled', 'audit_in_progress', 'under_review', 'certified',

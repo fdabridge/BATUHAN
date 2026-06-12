@@ -102,6 +102,16 @@ def _auto_advance_workflow(
     ))
     db.commit()
 
+    # Portal 47 — fire phase side effects (e.g. seed FR.218 slots and advance
+    # to fr218_in_progress when agreement is signed).
+    from audit_set.pipeline_triggers import fire_phase_triggers
+    fire_phase_triggers(
+        audit_set_id=audit_set.id,
+        new_status=to_status,
+        triggered_by=triggered_by,
+        db=db,
+    )
+
     client_user = auth_db.query(PlatformUser).filter_by(
         audit_set_id=audit_set.id, role="client",
     ).first()
@@ -137,6 +147,33 @@ async def release_document(
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
     if not audit_set:
         raise HTTPException(404, "Audit set not found")
+
+    # Portal 47 — gate: cannot release the agreement (FR.221) until the
+    # quotation (FR.220) has been fully countersigned by GM and a quotation
+    # doc exists in the released (or pending-client-sign) state.
+    if document_type == "agreement":
+        quotation = (
+            db.query(AuditSetSharedDocument)
+            .filter_by(audit_set_id=audit_set_id, document_type="quotation")
+            .order_by(AuditSetSharedDocument.released_at.desc())
+            .first()
+        )
+        if not quotation:
+            raise HTTPException(
+                400,
+                "Cannot release the agreement before a quotation (FR.220) has been issued.",
+            )
+        quotation_unsigned = (
+            db.query(AuditDocumentSignature)
+            .filter_by(document_id=quotation.id, required=True)
+            .filter(AuditDocumentSignature.signed_at.is_(None))
+            .count()
+        )
+        if quotation_unsigned > 0:
+            raise HTTPException(
+                400,
+                "Cannot release the agreement: the quotation (FR.220) is still awaiting GM signature.",
+            )
 
     # Persist the uploaded file alongside auditor uploads, under a sibling folder
     settings = get_settings()

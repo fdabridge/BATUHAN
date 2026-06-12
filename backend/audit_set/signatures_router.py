@@ -176,6 +176,17 @@ def sign_direct(
                         ))
 
     db.commit()
+
+    # Portal 47 — if this was an FR.218 slot, check whether the document is
+    # now fully signed and auto-advance fr218_in_progress → fr218_complete.
+    if sig.document_type == "FR218":
+        from audit_set.pipeline_triggers import check_fr218_completion
+        check_fr218_completion(
+            audit_set_id=audit_set_id,
+            triggered_by=current_user.id,
+            db=db,
+        )
+
     return {"signed": True, "signed_at": sig.signed_at.isoformat()}
 
 

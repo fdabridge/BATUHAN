@@ -15,9 +15,10 @@ Endpoints:
 from __future__ import annotations
 import hashlib
 import secrets
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -248,12 +249,17 @@ def request_assessment_otp(
     return {"message": f"Code sent to {current_user.email}. Valid for {OTP_EXPIRY} minutes."}
 
 
+class SignAssessmentOTPBody(BaseModel):
+    signed_date: Optional[date] = None
+
+
 @router.post("/client/my-audit-set/assessments/{aid}/sign/verify")
 def verify_assessment_signature(
     aid: str,
     otp: str,
     request: Request,
-    db: Session = Depends(get_db),
+    body:         SignAssessmentOTPBody = Body(default_factory=SignAssessmentOTPBody),
+    db:           Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     a = _get_client_assessment(aid, current_user, db)
@@ -268,8 +274,12 @@ def verify_assessment_signature(
     if _hash(otp.strip()) != a.otp_hash:
         raise HTTPException(400, "Invalid code.")
 
+    signed_dt = (
+        datetime.combine(body.signed_date, datetime.min.time())
+        if body.signed_date else datetime.utcnow()
+    )
     a.signed_by      = current_user.id
-    a.signed_at      = datetime.utcnow()
+    a.signed_at      = signed_dt
     a.signed_ip      = request.client.host if request.client else None
     a.otp_hash       = None
     a.otp_expires_at = None
@@ -278,11 +288,16 @@ def verify_assessment_signature(
     return {"signed": True, "signed_at": a.signed_at.isoformat()}
 
 
+class SignAssessmentDirectBody(BaseModel):
+    signed_date: Optional[date] = None
+
+
 # ── Client: direct-sign (no OTP) ─────────────────────────────────────────────
 
 @router.post("/client/my-audit-set/assessments/{aid}/sign/direct")
 def sign_assessment_direct(
     aid: str,
+    body:         SignAssessmentDirectBody = Body(default_factory=SignAssessmentDirectBody),
     db:           Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
@@ -293,7 +308,10 @@ def sign_assessment_direct(
         raise HTTPException(400, "Rating must be set before signing — save a draft first")
 
     a.signed_by = current_user.id
-    a.signed_at = datetime.utcnow()
+    a.signed_at = (
+        datetime.combine(body.signed_date, datetime.min.time())
+        if body.signed_date else datetime.utcnow()
+    )
     db.commit()
     db.refresh(a)
     return _assessment_dict(a)

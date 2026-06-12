@@ -172,6 +172,8 @@ class AuditSet(Base):
     #   agreement_signed  → FR.220 + FR.221 both signed by client
     #
     #   --- Initial certification only ---
+    #   fr218_in_progress  → application review (FR.218) opened, awaiting signatures
+    #   fr218_complete     → FR.218 fully signed (planner + optional reviewer + cert manager)
     #   stage1_scheduled   → Stage 1 audit dates confirmed
     #   stage1_in_progress → Stage 1 audit underway
     #   stage1_complete    → Stage 1 done, gate to Stage 2

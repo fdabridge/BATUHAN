@@ -522,6 +522,7 @@ def _commit_existing_signing_record(
             doc.otp_expires_at = None
 
             audit_set = db.query(AuditSet).filter_by(id=doc.audit_set_id).first()
+            advanced_to_agreement_signed = False
             if audit_set and doc.document_type == "agreement":
                 if audit_set.workflow_status in ("quotation_sent", "quotation_accepted"):
                     old_status = audit_set.workflow_status
@@ -533,7 +534,18 @@ def _commit_existing_signing_record(
                         triggered_by=current_user.id,
                         notes="Agreement signed by client via Certiva viewer",
                     ))
+                    advanced_to_agreement_signed = True
             db.commit()
+
+            # Portal 47 — kick off FR.218 application review phase
+            if advanced_to_agreement_signed:
+                from audit_set.pipeline_triggers import fire_phase_triggers
+                fire_phase_triggers(
+                    audit_set_id=doc.audit_set_id,
+                    new_status="agreement_signed",
+                    triggered_by=current_user.id,
+                    db=db,
+                )
 
         else:
             role_label = SIG_TO_ROLE.get(sig_key)

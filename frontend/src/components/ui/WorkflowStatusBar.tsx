@@ -17,6 +17,8 @@ const INITIAL_STEPS = [
   { key: 'in_planning',        label: 'Planning'   },
   { key: 'quotation_sent',     label: 'Quotation'  },
   { key: 'agreement_signed',   label: 'Agreement'  },
+  { key: 'fr218_in_progress',  label: 'FR.218'     },
+  { key: 'fr218_complete',     label: 'FR.218 ✓'   },
   { key: 'stage1_scheduled',   label: 'Stage 1'    },
   { key: 'stage1_in_progress', label: 'S1 Audit'   },
   { key: 'stage1_complete',    label: 'S1 Done'    },
@@ -57,8 +59,16 @@ const INITIAL_PANELS: Record<string, ActionPanel> = {
     body: 'The quotation has been sent. The client needs to sign it via their portal. Status will advance automatically when they sign.',
   },
   agreement_signed: {
-    heading: 'Agreement confirmed — ready for Stage 1',
-    body: 'The client has signed the agreement. Schedule the Stage 1 (document review) audit dates to proceed.',
+    heading: 'Agreement confirmed — application review pending',
+    body: 'The client has signed the agreement. FR.218 application review will open automatically; if you do not see it, refresh the page.',
+  },
+  fr218_in_progress: {
+    heading: 'FR.218 application review in progress',
+    body: 'The Planning Officer, optional independent reviewer (FSMS/ISMS only), and Certification Manager must sign FR.218 before Stage 1 can be scheduled. Track signatures in the Internal Approvals section below.',
+  },
+  fr218_complete: {
+    heading: 'FR.218 complete — ready for Stage 1',
+    body: 'Application review is signed off. Schedule the Stage 1 (document review) audit dates to proceed.',
     cta: { label: 'Schedule Stage 1', nextStatus: 'stage1_scheduled' },
   },
   stage1_scheduled: {
@@ -209,6 +219,8 @@ export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, 
               <option value="in_planning">In Planning</option>
               <option value="quotation_sent">Quotation Sent</option>
               <option value="agreement_signed">Agreement Signed</option>
+              <option value="fr218_in_progress">FR.218 In Progress</option>
+              <option value="fr218_complete">FR.218 Complete</option>
               <option value="stage1_scheduled">Stage 1 Scheduled</option>
               <option value="stage1_in_progress">Stage 1 In Progress</option>
               <option value="stage1_complete">Stage 1 Complete</option>

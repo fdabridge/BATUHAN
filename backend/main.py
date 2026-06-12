@@ -139,6 +139,46 @@ def on_startup():
         finally:
             db.close()
 
+    # Portal 47 — backfill: any audit set still at agreement_signed without
+    # FR.218 slots gets seeded and auto-advanced to fr218_in_progress.
+    try:
+        from audit_set.db_models import (
+            AuditSet, AuditDocumentSignature, AuditSetStatusEvent,
+            get_db as audit_get_db,
+        )
+        from audit_set.pipeline_triggers import seed_fr218_slots
+        from datetime import datetime as _dt
+        adb = next(audit_get_db())
+        try:
+            stuck = adb.query(AuditSet).filter_by(workflow_status="agreement_signed").all()
+            backfilled = 0
+            for aset in stuck:
+                has_slots = (
+                    adb.query(AuditDocumentSignature)
+                    .filter_by(audit_set_id=aset.id, document_type="FR218")
+                    .first()
+                )
+                if has_slots:
+                    continue
+                seed_fr218_slots(aset, triggered_by="system_backfill", db=adb)
+                aset.workflow_status = "fr218_in_progress"
+                adb.add(AuditSetStatusEvent(
+                    audit_set_id=aset.id,
+                    from_status="agreement_signed",
+                    to_status="fr218_in_progress",
+                    triggered_by="system_backfill",
+                    triggered_at=_dt.utcnow(),
+                    notes="Portal 47 backfill: seeded FR.218 slots + advanced",
+                ))
+                backfilled += 1
+            adb.commit()
+            if backfilled:
+                logger.info("[BATUHAN] Portal 47 backfill: %d audit set(s) advanced to fr218_in_progress", backfilled)
+        finally:
+            adb.close()
+    except Exception as exc:
+        logger.warning("[BATUHAN] Portal 47 backfill skipped: %s", exc)
+
     logger.info("All DB tables initialised.")
 
 
