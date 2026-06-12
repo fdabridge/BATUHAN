@@ -17,9 +17,11 @@ from __future__ import annotations
 import hashlib
 import os
 import secrets
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile
+from pydantic import BaseModel
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -239,12 +241,17 @@ def la_request_otp(
     return {"message": f"Code sent to {current_user.email}. Valid for {OTP_EXPIRY} minutes."}
 
 
+class SignReportBody(BaseModel):
+    signed_date: Optional[date] = None
+
+
 @router.post("/audit-sets/{audit_set_id}/audit-reports/{rid}/sign/la/verify")
 def la_verify_otp(
     audit_set_id: str,
     rid: str,
     otp: str,
     request: Request,
+    body:    SignReportBody = Body(default_factory=SignReportBody),
     db:      Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
@@ -264,8 +271,12 @@ def la_verify_otp(
     if _hash(otp.strip()) != report.la_otp_hash:
         raise HTTPException(400, "Invalid code.")
 
+    signed_dt = (
+        datetime.combine(body.signed_date, datetime.min.time())
+        if body.signed_date else datetime.utcnow()
+    )
     report.la_user_id      = current_user.id
-    report.la_signed_at    = datetime.utcnow()
+    report.la_signed_at    = signed_dt
     report.la_signed_ip    = request.client.host if request.client else None
     report.la_otp_hash     = None
     report.la_otp_expires  = None
@@ -303,7 +314,8 @@ def la_verify_otp(
 def la_sign_direct(
     audit_set_id: str,
     rid: str,
-    db: Session = Depends(get_db),
+    body: SignReportBody = Body(default_factory=SignReportBody),
+    db:   Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     report = db.query(AuditSetAuditReport).filter_by(
@@ -317,7 +329,10 @@ def la_sign_direct(
     if report.status not in ("pending_la",):
         raise HTTPException(400, f"Report status is '{report.status}', expected 'pending_la'")
 
-    report.la_signed_at = datetime.utcnow()
+    report.la_signed_at = (
+        datetime.combine(body.signed_date, datetime.min.time())
+        if body.signed_date else datetime.utcnow()
+    )
     report.status       = "pending_review"
     db.commit()
     db.refresh(report)
@@ -390,6 +405,7 @@ def review_verify_otp(
     rid: str,
     otp: str,
     request: Request,
+    body:    SignReportBody = Body(default_factory=SignReportBody),
     db:      Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
@@ -409,8 +425,12 @@ def review_verify_otp(
     if _hash(otp.strip()) != report.reviewer_otp_hash:
         raise HTTPException(400, "Invalid code.")
 
+    signed_dt = (
+        datetime.combine(body.signed_date, datetime.min.time())
+        if body.signed_date else datetime.utcnow()
+    )
     report.reviewer_user_id      = current_user.id
-    report.reviewer_signed_at    = datetime.utcnow()
+    report.reviewer_signed_at    = signed_dt
     report.reviewer_signed_ip    = request.client.host if request.client else None
     report.reviewer_otp_hash     = None
     report.reviewer_otp_expires  = None
@@ -421,7 +441,7 @@ def review_verify_otp(
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
     if audit_set and audit_set.workflow_status == "under_review":
         audit_set.workflow_status  = "certified"
-        audit_set.cert_issued_date = datetime.utcnow().date()
+        audit_set.cert_issued_date = body.signed_date or datetime.utcnow().date()
         db.add(AuditSetStatusEvent(
             audit_set_id=audit_set_id,
             from_status="under_review",
@@ -460,7 +480,8 @@ def review_verify_otp(
 def review_sign_direct(
     audit_set_id: str,
     rid: str,
-    db: Session = Depends(get_db),
+    body: SignReportBody = Body(default_factory=SignReportBody),
+    db:   Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     # Admin and executive can always approve.
@@ -480,7 +501,10 @@ def review_sign_direct(
     if report.status != "pending_review":
         raise HTTPException(400, f"Report status is '{report.status}', expected 'pending_review'")
 
-    report.reviewer_signed_at = datetime.utcnow()
+    report.reviewer_signed_at = (
+        datetime.combine(body.signed_date, datetime.min.time())
+        if body.signed_date else datetime.utcnow()
+    )
     report.status             = "approved"
     db.commit()
     db.refresh(report)

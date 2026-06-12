@@ -59,6 +59,7 @@ export function MeetingAttendeesSection({
   const [error, setError] = useState('')
   const [signing, setSigning] = useState<Record<string, boolean>>({})
   const [signErr, setSignErr] = useState<Record<string, string>>({})
+  const [signDates, setSignDates] = useState<Record<string, string>>({})
 
   const load = useCallback(async () => {
     try {
@@ -120,9 +121,10 @@ export function MeetingAttendeesSection({
     setSigning(s => ({ ...s, [key]: true }))
     setSignErr(e => ({ ...e, [key]: '' }))
     try {
+      const signed_date = signDates[key] || new Date().toISOString().slice(0, 10)
       const r = await api.post<Attendee>(
         `/audit-sets/${auditSetId}/meeting-attendees/${attId}/sign-direct`,
-        { meeting_type: meetingType }
+        { meeting_type: meetingType, signed_date }
       )
       setAttendees(prev => prev.map(a => (a.id === attId ? r.data : a)))
     } catch (err: unknown) {
@@ -250,28 +252,44 @@ export function MeetingAttendeesSection({
                     <div className="flex items-center gap-2 flex-wrap justify-end">
                       <SignBadge signed={a.opening_signed} label="Opening" />
                       {!a.opening_signed && (
-                        <button
-                          type="button"
-                          onClick={() => handleDirectSign(a.id, 'opening')}
-                          disabled={signing[`${a.id}-opening`]}
-                          className="rounded px-2 py-0.5 text-xs text-certiva-primary border border-certiva-primary hover:bg-certiva-primary/5 disabled:opacity-50"
-                        >
-                          {signing[`${a.id}-opening`] ? '…' : 'Mark Signed'}
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="date"
+                            value={signDates[`${a.id}-opening`] || new Date().toISOString().slice(0, 10)}
+                            onChange={e => setSignDates(prev => ({ ...prev, [`${a.id}-opening`]: e.target.value }))}
+                            className="rounded border px-1.5 py-0.5 text-xs"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleDirectSign(a.id, 'opening')}
+                            disabled={signing[`${a.id}-opening`]}
+                            className="rounded px-2 py-0.5 text-xs text-certiva-primary border border-certiva-primary hover:bg-certiva-primary/5 disabled:opacity-50"
+                          >
+                            {signing[`${a.id}-opening`] ? '…' : 'Mark Signed'}
+                          </button>
+                        </div>
                       )}
                       {signErr[`${a.id}-opening`] && (
                         <span className="text-xs text-red-500">{signErr[`${a.id}-opening`]}</span>
                       )}
                       <SignBadge signed={a.closing_signed} label="Closing" />
                       {!a.closing_signed && (
-                        <button
-                          type="button"
-                          onClick={() => handleDirectSign(a.id, 'closing')}
-                          disabled={signing[`${a.id}-closing`]}
-                          className="rounded px-2 py-0.5 text-xs text-certiva-primary border border-certiva-primary hover:bg-certiva-primary/5 disabled:opacity-50"
-                        >
-                          {signing[`${a.id}-closing`] ? '…' : 'Mark Signed'}
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="date"
+                            value={signDates[`${a.id}-closing`] || new Date().toISOString().slice(0, 10)}
+                            onChange={e => setSignDates(prev => ({ ...prev, [`${a.id}-closing`]: e.target.value }))}
+                            className="rounded border px-1.5 py-0.5 text-xs"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleDirectSign(a.id, 'closing')}
+                            disabled={signing[`${a.id}-closing`]}
+                            className="rounded px-2 py-0.5 text-xs text-certiva-primary border border-certiva-primary hover:bg-certiva-primary/5 disabled:opacity-50"
+                          >
+                            {signing[`${a.id}-closing`] ? '…' : 'Mark Signed'}
+                          </button>
+                        </div>
                       )}
                       {signErr[`${a.id}-closing`] && (
                         <span className="text-xs text-red-500">{signErr[`${a.id}-closing`]}</span>

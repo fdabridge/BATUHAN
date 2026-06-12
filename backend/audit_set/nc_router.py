@@ -20,9 +20,11 @@ from __future__ import annotations
 import hashlib
 import os
 import secrets
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile
+from pydantic import BaseModel
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -238,12 +240,17 @@ def la_request_otp(
     return {"message": f"Code sent to {current_user.email}. Valid for {OTP_EXPIRY} minutes."}
 
 
+class SignNCBody(BaseModel):
+    signed_date: Optional[date] = None
+
+
 @router.post("/audit-sets/{audit_set_id}/nc-forms/{nid}/sign/la/verify")
 def la_verify_otp(
     audit_set_id: str,
     nid: str,
     otp: str,
     request: Request,
+    body:     SignNCBody = Body(default_factory=SignNCBody),
     db:       Session = Depends(get_db),
     auth_db:  Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
@@ -261,8 +268,12 @@ def la_verify_otp(
     if _hash(otp.strip()) != nc.la_otp_hash:
         raise HTTPException(400, "Invalid code.")
 
+    signed_dt = (
+        datetime.combine(body.signed_date, datetime.min.time())
+        if body.signed_date else datetime.utcnow()
+    )
     nc.la_user_id   = current_user.id
-    nc.la_signed_at = datetime.utcnow()
+    nc.la_signed_at = signed_dt
     nc.la_signed_ip = request.client.host if request.client else None
     nc.la_otp_hash  = None
     nc.la_otp_expires = None
@@ -294,6 +305,7 @@ def la_verify_otp(
 def la_sign_direct(
     audit_set_id: str,
     nid: str,
+    body:         SignNCBody = Body(default_factory=SignNCBody),
     db:           Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
@@ -304,7 +316,10 @@ def la_sign_direct(
     if nc.la_signed_at:
         raise HTTPException(400, "Already signed by Lead Auditor")
 
-    nc.la_signed_at = datetime.utcnow()
+    nc.la_signed_at = (
+        datetime.combine(body.signed_date, datetime.min.time())
+        if body.signed_date else datetime.utcnow()
+    )
     nc.status       = "pending_client"
     db.commit()
     db.refresh(nc)
@@ -400,6 +415,7 @@ def client_nc_verify_otp(
     nid: str,
     otp: str,
     request: Request,
+    body:    SignNCBody = Body(default_factory=SignNCBody),
     db:      Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
@@ -413,8 +429,12 @@ def client_nc_verify_otp(
     if _hash(otp.strip()) != nc.client_otp_hash:
         raise HTTPException(400, "Invalid code.")
 
+    signed_dt = (
+        datetime.combine(body.signed_date, datetime.min.time())
+        if body.signed_date else datetime.utcnow()
+    )
     nc.client_user_id    = current_user.id
-    nc.client_signed_at  = datetime.utcnow()
+    nc.client_signed_at  = signed_dt
     nc.client_signed_ip  = request.client.host if request.client else None
     nc.client_otp_hash   = None
     nc.client_otp_expires = None
@@ -429,6 +449,7 @@ def client_nc_verify_otp(
 @router.post("/client/my-audit-set/nc-forms/{nid}/sign/direct")
 def client_sign_direct(
     nid: str,
+    body:         SignNCBody = Body(default_factory=SignNCBody),
     db:           Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
@@ -438,7 +459,10 @@ def client_sign_direct(
     if nc.client_signed_at:
         raise HTTPException(400, "Already signed by client")
 
-    nc.client_signed_at = datetime.utcnow()
+    nc.client_signed_at = (
+        datetime.combine(body.signed_date, datetime.min.time())
+        if body.signed_date else datetime.utcnow()
+    )
     nc.status           = "complete"
     db.commit()
     db.refresh(nc)

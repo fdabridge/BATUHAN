@@ -8,9 +8,10 @@ Two routers:
 from __future__ import annotations
 import hashlib
 import secrets
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -134,6 +135,7 @@ def add_attendee(
 
 class DirectSignSchema(BaseModel):
     meeting_type: str  # "opening" | "closing"
+    signed_date:  Optional[date] = None
 
 
 @protected_router.post("/{audit_set_id}/meeting-attendees/{att_id}/sign-direct")
@@ -155,15 +157,18 @@ def sign_attendee_direct(
     if not att:
         raise HTTPException(404, "Attendee not found")
 
-    now = datetime.utcnow()
+    signed_dt = (
+        datetime.combine(body.signed_date, datetime.min.time())
+        if body.signed_date else datetime.utcnow()
+    )
     if body.meeting_type == "opening":
         if att.opening_signed_at:
             raise HTTPException(400, "Opening meeting already marked as signed")
-        att.opening_signed_at = now
+        att.opening_signed_at = signed_dt
     else:
         if att.closing_signed_at:
             raise HTTPException(400, "Closing meeting already marked as signed")
-        att.closing_signed_at = now
+        att.closing_signed_at = signed_dt
 
     db.commit()
     db.refresh(att)
@@ -313,18 +318,28 @@ def request_meeting_otp(
     return {"message": f"Code sent to your registered email. Valid for {OTP_EXPIRY_MIN} minutes."}
 
 
+class VerifyMeetingOTPBody(BaseModel):
+    signed_date: Optional[date] = None
+
+
 @public_router.post("/{token}/verify")
 def verify_meeting_signature(
     token: str,
     event_type: str,
     otp: str,
     request: Request,
-    db: Session = Depends(get_db),
+    body: VerifyMeetingOTPBody = Body(default_factory=VerifyMeetingOTPBody),
+    db:   Session = Depends(get_db),
 ):
     if event_type not in ("opening", "closing"):
         raise HTTPException(400, "event_type must be 'opening' or 'closing'")
 
     att = _get_attendee_by_token(token, db)
+
+    signed_dt = (
+        datetime.combine(body.signed_date, datetime.min.time())
+        if body.signed_date else datetime.utcnow()
+    )
 
     if event_type == "opening":
         if att.opening_signed_at:
@@ -335,7 +350,7 @@ def verify_meeting_signature(
             raise HTTPException(400, "OTP expired. Please request a new one.")
         if _hash(otp.strip()) != att.opening_otp_hash:
             raise HTTPException(400, "Invalid code.")
-        att.opening_signed_at   = datetime.utcnow()
+        att.opening_signed_at   = signed_dt
         att.opening_signed_ip   = request.client.host if request.client else None
         att.opening_otp_hash    = None
         att.opening_otp_expires = None
@@ -348,7 +363,7 @@ def verify_meeting_signature(
             raise HTTPException(400, "OTP expired. Please request a new one.")
         if _hash(otp.strip()) != att.closing_otp_hash:
             raise HTTPException(400, "Invalid code.")
-        att.closing_signed_at   = datetime.utcnow()
+        att.closing_signed_at   = signed_dt
         att.closing_signed_ip   = request.client.host if request.client else None
         att.closing_otp_hash    = None
         att.closing_otp_expires = None

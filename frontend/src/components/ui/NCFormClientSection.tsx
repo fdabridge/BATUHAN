@@ -25,11 +25,14 @@ function fmtDate(iso: string | null) {
   })
 }
 
+const todayStr = () => new Date().toISOString().slice(0, 10)
+
 export function NCFormClientSection() {
   const [forms, setForms]     = useState<NCForm[]>([])
   const [loading, setLoading] = useState(true)
   const [signing, setSigning] = useState<Record<string, boolean>>({})
   const [signErrs, setSignErrs] = useState<Record<string, string>>({})
+  const [signDates, setSignDates] = useState<Record<string, string>>({})
 
   async function load() {
     try {
@@ -57,7 +60,8 @@ export function NCFormClientSection() {
     setSigning(s => ({ ...s, [id]: true }))
     setSignErrs(e => ({ ...e, [id]: '' }))
     try {
-      await api.post(`/client/my-audit-set/nc-forms/${id}/sign/direct`)
+      const signed_date = signDates[id] || todayStr()
+      await api.post(`/client/my-audit-set/nc-forms/${id}/sign/direct`, { signed_date })
       setForms(prev => prev.map(f => f.id === id
         ? { ...f, status: 'complete', client_signed_at: new Date().toISOString() }
         : f
@@ -85,6 +89,8 @@ export function NCFormClientSection() {
             f={f}
             signing={!!signing[f.id]}
             signErr={signErrs[f.id] || ''}
+            signDate={signDates[f.id] || todayStr()}
+            onSignDateChange={d => setSignDates(prev => ({ ...prev, [f.id]: d }))}
             onDownload={() => download(f.id, f.file_name)}
             onSign={() => handleSign(f.id)}
           />
@@ -95,14 +101,16 @@ export function NCFormClientSection() {
 }
 
 interface NCFormRowProps {
-  f:         NCForm
-  signing:   boolean
-  signErr:   string
-  onDownload: () => void
-  onSign:     () => void
+  f:              NCForm
+  signing:        boolean
+  signErr:        string
+  signDate:       string
+  onSignDateChange: (d: string) => void
+  onDownload:     () => void
+  onSign:         () => void
 }
 
-function NCFormRow({ f, signing, signErr, onDownload, onSign }: NCFormRowProps) {
+function NCFormRow({ f, signing, signErr, signDate, onSignDateChange, onDownload, onSign }: NCFormRowProps) {
   const isSigned = f.status === 'complete'
 
   if (isSigned) {
@@ -141,14 +149,25 @@ function NCFormRow({ f, signing, signErr, onDownload, onSign }: NCFormRowProps) 
         </button>
       </div>
 
-      <button
-        type="button"
-        onClick={onSign}
-        disabled={signing}
-        className="rounded-lg bg-[#1A4731] px-4 py-2 text-sm text-white disabled:opacity-40 hover:bg-[#143828]"
-      >
-        {signing ? 'Signing…' : 'Sign NC Form'}
-      </button>
+      <div className="flex items-center gap-3">
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">Signing date</label>
+          <input
+            type="date"
+            value={signDate}
+            onChange={e => onSignDateChange(e.target.value)}
+            className="rounded-lg border px-2 py-1 text-sm"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={onSign}
+          disabled={signing}
+          className="self-end rounded-lg bg-[#1A4731] px-4 py-2 text-sm text-white disabled:opacity-40 hover:bg-[#143828]"
+        >
+          {signing ? 'Signing…' : 'Sign NC Form'}
+        </button>
+      </div>
 
       {signErr && (
         <p className="mt-1 text-xs text-red-500">{signErr}</p>

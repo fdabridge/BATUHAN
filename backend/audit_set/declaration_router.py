@@ -221,13 +221,18 @@ def declaration_request_otp(
     return {"message": f"Code sent to {current_user.email}. Valid for {OTP_EXPIRY} minutes."}
 
 
+class SignDeclarationOTPBody(BaseModel):
+    signed_date: Optional[date] = None
+
+
 @router.post("/audit-sets/{audit_set_id}/declarations/{did}/sign/verify")
 def declaration_verify_otp(
     audit_set_id: str,
     did: str,
     otp: str,
     request: Request,
-    db: Session = Depends(get_db),
+    body:    SignDeclarationOTPBody = Body(default_factory=SignDeclarationOTPBody),
+    db:      Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     decl = _get_own_declaration(did, audit_set_id, current_user, db)
@@ -241,7 +246,10 @@ def declaration_verify_otp(
         raise HTTPException(400, "Invalid code.")
 
     decl.signed_by      = current_user.id
-    decl.signed_at      = datetime.utcnow()
+    decl.signed_at      = (
+        datetime.combine(body.signed_date, datetime.min.time())
+        if body.signed_date else datetime.utcnow()
+    )
     decl.signed_ip      = request.client.host if request.client else None
     decl.otp_hash       = None
     decl.otp_expires_at = None

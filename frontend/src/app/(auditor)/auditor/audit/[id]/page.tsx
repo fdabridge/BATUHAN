@@ -185,6 +185,7 @@ function AuditorNCFormsView({ auditSetId }: { auditSetId: string }) {
   const [loading, setLoading]   = useState(true)
   const [signing, setSigning]   = useState<Record<string, boolean>>({})
   const [signErrs, setSignErrs] = useState<Record<string, string>>({})
+  const [signDates, setSignDates] = useState<Record<string, string>>({})
 
   const STAGE_LABELS: Record<string, string> = {
     stage_1: 'Stage 1', stage_2: 'Stage 2', surveillance: 'Surveillance',
@@ -213,7 +214,8 @@ function AuditorNCFormsView({ auditSetId }: { auditSetId: string }) {
     setSigning(s => ({ ...s, [id]: true }))
     setSignErrs(e => ({ ...e, [id]: '' }))
     try {
-      const r = await api.post(`/audit-sets/${auditSetId}/nc-forms/${id}/sign/la/direct`)
+      const signed_date = signDates[id] || new Date().toISOString().slice(0, 10)
+      const r = await api.post(`/audit-sets/${auditSetId}/nc-forms/${id}/sign/la/direct`, { signed_date })
       const updated = r.data as typeof forms[number]
       setForms(prev => prev.map(f => f.id === id ? { ...f, ...updated } : f))
     } catch (err: unknown) {
@@ -267,14 +269,25 @@ function AuditorNCFormsView({ auditSetId }: { auditSetId: string }) {
                     </button>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleSign(f.id)}
-                  disabled={signing[f.id]}
-                  className="rounded-lg bg-[#1A4731] px-4 py-2 text-sm text-white disabled:opacity-40 hover:bg-[#143828]"
-                >
-                  {signing[f.id] ? 'Signing…' : 'Sign NC Form'}
-                </button>
+                <div className="flex items-end gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Signing date</label>
+                    <input
+                      type="date"
+                      value={signDates[f.id] || new Date().toISOString().slice(0, 10)}
+                      onChange={e => setSignDates(prev => ({ ...prev, [f.id]: e.target.value }))}
+                      className="rounded-lg border px-2 py-1 text-sm"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleSign(f.id)}
+                    disabled={signing[f.id]}
+                    className="rounded-lg bg-[#1A4731] px-4 py-2 text-sm text-white disabled:opacity-40 hover:bg-[#143828]"
+                  >
+                    {signing[f.id] ? 'Signing…' : 'Sign NC Form'}
+                  </button>
+                </div>
                 {signErrs[f.id] && (
                   <p className="mt-1 text-xs text-red-500">{signErrs[f.id]}</p>
                 )}
@@ -348,6 +361,7 @@ function AuditorDeclarationsView({
   const [signing, setSigning]   = useState<Record<string, boolean>>({})
   const [signErrs, setSignErrs] = useState<Record<string, string>>({})
   const [confirmed, setConfirmed] = useState<Record<string, boolean>>({})
+  const [signDates, setSignDates] = useState<Record<string, string>>({})
 
   const STAGE_LABELS: Record<string, string> = {
     stage_1: 'Stage 1', stage_2: 'Stage 2',
@@ -379,7 +393,8 @@ function AuditorDeclarationsView({
     setSigning(s => ({ ...s, [id]: true }))
     setSignErrs(e => ({ ...e, [id]: '' }))
     try {
-      await api.post(`/audit-sets/${auditSetId}/declarations/${id}/sign/direct`)
+      const signed_date = signDates[id] || new Date().toISOString().slice(0, 10)
+      await api.post(`/audit-sets/${auditSetId}/declarations/${id}/sign/direct`, { signed_date })
       setDeclarations(prev => prev.map(d =>
         d.id === id ? { ...d, is_signed: true, signed_at: new Date().toISOString() } : d,
       ))
@@ -444,14 +459,25 @@ function AuditorDeclarationsView({
             </label>
           </div>
 
-          <button
-            type="button"
-            onClick={() => handleSign(d.id)}
-            disabled={!confirmed[d.id] || signing[d.id]}
-            className="rounded-lg bg-[#1A4731] px-5 py-2.5 text-sm font-medium text-white disabled:opacity-40 hover:bg-[#143828]"
-          >
-            {signing[d.id] ? 'Signing…' : 'Sign Declaration'}
-          </button>
+          <div className="flex items-end gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Signing date</label>
+              <input
+                type="date"
+                value={signDates[d.id] || new Date().toISOString().slice(0, 10)}
+                onChange={e => setSignDates(prev => ({ ...prev, [d.id]: e.target.value }))}
+                className="rounded-lg border px-2 py-1 text-sm"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => handleSign(d.id)}
+              disabled={!confirmed[d.id] || signing[d.id]}
+              className="rounded-lg bg-[#1A4731] px-5 py-2.5 text-sm font-medium text-white disabled:opacity-40 hover:bg-[#143828]"
+            >
+              {signing[d.id] ? 'Signing…' : 'Sign Declaration'}
+            </button>
+          </div>
           {signErrs[d.id] && (
             <p className="mt-1 text-xs text-red-500">{signErrs[d.id]}</p>
           )}
@@ -519,6 +545,7 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [signing, setSigning]   = useState<Record<string, boolean>>({})
   const [signMsg, setSignMsg]   = useState<Record<string, string>>({})
+  const [signDates, setSignDates] = useState<Record<string, string>>({})
 
   const STAGE_LABELS: Record<string, string> = {
     stage_1: 'Stage 1', stage_2: 'Stage 2',
@@ -583,7 +610,8 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
     setSigning(s => ({ ...s, [id]: true }))
     setSignMsg(m => ({ ...m, [id]: '' }))
     try {
-      await api.post(`/audit-sets/${auditSetId}/audit-reports/${id}/sign/la/direct`)
+      const signed_date = signDates[id] || new Date().toISOString().slice(0, 10)
+      await api.post(`/audit-sets/${auditSetId}/audit-reports/${id}/sign/la/direct`, { signed_date })
       setReports(prev => prev.map(r =>
         r.id === id
           ? { ...r, status: 'pending_review', la_signed_at: new Date().toISOString() }
@@ -711,15 +739,26 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
                     </button>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleSignReport(r.id)}
-                  disabled={signing[r.id]}
-                  className="flex items-center gap-1.5 rounded-lg bg-[#1A4731] px-4 py-2 text-sm text-white disabled:opacity-40"
-                >
-                  {signing[r.id] && <span className="animate-spin text-sm">⟳</span>}
-                  {signing[r.id] ? 'Signing…' : 'Sign Report'}
-                </button>
+                <div className="flex items-end gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Signing date</label>
+                    <input
+                      type="date"
+                      value={signDates[r.id] || new Date().toISOString().slice(0, 10)}
+                      onChange={e => setSignDates(prev => ({ ...prev, [r.id]: e.target.value }))}
+                      className="rounded-lg border px-2 py-1 text-sm"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleSignReport(r.id)}
+                    disabled={signing[r.id]}
+                    className="flex items-center gap-1.5 rounded-lg bg-[#1A4731] px-4 py-2 text-sm text-white disabled:opacity-40"
+                  >
+                    {signing[r.id] && <span className="animate-spin text-sm">⟳</span>}
+                    {signing[r.id] ? 'Signing…' : 'Sign Report'}
+                  </button>
+                </div>
                 {signMsg[r.id] && (
                   <p className="mt-1 text-xs text-red-500">{signMsg[r.id]}</p>
                 )}
@@ -792,6 +831,7 @@ export default function AuditorAuditDetail() {
   const [uploadLabel, setUploadLabel] = useState('')
   const [uploadFile, setUploadFile]   = useState<File | null>(null)
   const [uploadMsg, setUploadMsg]     = useState('')
+  const [uploadDate, setUploadDate]   = useState(() => new Date().toISOString().slice(0, 10))
 
   useEffect(() => {
     api.get<AssignmentDetail>(`/auditor/my-assignments/${id}`)
@@ -832,13 +872,14 @@ export default function AuditorAuditDetail() {
       const form = new FormData()
       form.append('file', uploadFile)
       await api.post(
-        `/audit-sets/${id}/documents/upload?label=${encodeURIComponent(uploadLabel)}`,
+        `/audit-sets/${id}/documents/upload?label=${encodeURIComponent(uploadLabel)}&upload_date=${uploadDate}`,
         form,
         { headers: { 'Content-Type': 'multipart/form-data' } },
       )
       setUploadMsg('Document uploaded successfully.')
       setUploadFile(null)
       setUploadLabel('')
+      setUploadDate(new Date().toISOString().slice(0, 10))
     } catch (e: unknown) {
       const detail = (e as { response?: { data?: { detail?: string } } })
         ?.response?.data?.detail
@@ -984,6 +1025,15 @@ export default function AuditorAuditDetail() {
               placeholder="e.g. Stage 2 Audit Report, FR.222 filled"
               value={uploadLabel}
               onChange={(e) => setUploadLabel(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Upload date</label>
+            <input
+              type="date"
+              value={uploadDate}
+              onChange={(e) => setUploadDate(e.target.value)}
+              className="w-full rounded-lg border px-3 py-2 text-sm"
             />
           </div>
           <div>

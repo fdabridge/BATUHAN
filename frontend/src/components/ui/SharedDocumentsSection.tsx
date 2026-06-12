@@ -39,6 +39,7 @@ export function SharedDocumentsSection({ auditSetId }: { auditSetId: string }) {
   const [file, setFile]       = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError]     = useState('')
+  const [releaseDate, setReleaseDate] = useState(() => new Date().toISOString().slice(0, 10))
   const fileRef = useRef<HTMLInputElement>(null)
 
   async function load() {
@@ -61,11 +62,13 @@ export function SharedDocumentsSection({ auditSetId }: { auditSetId: string }) {
       const fd = new FormData()
       fd.append('label', label.trim())
       fd.append('document_type', docType)
+      fd.append('release_date', releaseDate)
       fd.append('file', file)
       await api.post(`/audit-sets/${auditSetId}/documents/release`, fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       setLabel(''); setFile(null); setDocType('quotation')
+      setReleaseDate(new Date().toISOString().slice(0, 10))
       if (fileRef.current) fileRef.current.value = ''
       setShowForm(false)
       await load()
@@ -114,7 +117,7 @@ export function SharedDocumentsSection({ auditSetId }: { auditSetId: string }) {
 
       {showForm && (
         <div className="mb-4 rounded-xl border bg-white p-4">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div>
               <label className="block text-xs font-medium text-gray-500">Label</label>
               <input
@@ -135,6 +138,15 @@ export function SharedDocumentsSection({ auditSetId }: { auditSetId: string }) {
                   <option key={t.value} value={t.value}>{t.label}</option>
                 ))}
               </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500">Release date</label>
+              <input
+                type="date"
+                value={releaseDate}
+                onChange={(e) => setReleaseDate(e.target.value)}
+                className="mt-1 w-full rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A4731]/30"
+              />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-500">File</label>

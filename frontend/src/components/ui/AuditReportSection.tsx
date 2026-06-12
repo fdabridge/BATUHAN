@@ -45,6 +45,7 @@ export function AuditReportSection({
   const [loading, setLoading]   = useState(true)
   const [approving, setApproving] = useState<Record<string, boolean>>({})
   const [errors,    setErrors]    = useState<Record<string, string>>({})
+  const [approveDates, setApproveDates] = useState<Record<string, string>>({})
 
   const relevantStatuses = new Set([
     'stage1_in_progress', 'stage1_complete',
@@ -79,8 +80,10 @@ export function AuditReportSection({
     setApproving(a => ({ ...a, [id]: true }))
     setErrors(e => ({ ...e, [id]: '' }))
     try {
+      const signed_date = approveDates[id] || new Date().toISOString().slice(0, 10)
       const r = await api.post<AuditReport>(
-        `/audit-sets/${auditSetId}/audit-reports/${id}/sign/review/direct`
+        `/audit-sets/${auditSetId}/audit-reports/${id}/sign/review/direct`,
+        { signed_date }
       )
       setReports(prev =>
         prev.map(rpt => (rpt.id === id ? { ...rpt, ...r.data, can_review: false } : rpt))
@@ -136,19 +139,30 @@ export function AuditReportSection({
                 </div>
 
                 {r.can_review && r.status === 'pending_review' && (
-                  <div className="mt-2">
-                    <button
-                      type="button"
-                      onClick={() => handleApprove(r.id)}
-                      disabled={approving[r.id]}
-                      className="flex items-center gap-1.5 rounded-lg bg-[#1A4731] px-4 py-2 text-sm text-white disabled:opacity-40 hover:bg-[#143828]"
-                    >
-                      {approving[r.id] && <span className="animate-spin text-sm">⟳</span>}
-                      {approving[r.id] ? 'Approving…' : 'Approve Report'}
-                    </button>
-                    {errors[r.id] && (
-                      <p className="mt-1 text-xs text-red-500">{errors[r.id]}</p>
-                    )}
+                  <div className="mt-2 flex items-end gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Approval date</label>
+                      <input
+                        type="date"
+                        value={approveDates[r.id] || new Date().toISOString().slice(0, 10)}
+                        onChange={e => setApproveDates(prev => ({ ...prev, [r.id]: e.target.value }))}
+                        className="rounded-lg border px-2 py-1 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => handleApprove(r.id)}
+                        disabled={approving[r.id]}
+                        className="flex items-center gap-1.5 rounded-lg bg-[#1A4731] px-4 py-2 text-sm text-white disabled:opacity-40 hover:bg-[#143828]"
+                      >
+                        {approving[r.id] && <span className="animate-spin text-sm">⟳</span>}
+                        {approving[r.id] ? 'Approving…' : 'Approve Report'}
+                      </button>
+                      {errors[r.id] && (
+                        <p className="mt-1 text-xs text-red-500">{errors[r.id]}</p>
+                      )}
+                    </div>
                   </div>
                 )}
                 {r.status === 'approved' && (

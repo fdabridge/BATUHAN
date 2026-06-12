@@ -8,9 +8,11 @@ from __future__ import annotations
 import hashlib
 import os
 import secrets
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile
+from pydantic import BaseModel
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -122,6 +124,7 @@ async def release_document(
     audit_set_id: str,
     label: str = Form(...),
     document_type: str = Form(...),
+    release_date: Optional[date] = Form(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
@@ -150,6 +153,10 @@ async def release_document(
     requires_cb_sig = document_type in ("quotation", "agreement")
     initial_status  = "pending_cb_signature" if requires_cb_sig else "released"
 
+    released_dt = (
+        datetime.combine(release_date, datetime.min.time())
+        if release_date else datetime.utcnow()
+    )
     doc = AuditSetSharedDocument(
         audit_set_id=audit_set_id,
         label=label,
@@ -158,7 +165,7 @@ async def release_document(
         direction="cb_to_client",
         status=initial_status,
         released_by=current_user.id,
-        released_at=datetime.utcnow(),
+        released_at=released_dt,
     )
     db.add(doc)
     db.flush()  # populate doc.id before linking signature
@@ -285,12 +292,17 @@ def request_sign_otp(
     return {"message": f"OTP sent to {current_user.email}. Valid for {OTP_EXPIRY_MINUTES} minutes."}
 
 
+class SignDocOTPBody(BaseModel):
+    signed_date: Optional[date] = None
+
+
 @router.post("/{audit_set_id}/documents/{doc_id}/sign/verify")
 def verify_sign_otp(
     audit_set_id: str,
     doc_id: str,
     request: Request,
     otp: str,
+    body: SignDocOTPBody = Body(default_factory=SignDocOTPBody),
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
@@ -316,7 +328,10 @@ def verify_sign_otp(
 
     doc.status = "signed"
     doc.signed_by = current_user.id
-    doc.signed_at = datetime.utcnow()
+    doc.signed_at = (
+        datetime.combine(body.signed_date, datetime.min.time())
+        if body.signed_date else datetime.utcnow()
+    )
     doc.signed_ip = request.client.host if request.client else None
     doc.otp_hash = None
     doc.otp_expires_at = None
@@ -342,6 +357,7 @@ def verify_sign_otp(
 async def upload_audit_document(
     audit_set_id: str,
     label: str,
+    upload_date: Optional[date] = None,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
@@ -361,6 +377,10 @@ async def upload_audit_document(
     with open(file_path, "wb") as f:
         f.write(content)
 
+    uploaded_dt = (
+        datetime.combine(upload_date, datetime.min.time())
+        if upload_date else datetime.utcnow()
+    )
     doc = AuditSetSharedDocument(
         audit_set_id=audit_set_id,
         label=label or (file.filename or "upload"),
@@ -369,7 +389,7 @@ async def upload_audit_document(
         direction="auditor_to_cb",
         status="uploaded",
         released_by=current_user.id,
-        released_at=datetime.utcnow(),
+        released_at=uploaded_dt,
     )
     db.add(doc)
     db.commit()
