@@ -40,6 +40,7 @@ const SIG_KEY_LABELS: Record<string, string> = {
   LEAD_AUDITOR:    'Lead Auditor',
   CLIENT:          'Organisation Representative',
   AUDITOR_MEMBER:  'Audit Team Member',
+  GM:              'General Manager',
 }
 
 function todayIso() {

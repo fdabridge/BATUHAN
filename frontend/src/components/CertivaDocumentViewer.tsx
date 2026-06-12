@@ -54,6 +54,7 @@ const SIG_LABELS: Record<string, string> = {
   LEAD_AUDITOR:    'Lead Auditor',
   CLIENT:          'Organisation Representative',
   AUDITOR_MEMBER:  'Audit Team Member',
+  GM:              'General Manager',
 }
 function sigLabel(key: string) { return SIG_LABELS[key] ?? key }
 

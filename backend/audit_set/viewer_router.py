@@ -56,6 +56,7 @@ ROLE_TO_SIG: dict[str, str] = {
     "cb_cert_manager": "CB_CERT_MANAGER",
     "cb_reviewer":     "CB_REVIEWER",
     "lead_auditor":    "LEAD_AUDITOR",
+    "gm":              "GM",
 }
 SIG_TO_ROLE: dict[str, str] = {v: k for k, v in ROLE_TO_SIG.items()}
 
@@ -243,7 +244,7 @@ def _assert_can_sign(
                 raise HTTPException(
                     400,
                     f"Document is not available for signing (status: {doc.status}). "
-                    "It may still be awaiting the CB planner's signature.",
+                    "It may still be awaiting the General Manager's signature.",
                 )
             if doc.signed_at:
                 raise HTTPException(400, "Document already signed")
@@ -269,7 +270,8 @@ def _assert_can_sign(
             if sig_record.signer_user_id is None:
                 eligible = (
                     (role_label == "cb_cert_manager" and current_user.role in ("admin", "executive"))
-                    or (role_label == "cb_planner" and current_user.role in ("planner", "gm", "admin"))
+                    or (role_label == "cb_planner" and current_user.role in ("planner", "admin"))
+                    or (role_label == "gm" and current_user.role in ("gm", "admin"))
                 )
                 if not eligible:
                     raise HTTPException(403, "This signature slot is not assigned to you")
@@ -417,7 +419,8 @@ def _get_field_status(
         if sig_record.signer_user_id is None:
             can_claim = (
                 (role_label == "cb_cert_manager" and current_user.role in ("admin", "executive"))
-                or (role_label == "cb_planner" and current_user.role in ("planner", "gm", "admin"))
+                or (role_label == "cb_planner" and current_user.role in ("planner", "admin"))
+                or (role_label == "gm" and current_user.role in ("gm", "admin"))
             )
             if can_claim:
                 return _result("current_user")
@@ -574,7 +577,7 @@ def _commit_existing_signing_record(
                             from_status="in_planning",
                             to_status="quotation_sent",
                             triggered_by=current_user.id,
-                            notes="Quotation signed by CB planner and released via viewer",
+                            notes="Quotation signed by General Manager and released via viewer",
                         ))
                 db.commit()
             else:

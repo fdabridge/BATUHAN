@@ -175,8 +175,8 @@ async def release_document(
             audit_set_id=audit_set_id,
             document_id=doc.id,
             document_type=document_type,
-            signer_role_label="cb_planner",  # matches [SIG:CB_PLANNER] in DOCX template
-            signer_user_id=None,             # unassigned — planner or GM can claim and sign
+            signer_role_label="gm",          # matches [SIG:GM] in FR.220/FR.221 templates
+            signer_user_id=None,             # unassigned — GM (or admin) claims and signs
             signer_name=None,
             signer_email=None,
             required=True,
