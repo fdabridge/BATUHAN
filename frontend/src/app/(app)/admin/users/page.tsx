@@ -13,21 +13,25 @@ import type {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const ROLES: { value: UserRole; label: string }[] = [
-  { value: 'admin',     label: 'Admin' },
-  { value: 'planner',   label: 'Planner' },
-  { value: 'auditor',   label: 'Auditor' },
-  { value: 'officer',   label: 'Officer' },
-  { value: 'executive', label: 'Executive' },
-  { value: 'gm',        label: 'General Manager' },
+  { value: 'admin',                 label: 'Admin' },
+  { value: 'planner',               label: 'Planning Officer' },
+  { value: 'gm',                    label: 'General Manager' },
+  { value: 'certification_manager', label: 'Certification Manager' },
+  { value: 'auditor',               label: 'Auditor' },
+  { value: 'officer',               label: 'Officer' },
+  { value: 'executive',             label: 'Executive' },
+  { value: 'client',                label: 'Client' },
 ]
 
 const ROLE_PILL: Record<UserRole, string> = {
-  admin:     'bg-purple-50 text-purple-700',
-  planner:   'bg-blue-50 text-blue-700',
-  auditor:   'bg-certiva-surface text-certiva-primary',
-  officer:   'bg-amber-50 text-amber-700',
-  executive: 'bg-gray-100 text-gray-600',
-  gm:        'bg-rose-50 text-rose-700',
+  admin:                 'bg-purple-50 text-purple-700',
+  planner:               'bg-blue-50 text-blue-700',
+  auditor:               'bg-certiva-surface text-certiva-primary',
+  officer:               'bg-amber-50 text-amber-700',
+  executive:             'bg-gray-100 text-gray-600',
+  gm:                    'bg-rose-50 text-rose-700',
+  certification_manager: 'bg-emerald-50 text-emerald-700',
+  client:                'bg-sky-50 text-sky-700',
 }
 
 const inputCls = 'w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 placeholder-gray-400 outline-none focus:border-certiva-primary focus:ring-2 focus:ring-certiva-primary/20'
