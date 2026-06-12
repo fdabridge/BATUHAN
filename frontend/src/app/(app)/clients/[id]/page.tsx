@@ -1055,9 +1055,22 @@ function StageCard({
             {dropdownList
               .filter((a) => !edit.auditors.find((x) => (x.id || x.name) === (a.id || a.name)))
               .filter((a) => a.name !== edit.lead_auditor_name)
-              .map((a) => (
-                <option key={a.id ?? a.name} value={a.id ?? a.name}>{a.name}</option>
-              ))}
+              .map((a) => {
+                const avail = availableAuditors?.find((x) => x.name === a.name)
+                const isUnavailable = avail && !avail.available
+                const coverLabel = avail?.covered_scope && Object.keys(avail.covered_scope).length > 0
+                  ? ' — ' + Object.entries(avail.covered_scope)
+                      .filter(([, codes]) => (codes as string[]).length > 0)
+                      .map(([std, codes]) => `${(codes as string[]).join(' ')} (${std})`)
+                      .join(' | ')
+                  : ''
+                return (
+                  <option key={a.id ?? a.name} value={a.id ?? a.name} disabled={!!isUnavailable}>
+                    {a.name}{'role' in a && a.role ? ` — ${a.role}` : ''}{coverLabel}
+                    {isUnavailable ? ' (unavailable)' : ''}
+                  </option>
+                )
+              })}
           </select>
         </div>
 
@@ -1101,9 +1114,22 @@ function StageCard({
             {dropdownList
               .filter((a) => !edit.technical_experts.find((x) => (x.id || x.name) === (a.id || a.name)))
               .filter((a) => a.name !== edit.lead_auditor_name)
-              .map((a) => (
-                <option key={a.id ?? a.name} value={a.id ?? a.name}>{a.name}</option>
-              ))}
+              .map((a) => {
+                const avail = availableAuditors?.find((x) => x.name === a.name)
+                const isUnavailable = avail && !avail.available
+                const coverLabel = avail?.covered_scope && Object.keys(avail.covered_scope).length > 0
+                  ? ' — ' + Object.entries(avail.covered_scope)
+                      .filter(([, codes]) => (codes as string[]).length > 0)
+                      .map(([std, codes]) => `${(codes as string[]).join(' ')} (${std})`)
+                      .join(' | ')
+                  : ''
+                return (
+                  <option key={a.id ?? a.name} value={a.id ?? a.name} disabled={!!isUnavailable}>
+                    {a.name}{'role' in a && a.role ? ` — ${a.role}` : ''}{coverLabel}
+                    {isUnavailable ? ' (unavailable)' : ''}
+                  </option>
+                )
+              })}
           </select>
         </div>
       </div>
@@ -1129,7 +1155,7 @@ function StageCard({
                 <div className="ml-4 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
                   {r.codeResults.map((cr) => (
                     <span key={cr.code} className="text-xs" style={{ color: cr.coveredBy ? '#1A4731' : '#991B1B' }}>
-                      {cr.coveredBy ? '✓' : '✗'} {cr.code}{cr.coveredBy ? ` (${cr.coveredBy})` : ''}
+                      {cr.coveredBy ? '✓' : '✗'} {cr.code}{cr.coveredBy ? ` — ${cr.coveredBy}` : ' — not covered'}
                     </span>
                   ))}
                 </div>
