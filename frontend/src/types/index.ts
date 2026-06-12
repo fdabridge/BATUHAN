@@ -38,6 +38,7 @@ export interface StageResponse {
   notification_date: string | null
   audit_date_start: string | null
   audit_date_end: string | null
+  lead_auditor_id: string | null
   lead_auditor_name: string | null
   auditors: unknown[] | null
   technical_experts: unknown[] | null

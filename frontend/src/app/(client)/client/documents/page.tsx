@@ -6,6 +6,15 @@ import { NCFormClientSection } from '@/components/ui/NCFormClientSection'
 
 type DocStatus = 'released' | 'signed'
 
+interface DocSignature {
+  id: string
+  signer_role_label: string
+  order_index: number
+  required: boolean
+  signed_at: string | null
+  signer_name: string | null
+}
+
 interface SharedDoc {
   id: string
   label: string
@@ -13,6 +22,16 @@ interface SharedDoc {
   status: DocStatus
   released_at: string | null
   signed_at: string | null
+  signatures?: DocSignature[]
+}
+
+// True while an earlier (CB-side) signature slot is still pending — the client
+// slot is order-gated server-side, so don't prompt "Open to Sign" yet.
+function waitingOnCb(doc: SharedDoc): boolean {
+  const sigs = doc.signatures ?? []
+  const clientSlot = sigs.find((s) => s.signer_role_label === 'client' || s.signer_role_label === 'org_rep')
+  if (!clientSlot) return false
+  return sigs.some((s) => s.order_index < clientSlot.order_index && s.required && !s.signed_at)
 }
 
 function fmtDate(iso: string | null): string {
@@ -88,10 +107,16 @@ export default function ClientDocumentsPage() {
                   className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
                     doc.status === 'signed'
                       ? 'bg-green-100 text-green-700'
+                      : waitingOnCb(doc)
+                      ? 'bg-gray-100 text-gray-500'
                       : 'bg-amber-100 text-amber-700'
                   }`}
                 >
-                  {doc.status === 'signed' ? '✓ Signed' : 'Awaiting Signature'}
+                  {doc.status === 'signed'
+                    ? '✓ Signed'
+                    : waitingOnCb(doc)
+                    ? 'Awaiting CB Signature'
+                    : 'Awaiting Signature'}
                 </span>
               </div>
 
@@ -101,7 +126,7 @@ export default function ClientDocumentsPage() {
                   className="inline-flex items-center gap-1.5 rounded-lg border border-[#1A4731] px-3 py-1.5
                     text-sm font-medium text-[#1A4731] hover:bg-[#1A4731]/5 transition-colors"
                 >
-                  {doc.status !== 'signed' ? 'Open to Sign' : 'Open'}
+                  {doc.status !== 'signed' && !waitingOnCb(doc) ? 'Open to Sign' : 'Open'}
                 </a>
                 <button
                   type="button"

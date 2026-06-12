@@ -19,14 +19,21 @@ const INITIAL_STEPS = [
   { key: 'agreement_signed',   label: 'Agreement'  },
   { key: 'fr218_in_progress',  label: 'FR.218'     },
   { key: 'fr218_complete',     label: 'FR.218 ✓'   },
-  { key: 'stage1_scheduled',   label: 'Stage 1'    },
   { key: 'stage1_in_progress', label: 'S1 Audit'   },
   { key: 'stage1_complete',    label: 'S1 Done'    },
-  { key: 'stage2_scheduled',   label: 'Stage 2'    },
   { key: 'stage2_in_progress', label: 'S2 Audit'   },
-  { key: 'under_review',       label: 'Review'     },
+  { key: 'stage2_complete',    label: 'S2 Done'    },
+  { key: 'committee_review',   label: 'Committee'  },
   { key: 'certified',          label: 'Certified'  },
 ]
+
+// Legacy / alternate statuses mapped onto the step strip (Portal 49b removed
+// the scheduling steps; old sets may still carry these statuses).
+const INITIAL_STEP_ALIAS: Record<string, string> = {
+  stage1_scheduled: 'stage1_in_progress',
+  stage2_scheduled: 'stage2_in_progress',
+  under_review:     'committee_review',
+}
 
 const STANDARD_STEPS = [
   { key: 'pending_review',    label: 'Pending'    },
@@ -68,35 +75,44 @@ const INITIAL_PANELS: Record<string, ActionPanel> = {
   },
   fr218_complete: {
     heading: 'FR.218 complete — ready for Stage 1',
-    body: 'Application review is signed off. Schedule the Stage 1 (document review) audit dates to proceed.',
-    cta: { label: 'Schedule Stage 1', nextStatus: 'stage1_scheduled' },
+    body: 'Application review is signed off. Upload FR.222 (Audit Programme), the per-auditor FR.224 forms, and the Stage 1 FR.223 (Audit Plan). Stage 1 can begin once FR.222 is signed by Planner + Cert Manager, every Stage 1 FR.224 is signed by its auditor, and FR.223 is signed by the organisation representative.',
+    cta: { label: 'Begin Stage 1', nextStatus: 'stage1_in_progress', allowedRoles: ['admin', 'planner'] },
   },
   stage1_scheduled: {
-    heading: 'Stage 1 scheduled',
+    heading: 'Stage 1 scheduled (legacy)',
     body: 'Stage 1 dates are confirmed. Mark as in progress when the Stage 1 audit begins.',
     cta: { label: 'Mark Stage 1 In Progress', nextStatus: 'stage1_in_progress' },
   },
   stage1_in_progress: {
     heading: 'Stage 1 audit in progress',
-    body: 'Stage 1 is underway. Once the Stage 1 readiness assessment is complete and the client is cleared for Stage 2, mark it as done.',
+    body: 'Stage 1 is underway. The status advances automatically when FR.231 (Stage 1 report) is fully signed, or you can mark it complete manually.',
     cta: { label: 'Mark Stage 1 Complete', nextStatus: 'stage1_complete' },
   },
   stage1_complete: {
-    heading: 'Stage 1 complete ✓',
-    body: 'Stage 1 is done. Schedule the Stage 2 (on-site) audit when dates are agreed.',
-    cta: { label: 'Schedule Stage 2', nextStatus: 'stage2_scheduled' },
+    heading: 'Stage 1 complete — Certification Manager review',
+    body: 'The Certification Manager reviews all Stage 1 work (FR.218, FR.222, FR.224s, FR.223, FR.225, FR.230, FR.231). When satisfied, click "Stage 1 appropriate" to begin Stage 2. Requires every Stage 2 FR.224 signed by its auditor and the Stage 2 FR.223 signed by the organisation representative.',
+    cta: { label: 'Stage 1 appropriate — Begin Stage 2', nextStatus: 'stage2_in_progress', allowedRoles: ['admin', 'executive'] },
   },
   stage2_scheduled: {
-    heading: 'Stage 2 scheduled',
+    heading: 'Stage 2 scheduled (legacy)',
     body: 'Stage 2 dates are confirmed. Mark as in progress when the on-site audit begins.',
     cta: { label: 'Mark Stage 2 In Progress', nextStatus: 'stage2_in_progress' },
   },
   stage2_in_progress: {
     heading: 'Stage 2 audit in progress',
-    body: 'Stage 2 is underway. Status will advance to Under Review when the auditor uploads their completed documents.',
+    body: 'Stage 2 is underway. The status advances automatically when FR.232/FR.229 (Stage 2 report) is fully signed, or you can mark it complete manually.',
+    cta: { label: 'Mark Stage 2 Complete', nextStatus: 'stage2_complete' },
+  },
+  stage2_complete: {
+    heading: 'Stage 2 complete — committee review next',
+    body: 'Stage 2 is done. Certification is NOT automatic: generate FR.233 in the Review & Decision panel below to open the committee review.',
+  },
+  committee_review: {
+    heading: 'Committee review in progress',
+    body: 'Committee members sign FR.233 one by one. When all have signed, the Certification Manager signs to issue the certification.',
   },
   under_review: {
-    heading: 'Under review',
+    heading: 'Under review (legacy)',
     body: 'Audit documents are uploaded. The certification committee can now review and issue the certificate.',
     cta: { label: 'Issue Certificate', nextStatus: 'certified', allowedRoles: ['admin', 'executive'] },
   },
@@ -226,6 +242,8 @@ export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, 
               <option value="stage1_complete">Stage 1 Complete</option>
               <option value="stage2_scheduled">Stage 2 Scheduled</option>
               <option value="stage2_in_progress">Stage 2 In Progress</option>
+              <option value="stage2_complete">Stage 2 Complete</option>
+              <option value="committee_review">Committee Review</option>
               <option value="audit_scheduled">Audit Scheduled</option>
               <option value="audit_in_progress">Audit In Progress</option>
               <option value="under_review">Under Review</option>
@@ -265,7 +283,8 @@ export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, 
     )
   }
 
-  const currentIdx = STEPS.findIndex((s) => s.key === currentStatus)
+  const stepKey    = (auditType === 'initial' && currentStatus && INITIAL_STEP_ALIAS[currentStatus]) || currentStatus
+  const currentIdx = STEPS.findIndex((s) => s.key === stepKey)
   const panel      = PANELS[currentStatus]
   const ctaAllowed = !panel?.cta?.allowedRoles || panel.cta.allowedRoles.includes(currentUserRole)
 

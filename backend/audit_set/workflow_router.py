@@ -21,7 +21,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from audit_set.db_models import (
+    AuditDocumentSignature,
     AuditSet,
+    AuditSetSharedDocument,
     AuditSetStage,
     AuditSetStatusEvent,
     get_db as get_audit_db,
@@ -51,19 +53,105 @@ VALID_TRANSITIONS: dict[tuple[Optional[str], str], set[str]] = {
     ("agreement_signed",  "fr218_in_progress"): {"admin"},
     ("fr218_in_progress", "fr218_complete"):    {"admin"},
     # ── Initial certification — Stage 1 ──────────────────────────────────────
-    ("fr218_complete",     "stage1_scheduled"):   {"admin", "planner"},
+    # Portal 49b: the team is assigned at planning, so fr218_complete advances
+    # directly to stage1_in_progress (gated below). Scheduled statuses are
+    # kept for legacy sets only.
+    ("fr218_complete",     "stage1_in_progress"): {"admin", "planner"},
+    ("fr218_complete",     "stage1_scheduled"):   {"admin", "planner"},  # legacy
     ("agreement_signed",   "stage1_scheduled"):   {"admin", "planner"},  # retroactive / legacy
     ("stage1_scheduled",   "stage1_in_progress"): {"admin", "planner", "auditor"},
     ("stage1_in_progress", "stage1_complete"):    {"admin", "planner", "auditor"},
     # ── Initial certification — Stage 2 ──────────────────────────────────────
-    ("stage1_complete",    "stage2_scheduled"):   {"admin", "planner"},
+    # Portal 49b: CM clicks "Stage 1 appropriate" → stage2_in_progress (gated).
+    ("stage1_complete",    "stage2_in_progress"): {"admin", "executive"},
+    ("stage1_complete",    "stage2_scheduled"):   {"admin", "planner"},  # legacy
     ("stage2_scheduled",   "stage2_in_progress"): {"admin", "planner", "auditor"},
-    ("stage2_in_progress", "under_review"):       {"admin", "planner", "auditor"},
-    # ── Shared closing ────────────────────────────────────────────────────────
+    ("stage2_in_progress", "stage2_complete"):    {"admin", "planner", "auditor"},
+    ("stage2_in_progress", "under_review"):       {"admin", "planner", "auditor"},  # legacy
+    # ── Committee + closing ───────────────────────────────────────────────────
+    ("stage2_complete",    "committee_review"):   {"admin", "planner"},
     ("under_review",       "certified"):          {"admin", "executive"},
 }
 
 CB_REVIEW_ROLES = {"admin", "planner", "officer", "executive"}
+
+
+# ─── Portal 49b: hard entry gates ────────────────────────────────────────────
+def _unsigned_required_count(db: Session, doc_id: str) -> int:
+    """Number of required signature slots still unsigned on a document."""
+    return (
+        db.query(AuditDocumentSignature)
+        .filter_by(document_id=doc_id, required=True)
+        .filter(AuditDocumentSignature.signed_at.is_(None))
+        .count()
+    )
+
+
+def _stage_docs(
+    db: Session,
+    audit_set_id: str,
+    document_type: str,
+    stage_type: str,
+    include_null_stage: bool = False,
+) -> list[AuditSetSharedDocument]:
+    """Shared documents of a type for one stage (optionally legacy NULL stage)."""
+    q = db.query(AuditSetSharedDocument).filter_by(
+        audit_set_id=audit_set_id, document_type=document_type,
+    )
+    if include_null_stage:
+        q = q.filter(
+            (AuditSetSharedDocument.stage_type == stage_type)
+            | (AuditSetSharedDocument.stage_type.is_(None))
+        )
+    else:
+        q = q.filter(AuditSetSharedDocument.stage_type == stage_type)
+    return q.all()
+
+
+def _assert_stage_entry_gate(db: Session, audit_set_id: str, stage: str) -> None:
+    """
+    Portal 49b gate chain — hard server-side checks before a stage may start.
+
+    stage1_in_progress requires:
+      • FR.222 (audit_programme) fully signed (CB_PLANNER + CB_CERT_MANAGER)
+      • ALL Stage 1 FR.224s (team_info) signed by their assigned auditors
+      • FR.223 (audit_plan, Stage 1) signed by ORG_REP
+
+    stage2_in_progress requires:
+      • ALL Stage 2 FR.224s signed by their assigned auditors
+      • FR.223 (audit_plan, Stage 2) signed by ORG_REP
+    """
+    failures: list[str] = []
+
+    if stage == "stage_1":
+        programmes = db.query(AuditSetSharedDocument).filter_by(
+            audit_set_id=audit_set_id, document_type="audit_programme",
+        ).all()
+        if not programmes:
+            failures.append("FR.222 Audit Programme has not been uploaded")
+        elif any(_unsigned_required_count(db, p.id) for p in programmes):
+            failures.append("FR.222 Audit Programme is not fully signed (Planner + Cert Manager)")
+
+    team_infos = _stage_docs(
+        db, audit_set_id, "team_info", stage,
+        include_null_stage=(stage == "stage_1"),
+    )
+    if not team_infos:
+        failures.append(f"No FR.224 team-info documents exist for {stage}")
+    elif any(_unsigned_required_count(db, t.id) for t in team_infos):
+        failures.append(f"Not all {stage} FR.224s are signed by their assigned auditors")
+
+    plans = _stage_docs(
+        db, audit_set_id, "audit_plan", stage,
+        include_null_stage=(stage == "stage_1"),
+    )
+    if not plans:
+        failures.append(f"FR.223 Audit Plan for {stage} has not been uploaded")
+    elif any(_unsigned_required_count(db, p.id) for p in plans):
+        failures.append(f"FR.223 Audit Plan ({stage}) is not signed by the organisation representative")
+
+    if failures:
+        raise HTTPException(409, "Gate not met: " + "; ".join(failures))
 
 
 class WorkflowUpdateSchema(BaseModel):
@@ -84,6 +172,8 @@ VALID_JUMP_STATUSES = {
     "stage1_complete",
     "stage2_scheduled",
     "stage2_in_progress",
+    "stage2_complete",
+    "committee_review",
     "audit_scheduled",
     "audit_in_progress",
     "under_review",
@@ -175,17 +265,25 @@ def update_workflow_status(
     if current_user.role not in allowed_roles:
         raise HTTPException(403, f"Role '{current_user.role}' cannot make this transition")
 
+    # Portal 49b — hard gates: a stage cannot start until its planning
+    # documents are fully signed (FR.222 / FR.224s / FR.223).
+    if to_status == "stage1_in_progress":
+        _assert_stage_entry_gate(db, audit_set_id, "stage_1")
+    elif to_status == "stage2_in_progress":
+        _assert_stage_entry_gate(db, audit_set_id, "stage_2")
+
     audit_set.workflow_status = to_status
 
-    # When Stage 1 is marked complete, close out the Stage 1 AuditSetStage row.
-    if to_status == "stage1_complete":
-        stage1_row = (
+    # When a stage is marked complete, close out its AuditSetStage row.
+    if to_status in ("stage1_complete", "stage2_complete"):
+        stage_type = "stage_1" if to_status == "stage1_complete" else "stage_2"
+        stage_row = (
             db.query(AuditSetStage)
-            .filter_by(audit_set_id=audit_set_id, stage_type="stage_1")
+            .filter_by(audit_set_id=audit_set_id, stage_type=stage_type)
             .first()
         )
-        if stage1_row:
-            stage1_row.status = "complete"
+        if stage_row:
+            stage_row.status = "complete"
 
     # Retroactive mode: use caller-supplied date if provided, else record now.
     if payload.effective_date:

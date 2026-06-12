@@ -6,7 +6,7 @@ Only exposes a curated subset of AuditSet fields — fees, internal notes, and
 other CB-only data are intentionally omitted from the response payload.
 """
 from __future__ import annotations
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from pydantic import BaseModel
@@ -18,7 +18,7 @@ from audit_set.db_models import (
     AuditSetStatusEvent,
     get_db,
 )
-from auth.db_models import PlatformUser, get_db as get_auth_db
+from auth.db_models import PlatformUser
 from auth.dependencies import get_current_user
 
 router = APIRouter(prefix="/client", tags=["client-portal"])
@@ -50,6 +50,26 @@ def get_my_audit_set(
 
     stages_out = []
     for s in (audit_set.stages or []):
+        # Team roster (id + name only) — the client needs it for FR.211
+        # auditor-assessment uploads. Names are already known to the client
+        # via FR.223, so this leaks nothing new.
+        team = []
+        seen_ids: set[str] = set()
+
+        def _push(member_id, member_name, member_role):
+            if not member_id or member_id in seen_ids:
+                return
+            seen_ids.add(member_id)
+            team.append({"id": member_id, "name": member_name or member_id, "role": member_role})
+
+        _push(s.lead_auditor_id, s.lead_auditor_name, "Lead Auditor")
+        for m in (s.auditors or []):
+            if isinstance(m, dict):
+                _push(m.get("id"), m.get("name"), "Auditor")
+        for m in (s.technical_experts or []):
+            if isinstance(m, dict):
+                _push(m.get("id"), m.get("name"), "Technical Expert")
+
         stages_out.append({
             "stage_type":        s.stage_type,
             "stage_order":       s.stage_order,
@@ -57,6 +77,7 @@ def get_my_audit_set(
             "audit_date_end":    s.audit_date_end.isoformat()   if s.audit_date_end   else None,
             "lead_auditor_name": s.lead_auditor_name,
             "status":            s.status,
+            "team":              team,
         })
 
     return {
@@ -154,32 +175,18 @@ def post_my_message(
 
 
 
-# ── Documents (client-scoped shortcuts; delegate signing to documents_router) ─
+# ── Documents (client-scoped shortcuts; signing happens in the viewer) ───────
 
 @router.get("/my-audit-set/documents")
 def get_my_documents(
     db: Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
+    from audit_set.documents_router import _doc_to_dict, _visible_docs_for_user
+
     audit_set = _get_client_audit_set(current_user, db)
-    docs = (
-        db.query(AuditSetSharedDocument)
-        .filter_by(audit_set_id=audit_set.id, direction="cb_to_client")
-        .filter(AuditSetSharedDocument.status != "pending_cb_signature")
-        .order_by(AuditSetSharedDocument.created_at)
-        .all()
-    )
-    return [
-        {
-            "id":            d.id,
-            "label":         d.label,
-            "document_type": d.document_type,
-            "status":        d.status,
-            "released_at":   d.released_at.isoformat() if d.released_at else None,
-            "signed_at":     d.signed_at.isoformat()   if d.signed_at   else None,
-        }
-        for d in docs
-    ]
+    docs = _visible_docs_for_user(audit_set.id, current_user, db)
+    return [_doc_to_dict(d, db) for d in docs]
 
 
 @router.get("/my-audit-set/documents/{doc_id}/download")
@@ -191,40 +198,17 @@ def download_my_document(
     from fastapi.responses import FileResponse
     import os
 
+    from audit_set.documents_router import _visible_docs_for_user
+
     audit_set = _get_client_audit_set(current_user, db)
+    visible_ids = {d.id for d in _visible_docs_for_user(audit_set.id, current_user, db)}
     doc = db.query(AuditSetSharedDocument).filter_by(
-        id=doc_id, audit_set_id=audit_set.id, direction="cb_to_client"
+        id=doc_id, audit_set_id=audit_set.id
     ).first()
-    if not doc or not doc.file_path or not os.path.exists(doc.file_path):
+    if not doc or doc.id not in visible_ids or not doc.file_path or not os.path.exists(doc.file_path):
         raise HTTPException(404, "Document not found")
     return FileResponse(
         doc.file_path,
         filename=os.path.basename(doc.file_path),
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     )
-
-
-@router.post("/my-audit-set/documents/{doc_id}/sign/request-otp")
-def client_request_otp(
-    doc_id: str,
-    db: Session = Depends(get_db),
-    auth_db: Session = Depends(get_auth_db),
-    current_user: PlatformUser = Depends(get_current_user),
-):
-    from audit_set.documents_router import request_sign_otp
-    audit_set = _get_client_audit_set(current_user, db)
-    return request_sign_otp(audit_set.id, doc_id, db, auth_db, current_user)
-
-
-@router.post("/my-audit-set/documents/{doc_id}/sign/verify")
-def client_verify_otp(
-    doc_id: str,
-    otp: str,
-    request: Request,
-    db: Session = Depends(get_db),
-    auth_db: Session = Depends(get_auth_db),
-    current_user: PlatformUser = Depends(get_current_user),
-):
-    from audit_set.documents_router import verify_sign_otp
-    audit_set = _get_client_audit_set(current_user, db)
-    return verify_sign_otp(audit_set.id, doc_id, request, otp, db, auth_db, current_user)

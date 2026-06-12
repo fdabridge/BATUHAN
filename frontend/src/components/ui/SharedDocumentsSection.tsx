@@ -2,13 +2,16 @@
 
 import { useEffect, useRef, useState } from 'react'
 import api from '@/lib/api'
+import type { StageResponse } from '@/types'
 
 interface SharedDoc {
   id: string
   label: string
   document_type: string
-  direction: 'cb_to_client' | 'auditor_to_cb'
+  direction: 'cb_to_client' | 'auditor_to_cb' | 'client_to_cb'
   status: 'pending_cb_signature' | 'released' | 'signed' | 'uploaded'
+  stage_type: string | null
+  assigned_auditor_id: string | null
   released_at: string | null
   signed_at: string | null
   signed_by: string | null
@@ -17,11 +20,46 @@ interface SharedDoc {
 }
 
 const DOC_TYPES = [
-  { value: 'quotation',   label: 'Quotation (FR.220)' },
-  { value: 'agreement',   label: 'Agreement (FR.221)' },
-  { value: 'audit_plan',  label: 'Audit Plan (FR.223)' },
-  { value: 'certificate', label: 'Certificate' },
+  { value: 'quotation',       label: 'Quotation (FR.220)' },
+  { value: 'agreement',       label: 'Agreement (FR.221)' },
+  { value: 'audit_programme', label: 'Audit Programme (FR.222)' },
+  { value: 'audit_plan',      label: 'Audit Plan (FR.223)' },
+  { value: 'team_info',       label: 'Audit Team Info (FR.224)' },
+  { value: 'certificate',     label: 'Certificate' },
 ]
+
+// Document types tagged to a specific stage when released.
+const STAGE_SCOPED_TYPES = new Set(['audit_plan', 'team_info'])
+
+const STAGE_LABELS: Record<string, string> = {
+  stage_1:      'Stage 1',
+  stage_2:      'Stage 2',
+  surveillance: 'Surveillance',
+}
+
+interface TeamMember { id: string; name: string }
+
+// Collect {id, name} of every assigned team member on a stage (lead + auditors + TEs).
+function stageTeam(stage: StageResponse | undefined): TeamMember[] {
+  if (!stage) return []
+  const out: TeamMember[] = []
+  const seen = new Set<string>()
+  const push = (id?: unknown, name?: unknown) => {
+    if (typeof id !== 'string' || !id || seen.has(id)) return
+    seen.add(id)
+    out.push({ id, name: typeof name === 'string' && name ? name : id })
+  }
+  push(stage.lead_auditor_id ?? undefined, stage.lead_auditor_name ?? undefined)
+  for (const list of [stage.auditors, stage.technical_experts]) {
+    for (const m of (list ?? [])) {
+      if (m && typeof m === 'object') {
+        const o = m as { id?: unknown; name?: unknown }
+        push(o.id, o.name)
+      }
+    }
+  }
+  return out
+}
 
 function fmtDate(iso: string | null): string {
   if (!iso) return '—'
@@ -30,17 +68,29 @@ function fmtDate(iso: string | null): string {
   })
 }
 
-export function SharedDocumentsSection({ auditSetId }: { auditSetId: string }) {
+export function SharedDocumentsSection({
+  auditSetId,
+  stages = [],
+}: {
+  auditSetId: string
+  stages?: StageResponse[]
+}) {
   const [docs, setDocs]     = useState<SharedDoc[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [label, setLabel]     = useState('')
   const [docType, setDocType] = useState('quotation')
+  const [stageType, setStageType] = useState('')
+  const [auditorId, setAuditorId] = useState('')
   const [file, setFile]       = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError]     = useState('')
   const [releaseDate, setReleaseDate] = useState(() => new Date().toISOString().slice(0, 10))
   const fileRef = useRef<HTMLInputElement>(null)
+
+  const stageScoped   = STAGE_SCOPED_TYPES.has(docType)
+  const selectedStage = stages.find((s) => s.stage_type === stageType)
+  const teamOptions   = docType === 'team_info' ? stageTeam(selectedStage) : []
 
   async function load() {
     try {
@@ -57,17 +107,24 @@ export function SharedDocumentsSection({ auditSetId }: { auditSetId: string }) {
     setError('')
     if (!label.trim()) { setError('Label is required.'); return }
     if (!file)         { setError('Please select a file to upload.'); return }
+    if (stageScoped && !stageType) { setError('Please select a stage.'); return }
+    if (docType === 'team_info' && !auditorId) {
+      setError('FR.224 is per-auditor — please select the assigned auditor.'); return
+    }
     setSubmitting(true)
     try {
       const fd = new FormData()
       fd.append('label', label.trim())
       fd.append('document_type', docType)
       fd.append('release_date', releaseDate)
+      if (stageScoped && stageType) fd.append('stage_type', stageType)
+      if (docType === 'team_info' && auditorId) fd.append('assigned_auditor_id', auditorId)
       fd.append('file', file)
       await api.post(`/audit-sets/${auditSetId}/documents/release`, fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       setLabel(''); setFile(null); setDocType('quotation')
+      setStageType(''); setAuditorId('')
       setReleaseDate(new Date().toISOString().slice(0, 10))
       if (fileRef.current) fileRef.current.value = ''
       setShowForm(false)
@@ -131,7 +188,11 @@ export function SharedDocumentsSection({ auditSetId }: { auditSetId: string }) {
               <label className="block text-xs font-medium text-gray-500">Type</label>
               <select
                 value={docType}
-                onChange={(e) => setDocType(e.target.value)}
+                onChange={(e) => {
+                  setDocType(e.target.value)
+                  setStageType('')
+                  setAuditorId('')
+                }}
                 className="mt-1 w-full rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A4731]/30"
               >
                 {DOC_TYPES.map((t) => (
@@ -139,6 +200,44 @@ export function SharedDocumentsSection({ auditSetId }: { auditSetId: string }) {
                 ))}
               </select>
             </div>
+            {stageScoped && (
+              <div>
+                <label className="block text-xs font-medium text-gray-500">Stage</label>
+                <select
+                  value={stageType}
+                  onChange={(e) => { setStageType(e.target.value); setAuditorId('') }}
+                  className="mt-1 w-full rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A4731]/30"
+                >
+                  <option value="">— Select stage —</option>
+                  {(stages.length > 0
+                    ? stages.map((s) => s.stage_type)
+                    : ['stage_1', 'stage_2']
+                  ).map((st) => (
+                    <option key={st} value={st}>{STAGE_LABELS[st] ?? st}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {docType === 'team_info' && (
+              <div>
+                <label className="block text-xs font-medium text-gray-500">Assigned auditor</label>
+                <select
+                  value={auditorId}
+                  onChange={(e) => setAuditorId(e.target.value)}
+                  className="mt-1 w-full rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A4731]/30"
+                >
+                  <option value="">— Select auditor —</option>
+                  {teamOptions.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+                {stageType && teamOptions.length === 0 && (
+                  <p className="mt-1 text-[11px] text-amber-600">
+                    No auditors assigned to this stage yet — assign the audit team first.
+                  </p>
+                )}
+              </div>
+            )}
             <div>
               <label className="block text-xs font-medium text-gray-500">Release date</label>
               <input
@@ -183,8 +282,11 @@ export function SharedDocumentsSection({ auditSetId }: { auditSetId: string }) {
                 <div>
                   <p className="text-sm font-medium text-gray-800">{d.label}</p>
                   <p className="mt-0.5 text-xs text-gray-400">
-                    {d.direction === 'auditor_to_cb' ? 'Auditor upload' : 'Released'}
+                    {d.direction === 'auditor_to_cb' ? 'Auditor upload'
+                      : d.direction === 'client_to_cb' ? 'Client upload'
+                      : 'Released'}
                     {' · '}{fmtDate(d.released_at)}
+                    {d.stage_type && ` · ${STAGE_LABELS[d.stage_type] ?? d.stage_type}`}
                     {d.signed_at && ` · Signed ${fmtDate(d.signed_at)}`}
                   </p>
                 </div>

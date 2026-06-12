@@ -1630,7 +1630,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
       )}
 
       {/* Shared Documents — Prompt 07 (additive, bottom of page) */}
-      <SharedDocumentsSection auditSetId={id} />
+      <SharedDocumentsSection auditSetId={id} stages={data.stages ?? []} />
 
       {/* Internal CB Approvals — Prompt 13 (FR.218 / FR.222) */}
       <InternalApprovalsSection

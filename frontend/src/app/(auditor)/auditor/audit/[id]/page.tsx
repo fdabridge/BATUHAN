@@ -46,7 +46,7 @@ interface AssignmentDetail {
   stages:                 Stage[]
 }
 
-type Tab = 'overview' | 'messages' | 'upload' | 'attendees' | 'nc_forms' | 'declarations' | 'reports'
+type Tab = 'overview' | 'documents' | 'messages' | 'upload' | 'attendees' | 'nc_forms' | 'declarations' | 'reports'
 
 function AuditorAttendeesView({ auditSetId }: { auditSetId: string }) {
   const [attendees, setAttendees] = useState<{
@@ -820,6 +820,133 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
 }
 
 
+// ── Documents tab — Portal 49b ────────────────────────────────────────────────
+// Shared documents visible to this auditor (backend filters by role; team_info
+// FR.224 is own-only). Own pending FR.224 surfaces at the top with a sign prompt.
+
+const SHARED_DOC_TYPE_LABELS: Record<string, string> = {
+  team_info:     'FR.224 Team Info',
+  audit_plan:    'FR.223 Audit Plan',
+  meeting_form:  'FR.225 Meeting Form',
+  nc_form:       'FR.230 NC Form',
+  stage1_report: 'FR.231 Stage 1 Report',
+  stage2_report: 'FR.232 Stage 2 Report',
+  certificate:   'Certificate',
+  audit_upload:  'Audit Upload',
+}
+
+function AuditorSharedDocsView({
+  auditSetId,
+  currentAuditorId,
+}: {
+  auditSetId: string
+  currentAuditorId: string | null
+}) {
+  const [docs, setDocs] = useState<{
+    id: string; label: string; document_type: string; status: string
+    stage_type: string | null; assigned_auditor_id: string | null
+    released_at: string | null; signed_at: string | null
+  }[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    api.get(`/audit-sets/${auditSetId}/documents`)
+      .then(r => setDocs(r.data as typeof docs))
+      .finally(() => setLoading(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auditSetId])
+
+  async function download(docId: string, label: string) {
+    const r = await api.get(`/audit-sets/${auditSetId}/documents/${docId}/download`, {
+      responseType: 'blob',
+    })
+    const url = window.URL.createObjectURL(new Blob([r.data as Blob]))
+    const a   = document.createElement('a')
+    a.href = url; a.download = label || 'document.docx'
+    document.body.appendChild(a); a.click(); a.remove()
+    window.URL.revokeObjectURL(url)
+  }
+
+  if (loading) return <p className="py-8 text-center text-sm text-gray-400">Loading documents…</p>
+
+  const myPendingFr224 = docs.filter(
+    d => d.document_type === 'team_info'
+      && d.status !== 'signed'
+      && (!currentAuditorId || d.assigned_auditor_id === currentAuditorId),
+  )
+  const others = docs.filter(d => !myPendingFr224.some(p => p.id === d.id))
+
+  return (
+    <div className="space-y-5">
+      {docs.length === 0 && (
+        <p className="py-8 text-center text-sm text-gray-400">
+          No documents shared with you yet.
+        </p>
+      )}
+
+      {myPendingFr224.map(d => (
+        <div key={d.id} className="rounded-xl border border-amber-200 bg-white p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-semibold text-gray-800">{d.label}</p>
+              <p className="mt-0.5 text-xs text-gray-400">
+                Your audit team information form
+                {d.stage_type ? ` · ${d.stage_type.replace('_', ' ')}` : ''} — please review and sign.
+              </p>
+            </div>
+            <a
+              href={`/auditor/viewer/shared_doc/${d.id}`}
+              className="rounded-lg bg-[#1A4731] px-4 py-2 text-sm font-medium text-white hover:bg-[#143828]"
+            >
+              Open to Sign
+            </a>
+          </div>
+        </div>
+      ))}
+
+      {others.length > 0 && (
+        <div className="rounded-xl border bg-white divide-y divide-gray-50">
+          {others.map(d => (
+            <div key={d.id} className="flex items-center justify-between px-4 py-3">
+              <div>
+                <p className="text-sm font-medium text-gray-800">{d.label}</p>
+                <p className="mt-0.5 text-xs text-gray-400">
+                  {SHARED_DOC_TYPE_LABELS[d.document_type] ?? d.document_type}
+                  {d.stage_type ? ` · ${d.stage_type.replace('_', ' ')}` : ''}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                    d.status === 'signed'   ? 'bg-green-100 text-green-700'
+                    : d.status === 'uploaded' ? 'bg-blue-100 text-blue-700'
+                    : 'bg-amber-100 text-amber-700'
+                  }`}
+                >
+                  {d.status === 'signed' ? '✓ Signed' : d.status === 'uploaded' ? 'Uploaded' : 'Pending'}
+                </span>
+                <a
+                  href={`/auditor/viewer/shared_doc/${d.id}`}
+                  className="rounded-lg border border-[#1A4731] px-2.5 py-1 text-xs font-medium text-[#1A4731] hover:bg-[#F0FAF4]"
+                >
+                  Open
+                </a>
+                <button
+                  type="button"
+                  onClick={() => download(d.id, d.label)}
+                  className="rounded-lg border border-gray-300 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50"
+                >
+                  Download
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 
 export default function AuditorAuditDetail() {
   const { id } = useParams<{ id: string }>()
@@ -923,7 +1050,7 @@ export default function AuditorAuditDetail() {
 
       {/* Tabs */}
       <div className="mb-6 flex w-fit gap-1 rounded-lg bg-gray-100 p-1">
-        {(['overview', 'messages', 'upload', 'attendees', 'nc_forms', 'declarations', 'reports'] as const).map((t) => (
+        {(['overview', 'documents', 'messages', 'upload', 'attendees', 'nc_forms', 'declarations', 'reports'] as const).map((t) => (
           <button
             key={t}
             type="button"
@@ -934,7 +1061,8 @@ export default function AuditorAuditDetail() {
                 : 'text-gray-500 hover:text-gray-700'
             }`}
           >
-            {t === 'upload' ? 'Upload Documents'
+            {t === 'documents' ? 'Documents'
+              : t === 'upload' ? 'Upload Documents'
               : t === 'attendees' ? 'Attendees'
               : t === 'nc_forms' ? 'NC Forms'
               : t === 'declarations' ? 'Declarations'
@@ -1011,6 +1139,11 @@ export default function AuditorAuditDetail() {
             {downloading ? 'Preparing package…' : 'Download Audit Package'}
           </button>
         </div>
+      )}
+
+      {/* Documents tab — Portal 49b (shared docs incl. own FR.224) */}
+      {tab === 'documents' && (
+        <AuditorSharedDocsView auditSetId={id} currentAuditorId={myAuditorId} />
       )}
 
       {/* Messages tab */}

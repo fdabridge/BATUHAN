@@ -243,10 +243,18 @@ def fire_phase_triggers(
     if new_status == "agreement_signed":
         _trigger_fr218_phase(audit_set, triggered_by, db, effective_ts)
 
-    elif new_status == "stage1_scheduled":
+    # Portal 49b: the team is assigned at planning time, so seeding fires when
+    # the stage actually starts. The *_scheduled triggers are kept for legacy
+    # sets that still pass through scheduling. Seeding is idempotent, so a set
+    # that hits both statuses gets no duplicates.
+    elif new_status in ("stage1_scheduled", "stage1_in_progress"):
         _trigger_stage_start(audit_set, stage_number=1, db=db)
 
-    elif new_status == "stage2_scheduled":
+    elif new_status in ("stage2_scheduled", "stage2_in_progress"):
         _trigger_stage_start(audit_set, stage_number=2, db=db)
+
+    # stage2_complete → committee_review is NOT auto-fired here: per the gate
+    # chain, committee_review starts when the Planner generates FR.233
+    # (committee_router.generate handles that transition).
 
     db.commit()

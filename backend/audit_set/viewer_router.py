@@ -47,6 +47,7 @@ from audit_set.db_models import (
 from audit_set.doc_converter import prepare_document
 from auth.db_models import PlatformUser, UserSignature, get_db as get_auth_db
 from auth.dependencies import get_current_user
+from email_service import send_document_released
 router = APIRouter(prefix="/viewer", tags=["viewer"])
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -54,11 +55,15 @@ router = APIRouter(prefix="/viewer", tags=["viewer"])
 CB_ROLES = {"admin", "planner", "officer", "executive", "gm"}
 
 ROLE_TO_SIG: dict[str, str] = {
-    "cb_planner":      "CB_PLANNER",
-    "cb_cert_manager": "CB_CERT_MANAGER",
-    "cb_reviewer":     "CB_REVIEWER",
-    "lead_auditor":    "LEAD_AUDITOR",
-    "gm":              "GM",
+    "cb_planner":       "CB_PLANNER",
+    "cb_cert_manager":  "CB_CERT_MANAGER",
+    "cb_reviewer":      "CB_REVIEWER",
+    "lead_auditor":     "LEAD_AUDITOR",
+    "gm":               "GM",
+    # Portal 49b — pipeline rebuild slots
+    "org_rep":          "ORG_REP",
+    "assigned_auditor": "ASSIGNED_AUDITOR",
+    "reviewer":         "REVIEWER",
 }
 SIG_TO_ROLE: dict[str, str] = {v: k for k, v in ROLE_TO_SIG.items()}
 
@@ -215,7 +220,7 @@ def download_signed_pdf(
 # ── Helper: _get_doc_label ────────────────────────────────────────────────────
 
 def _get_doc_label(document_type: str, doc_id: str, db: Session) -> str:
-    """Human-readable label for OTP email subject."""
+    """Human-readable label for downloads and notifications."""
     try:
         if document_type == "shared_doc":
             doc = db.query(AuditSetSharedDocument).filter_by(id=doc_id).first()
@@ -265,6 +270,65 @@ def _check_committee_sig(
         raise HTTPException(400, f"No committee member assigned for '{sig_key}'")
     if expected_user_id != current_user.id:
         raise HTTPException(403, "This signature slot is assigned to a different committee member")
+
+
+# ── Helpers: shared-doc slot eligibility + order gating (Portal 49b) ─────────
+
+def _find_stage(db: Session, audit_set_id: str, stage_type: str | None) -> AuditSetStage | None:
+    q = db.query(AuditSetStage).filter_by(audit_set_id=audit_set_id)
+    if stage_type:
+        q = q.filter_by(stage_type=stage_type)
+    return q.order_by(AuditSetStage.stage_order).first()
+
+
+def _shared_slot_eligible(
+    role_label: str,
+    doc: AuditSetSharedDocument,
+    current_user: PlatformUser,
+    db: Session,
+) -> bool:
+    """True if current_user may claim an unassigned shared-doc signature slot."""
+    role = current_user.role
+    if role_label == "gm":
+        return role in ("gm", "admin")
+    if role_label == "cb_planner":
+        return role in ("planner", "admin")
+    if role_label == "cb_cert_manager":
+        return role in ("admin", "executive")
+    if role_label == "org_rep":
+        return role == "client" and current_user.audit_set_id == doc.audit_set_id
+    if role_label == "assigned_auditor":
+        return (
+            role == "auditor"
+            and current_user.auditor_id is not None
+            and doc.assigned_auditor_id == current_user.auditor_id
+        )
+    if role_label == "lead_auditor":
+        if role == "admin":
+            return True
+        if role != "auditor" or not current_user.auditor_id:
+            return False
+        stage = _find_stage(db, doc.audit_set_id, doc.stage_type)
+        return stage is not None and stage.lead_auditor_id == current_user.auditor_id
+    if role_label == "reviewer":
+        member = db.query(AuditSetCommitteeMember).filter_by(
+            audit_set_id=doc.audit_set_id, user_id=current_user.id, role="reviewer",
+        ).first()
+        return member is not None
+    return False
+
+
+def _prior_slots_unsigned(doc_id: str, order_index: int | None, db: Session) -> int:
+    """Count required slots earlier in the signing order that are still unsigned."""
+    if not order_index:
+        return 0
+    return (
+        db.query(AuditDocumentSignature)
+        .filter_by(document_id=doc_id, required=True)
+        .filter(AuditDocumentSignature.order_index < order_index)
+        .filter(AuditDocumentSignature.signed_at.is_(None))
+        .count()
+    )
 
 
 # ── Helper: _assert_can_sign ──────────────────────────────────────────────────
@@ -322,8 +386,9 @@ def _assert_can_sign(
             _check_committee_sig(sig_key, doc.audit_set_id, current_user, db)
 
         else:
-            if current_user.role not in CB_ROLES:
-                raise HTTPException(403, "CB staff account required to sign this field")
+            # Portal 49b — generic slot-based signing (GM, CB_*, ORG_REP,
+            # ASSIGNED_AUDITOR, LEAD_AUDITOR, REVIEWER). Eligibility is per
+            # role label; order gating is enforced via order_index.
             role_label = SIG_TO_ROLE.get(sig_key)
             if not role_label:
                 raise HTTPException(400, f"Unknown sig_key '{sig_key}'")
@@ -339,14 +404,16 @@ def _assert_can_sign(
                 raise HTTPException(400, "This field has already been signed")
             if sig_record.signer_user_id is not None and sig_record.signer_user_id != current_user.id:
                 raise HTTPException(403, "This signature slot is assigned to a different user")
-            if sig_record.signer_user_id is None:
-                eligible = (
-                    (role_label == "cb_cert_manager" and current_user.role in ("admin", "executive"))
-                    or (role_label == "cb_planner" and current_user.role in ("planner", "admin"))
-                    or (role_label == "gm" and current_user.role in ("gm", "admin"))
+            if sig_record.signer_user_id is None and not _shared_slot_eligible(
+                role_label, doc, current_user, db,
+            ):
+                raise HTTPException(403, "This signature slot is not assigned to you")
+            if _prior_slots_unsigned(doc_id, sig_record.order_index, db) > 0:
+                raise HTTPException(
+                    400,
+                    "An earlier signature on this document is still pending. "
+                    "Signatures must be placed in order.",
                 )
-                if not eligible:
-                    raise HTTPException(403, "This signature slot is not assigned to you")
 
     elif document_type == "audit_report":
         report = db.query(AuditSetAuditReport).filter_by(id=doc_id).first()
@@ -486,16 +553,14 @@ def _get_field_status(
 
         if sig_record.signed_at:
             return _result("signed", sig_record.signer_name, vsp.signature_image if vsp else None)
+        if _prior_slots_unsigned(doc_id, sig_record.order_index, db) > 0:
+            return _result("blocked")
         if sig_record.signer_user_id == current_user.id:
             return _result("current_user")
-        if sig_record.signer_user_id is None:
-            can_claim = (
-                (role_label == "cb_cert_manager" and current_user.role in ("admin", "executive"))
-                or (role_label == "cb_planner" and current_user.role in ("planner", "admin"))
-                or (role_label == "gm" and current_user.role in ("gm", "admin"))
-            )
-            if can_claim:
-                return _result("current_user")
+        if sig_record.signer_user_id is None and _shared_slot_eligible(
+            role_label, doc, current_user, db,
+        ):
+            return _result("current_user")
         return _result("pending")
 
     elif document_type == "audit_report":
@@ -593,8 +658,35 @@ def _commit_existing_signing_record(
             doc.otp_hash       = None
             doc.otp_expires_at = None
 
+            # Portal 49b — mark the seeded CLIENT slot signed so "fully
+            # signed" gates (e.g. FR.221 release requires FR.220 complete)
+            # count it.
+            client_slot = db.query(AuditDocumentSignature).filter_by(
+                document_id=doc_id, signer_role_label="client",
+            ).first()
+            if client_slot and not client_slot.signed_at:
+                client_slot.signer_user_id = current_user.id
+                client_slot.signer_name    = current_user.full_name
+                client_slot.signer_email   = current_user.email
+                client_slot.signed_at      = now
+                client_slot.signed_ip      = ip
+
             audit_set = db.query(AuditSet).filter_by(id=doc.audit_set_id).first()
-            advanced_to_agreement_signed = False
+            advanced_to: str | None = None
+            if audit_set and doc.document_type == "quotation":
+                # Portal 49b gate chain: quotation_sent fires when the client
+                # signs FR.220 (GM signature is enforced upstream by the
+                # released-status gate in _assert_can_sign).
+                if audit_set.workflow_status == "in_planning":
+                    audit_set.workflow_status = "quotation_sent"
+                    db.add(AuditSetStatusEvent(
+                        audit_set_id=doc.audit_set_id,
+                        from_status="in_planning",
+                        to_status="quotation_sent",
+                        triggered_by=current_user.id,
+                        notes="Quotation signed by client via Certiva viewer",
+                    ))
+                    advanced_to = "quotation_sent"
             if audit_set and doc.document_type == "agreement":
                 if audit_set.workflow_status in ("quotation_sent", "quotation_accepted"):
                     old_status = audit_set.workflow_status
@@ -606,15 +698,15 @@ def _commit_existing_signing_record(
                         triggered_by=current_user.id,
                         notes="Agreement signed by client via Certiva viewer",
                     ))
-                    advanced_to_agreement_signed = True
+                    advanced_to = "agreement_signed"
             db.commit()
 
-            # Portal 47 — kick off FR.218 application review phase
-            if advanced_to_agreement_signed:
+            # Portal 47 — fire phase side effects (e.g. seed FR.218 slots)
+            if advanced_to:
                 from audit_set.pipeline_triggers import fire_phase_triggers
                 fire_phase_triggers(
                     audit_set_id=doc.audit_set_id,
-                    new_status="agreement_signed",
+                    new_status=advanced_to,
                     triggered_by=current_user.id,
                     db=db,
                 )
@@ -695,32 +787,74 @@ def _commit_existing_signing_record(
             sig_record.otp_expires_at = None
 
             # Flush pending ORM changes to the DB (session has autoflush=False)
-            # so the count below sees sig_record.signed_at as non-NULL.
+            # so the counts below see sig_record.signed_at as non-NULL.
             db.flush()
 
-            remaining = (
+            remaining_all = (
                 db.query(AuditDocumentSignature)
                 .filter_by(document_id=doc_id, required=True)
                 .filter(AuditDocumentSignature.signed_at.is_(None))
                 .count()
             )
+            remaining_cb = (
+                db.query(AuditDocumentSignature)
+                .filter_by(document_id=doc_id, required=True)
+                .filter(AuditDocumentSignature.signer_role_label != "client")
+                .filter(AuditDocumentSignature.signed_at.is_(None))
+                .count()
+            )
             doc = db.query(AuditSetSharedDocument).filter_by(id=doc_id).first()
-            if doc and remaining == 0 and doc.status == "pending_cb_signature":
-                doc.status = "released"
-                audit_set = db.query(AuditSet).filter_by(id=doc.audit_set_id).first()
-                if audit_set and doc.document_type == "quotation":
-                    if audit_set.workflow_status == "in_planning":
-                        audit_set.workflow_status = "quotation_sent"
+            advanced_to: str | None = None
+            if doc:
+                # Portal 49b — GM (and any other CB-side slots) complete →
+                # release the document to the client for counter-signing.
+                # Status transitions (quotation_sent / agreement_signed) now
+                # fire on the CLIENT signature, not on release.
+                if doc.status == "pending_cb_signature" and remaining_cb == 0:
+                    doc.status = "released"
+                    client_user = auth_db.query(PlatformUser).filter_by(
+                        audit_set_id=doc.audit_set_id, role="client",
+                    ).first()
+                    if client_user:
+                        try:
+                            send_document_released(
+                                to=client_user.email,
+                                full_name=client_user.full_name,
+                                document_label=doc.label,
+                            )
+                        except Exception:
+                            pass
+
+                if remaining_all == 0:
+                    if doc.document_type not in ("quotation", "agreement"):
+                        doc.status = "signed"
+                    # Gate chain: stage reports fully signed → auto-advance.
+                    completion_map = {
+                        "stage1_report": ("stage1_in_progress", "stage1_complete"),
+                        "stage2_report": ("stage2_in_progress", "stage2_complete"),
+                    }
+                    step = completion_map.get(doc.document_type)
+                    audit_set = db.query(AuditSet).filter_by(id=doc.audit_set_id).first()
+                    if audit_set and step and audit_set.workflow_status == step[0]:
+                        audit_set.workflow_status = step[1]
                         db.add(AuditSetStatusEvent(
                             audit_set_id=doc.audit_set_id,
-                            from_status="in_planning",
-                            to_status="quotation_sent",
+                            from_status=step[0],
+                            to_status=step[1],
                             triggered_by=current_user.id,
-                            notes="Quotation signed by General Manager and released via viewer",
+                            notes=f"All signatures completed on {doc.label}",
                         ))
-                db.commit()
-            else:
-                db.commit()
+                        advanced_to = step[1]
+            db.commit()
+
+            if doc and advanced_to:
+                from audit_set.pipeline_triggers import fire_phase_triggers
+                fire_phase_triggers(
+                    audit_set_id=doc.audit_set_id,
+                    new_status=advanced_to,
+                    triggered_by=current_user.id,
+                    db=db,
+                )
 
     elif document_type == "audit_report":
         report = db.query(AuditSetAuditReport).filter_by(id=doc_id).first()

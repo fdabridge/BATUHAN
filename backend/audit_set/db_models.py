@@ -71,6 +71,9 @@ def create_tables():
     _safe_add_column("audit_sets", "application_date DATE")
     # Prompt 35 — standard-specific application data
     _safe_add_column("audit_sets", "application_data JSON")
+    # Portal 49b — per-stage / per-auditor document tagging (FR.224, FR.211)
+    _safe_add_column("audit_set_shared_documents", "stage_type VARCHAR")
+    _safe_add_column("audit_set_shared_documents", "assigned_auditor_id VARCHAR")
 
 
 # ---------------------------------------------------------------------------
@@ -306,10 +309,16 @@ class AuditSetSharedDocument(Base):
     audit_set_id   = Column(String, ForeignKey("audit_sets.id", ondelete="CASCADE"), nullable=False)
     label          = Column(String, nullable=False)   # e.g. "Quotation (FR.220)"
     document_type  = Column(String, nullable=False)
-    # document_type: "quotation" | "agreement" | "audit_upload" | "certificate"
+    # document_type: "quotation" | "agreement" | "audit_programme" | "audit_plan"
+    #   | "team_info" | "meeting_form" | "nc_form" | "stage1_report"
+    #   | "stage2_report" | "assessment" | "review_decision" | "certificate"
+    #   | "audit_upload" (legacy)
     file_path      = Column(String, nullable=True)    # server-side path (CB-generated)
     direction      = Column(String, nullable=False, default="cb_to_client")
-    # direction: "cb_to_client" | "auditor_to_cb"
+    # direction: "cb_to_client" | "auditor_to_cb" | "client_to_cb"
+    # Portal 49b — per-stage / per-auditor tagging (FR.224 team_info, FR.211 assessment)
+    stage_type          = Column(String, nullable=True)   # "stage_1" | "stage_2" | "surveillance"
+    assigned_auditor_id = Column(String, nullable=True)   # soft FK → auditors.auditors.id
     status         = Column(String, nullable=False, default="released")
     # status: "released" | "signed" | "uploaded"
     released_by    = Column(String, nullable=True)    # user id

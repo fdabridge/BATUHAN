@@ -177,6 +177,7 @@ class StageResponse(BaseModel):
     notification_date: Optional[date]
     audit_date_start: Optional[date]
     audit_date_end: Optional[date]
+    lead_auditor_id: Optional[str] = None
     lead_auditor_name: Optional[str]
     auditors: Optional[list]
     technical_experts: Optional[list]
