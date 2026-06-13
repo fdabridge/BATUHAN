@@ -12,11 +12,13 @@ Endpoints:
 """
 from __future__ import annotations
 import hashlib
+import os
 import secrets
 from datetime import datetime, timedelta, date
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -49,6 +51,8 @@ def _decl_dict(d: AuditSetImpartialityDeclaration) -> dict:
         "auditor_ref_id": d.auditor_ref_id,
         "is_signed":      d.signed_at is not None,
         "signed_at":      d.signed_at.isoformat() if d.signed_at else None,
+        "file_path":      d.file_path,
+        "file_name":      d.file_name,
         "created_at":     d.created_at.isoformat() if d.created_at else None,
     }
 
@@ -292,4 +296,59 @@ def sign_declaration_direct(
     )
     db.commit()
     db.refresh(decl)
+
+    # Generate PDF signing certificate (Portal 50b)
+    try:
+        from audit_set.declaration_pdf import generate_declaration_pdf
+        from config.settings import get_settings
+
+        audit_set  = db.query(AuditSet).filter_by(id=audit_set_id).first()
+        sig_image: Optional[str] = current_user.signature_image if hasattr(current_user, "signature_image") else None
+
+        _settings  = get_settings()
+        out_path = os.path.join(
+            _settings.storage_base_path,
+            audit_set_id, "declarations",
+            f"FR215_declaration_{decl.id}.pdf",
+        )
+        generate_declaration_pdf(
+            member_name=decl.member_name,
+            member_role=decl.member_role,
+            stage_type=decl.stage_type,
+            audit_plan_number=audit_set.plan_number if audit_set else None,
+            company_name=audit_set.company_name if audit_set else "",
+            signed_at=decl.signed_at,
+            signature_image_b64=sig_image,
+            output_path=out_path,
+        )
+        decl.file_path = out_path
+        decl.file_name = f"FR215_declaration_{decl.member_name.replace(' ', '_')}.pdf"
+        db.commit()
+    except Exception:
+        pass  # PDF generation failure must never break the signing flow
+
     return _decl_dict(decl)
+
+
+@router.get("/audit-sets/{audit_set_id}/declarations/{did}/download-certificate")
+def download_declaration_certificate(
+    audit_set_id: str,
+    did:          str,
+    db:           Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """Download the signed PDF certificate for a declaration."""
+    decl = db.query(AuditSetImpartialityDeclaration).filter_by(
+        id=did, audit_set_id=audit_set_id
+    ).first()
+    if not decl:
+        raise HTTPException(404, "Declaration not found")
+    if not decl.signed_at:
+        raise HTTPException(400, "Not yet signed")
+    if not decl.file_path or not os.path.exists(decl.file_path):
+        raise HTTPException(404, "Signing certificate PDF not found")
+    return FileResponse(
+        decl.file_path,
+        media_type="application/pdf",
+        filename=decl.file_name or f"FR215_declaration_{did}.pdf",
+    )

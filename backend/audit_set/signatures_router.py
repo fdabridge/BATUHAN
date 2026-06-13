@@ -229,6 +229,7 @@ def get_internal_signatures(
         {
             "id":                  s.id,
             "document_type":       s.document_type,
+            "document_id":         s.document_id,
             "signer_role_label":   s.signer_role_label,
             "signer_name":         s.signer_name,
             "signer_user_id":      s.signer_user_id,

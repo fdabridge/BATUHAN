@@ -5,14 +5,12 @@ import api from '@/lib/api'
 
 interface SigSlot {
   id: string
-  document_type: 'FR218' | 'FR222'
+  document_type: 'FR222'
+  document_id: string | null
   signer_role_label: string
   signer_name: string | null
   is_signed: boolean
   signed_at: string | null
-  is_mine: boolean
-  can_claim: boolean
-  pending_appointment: boolean
   required: boolean
   order_index: number
 }
@@ -21,11 +19,6 @@ const ROLE_LABELS: Record<string, string> = {
   cb_planner:      'Planning Officer',
   cb_cert_manager: 'Certification Manager',
   cb_reviewer:     'Independent Reviewer',
-}
-
-const DOC_LABELS: Record<string, string> = {
-  FR218: 'FR.218 — Application Review',
-  FR222: 'FR.222 — Audit Programme',
 }
 
 function fmtDate(iso: string | null) {
@@ -40,18 +33,14 @@ export function InternalApprovalsSection({
   auditSetId: string
   workflowStatus: string | null
 }) {
-  const [slots, setSlots]         = useState<SigSlot[]>([])
-  const [loading, setLoading]     = useState(true)
-  const [busy, setBusy]           = useState(false)
-  const [sigPreviewImage, setSigPreviewImage] = useState<string | null>(null)
-  const [sigPreviewSlot,  setSigPreviewSlot]  = useState<SigSlot | null>(null)
-  const [sigPreviewBusy,  setSigPreviewBusy]  = useState(false)
-  const [signedDate, setSignedDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [slots, setSlots]   = useState<SigSlot[]>([])
+  const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
     try {
       const r = await api.get<SigSlot[]>(`/audit-sets/${auditSetId}/internal-signatures`)
-      setSlots(r.data)
+      // Only FR222 slots — FR218 is now handled via the fr218_review shared document upload
+      setSlots((r.data as SigSlot[]).filter(s => s.document_type === 'FR222'))
     } catch {
       // 403 for non-CB users — leave slots empty
     } finally {
@@ -73,75 +62,9 @@ export function InternalApprovalsSection({
   ]
   const showFR222 = workflowStatus != null && FR222_STAGES.includes(workflowStatus)
 
-  async function handleSignClick(slot: SigSlot) {
-    setSigPreviewBusy(true)
-    setSigPreviewSlot(null)
-    setSigPreviewImage(null)
-    try {
-      const r = await api.get('/me/signature')
-      if (r.data?.image_data) {
-        setSigPreviewImage(r.data.image_data)
-        setSigPreviewSlot(slot)
-      } else {
-        window.open('/settings/signature', '_blank')
-      }
-    } catch {
-      setSigPreviewSlot(slot)
-    } finally {
-      setSigPreviewBusy(false)
-    }
-  }
+  const hasFR222 = slots.length > 0
 
-  async function handleConfirmSign() {
-    const slot = sigPreviewSlot
-    setSigPreviewSlot(null)
-    setSigPreviewImage(null)
-    if (!slot) return
-    setBusy(true)
-    try {
-      await api.post(`/audit-sets/${auditSetId}/signatures/${slot.id}/sign-direct`, {
-        signed_date: signedDate || new Date().toISOString().slice(0, 10),
-      })
-      await load()
-    } catch (e: unknown) {
-      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      alert(detail || 'Failed to sign. Please try again.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function createFR222() {
-    setBusy(true)
-    try {
-      await api.post(`/audit-sets/${auditSetId}/signatures/create-fr222`)
-      await load()
-    } catch (e: unknown) {
-      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      alert(detail || 'Failed to create FR.222 signatures')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const grouped = slots.reduce<Record<string, SigSlot[]>>((acc, s) => {
-    acc[s.document_type] = acc[s.document_type] || []
-    acc[s.document_type].push(s)
-    return acc
-  }, {})
-
-  const fr218 = grouped['FR218'] || []
-  const fr222 = grouped['FR222'] || []
-  const hasFR218 = fr218.length > 0
-  const hasFR222 = fr222.length > 0
-
-  // Hide entirely for non-CB users (no slots returned & not loading)
-  if (!loading && !hasFR218 && !hasFR222 && workflowStatus === 'pending_review') return null
-
-  const rowProps = {
-    busy: busy || sigPreviewBusy,
-    onSign: handleSignClick,
-  }
+  if (!showFR222) return null
 
   return (
     <div className="mt-8">
@@ -149,129 +72,32 @@ export function InternalApprovalsSection({
         Internal Approvals
       </h2>
 
-      <div className="space-y-4">
-        <div className="rounded-xl border bg-white p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <p className="text-sm font-medium text-gray-800">{DOC_LABELS['FR218']}</p>
-            {hasFR218 && fr218.every(s => s.is_signed) && (
-              <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
-                Fully Signed ✓
-              </span>
-            )}
-          </div>
-          {loading ? (
-            <p className="text-xs text-gray-400">Loading…</p>
-          ) : !hasFR218 ? (
-            <p className="text-xs text-gray-400">Signature slots pending creation…</p>
-          ) : (
-            <div className="space-y-2">
-              {fr218.map(slot => <SignerRow key={slot.id} slot={slot} {...rowProps} />)}
-            </div>
+      <div className="rounded-xl border bg-white p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-sm font-medium text-gray-800">FR.222 — Audit Programme</p>
+          {hasFR222 && slots.every(s => s.is_signed) && (
+            <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
+              Fully Signed ✓
+            </span>
           )}
         </div>
-
-        {showFR222 && (
-          <div className="rounded-xl border bg-white p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <p className="text-sm font-medium text-gray-800">{DOC_LABELS['FR222']}</p>
-              {hasFR222 && fr222.every(s => s.is_signed) && (
-                <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
-                  Fully Signed ✓
-                </span>
-              )}
-            </div>
-            {loading ? (
-              <p className="text-xs text-gray-400">Loading…</p>
-            ) : !hasFR222 ? (
-              <div className="flex items-center gap-3">
-                <p className="text-xs text-gray-400">Not yet initiated.</p>
-                <button
-                  type="button"
-                  onClick={createFR222}
-                  disabled={busy}
-                  className="rounded-lg border border-[#1A4731] px-3 py-1.5 text-xs font-medium text-[#1A4731] hover:bg-green-50 disabled:opacity-40"
-                >
-                  Initiate Audit Programme Signing
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {fr222.map(slot => <SignerRow key={slot.id} slot={slot} {...rowProps} />)}
-              </div>
-            )}
+        {loading ? (
+          <p className="text-xs text-gray-400">Loading…</p>
+        ) : !hasFR222 ? (
+          <p className="text-xs text-gray-400 italic">
+            Upload the Audit Programme DOCX via Shared Documents to initiate signing.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {slots.map(slot => <SignerRow key={slot.id} slot={slot} />)}
           </div>
         )}
       </div>
-
-      {sigPreviewSlot && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-sm overflow-hidden rounded-xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b px-5 py-4">
-              <p className="text-sm font-semibold text-gray-900">
-                Confirm signature — {ROLE_LABELS[sigPreviewSlot.signer_role_label] ?? sigPreviewSlot.signer_role_label}
-              </p>
-              <button
-                type="button"
-                onClick={() => { setSigPreviewSlot(null); setSigPreviewImage(null) }}
-                className="text-gray-400 hover:text-gray-600"
-              >✕</button>
-            </div>
-            <div className="px-5 py-4 space-y-4">
-              <p className="text-sm text-gray-600">
-                Your saved signature will be recorded. Click <strong>Sign</strong> to confirm.
-              </p>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Signing date</label>
-                <input
-                  type="date"
-                  value={signedDate}
-                  onChange={(e) => setSignedDate(e.target.value)}
-                  className="rounded border border-gray-200 px-2 py-1 text-sm text-gray-700 focus:border-[#1A4731] focus:outline-none"
-                />
-              </div>
-              {sigPreviewImage ? (
-                <div
-                  className="flex items-center justify-center rounded-lg p-4"
-                  style={{
-                    background: 'repeating-conic-gradient(#e5e7eb 0% 25%, #fff 0% 50%) 0 0 / 12px 12px',
-                    minHeight: 80,
-                  }}
-                >
-                  <img src={sigPreviewImage} alt="Your signature" className="max-h-16 max-w-full object-contain" />
-                </div>
-              ) : (
-                <p className="text-xs text-gray-400 italic">No signature image on file.</p>
-              )}
-              <button
-                type="button"
-                onClick={handleConfirmSign}
-                disabled={busy}
-                className="w-full rounded-lg bg-[#1A4731] py-2.5 text-sm font-medium text-white hover:bg-[#1A4731]/90 disabled:opacity-40"
-              >
-                {busy ? 'Signing…' : 'Sign'}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setSigPreviewSlot(null); setSigPreviewImage(null) }}
-                className="w-full text-sm text-gray-500 hover:text-gray-700"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
 
-function SignerRow({
-  slot, busy, onSign,
-}: {
-  slot:   SigSlot
-  busy:   boolean
-  onSign: (s: SigSlot) => void
-}) {
+function SignerRow({ slot }: { slot: SigSlot }) {
   return (
     <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
       <div className="flex items-center justify-between">
@@ -282,30 +108,26 @@ function SignerRow({
           <p className="mt-0.5 text-xs text-gray-400">
             {slot.is_signed
               ? `✓ Signed by ${slot.signer_name} on ${fmtDate(slot.signed_at)}`
-              : slot.pending_appointment
-              ? 'Pending committee appointment'
               : slot.signer_name
               ? `Assigned: ${slot.signer_name}`
-              : 'Unassigned — eligible users can sign'}
+              : 'Eligible users can sign via viewer'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div>
           {slot.is_signed ? (
             <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">✓</span>
-          ) : slot.pending_appointment ? (
-            <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-500">Pending</span>
-          ) : (slot.is_mine || slot.can_claim) ? (
-            <button
-              type="button"
-              onClick={() => onSign(slot)}
-              disabled={busy}
-              className="rounded bg-[#1A4731] px-2.5 py-1 text-xs text-white disabled:opacity-40"
+          ) : slot.document_id ? (
+            <a
+              href={`/viewer/shared_doc/${slot.document_id}`}
+              className="rounded bg-[#1A4731] px-2.5 py-1 text-xs text-white hover:bg-[#143828] transition-colors"
             >
-              Sign
-            </button>
-          ) : !slot.is_mine && !slot.can_claim && !slot.is_signed ? (
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">Awaiting</span>
-          ) : null}
+              Open to Sign
+            </a>
+          ) : (
+            <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-500">
+              Awaiting document upload
+            </span>
+          )}
         </div>
       </div>
     </div>

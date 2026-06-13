@@ -74,6 +74,9 @@ def create_tables():
     # Portal 49b — per-stage / per-auditor document tagging (FR.224, FR.211)
     _safe_add_column("audit_set_shared_documents", "stage_type VARCHAR")
     _safe_add_column("audit_set_shared_documents", "assigned_auditor_id VARCHAR")
+    # Portal 50b — impartiality declaration PDF generation
+    _safe_add_column("audit_set_impartiality_declarations", "file_path VARCHAR")
+    _safe_add_column("audit_set_impartiality_declarations", "file_name VARCHAR")
 
 
 # ---------------------------------------------------------------------------
@@ -498,6 +501,10 @@ class AuditSetImpartialityDeclaration(Base):
     member_name    = Column(String, nullable=False)   # denormalized
     member_role    = Column(String, nullable=False)   # "Lead Auditor"|"Team Auditor"|"Technical Expert"|"Observer"
     auditor_ref_id = Column(String, nullable=True)    # soft FK → auditors.id (for self-sign matching)
+
+    # Generated PDF certificate (populated after signing)
+    file_path      = Column(String, nullable=True)    # server-side path to generated PDF
+    file_name      = Column(String, nullable=True)    # original filename for download
 
     # Signature
     signed_by      = Column(String, nullable=True)    # PlatformUser.id

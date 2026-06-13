@@ -856,6 +856,16 @@ def _commit_existing_signing_record(
                     db=db,
                 )
 
+            # Portal 50b — FR.218 completion: when the fr218_review document is
+            # fully signed, auto-advance fr218_in_progress → fr218_complete.
+            if doc and doc.document_type == "fr218_review" and remaining_all == 0:
+                from audit_set.pipeline_triggers import check_fr218_completion
+                check_fr218_completion(
+                    audit_set_id=doc.audit_set_id,
+                    triggered_by=current_user.id,
+                    db=db,
+                )
+
     elif document_type == "audit_report":
         report = db.query(AuditSetAuditReport).filter_by(id=doc_id).first()
         if not report:

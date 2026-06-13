@@ -124,9 +124,16 @@ export function PendingSignaturesWidget() {
           ✍ Pending Signatures ({sigs.length})
         </h2>
         <div className="space-y-3">
-          {sigs.map((sig) => {
+          {sigs
+            // Filter out legacy FR.218 slots that have no backing document
+            .filter(sig => !(sig.document_type === 'FR218' && !sig.document_id))
+            .map((sig) => {
             const isInternal   = INTERNAL_TYPES.has(sig.document_type)
-            const isViewer     = sig.document_type === 'quotation' || sig.document_type === 'agreement'
+            const isViewer     = (
+              sig.document_type === 'quotation' ||
+              sig.document_type === 'agreement' ||
+              (sig.document_type === 'FR222' && !!sig.document_id)
+            )
             const isOtpSigning = otpSigningId === sig.id
             return (
               <div key={sig.id} className="rounded-lg border border-amber-100 bg-white p-4">
@@ -147,15 +154,21 @@ export function PendingSignaturesWidget() {
                     </a>
                   )}
 
-                  {isInternal && !isOtpSigning && (
-                    <button
-                      type="button"
-                      onClick={() => openDirectSign(sig)}
-                      disabled={busy}
-                      className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
-                    >
-                      Sign
-                    </button>
+                  {isInternal && !isViewer && !isOtpSigning && (
+                    sig.document_type === 'FR222' && !sig.document_id ? (
+                      <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-500">
+                        Awaiting document upload
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => openDirectSign(sig)}
+                        disabled={busy}
+                        className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+                      >
+                        Sign
+                      </button>
+                    )
                   )}
 
                   {!isInternal && !isViewer && !isOtpSigning && (

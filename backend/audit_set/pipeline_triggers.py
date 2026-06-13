@@ -22,6 +22,7 @@ from audit_set.db_models import (
     AuditSet,
     AuditSetAuditorAssessment,
     AuditSetImpartialityDeclaration,
+    AuditSetSharedDocument,
     AuditSetStage,
     AuditSetStatusEvent,
 )
@@ -85,13 +86,14 @@ def _trigger_fr218_phase(
     audit_set: AuditSet, triggered_by: str, db: Session,
     effective_ts: Optional[datetime] = None,
 ) -> None:
-    """Auto-advance agreement_signed → fr218_in_progress and seed FR.218 slots."""
+    """Auto-advance agreement_signed → fr218_in_progress.
+    Slot seeding is now handled by the document upload flow (documents_router
+    release_document when document_type == 'fr218_review')."""
     if audit_set.workflow_status != "agreement_signed":
         return
 
     from_status = audit_set.workflow_status
     audit_set.workflow_status = "fr218_in_progress"
-    seed_fr218_slots(audit_set, triggered_by, db)
     db.add(AuditSetStatusEvent(
         audit_set_id=audit_set.id,
         from_status=from_status,
@@ -102,30 +104,32 @@ def _trigger_fr218_phase(
     ))
 
 
-def _all_fr218_signed(audit_set_id: str, db: Session) -> bool:
-    unsigned = (
-        db.query(AuditDocumentSignature)
-        .filter_by(audit_set_id=audit_set_id, document_type="FR218", required=True)
-        .filter(AuditDocumentSignature.signed_at.is_(None))
-        .count()
-    )
-    total = (
-        db.query(AuditDocumentSignature)
-        .filter_by(audit_set_id=audit_set_id, document_type="FR218", required=True)
-        .count()
-    )
-    return total > 0 and unsigned == 0
-
-
 def check_fr218_completion(
     audit_set_id: str, triggered_by: str, db: Session,
     effective_ts: Optional[datetime] = None,
 ) -> bool:
-    """If all FR.218 slots are signed and we are in fr218_in_progress, advance to fr218_complete."""
+    """Advance fr218_in_progress → fr218_complete once all fr218_review
+    signature slots (linked to an uploaded fr218_review shared document) are
+    fully signed via the viewer."""
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
     if not audit_set or audit_set.workflow_status != "fr218_in_progress":
         return False
-    if not _all_fr218_signed(audit_set_id, db):
+
+    fr218_doc = (
+        db.query(AuditSetSharedDocument)
+        .filter_by(audit_set_id=audit_set_id, document_type="fr218_review")
+        .first()
+    )
+    if not fr218_doc:
+        return False  # document not yet uploaded
+
+    remaining = (
+        db.query(AuditDocumentSignature)
+        .filter_by(document_id=fr218_doc.id, required=True)
+        .filter(AuditDocumentSignature.signed_at.is_(None))
+        .count()
+    )
+    if remaining > 0:
         return False
 
     audit_set.workflow_status = "fr218_complete"
@@ -135,7 +139,7 @@ def check_fr218_completion(
         to_status="fr218_complete",
         triggered_by=triggered_by,
         triggered_at=effective_ts or datetime.utcnow(),
-        notes="Auto-advanced: FR.218 fully signed by all required parties",
+        notes="FR.218 Application Review fully signed via viewer",
     ))
     db.commit()
     return True

@@ -39,6 +39,7 @@ ALLOWED_DOC_TYPES = {
     "quotation",        # FR.220
     "agreement",        # FR.221
     "audit_programme",  # FR.222 — CB only
+    "fr218_review",     # FR.218 — Application Review (CB only, file-backed)
     "audit_plan",       # FR.223
     "team_info",        # FR.224 — per-auditor, private
     "meeting_form",     # FR.225
@@ -67,6 +68,7 @@ DOC_SIG_SLOTS: dict[str, list[str]] = {
     "quotation":       ["gm", "client"],
     "agreement":       ["gm", "client"],
     "audit_programme": ["cb_planner", "cb_cert_manager"],
+    "fr218_review":    ["cb_planner", "cb_cert_manager"],
     "team_info":       ["assigned_auditor"],
     "audit_plan":      ["org_rep"],
     "nc_form":         ["lead_auditor", "org_rep"],
