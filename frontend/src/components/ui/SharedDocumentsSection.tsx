@@ -22,6 +22,7 @@ interface SharedDoc {
 const DOC_TYPES = [
   { value: 'quotation',       label: 'Quotation (FR.220)' },
   { value: 'agreement',       label: 'Agreement (FR.221)' },
+  { value: 'fr218_review',    label: 'Application Review (FR.218)' },
   { value: 'audit_programme', label: 'Audit Programme (FR.222)' },
   { value: 'audit_plan',      label: 'Audit Plan (FR.223)' },
   { value: 'team_info',       label: 'Audit Team Info (FR.224)' },
