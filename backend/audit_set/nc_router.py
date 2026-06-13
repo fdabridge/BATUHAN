@@ -1,30 +1,25 @@
 """
-BATUHAN — FR.230 NC Form Two-Party Signing (Prompt 17).
+BATUHAN — FR.230 NC Form (Portal 49b).
 
-Upload:  CB uploads the NC form file → status=pending_la
-Sign 1:  Lead Auditor signs via OTP (auditor portal) → status=pending_client
-Sign 2:  Client counter-signs via OTP (client portal) → status=complete
+All signing is now done via the visual document viewer (POST /viewer/sign/confirm).
+OTP and direct-sign endpoints have been removed.
 
-Routes:
+Routes (kept for backward compat with legacy AuditSetNCForm records):
   POST /audit-sets/{id}/nc-forms/upload          (CB admin/planner — multipart)
   GET  /audit-sets/{id}/nc-forms                 (CB + auditor — list all for this audit set)
-  GET  /audit-sets/{id}/nc-forms/{nid}/download  (CB + auditor + client after pending_client)
-  POST /audit-sets/{id}/nc-forms/{nid}/sign/la/request-otp  (auditor only)
-  POST /audit-sets/{id}/nc-forms/{nid}/sign/la/verify       (auditor only)
+  GET  /audit-sets/{id}/nc-forms/{nid}/download  (CB + auditor)
   GET  /client/my-audit-set/nc-forms             (client only)
   GET  /client/my-audit-set/nc-forms/{nid}/download  (client only, pending_client+)
-  POST /client/my-audit-set/nc-forms/{nid}/sign/request-otp  (client only)
-  POST /client/my-audit-set/nc-forms/{nid}/sign/verify       (client only)
+
+New NC forms should be uploaded via POST /audit-sets/{id}/documents/upload
+with document_type="nc_form" and signed via the visual viewer.
 """
 from __future__ import annotations
-import hashlib
 import os
 import secrets
-from datetime import date, datetime, timedelta
-from typing import Optional
 
-from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile
-from pydantic import BaseModel
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -32,23 +27,14 @@ from audit_set.db_models import AuditSet, AuditSetNCForm, AuditSetStage, get_db
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
 from config.settings import get_settings
-from email_service import (
-    send_nc_form_la_request,
-    send_nc_form_client_ready,
-    send_otp_code,
-)
+from email_service import send_nc_form_la_request
 
 router = APIRouter(tags=["nc_forms"])
 
-CB_ROLES     = {"admin", "planner", "officer", "executive", "gm"}
-OTP_EXPIRY   = 10  # minutes
+CB_ROLES = {"admin", "planner", "officer", "executive", "gm"}
 
 
-def _hash(val: str) -> str:
-    return hashlib.sha256(val.encode()).hexdigest()
-
-
-def _nc_dict(n: AuditSetNCForm, include_paths: bool = False) -> dict:
+def _nc_dict(n: AuditSetNCForm) -> dict:
     return {
         "id":              n.id,
         "audit_set_id":    n.audit_set_id,
@@ -183,150 +169,7 @@ def download_nc_form(
     )
 
 
-# ── Auditor (Lead Auditor): sign party 1 ─────────────────────────────────────
-
-def _check_la_authorization(
-    nc: AuditSetNCForm,
-    current_user: PlatformUser,
-    db: Session,
-) -> None:
-    """Raise 403 if current_user is not the Lead Auditor for nc.stage_type."""
-    if current_user.role != "auditor":
-        raise HTTPException(403, "Auditor access only")
-    if not current_user.auditor_id:
-        raise HTTPException(403, "No auditor profile linked to your account")
-    stage = (
-        db.query(AuditSetStage)
-        .filter_by(audit_set_id=nc.audit_set_id, stage_type=nc.stage_type)
-        .order_by(AuditSetStage.stage_order)
-        .first()
-    )
-    if not stage:
-        raise HTTPException(404, "Stage not found")
-    if stage.lead_auditor_id != current_user.auditor_id:
-        raise HTTPException(403, "Only the Lead Auditor for this stage may sign the NC form")
-
-
-@router.post("/audit-sets/{audit_set_id}/nc-forms/{nid}/sign/la/request-otp")
-def la_request_otp(
-    audit_set_id: str,
-    nid: str,
-    db:       Session = Depends(get_db),
-    auth_db:  Session = Depends(get_auth_db),
-    current_user: PlatformUser = Depends(get_current_user),
-):
-    nc = db.query(AuditSetNCForm).filter_by(id=nid, audit_set_id=audit_set_id).first()
-    if not nc:
-        raise HTTPException(404, "NC form not found")
-    _check_la_authorization(nc, current_user, db)
-    if nc.la_signed_at:
-        raise HTTPException(400, "Already signed")
-
-    otp            = f"{secrets.randbelow(900000) + 100000}"
-    nc.la_otp_hash    = _hash(otp)
-    nc.la_otp_expires = datetime.utcnow() + timedelta(minutes=OTP_EXPIRY)
-    db.commit()
-
-    try:
-        send_otp_code(
-            to=current_user.email,
-            full_name=current_user.full_name,
-            otp=otp,
-            document_label=f"NC Form — {nc.label}",
-        )
-    except Exception:
-        pass
-
-    return {"message": f"Code sent to {current_user.email}. Valid for {OTP_EXPIRY} minutes."}
-
-
-class SignNCBody(BaseModel):
-    signed_date: Optional[date] = None
-
-
-@router.post("/audit-sets/{audit_set_id}/nc-forms/{nid}/sign/la/verify")
-def la_verify_otp(
-    audit_set_id: str,
-    nid: str,
-    otp: str,
-    request: Request,
-    body:     SignNCBody = Body(default_factory=SignNCBody),
-    db:       Session = Depends(get_db),
-    auth_db:  Session = Depends(get_auth_db),
-    current_user: PlatformUser = Depends(get_current_user),
-):
-    nc = db.query(AuditSetNCForm).filter_by(id=nid, audit_set_id=audit_set_id).first()
-    if not nc:
-        raise HTTPException(404, "NC form not found")
-    _check_la_authorization(nc, current_user, db)
-    if nc.la_signed_at:
-        raise HTTPException(400, "Already signed")
-    if not nc.la_otp_hash or not nc.la_otp_expires:
-        raise HTTPException(400, "No pending OTP. Request one first.")
-    if datetime.utcnow() > nc.la_otp_expires:
-        raise HTTPException(400, "OTP expired. Please request a new one.")
-    if _hash(otp.strip()) != nc.la_otp_hash:
-        raise HTTPException(400, "Invalid code.")
-
-    signed_dt = (
-        datetime.combine(body.signed_date, datetime.min.time())
-        if body.signed_date else datetime.utcnow()
-    )
-    nc.la_user_id   = current_user.id
-    nc.la_signed_at = signed_dt
-    nc.la_signed_ip = request.client.host if request.client else None
-    nc.la_otp_hash  = None
-    nc.la_otp_expires = None
-    nc.status       = "pending_client"
-    db.commit()
-
-    # Notify client that NC form is ready for counter-signature
-    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
-    client_user = auth_db.query(PlatformUser).filter_by(
-        audit_set_id=audit_set_id, role="client"
-    ).first()
-    if audit_set and client_user:
-        try:
-            send_nc_form_client_ready(
-                to=client_user.email,
-                full_name=client_user.full_name,
-                company_name=audit_set.company_name,
-                nc_label=nc.label,
-            )
-        except Exception:
-            pass
-
-    return {"signed": True, "status": "pending_client", "la_signed_at": nc.la_signed_at.isoformat()}
-
-
-# ── Lead Auditor: direct-sign (no OTP) ───────────────────────────────────────
-
-@router.post("/audit-sets/{audit_set_id}/nc-forms/{nid}/sign/la/direct")
-def la_sign_direct(
-    audit_set_id: str,
-    nid: str,
-    body:         SignNCBody = Body(default_factory=SignNCBody),
-    db:           Session = Depends(get_db),
-    current_user: PlatformUser = Depends(get_current_user),
-):
-    nc = db.query(AuditSetNCForm).filter_by(id=nid, audit_set_id=audit_set_id).first()
-    if not nc:
-        raise HTTPException(404, "NC form not found")
-    _check_la_authorization(nc, current_user, db)
-    if nc.la_signed_at:
-        raise HTTPException(400, "Already signed by Lead Auditor")
-
-    nc.la_signed_at = (
-        datetime.combine(body.signed_date, datetime.min.time())
-        if body.signed_date else datetime.utcnow()
-    )
-    nc.status       = "pending_client"
-    db.commit()
-    db.refresh(nc)
-    return _nc_dict(nc)
-
-
-# ── Client: view, download, counter-sign ─────────────────────────────────────
+# ── Client: view and download ─────────────────────────────────────────────────
 
 def _get_client_nc(
     nid: str,
@@ -381,89 +224,4 @@ def client_download_nc_form(
     )
 
 
-@router.post("/client/my-audit-set/nc-forms/{nid}/sign/request-otp")
-def client_nc_request_otp(
-    nid: str,
-    db:      Session = Depends(get_db),
-    auth_db: Session = Depends(get_auth_db),
-    current_user: PlatformUser = Depends(get_current_user),
-):
-    nc = _get_client_nc(nid, current_user, db)
-    if nc.client_signed_at:
-        raise HTTPException(400, "Already signed")
 
-    otp = f"{secrets.randbelow(900000) + 100000}"
-    nc.client_otp_hash    = _hash(otp)
-    nc.client_otp_expires = datetime.utcnow() + timedelta(minutes=OTP_EXPIRY)
-    db.commit()
-
-    try:
-        send_otp_code(
-            to=current_user.email,
-            full_name=current_user.full_name,
-            otp=otp,
-            document_label=f"NC Form — {nc.label}",
-        )
-    except Exception:
-        pass
-
-    return {"message": f"Code sent to {current_user.email}. Valid for {OTP_EXPIRY} minutes."}
-
-
-@router.post("/client/my-audit-set/nc-forms/{nid}/sign/verify")
-def client_nc_verify_otp(
-    nid: str,
-    otp: str,
-    request: Request,
-    body:    SignNCBody = Body(default_factory=SignNCBody),
-    db:      Session = Depends(get_db),
-    current_user: PlatformUser = Depends(get_current_user),
-):
-    nc = _get_client_nc(nid, current_user, db)
-    if nc.client_signed_at:
-        raise HTTPException(400, "Already signed")
-    if not nc.client_otp_hash or not nc.client_otp_expires:
-        raise HTTPException(400, "No pending OTP. Request one first.")
-    if datetime.utcnow() > nc.client_otp_expires:
-        raise HTTPException(400, "OTP expired. Please request a new one.")
-    if _hash(otp.strip()) != nc.client_otp_hash:
-        raise HTTPException(400, "Invalid code.")
-
-    signed_dt = (
-        datetime.combine(body.signed_date, datetime.min.time())
-        if body.signed_date else datetime.utcnow()
-    )
-    nc.client_user_id    = current_user.id
-    nc.client_signed_at  = signed_dt
-    nc.client_signed_ip  = request.client.host if request.client else None
-    nc.client_otp_hash   = None
-    nc.client_otp_expires = None
-    nc.status            = "complete"
-    db.commit()
-
-    return {"signed": True, "status": "complete", "client_signed_at": nc.client_signed_at.isoformat()}
-
-
-# ── Client: direct-sign (no OTP) ─────────────────────────────────────────────
-
-@router.post("/client/my-audit-set/nc-forms/{nid}/sign/direct")
-def client_sign_direct(
-    nid: str,
-    body:         SignNCBody = Body(default_factory=SignNCBody),
-    db:           Session = Depends(get_db),
-    current_user: PlatformUser = Depends(get_current_user),
-):
-    nc = _get_client_nc(nid, current_user, db)
-    if nc.status not in ("pending_client",):
-        raise HTTPException(400, f"NC form status is '{nc.status}', expected 'pending_client'")
-    if nc.client_signed_at:
-        raise HTTPException(400, "Already signed by client")
-
-    nc.client_signed_at = (
-        datetime.combine(body.signed_date, datetime.min.time())
-        if body.signed_date else datetime.utcnow()
-    )
-    nc.status           = "complete"
-    db.commit()
-    db.refresh(nc)
-    return _nc_dict(nc)

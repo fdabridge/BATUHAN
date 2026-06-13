@@ -182,10 +182,7 @@ function AuditorNCFormsView({ auditSetId }: { auditSetId: string }) {
     id: string; stage_type: string; label: string; file_name: string | null; status: string;
     la_signed_at: string | null;
   }[]>([])
-  const [loading, setLoading]   = useState(true)
-  const [signing, setSigning]   = useState<Record<string, boolean>>({})
-  const [signErrs, setSignErrs] = useState<Record<string, string>>({})
-  const [signDates, setSignDates] = useState<Record<string, string>>({})
+  const [loading, setLoading] = useState(true)
 
   const STAGE_LABELS: Record<string, string> = {
     stage_1: 'Stage 1', stage_2: 'Stage 2', surveillance: 'Surveillance',
@@ -199,36 +196,9 @@ function AuditorNCFormsView({ auditSetId }: { auditSetId: string }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auditSetId])
 
-  async function download(id: string, fileName: string | null) {
-    const r = await api.get(`/audit-sets/${auditSetId}/nc-forms/${id}/download`, {
-      responseType: 'blob',
-    })
-    const url = window.URL.createObjectURL(new Blob([r.data as Blob]))
-    const a   = document.createElement('a')
-    a.href = url; a.download = fileName || 'nc_form.docx'
-    document.body.appendChild(a); a.click(); a.remove()
-    window.URL.revokeObjectURL(url)
-  }
-
-  async function handleSign(id: string) {
-    setSigning(s => ({ ...s, [id]: true }))
-    setSignErrs(e => ({ ...e, [id]: '' }))
-    try {
-      const signed_date = signDates[id] || new Date().toISOString().slice(0, 10)
-      const r = await api.post(`/audit-sets/${auditSetId}/nc-forms/${id}/sign/la/direct`, { signed_date })
-      const updated = r.data as typeof forms[number]
-      setForms(prev => prev.map(f => f.id === id ? { ...f, ...updated } : f))
-    } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setSignErrs(e => ({ ...e, [id]: detail || 'Signing failed' }))
-    } finally {
-      setSigning(s => ({ ...s, [id]: false }))
-    }
-  }
-
   if (loading) return <p className="text-sm text-gray-400">Loading…</p>
 
-  const pending = forms.filter(f => f.status === 'pending_la')
+  const pending   = forms.filter(f => f.status === 'pending_la')
   const completed = forms.filter(f => f.status !== 'pending_la')
 
   return (
@@ -244,53 +214,18 @@ function AuditorNCFormsView({ auditSetId }: { auditSetId: string }) {
           </p>
           <div className="space-y-3">
             {pending.map(f => (
-              <div key={f.id} className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-                <div className="mb-3 flex items-start justify-between">
-                  <div>
-                    <p className="font-medium text-gray-800">{f.label}</p>
-                    <p className="text-xs text-gray-400">
-                      {STAGE_LABELS[f.stage_type] ?? f.stage_type}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <a
-                      href={`/auditor/viewer/nc_form/${f.id}`}
-                      className="inline-flex items-center rounded-lg border border-[#1A4731] px-2.5 py-1
-                        text-xs font-medium text-[#1A4731] hover:bg-[#1A4731]/5 transition-colors"
-                    >
-                      Open
-                    </a>
-                    <button
-                      type="button"
-                      onClick={() => download(f.id, f.file_name)}
-                      className="text-xs text-[#1A4731] underline"
-                    >
-                      Download
-                    </button>
-                  </div>
+              <div key={f.id} className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-gray-800">{f.label}</p>
+                  <p className="text-xs text-gray-400">{STAGE_LABELS[f.stage_type] ?? f.stage_type}</p>
                 </div>
-                <div className="flex items-end gap-3">
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Signing date</label>
-                    <input
-                      type="date"
-                      value={signDates[f.id] || new Date().toISOString().slice(0, 10)}
-                      onChange={e => setSignDates(prev => ({ ...prev, [f.id]: e.target.value }))}
-                      className="rounded-lg border px-2 py-1 text-sm"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleSign(f.id)}
-                    disabled={signing[f.id]}
-                    className="rounded-lg bg-[#1A4731] px-4 py-2 text-sm text-white disabled:opacity-40 hover:bg-[#143828]"
-                  >
-                    {signing[f.id] ? 'Signing…' : 'Sign NC Form'}
-                  </button>
-                </div>
-                {signErrs[f.id] && (
-                  <p className="mt-1 text-xs text-red-500">{signErrs[f.id]}</p>
-                )}
+                <a
+                  href={`/auditor/viewer/nc_form/${f.id}`}
+                  className="inline-flex items-center rounded-lg bg-[#1A4731] px-3 py-1.5
+                    text-xs font-medium text-white hover:bg-[#143828] transition-colors"
+                >
+                  Open to Sign
+                </a>
               </div>
             ))}
           </div>
@@ -312,22 +247,13 @@ function AuditorNCFormsView({ auditSetId }: { auditSetId: string }) {
                     {f.status === 'complete' ? 'Both parties signed' : 'Awaiting client'}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <a
-                    href={`/auditor/viewer/nc_form/${f.id}`}
-                    className="inline-flex items-center rounded-lg border border-[#1A4731] px-2.5 py-1
-                      text-xs font-medium text-[#1A4731] hover:bg-[#1A4731]/5 transition-colors"
-                  >
-                    Open
-                  </a>
-                  <button
-                    type="button"
-                    onClick={() => download(f.id, f.file_name)}
-                    className="text-xs text-[#1A4731] underline"
-                  >
-                    Download
-                  </button>
-                </div>
+                <a
+                  href={`/auditor/viewer/nc_form/${f.id}`}
+                  className="inline-flex items-center rounded-lg border border-[#1A4731] px-2.5 py-1
+                    text-xs font-medium text-[#1A4731] hover:bg-[#1A4731]/5 transition-colors"
+                >
+                  Open
+                </a>
               </div>
             ))}
           </div>
