@@ -90,7 +90,7 @@ function parseTeamMembers(arr: unknown[] | null | undefined): TeamMember[] {
 
 function buildStageEdit(s: StageResponse): StageEdit {
   return {
-    lead_auditor_id:   '',
+    lead_auditor_id:   s.lead_auditor_id   ?? '',  // Portal 50a fix: preserve from API
     lead_auditor_name: s.lead_auditor_name ?? '',
     audit_date_start:  s.audit_date_start  ?? '',
     audit_date_end:    s.audit_date_end    ?? '',

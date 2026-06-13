@@ -40,11 +40,14 @@ def _require_auditor(current_user: PlatformUser) -> PlatformUser:
 
 
 def _stage_matches_auditor(stage: AuditSetStage, auditor_id: str) -> tuple[bool, bool]:
-    """Return (is_assigned, is_lead) for this auditor on the given stage."""
-    is_lead = stage.lead_auditor_id == auditor_id
+    """Return (is_assigned, is_lead) for this auditor on the given stage.
+    Portal 50a fix: checks lead auditor, regular auditors, AND technical experts.
+    """
+    is_lead = bool(stage.lead_auditor_id) and stage.lead_auditor_id == auditor_id
+    all_members = list(stage.auditors or []) + list(stage.technical_experts or [])
     is_team = any(
         isinstance(a, dict) and a.get("id") == auditor_id
-        for a in (stage.auditors or [])
+        for a in all_members
     )
     return (is_lead or is_team, is_lead)
 
