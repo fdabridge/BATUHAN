@@ -73,8 +73,11 @@ DOC_SIG_SLOTS: dict[str, list[str]] = {
     "team_info":       ["assigned_auditor"],
     "audit_plan":      ["org_rep"],
     "nc_form":         ["lead_auditor", "org_rep"],
-    "stage1_report":   ["lead_auditor"],
-    "stage2_report":   ["lead_auditor"],
+    # Portal 55 — stage reports always include the appointed_reviewer slot.
+    # If no committee member with role="reviewer" is appointed yet, the
+    # viewer marks the slot "not_applicable"; once appointed, it activates.
+    "stage1_report":   ["lead_auditor", "appointed_reviewer"],
+    "stage2_report":   ["lead_auditor", "appointed_reviewer"],
 }
 
 # Linear order of the initial-certification status machine, used for
@@ -297,12 +300,12 @@ async def release_document(
     with open(file_path, "wb") as f:
         f.write(content)
 
-    # Determine signature slots for this document type. Stage reports gain a
-    # reviewer slot when FSMS/ISMS standards apply. FR.218 gains a cb_reviewer
-    # slot between cb_planner and cb_cert_manager for FSMS/ISMS audits.
+    # Determine signature slots for this document type. FR.218 gains a
+    # cb_reviewer slot between cb_planner and cb_cert_manager for FSMS/ISMS
+    # audits. Stage reports already include appointed_reviewer in
+    # DOC_SIG_SLOTS — viewer_router downgrades it to not_applicable when no
+    # committee reviewer is appointed yet (Portal 55).
     slot_labels = list(DOC_SIG_SLOTS.get(document_type, []))
-    if document_type in ("stage1_report", "stage2_report") and _needs_reviewer(audit_set):
-        slot_labels.append("reviewer")
     if document_type == "fr218_review" and _needs_reviewer(audit_set):
         # Insert cb_reviewer between cb_planner (idx 0) and cb_cert_manager (idx 1)
         slot_labels = ["cb_planner", "cb_reviewer", "cb_cert_manager"]
@@ -617,9 +620,9 @@ async def upload_audit_document(
     db.flush()
 
     # Seed visual-signature slots for typed deliverables (FR.223/225/230/231/232).
+    # Portal 55 — stage reports use DOC_SIG_SLOTS as-is (appointed_reviewer
+    # always seeded; viewer marks it not_applicable until a reviewer is appointed).
     slot_labels = list(DOC_SIG_SLOTS.get(document_type, []))
-    if document_type in ("stage1_report", "stage2_report") and _needs_reviewer(audit_set):
-        slot_labels.append("reviewer")
     for idx, role_label in enumerate(slot_labels):
         db.add(AuditDocumentSignature(
             audit_set_id=audit_set_id,

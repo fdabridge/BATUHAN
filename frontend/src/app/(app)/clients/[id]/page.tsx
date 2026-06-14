@@ -13,7 +13,10 @@ import { SharedDocumentsSection } from '@/components/ui/SharedDocumentsSection'
 import { InternalApprovalsSection } from '@/components/ui/InternalApprovalsSection'
 import { CommitteeSection } from '@/components/ui/CommitteeSection'
 import { FR233Panel } from '@/components/ui/FR233Panel'
-import { MeetingAttendeesSection } from '@/components/ui/MeetingAttendeesSection'
+// Portal 55 — MeetingAttendeesSection removed from the planner view. FR.225
+// signers are now picked from the client's employee roster (ClientOrgEmployee)
+// at upload time and embedded in the template; there is no separate OTP invite
+// flow to manage from the CB side.
 import { AssessmentManagementSection } from '@/components/ui/AssessmentManagementSection'
 import { NCFormManagementSection } from '@/components/ui/NCFormManagementSection'
 import { DeclarationManagementSection } from '@/components/ui/DeclarationManagementSection'
@@ -1744,11 +1747,9 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
         workflowStatus={data.workflow_status ?? null}
       />
 
-      {/* Meeting Attendees — Prompt 15 (FR.225 opening / closing meeting signatures) */}
-      <MeetingAttendeesSection
-        auditSetId={id}
-        workflowStatus={data.workflow_status ?? null}
-      />
+      {/* Portal 55 — Meeting Attendees section removed (replaced by FR.225
+          employee-roster flow). FR.225 attendees are now managed by the client
+          via their /client/employees roster and signed in the viewer. */}
 
       {/* Auditor Assessments — Prompt 16 (FR.211 client rates auditors post-audit) */}
       <AssessmentManagementSection

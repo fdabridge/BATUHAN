@@ -64,6 +64,8 @@ ROLE_TO_SIG: dict[str, str] = {
     "org_rep":          "ORG_REP",
     "assigned_auditor": "ASSIGNED_AUDITOR",
     "reviewer":         "REVIEWER",
+    # Portal 55 — appointed committee reviewer for stage reports (FR.231/FR.232)
+    "appointed_reviewer": "APPOINTED_REVIEWER",
 }
 SIG_TO_ROLE: dict[str, str] = {v: k for k, v in ROLE_TO_SIG.items()}
 
@@ -331,6 +333,15 @@ def _shared_slot_eligible(
             audit_set_id=doc.audit_set_id, user_id=current_user.id, role="reviewer",
         ).first()
         return member is not None
+    if role_label == "appointed_reviewer":
+        # Portal 55 — stage reports (FR.231/FR.232) require the committee
+        # member appointed with role="reviewer" to sign after the LA.
+        if role == "admin":
+            return True
+        reviewer_member = db.query(AuditSetCommitteeMember).filter_by(
+            audit_set_id=doc.audit_set_id, role="reviewer",
+        ).first()
+        return reviewer_member is not None and reviewer_member.user_id == current_user.id
     return False
 
 
@@ -595,6 +606,20 @@ def _get_field_status(
 
         if sig_record.signed_at:
             return _result("signed", sig_record.signer_name, vsp.signature_image if vsp else None)
+        # Portal 55 — stage reports' appointed_reviewer slot is N/A until a
+        # committee member with role="reviewer" is appointed on this audit set.
+        if role_label == "appointed_reviewer":
+            reviewer_member = db.query(AuditSetCommitteeMember).filter_by(
+                audit_set_id=doc.audit_set_id, role="reviewer",
+            ).first()
+            if not reviewer_member:
+                return _result("not_applicable")
+            reviewer_name = reviewer_member.user_name
+            if _prior_slots_unsigned(doc_id, sig_record.order_index, db) > 0:
+                return _result("blocked", reviewer_name)
+            if current_user.id == reviewer_member.user_id:
+                return _result("current_user", reviewer_name)
+            return _result("pending", reviewer_name)
         if _prior_slots_unsigned(doc_id, sig_record.order_index, db) > 0:
             return _result("blocked")
         if sig_record.signer_user_id == current_user.id:

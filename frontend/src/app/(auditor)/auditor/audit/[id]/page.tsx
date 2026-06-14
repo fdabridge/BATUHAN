@@ -48,136 +48,14 @@ interface AssignmentDetail {
   stages:                 Stage[]
 }
 
-type Tab = 'overview' | 'documents' | 'messages' | 'upload' | 'attendees' | 'nc_forms' | 'declarations' | 'reports'
+// Portal 55 — 'attendees' tab removed; FR.225 attendees come from the client's
+// employee roster via docxtpl loop, not the legacy OTP invite flow.
+type Tab = 'overview' | 'documents' | 'messages' | 'upload' | 'nc_forms' | 'declarations' | 'reports'
 
-function AuditorAttendeesView({ auditSetId }: { auditSetId: string }) {
-  const [attendees, setAttendees] = useState<{
-    id: string; stage_label: string; full_name: string; title: string | null
-    email: string; opening_signed: boolean; closing_signed: boolean
-    stage_type: string
-  }[]>([])
-  const [loading, setLoading] = useState(true)
-  const [form, setForm]       = useState({ stage_type: 'stage_1', full_name: '', title: '', email: '' })
-  const [busy, setBusy]       = useState(false)
-  const [addMsg, setAddMsg]   = useState('')
-
-  const STAGE_OPTS = [
-    { value: 'stage_1',         label: 'Stage 1' },
-    { value: 'stage_2',         label: 'Stage 2' },
-    { value: 'surveillance',    label: 'Surveillance' },
-    { value: 'recertification', label: 'Recertification' },
-  ]
-
-  useEffect(() => {
-    api.get(`/audit-sets/${auditSetId}/meeting-attendees`)
-      .then(r => setAttendees(r.data as typeof attendees))
-      .finally(() => setLoading(false))
-  }, [auditSetId])
-
-  async function handleAdd(e: React.FormEvent) {
-    e.preventDefault()
-    setBusy(true)
-    setAddMsg('')
-    try {
-      const r = await api.post(`/audit-sets/${auditSetId}/meeting-attendees`, {
-        stage_type: form.stage_type,
-        full_name:  form.full_name.trim(),
-        title:      form.title.trim() || null,
-        email:      form.email.trim(),
-      })
-      setAttendees(prev => [...prev, r.data as typeof attendees[0]])
-      setForm({ stage_type: 'stage_1', full_name: '', title: '', email: '' })
-      setAddMsg('Attendee added and invite sent.')
-    } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setAddMsg(detail || 'Failed to add attendee')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  if (loading) return <p className="text-sm text-gray-400">Loading…</p>
-
-  const grouped = attendees.reduce<Record<string, typeof attendees>>((acc, a) => {
-    acc[a.stage_type] = acc[a.stage_type] || []
-    acc[a.stage_type].push(a)
-    return acc
-  }, {})
-
-  return (
-    <div className="space-y-4">
-      <div className="rounded-xl border bg-white p-5">
-        <p className="mb-3 text-sm font-medium text-gray-700">Add Meeting Attendee</p>
-        <form onSubmit={handleAdd} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <select
-              value={form.stage_type}
-              onChange={e => setForm(f => ({ ...f, stage_type: e.target.value }))}
-              className="rounded-lg border px-3 py-2 text-sm"
-            >
-              {STAGE_OPTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
-            <input
-              value={form.full_name} required placeholder="Full Name *"
-              onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))}
-              className="rounded-lg border px-3 py-2 text-sm"
-            />
-            <input
-              value={form.title} placeholder="Title / Role"
-              onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-              className="rounded-lg border px-3 py-2 text-sm"
-            />
-            <input
-              type="email" value={form.email} required placeholder="Email *"
-              onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-              className="rounded-lg border px-3 py-2 text-sm"
-            />
-          </div>
-          <button
-            type="submit" disabled={busy}
-            className="rounded-lg bg-[#1A4731] px-4 py-2 text-sm text-white disabled:opacity-40"
-          >
-            {busy ? 'Adding…' : 'Add & Send Invite'}
-          </button>
-          {addMsg && <p className="text-xs text-gray-500">{addMsg}</p>}
-        </form>
-      </div>
-
-      {Object.entries(grouped).map(([stage, list]) => (
-        <div key={stage} className="rounded-xl border bg-white">
-          <div className="border-b px-4 py-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-              {STAGE_OPTS.find(s => s.value === stage)?.label ?? stage}
-            </p>
-          </div>
-          <div className="divide-y divide-gray-50">
-            {list.map(a => (
-              <div key={a.id} className="flex items-center justify-between px-4 py-3">
-                <div>
-                  <p className="text-sm font-medium">{a.full_name}
-                    {a.title && <span className="ml-1 text-xs text-gray-400">— {a.title}</span>}
-                  </p>
-                  <p className="text-xs text-gray-400">{a.email}</p>
-                </div>
-                <div className="flex gap-2">
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${a.opening_signed ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
-                    {a.opening_signed ? 'Opening ✓' : 'Opening —'}
-                  </span>
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${a.closing_signed ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
-                    {a.closing_signed ? 'Closing ✓' : 'Closing —'}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-      {attendees.length === 0 && (
-        <p className="py-8 text-center text-sm text-gray-400">No attendees registered yet.</p>
-      )}
-    </div>
-  )
-}
+// Portal 55 — AuditorAttendeesView removed. FR.225 attendees are now sourced
+// from the client's employee roster (ClientOrgEmployee), embedded in the FR.225
+// template via docxtpl loop, and signed via [SIG:ORG_OPENING_ORG_EMP_<uuid>] /
+// [SIG:ORG_CLOSING_ORG_EMP_<uuid>] keys in the viewer.
 
 function AuditorNCFormsView({ auditSetId }: { auditSetId: string }) {
   const [forms, setForms]   = useState<{
@@ -874,6 +752,17 @@ export default function AuditorAuditDetail() {
   const [uploadMsg, setUploadMsg]     = useState('')
   const [uploadDate, setUploadDate]   = useState(() => new Date().toISOString().slice(0, 10))
 
+  // Portal 55 — typed upload state for FR.223 (Audit Plan) and FR.225 (Meeting Form).
+  const [auditPlanStage, setAuditPlanStage] = useState<'stage_1' | 'stage_2'>('stage_1')
+  const [auditPlanFile, setAuditPlanFile]   = useState<File | null>(null)
+  const [uploadingPlan, setUploadingPlan]   = useState(false)
+  const [planMsg, setPlanMsg]               = useState('')
+
+  const [meetingStage, setMeetingStage] = useState<'stage_1' | 'stage_2'>('stage_1')
+  const [meetingFile, setMeetingFile]   = useState<File | null>(null)
+  const [uploadingMeeting, setUploadingMeeting] = useState(false)
+  const [meetingMsg, setMeetingMsg]     = useState('')
+
   useEffect(() => {
     api.get<AssignmentDetail>(`/auditor/my-assignments/${id}`)
       .then((r) => setData(r.data))
@@ -943,6 +832,68 @@ export default function AuditorAuditDetail() {
     }
   }
 
+  // Portal 55 — typed FR.223 (Audit Plan) upload.
+  async function handleAuditPlanUpload() {
+    if (!auditPlanFile) return
+    setUploadingPlan(true)
+    setPlanMsg('')
+    try {
+      const form = new FormData()
+      form.append('file', auditPlanFile)
+      const label = `FR.223 Audit Plan — ${auditPlanStage === 'stage_1' ? 'Stage 1' : 'Stage 2'}`
+      const qs = new URLSearchParams({
+        label,
+        document_type: 'audit_plan',
+        stage_type: auditPlanStage,
+        upload_date: uploadDate,
+      })
+      await api.post(
+        `/audit-sets/${id}/documents/upload?${qs.toString()}`,
+        form,
+        { headers: { 'Content-Type': 'multipart/form-data' } },
+      )
+      setPlanMsg('Audit Plan uploaded successfully.')
+      setAuditPlanFile(null)
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })
+        ?.response?.data?.detail
+      setPlanMsg(detail || 'Upload failed')
+    } finally {
+      setUploadingPlan(false)
+    }
+  }
+
+  // Portal 55 — typed FR.225 (Opening/Closing Meeting Form) upload.
+  async function handleMeetingUpload() {
+    if (!meetingFile) return
+    setUploadingMeeting(true)
+    setMeetingMsg('')
+    try {
+      const form = new FormData()
+      form.append('file', meetingFile)
+      const label = `FR.225 Opening/Closing Meeting — ${meetingStage === 'stage_1' ? 'Stage 1' : 'Stage 2'}`
+      const qs = new URLSearchParams({
+        label,
+        document_type: 'meeting_form',
+        stage_type: meetingStage,
+        upload_date: uploadDate,
+      })
+      await api.post(
+        `/audit-sets/${id}/documents/upload?${qs.toString()}`,
+        form,
+        { headers: { 'Content-Type': 'multipart/form-data' } },
+      )
+      setMeetingMsg('Meeting Form uploaded successfully.')
+      setMeetingFile(null)
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })
+        ?.response?.data?.detail
+      setMeetingMsg(detail || 'Upload failed')
+    } finally {
+      setUploadingMeeting(false)
+    }
+  }
+
   if (!data) {
     return <div className="p-8 text-sm text-gray-400">Loading…</div>
   }
@@ -964,7 +915,7 @@ export default function AuditorAuditDetail() {
 
       {/* Tabs */}
       <div className="mb-6 flex w-fit gap-1 rounded-lg bg-gray-100 p-1">
-        {(['overview', 'documents', 'messages', 'upload', 'attendees', 'nc_forms', 'declarations', 'reports'] as const).map((t) => (
+        {(['overview', 'documents', 'messages', 'upload', 'nc_forms', 'declarations', 'reports'] as const).map((t) => (
           <button
             key={t}
             type="button"
@@ -977,7 +928,6 @@ export default function AuditorAuditDetail() {
           >
             {t === 'documents' ? 'Documents'
               : t === 'upload' ? 'Upload Documents'
-              : t === 'attendees' ? 'Attendees'
               : t === 'nc_forms' ? 'NC Forms'
               : t === 'declarations' ? 'Declarations'
               : t === 'reports' ? 'Reports'
@@ -1085,55 +1035,124 @@ export default function AuditorAuditDetail() {
         </div>
       )}
 
-      {/* Upload tab */}
+      {/* Upload tab — Portal 55: typed FR.223 / FR.225 sections + generic */}
       {tab === 'upload' && (
-        <div className="space-y-4 rounded-xl border bg-white p-6">
-          <p className="text-sm text-gray-600">
-            Upload your completed audit documents here. The CB team will be notified.
-          </p>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Document Label
-            </label>
-            <input
-              className="w-full rounded-lg border px-3 py-2 text-sm"
-              placeholder="e.g. Stage 2 Audit Report, FR.222 filled"
-              value={uploadLabel}
-              onChange={(e) => setUploadLabel(e.target.value)}
-            />
+        <div className="space-y-4">
+          {/* FR.223 — Audit Plan (per stage) */}
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
+            <p className="mb-1 text-sm font-semibold text-amber-900">Audit Plan (FR.223)</p>
+            <p className="mb-3 text-xs text-amber-800/80">
+              The Lead Auditor uploads the Audit Plan for each stage. The organisation
+              representative signs it via their portal once it is uploaded.
+            </p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[140px_1fr_auto] sm:items-center">
+              <select
+                value={auditPlanStage}
+                onChange={(e) => setAuditPlanStage(e.target.value as 'stage_1' | 'stage_2')}
+                className="rounded-lg border bg-white px-2 py-1.5 text-sm"
+              >
+                <option value="stage_1">Stage 1</option>
+                <option value="stage_2">Stage 2</option>
+              </select>
+              <input
+                type="file"
+                accept=".pdf,.docx"
+                onChange={(e) => setAuditPlanFile(e.target.files?.[0] ?? null)}
+                className="text-sm"
+              />
+              <button
+                type="button"
+                onClick={handleAuditPlanUpload}
+                disabled={!auditPlanFile || uploadingPlan}
+                className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+              >
+                {uploadingPlan ? 'Uploading…' : 'Upload Audit Plan'}
+              </button>
+            </div>
+            {planMsg && <p className="mt-2 text-xs text-amber-900">{planMsg}</p>}
           </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Upload date</label>
-            <input
-              type="date"
-              value={uploadDate}
-              onChange={(e) => setUploadDate(e.target.value)}
-              className="w-full rounded-lg border px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">File</label>
-            <input
-              type="file"
-              onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-              className="text-sm"
-            />
-          </div>
-          <button
-            type="button"
-            onClick={handleUpload}
-            disabled={!uploadFile || !uploadLabel.trim() || uploading}
-            className="rounded-lg bg-[#1A4731] px-6 py-2.5 text-sm text-white disabled:opacity-40"
-          >
-            {uploading ? 'Uploading…' : 'Upload Document'}
-          </button>
-          {uploadMsg && <p className="text-sm text-gray-600">{uploadMsg}</p>}
-        </div>
-      )}
 
-      {/* Attendees tab — Prompt 15 (FR.225 meeting attendance roster) */}
-      {tab === 'attendees' && (
-        <AuditorAttendeesView auditSetId={id} />
+          {/* FR.225 — Opening / Closing Meeting Form (per stage) */}
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
+            <p className="mb-1 text-sm font-semibold text-amber-900">
+              Opening / Closing Meeting Form (FR.225)
+            </p>
+            <p className="mb-3 text-xs text-amber-800/80">
+              Generated from the client's employee roster. The organisation
+              representatives sign their respective slots once it is uploaded.
+            </p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[140px_1fr_auto] sm:items-center">
+              <select
+                value={meetingStage}
+                onChange={(e) => setMeetingStage(e.target.value as 'stage_1' | 'stage_2')}
+                className="rounded-lg border bg-white px-2 py-1.5 text-sm"
+              >
+                <option value="stage_1">Stage 1</option>
+                <option value="stage_2">Stage 2</option>
+              </select>
+              <input
+                type="file"
+                accept=".pdf,.docx"
+                onChange={(e) => setMeetingFile(e.target.files?.[0] ?? null)}
+                className="text-sm"
+              />
+              <button
+                type="button"
+                onClick={handleMeetingUpload}
+                disabled={!meetingFile || uploadingMeeting}
+                className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+              >
+                {uploadingMeeting ? 'Uploading…' : 'Upload Meeting Form'}
+              </button>
+            </div>
+            {meetingMsg && <p className="mt-2 text-xs text-amber-900">{meetingMsg}</p>}
+          </div>
+
+          {/* Generic upload — anything else (audit_upload bucket) */}
+          <div className="space-y-4 rounded-xl border bg-white p-6">
+            <p className="text-sm text-gray-600">
+              Other documents — uploads here are filed as generic audit evidence.
+              Use the FR.223 / FR.225 / NC Forms / Reports sections for typed deliverables.
+            </p>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                Document Label
+              </label>
+              <input
+                className="w-full rounded-lg border px-3 py-2 text-sm"
+                placeholder="e.g. Stage 2 evidence pack"
+                value={uploadLabel}
+                onChange={(e) => setUploadLabel(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Upload date</label>
+              <input
+                type="date"
+                value={uploadDate}
+                onChange={(e) => setUploadDate(e.target.value)}
+                className="w-full rounded-lg border px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">File</label>
+              <input
+                type="file"
+                onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                className="text-sm"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleUpload}
+              disabled={!uploadFile || !uploadLabel.trim() || uploading}
+              className="rounded-lg bg-[#1A4731] px-6 py-2.5 text-sm text-white disabled:opacity-40"
+            >
+              {uploading ? 'Uploading…' : 'Upload Document'}
+            </button>
+            {uploadMsg && <p className="text-sm text-gray-600">{uploadMsg}</p>}
+          </div>
+        </div>
       )}
 
       {/* NC Forms tab — Prompt 17 (FR.230 Lead Auditor signs first) */}

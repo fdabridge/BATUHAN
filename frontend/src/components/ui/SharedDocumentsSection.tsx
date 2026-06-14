@@ -24,13 +24,14 @@ const DOC_TYPES = [
   { value: 'agreement',       label: 'Agreement (FR.221)' },
   { value: 'fr218_review',    label: 'Application Review (FR.218)' },
   { value: 'audit_programme', label: 'Audit Programme (FR.222)' },
-  { value: 'audit_plan',      label: 'Audit Plan (FR.223)' },
+  // Portal 55 — FR.223 is uploaded by the Lead Auditor from their portal,
+  // not released by the Planner. The Planner can still view it once uploaded.
   { value: 'team_info',       label: 'Audit Team Info (FR.224)' },
   { value: 'certificate',     label: 'Certificate' },
 ]
 
 // Document types tagged to a specific stage when released.
-const STAGE_SCOPED_TYPES = new Set(['audit_plan', 'team_info'])
+const STAGE_SCOPED_TYPES = new Set(['team_info'])
 
 const STAGE_LABELS: Record<string, string> = {
   stage_1:      'Stage 1',
