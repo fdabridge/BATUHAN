@@ -42,7 +42,9 @@ AUDIT_TYPE_DISPLAY = {
 }
 
 # FR-numbers rendered once per team member (all other forms render once).
-PER_PERSON_FORMS = {"FR.224", "FR.211"}
+# Portal 58 — FR.211 is now rendered once per stage with the lead auditor
+# pre-filled as the assessed person; the client uploads + signs one per stage.
+PER_PERSON_FORMS = {"FR.224"}
 
 # Approximate per-standard clause coverage by stage. The authoritative source
 # is the pre-printed FR.222 table; these strings feed FR.211/FR.224 per person.

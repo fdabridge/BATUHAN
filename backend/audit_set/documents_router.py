@@ -46,7 +46,8 @@ ALLOWED_DOC_TYPES = {
     "nc_form",          # FR.230
     "stage1_report",    # FR.231 / FR.231-1
     "stage2_report",    # FR.232 / FR.229
-    "assessment",       # FR.211 — client uploads, auditors never see
+    "assessment",       # FR.211 — legacy per-auditor flow, auditors never see
+    "auditor_assessment",  # FR.211 — Portal 58 per-stage flow with [SIG:ORG_REP]
     "review_decision",  # FR.233 — CB only
     "certificate",
     "audit_upload",     # legacy auditor uploads
@@ -60,7 +61,7 @@ AUDITOR_VISIBLE_TYPES = {
 }
 CLIENT_VISIBLE_TYPES = {
     "quotation", "agreement", "audit_plan", "meeting_form",
-    "nc_form", "assessment", "certificate",
+    "nc_form", "assessment", "auditor_assessment", "certificate",
 }
 
 # Signature slots seeded per document type, in signing order.
@@ -78,6 +79,9 @@ DOC_SIG_SLOTS: dict[str, list[str]] = {
     # viewer marks the slot "not_applicable"; once appointed, it activates.
     "stage1_report":   ["lead_auditor", "appointed_reviewer"],
     "stage2_report":   ["lead_auditor", "appointed_reviewer"],
+    # Portal 58 — per-stage FR.211: client uploads the completed assessment and
+    # signs it via the viewer using the Portal 56 org-rep employee picker.
+    "auditor_assessment": ["org_rep"],
 }
 
 # Linear order of the initial-certification status machine, used for
@@ -577,18 +581,39 @@ async def upload_audit_document(
     auth_db: Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
-    if current_user.role not in AUDITOR_UPLOAD_ROLES:
-        raise HTTPException(403, "Not authorized to upload audit documents")
-    # Auditors may upload their stage deliverables; everything else (quotation,
-    # agreement, FR.222, FR.224, certificate…) goes through /documents/release.
-    auditor_types = {"audit_upload", "audit_plan", "meeting_form", "nc_form",
-                     "stage1_report", "stage2_report"}
-    if document_type not in auditor_types:
-        raise HTTPException(400, f"Invalid document_type. Expected one of: {sorted(auditor_types)}")
+    # Portal 58 — clients may upload `auditor_assessment` (FR.211) for their own
+    # audit set; auditors/CB users may upload stage deliverables.
+    client_upload_types = {"auditor_assessment"}
+    if current_user.role == "client":
+        if document_type not in client_upload_types:
+            raise HTTPException(403, "Clients may only upload auditor_assessment documents")
+        if current_user.audit_set_id != audit_set_id:
+            raise HTTPException(403, "Not your audit set")
+    else:
+        if current_user.role not in AUDITOR_UPLOAD_ROLES:
+            raise HTTPException(403, "Not authorized to upload audit documents")
+        # Auditors may upload their stage deliverables; everything else (quotation,
+        # agreement, FR.222, FR.224, certificate…) goes through /documents/release.
+        auditor_types = {"audit_upload", "audit_plan", "meeting_form", "nc_form",
+                         "stage1_report", "stage2_report"}
+        if document_type not in auditor_types:
+            raise HTTPException(400, f"Invalid document_type. Expected one of: {sorted(auditor_types)}")
 
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
     if not audit_set:
         raise HTTPException(404, "Audit set not found")
+
+    # Portal 58 — FR.211 per-stage gate: Stage 1 opens at stage1_complete+,
+    # Stage 2 at stage2_complete+. Soft gate — does not block downstream.
+    if document_type == "auditor_assessment":
+        if stage_type not in ("stage_1", "stage_2"):
+            raise HTTPException(400, "stage_type must be 'stage_1' or 'stage_2' for auditor_assessment")
+        threshold = "stage1_complete" if stage_type == "stage_1" else "stage2_complete"
+        if not _status_at_least(audit_set.workflow_status, threshold):
+            raise HTTPException(
+                400,
+                f"Auditor assessment for {stage_type} opens once the audit set reaches '{threshold}'.",
+            )
 
     settings = get_settings()
     upload_dir = os.path.join(settings.storage_base_path, "audit_uploads", audit_set_id)
@@ -605,12 +630,13 @@ async def upload_audit_document(
         datetime.combine(upload_date, datetime.min.time())
         if upload_date else datetime.utcnow()
     )
+    direction = "client_to_cb" if current_user.role == "client" else "auditor_to_cb"
     doc = AuditSetSharedDocument(
         audit_set_id=audit_set_id,
         label=label or (file.filename or "upload"),
         document_type=document_type,
         file_path=file_path,
-        direction="auditor_to_cb",
+        direction=direction,
         status="uploaded",
         stage_type=stage_type,
         released_by=current_user.id,
@@ -638,14 +664,16 @@ async def upload_audit_document(
     db.commit()
 
     # Auto-advance: auditor upload moves audit_in_progress → under_review
-    # (surveillance / recertification single-audit path only)
-    _auto_advance_workflow(
-        db, auth_db, audit_set,
-        expected_from="audit_in_progress",
-        to_status="under_review",
-        triggered_by=current_user.id,
-        notes="Auditor uploaded completed documents",
-    )
+    # (surveillance / recertification single-audit path only). Portal 58 —
+    # client `auditor_assessment` uploads do not drive workflow advancement.
+    if current_user.role != "client" and document_type != "auditor_assessment":
+        _auto_advance_workflow(
+            db, auth_db, audit_set,
+            expected_from="audit_in_progress",
+            to_status="under_review",
+            triggered_by=current_user.id,
+            notes="Auditor uploaded completed documents",
+        )
 
     return {"id": doc.id, "label": doc.label, "status": "uploaded"}
 

@@ -265,7 +265,17 @@ def build_audit_set_zip(audit_set, db) -> bytes:
                             out = _person_output_name(base_out, person["name"])
                             zf.writestr(f"{company_slug}/{output_folder}/{out}", data)
                     else:
-                        data = render_docx(doc.template_path, ctx)
+                        # Portal 58 — FR.211 (per-stage auditor assessment):
+                        # pre-fill `assessed_person_name` with the stage lead
+                        # auditor; client uploads + signs one per stage.
+                        if doc.fr_number == "FR.211":
+                            rctx = {
+                                **ctx,
+                                "assessed_person_name": ctx.get("lead_auditor_name", "") or "",
+                            }
+                        else:
+                            rctx = ctx
+                        data = render_docx(doc.template_path, rctx)
                         if doc.fr_number in CHECKBOX_FORMS:
                             data = apply_checkbox_selection(data, standards_codes)
                             data = apply_standard_highlighting(data, standards_codes)
