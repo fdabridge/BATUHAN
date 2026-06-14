@@ -14,8 +14,6 @@ interface PendingSig {
   signer_role_label: string
 }
 
-const INTERNAL_TYPES = new Set(['FR218', 'FR222'])
-
 export function PendingSignaturesWidget() {
   const [sigs, setSigs]                       = useState<PendingSig[]>([])
   const [loading, setLoading]                 = useState(true)
@@ -128,12 +126,15 @@ export function PendingSignaturesWidget() {
             // Filter out legacy FR.218 slots that have no backing document
             .filter(sig => !(sig.document_type === 'FR218' && !sig.document_id))
             .map((sig) => {
-            const isInternal   = INTERNAL_TYPES.has(sig.document_type)
-            const isViewer     = (
-              sig.document_type === 'quotation' ||
-              sig.document_type === 'agreement' ||
-              (sig.document_type === 'FR222' && !!sig.document_id)
-            )
+            // Any PDF-backed shared document goes through the Certiva viewer.
+            const isViewer = !!sig.document_id && [
+              'quotation',
+              'agreement',
+              'fr218_review',
+              'audit_programme',
+              'FR222',
+            ].includes(sig.document_type)
+            const isInternal = !isViewer && ['FR218', 'FR222'].includes(sig.document_type)
             const isOtpSigning = otpSigningId === sig.id
             return (
               <div key={sig.id} className="rounded-lg border border-amber-100 bg-white p-4">

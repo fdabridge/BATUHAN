@@ -267,6 +267,13 @@ export function CertivaDocumentViewer({
     return signatureOverrides.find(o => o.sig_key === sig_key) ?? { sig_key, status: 'pending' }
   }
 
+  // Slots ready for current user to sign but with no detected PDF position.
+  // These come from signing-status (signatureOverrides) but were missed by pdfplumber.
+  const detectedSigKeys = new Set(rawFields.map(f => f.sig_key))
+  const unpositionedSignable = signatureOverrides.filter(
+    ov => ov.status === 'current_user' && !detectedSigKeys.has(ov.sig_key)
+  )
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col items-center gap-4 bg-gray-100 p-4 min-h-screen">
@@ -334,12 +341,39 @@ export function CertivaDocumentViewer({
             ))}
           </div>
 
+          {/* Fallback signing panel: slots ready to sign but not detected in PDF */}
+          {unpositionedSignable.length > 0 && (
+            <div className="w-full max-w-3xl rounded-xl border-2 border-dashed border-[#1A4731] bg-[#F0FAF4] p-4 shadow-sm">
+              <p className="mb-3 text-sm font-semibold text-[#1A4731]">
+                ✍ Your signature is required on this document
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {unpositionedSignable.map(ov => (
+                  <button
+                    key={ov.sig_key}
+                    type="button"
+                    onClick={() => onSignatureClick?.(ov.sig_key)}
+                    className="flex items-center gap-2 rounded-lg border-2 border-[#1A4731] bg-white
+                      px-4 py-2 text-sm font-medium text-[#1A4731] shadow-sm
+                      hover:bg-[#1A4731] hover:text-white transition-all animate-pulse"
+                  >
+                    <PenLine size={14} />
+                    Sign as {sigLabel(ov.sig_key)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Legend */}
-          {rawFields.length > 0 && (
+          {(rawFields.length > 0 || signatureOverrides.length > 0) && (
             <div className="w-full max-w-3xl rounded-xl bg-white p-4 shadow-sm">
               <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">Signatures</p>
               <div className="flex flex-wrap gap-3">
-                {Array.from(new Set(rawFields.map(f => f.sig_key))).map(sig_key => {
+                {Array.from(new Set([
+                  ...rawFields.map(f => f.sig_key),
+                  ...signatureOverrides.map(o => o.sig_key),
+                ])).map(sig_key => {
                   const ov = getOverride(sig_key)
                   return (
                     <div key={sig_key} className="flex items-center gap-2">

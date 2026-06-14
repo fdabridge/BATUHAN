@@ -944,25 +944,45 @@ def viewer_signing_status(
     current_user:  PlatformUser = Depends(get_current_user),
 ):
     """
-    Returns the signing status for every [SIG:KEY] field in a document.
-    Status values: signed | current_user | pending | blocked
+    Returns the signing status for every sig field on a document.
+    Sources:
+      1. DocumentSignatureField rows (written by pdfplumber during /prepare)
+      2. AuditDocumentSignature rows (DB slots seeded at upload time)
+    The union ensures slots that pdfplumber missed still appear in the response.
+    Status values: signed | current_user | pending | blocked | not_applicable
     """
     docx_path = _resolve_docx_path(document_type, doc_id, db)
 
-    sig_key_rows = (
-        db.query(DocumentSignatureField.sig_key)
-        .filter(
-            DocumentSignatureField.docx_path == docx_path,
-            DocumentSignatureField.sig_key != "__none__",
+    # Source 1 — pdfplumber-detected sig keys (have a PDF position)
+    pdf_sig_keys = {
+        row.sig_key
+        for row in db.query(DocumentSignatureField.sig_key)
+            .filter(
+                DocumentSignatureField.docx_path == docx_path,
+                DocumentSignatureField.sig_key != "__none__",
+            )
+            .distinct()
+            .all()
+    }
+
+    # Source 2 — DB slot records seeded at upload time
+    db_sig_keys: set[str] = set()
+    if document_type == "shared_doc":
+        slot_rows = (
+            db.query(AuditDocumentSignature.signer_role_label)
+            .filter_by(document_id=doc_id)
+            .all()
         )
-        .distinct()
-        .all()
-    )
-    sig_keys = [row.sig_key for row in sig_key_rows]
+        for row in slot_rows:
+            mapped = ROLE_TO_SIG.get(row.signer_role_label)
+            if mapped:
+                db_sig_keys.add(mapped)
+
+    all_sig_keys = pdf_sig_keys | db_sig_keys
 
     fields = [
         _get_field_status(sk, document_type, doc_id, current_user, db, auth_db)
-        for sk in sig_keys
+        for sk in sorted(all_sig_keys)   # sorted for stable ordering
     ]
 
     return {
