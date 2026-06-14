@@ -171,12 +171,27 @@ def apply_checkbox_selection(docx_bytes: bytes, standards_codes: list[str]) -> b
         return docx_bytes
 
 
+def _blank_org_attendee_rows(n: int = 3) -> list[dict]:
+    """Portal 57 — placeholder rows so FR.225 always renders signature lines.
+    The BLANK sig_keys do not match the viewer's ORG_SIG_RE (which requires a
+    UUID), so they remain unsignable but produce visible empty cells."""
+    return [
+        {"name": "", "role": "", "sig_key": f"ORG_EMP_BLANK_{i}"}
+        for i in range(n)
+    ]
+
+
 def _resolve_org_attendees(audit_set, db) -> list[dict]:
     """Portal 49a — resolve the client's active ClientOrgEmployee roster for
-    FR.225 docxtpl injection. Returns ``[]`` if no client is linked or no DB
-    session is available."""
+    FR.225 docxtpl injection. The template wraps ``emp.sig_key`` with
+    ``ORG_OPENING_`` / ``ORG_CLOSING_`` prefixes per row, so this function
+    must return the bare ``ORG_EMP_<uuid>`` token.
+
+    Falls back to 3 blank placeholder rows when no client is linked, the
+    employees table is missing, or no employees are registered yet, so the
+    rendered form never collapses to zero participant rows (Portal 57)."""
     if db is None or audit_set is None:
-        return []
+        return _blank_org_attendee_rows()
     try:
         from audit_set.db_models import ClientOrgEmployee
         from auth.db_models import PlatformUser, SessionLocal as AuthSessionLocal
@@ -188,13 +203,15 @@ def _resolve_org_attendees(audit_set, db) -> list[dict]:
                 .first()
             )
             if not client:
-                return []
+                return _blank_org_attendee_rows()
             employees = (
                 db.query(ClientOrgEmployee)
                 .filter_by(client_user_id=client.id, is_active=True)
                 .order_by(ClientOrgEmployee.created_at)
                 .all()
             )
+            if not employees:
+                return _blank_org_attendee_rows()
             return [
                 {"name": e.full_name, "role": e.role_title, "sig_key": f"ORG_EMP_{e.id}"}
                 for e in employees
@@ -203,7 +220,7 @@ def _resolve_org_attendees(audit_set, db) -> list[dict]:
             auth_db.close()
     except Exception:  # pragma: no cover — defensive: never break the packager
         logger.warning("[Packager] org_attendees resolution failed", exc_info=True)
-        return []
+        return _blank_org_attendee_rows()
 
 
 def build_audit_set_zip(audit_set, db) -> bytes:

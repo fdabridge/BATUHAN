@@ -107,9 +107,11 @@ def render_fr233_bytes(audit_set, db: Session) -> bytes:
         t0 = doc.tables[0]
         _safe_fill_table0(t0, audit_set, team_str, stage1, stage2)
 
-    if len(doc.tables) >= 4:
-        t3 = doc.tables[3]
-        _fill_committee_table(t3, committee)
+    # Portal 57 — committee block lives in the LAST table (index 4 in current
+    # templates). Earlier code targeted tables[3], which is the Decision
+    # checklist, so the committee names + [SIG:...] markers were never written.
+    if len(doc.tables) >= 5:
+        _fill_committee_table(doc.tables[4], committee)
 
     buf = BytesIO()
     doc.save(buf)
@@ -137,8 +139,19 @@ def _safe_fill_table0(t0, audit_set, team_str: str, stage1, stage2) -> None:
             _set_cell_text(rows[ri].cells[ci]._tc, value)
 
 
-def _fill_committee_table(t3, c: dict) -> None:
-    rows = t3.rows
+def _fill_committee_table(t, c: dict) -> None:
+    """Portal 57 — fill the FR.233 committee signature table.
+
+    Template layout (verified in uaf_blank_set FR.233 R5&09.10.2025):
+      Row 0: header  ['', 'Name Surname', 'EA/IAF Code', 'Sign']    (4 cells)
+      Row 1: chairperson    cells = [label, name, ea, sign]         (4 cells)
+      Row 2: member 1       cells = [label, name, ea, sign]         (4 cells)
+      Row 3: member 2       cells = [label, name, ea, sign]         (4 cells)
+      Row 4: spacer
+      Row 5: 'To Endorse the Decision on Behalf of …'
+      Row 6: cert manager   cells = ['Certification Manager Approval', sign, 'Sign']  (3 cells)
+    """
+    rows = t.rows
     triples = [
         (1, c["chair_name"],   c["chair_ea"],   "[SIG:COMMITTEE_CHAIR]"),
         (2, c["member1_name"], c["member1_ea"], "[SIG:COMMITTEE_MEMBER_1]"),
@@ -149,10 +162,12 @@ def _fill_committee_table(t3, c: dict) -> None:
             continue
         cells = rows[ri].cells
         if len(cells) > 1: _set_cell_text(cells[1]._tc, name)
-        if len(cells) > 3: _set_cell_text(cells[3]._tc, ea)
-        if len(cells) > 5: _set_cell_text(cells[5]._tc, sig)
+        if len(cells) > 2: _set_cell_text(cells[2]._tc, ea)
+        if len(cells) > 3: _set_cell_text(cells[3]._tc, sig)
 
     if len(rows) > 6:
         cm_cells = rows[6].cells
-        if len(cm_cells) > 5:
-            _set_cell_text(cm_cells[5]._tc, "[SIG:CERT_MANAGER_FR233]")
+        # CM row has fewer cells (label, sig, 'Sign' label). Drop the SIG
+        # marker into the middle cell, which is the empty signature box.
+        if len(cm_cells) > 1:
+            _set_cell_text(cm_cells[1]._tc, "[SIG:CERT_MANAGER_FR233]")

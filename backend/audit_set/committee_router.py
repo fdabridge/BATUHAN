@@ -9,7 +9,7 @@ Endpoints under /audit-sets:
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
@@ -390,6 +390,102 @@ def generate_fr233(
     db.commit()
     return {
         "generated":    True,
+        "document_id":  doc.id,
+        "fr233_status": record.status,
+    }
+
+
+@router.post("/{audit_set_id}/fr233/upload")
+async def upload_fr233(
+    audit_set_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """Portal 57 — committee uploads the completed FR.233 Review & Decision Form
+    (PDF or DOCX) prepared offline. Stored as a SharedDocument and tracked via
+    AuditSetFR233Record; committee + CM sign it afterwards through the viewer.
+    Mirrors the persistence path of /fr233/generate so the existing signing
+    flow keeps working unchanged."""
+    import os
+    from datetime import datetime
+    from config.settings import get_settings
+
+    if current_user.role not in {"admin", "planner", "executive", "certification_manager"}:
+        raise HTTPException(403, "Not authorized to upload FR.233")
+
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    if not audit_set:
+        raise HTTPException(404, "Audit set not found")
+
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in {".pdf", ".docx"}:
+        raise HTTPException(400, "Only PDF and DOCX files are accepted for FR.233")
+
+    settings = get_settings()
+    out_dir = os.path.join(settings.storage_base_path, "shared_docs", audit_set_id)
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, f"FR233_{audit_set.plan_number or audit_set_id}{ext}")
+
+    contents = await file.read()
+    with open(out_path, "wb") as f:
+        f.write(contents)
+
+    record = db.query(AuditSetFR233Record).filter_by(audit_set_id=audit_set_id).first()
+    doc = None
+    if record and record.document_id:
+        doc = db.query(AuditSetSharedDocument).filter_by(id=record.document_id).first()
+    if doc is None:
+        doc = AuditSetSharedDocument(
+            audit_set_id=audit_set_id,
+            label=f"FR.233 Review & Decision — {audit_set.plan_number or ''}".strip(" —"),
+            document_type="fr233",
+            file_path=out_path,
+            direction="cb_to_client",
+            status="released",
+            released_by=current_user.id,
+            released_at=datetime.utcnow(),
+        )
+        db.add(doc)
+        db.flush()
+    else:
+        # Replacing the file — drop any stale rendered PDF + extracted sig fields
+        # so the viewer re-converts and re-extracts on next open.
+        if doc.file_path and doc.file_path != out_path and os.path.exists(doc.file_path):
+            try:    os.remove(doc.file_path)
+            except Exception: pass
+        old_pdf = os.path.splitext(doc.file_path or "")[0] + ".pdf"
+        if old_pdf and os.path.exists(old_pdf):
+            try:    os.remove(old_pdf)
+            except Exception: pass
+        doc.file_path   = out_path
+        doc.status      = "released"
+        doc.released_by = current_user.id
+        doc.released_at = datetime.utcnow()
+        from audit_set.db_models import DocumentSignatureField
+        db.query(DocumentSignatureField).filter_by(docx_path=os.path.abspath(out_path)).delete()
+
+    if record is None:
+        record = AuditSetFR233Record(
+            audit_set_id=audit_set_id, document_id=doc.id, status="signing",
+        )
+        db.add(record)
+    else:
+        record.document_id = doc.id
+        record.status      = "signing"
+
+    if audit_set.workflow_status in {"stage2_complete", "stage2_in_progress"}:
+        old = audit_set.workflow_status
+        audit_set.workflow_status = "committee_review"
+        from audit_set.db_models import AuditSetStatusEvent
+        db.add(AuditSetStatusEvent(
+            audit_set_id=audit_set_id, from_status=old, to_status="committee_review",
+            triggered_by=current_user.id, notes="FR.233 uploaded; committee review opened",
+        ))
+
+    db.commit()
+    return {
+        "uploaded":     True,
         "document_id":  doc.id,
         "fr233_status": record.status,
     }

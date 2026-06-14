@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import api from '@/lib/api'
 import { useAuth } from '@/lib/auth'
@@ -41,6 +41,8 @@ export function FR233Panel({
   const [loading, setLoading] = useState(true)
   const [busy,    setBusy]    = useState(false)
   const [error,   setError]   = useState('')
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
     try {
@@ -69,8 +71,8 @@ export function FR233Panel({
   async function generate() {
     if (!confirm(
       status === 'pending'
-        ? 'Generate the FR.233 Review & Decision Form?'
-        : 'Re-generate FR.233? The existing draft will be overwritten and any signatures collected on the old draft will need to be re-applied.',
+        ? 'Generate the FR.233 Review & Decision Form from the template?'
+        : 'Re-generate FR.233 from the template? The existing draft will be overwritten and any signatures collected on the old draft will need to be re-applied.',
     )) return
     setBusy(true); setError('')
     try {
@@ -79,6 +81,26 @@ export function FR233Panel({
     } catch (e: unknown) {
       const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       setError(detail || 'Generation failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function upload() {
+    if (!uploadFile) return
+    setBusy(true); setError('')
+    try {
+      const form = new FormData()
+      form.append('file', uploadFile)
+      await api.post(`/audit-sets/${auditSetId}/fr233/upload`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      setUploadFile(null)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      await load()
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setError(detail || 'Upload failed')
     } finally {
       setBusy(false)
     }
@@ -100,25 +122,68 @@ export function FR233Panel({
             {status}
           </span>
         </div>
-        {canGenerate && (
+        {canGenerate && status === 'pending' && (
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.docx"
+              className="hidden"
+              id={`fr233-upload-${auditSetId}`}
+              onChange={e => setUploadFile(e.target.files?.[0] ?? null)}
+            />
+            <label
+              htmlFor={`fr233-upload-${auditSetId}`}
+              className="cursor-pointer rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+            >
+              {uploadFile ? uploadFile.name : 'Choose FR.233 file…'}
+            </label>
+            {uploadFile && (
+              <button
+                type="button"
+                onClick={upload}
+                disabled={busy}
+                className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#143b27] disabled:opacity-40"
+              >
+                {busy ? 'Uploading…' : 'Upload FR.233'}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={generate}
+              disabled={busy}
+              className="rounded-lg border border-gray-300 px-2 py-1 text-[11px] font-medium text-gray-400 hover:bg-gray-50 disabled:opacity-40"
+              title="Generate a pre-filled FR.233 from the template (admin/planner shortcut)"
+            >
+              Generate from template instead
+            </button>
+          </div>
+        )}
+        {canGenerate && status !== 'pending' && (
           <button
             type="button"
             onClick={generate}
             disabled={busy}
-            className="rounded-lg border border-[#1A4731] px-3 py-1.5 text-xs font-medium text-[#1A4731] hover:bg-green-50 disabled:opacity-40"
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-40"
+            title="Overwrite with a template-generated FR.233 (admin use)"
           >
-            {busy ? 'Generating…' : status === 'pending' ? 'Generate FR.233' : 'Re-generate FR.233'}
+            {busy ? 'Generating…' : 'Re-generate from template'}
           </button>
         )}
       </div>
 
       <div className="rounded-xl border bg-white">
-        {members.length === 0 ? (
+        {status === 'pending' ? (
           <div className="px-4 py-6 text-center text-xs text-gray-400">
-            Appoint at least one committee member to enable FR.233 generation.
+            Upload the completed FR.233 document above to begin committee signing.
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
+            {members.length === 0 && (
+              <div className="px-4 py-3 text-xs text-gray-400">
+                FR.233 uploaded — appoint committee members to enable signing.
+              </div>
+            )}
             {members.map(m => (
               <div key={m.id} className="flex items-center justify-between px-4 py-3">
                 <div>

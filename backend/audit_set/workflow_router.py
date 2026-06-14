@@ -110,45 +110,72 @@ def _stage_docs(
 
 def _assert_stage_entry_gate(db: Session, audit_set_id: str, stage: str) -> None:
     """
-    Portal 49b gate chain — hard server-side checks before a stage may start.
+    Portal 49b gate chain — hard server-side checks before stage1_in_progress
+    may start. Stage 2 planning docs (FR.224s, FR.223) are uploaded DURING
+    stage2_in_progress, not before it — see _assert_stage1_complete_gate().
 
     stage1_in_progress requires:
       • FR.222 (audit_programme) fully signed (CB_PLANNER + CB_CERT_MANAGER)
       • ALL Stage 1 FR.224s (team_info) signed by their assigned auditors
       • FR.223 (audit_plan, Stage 1) signed by ORG_REP
+    """
+    if stage != "stage_1":
+        return
 
-    stage2_in_progress requires:
-      • ALL Stage 2 FR.224s signed by their assigned auditors
-      • FR.223 (audit_plan, Stage 2) signed by ORG_REP
+    failures: list[str] = []
+
+    programmes = db.query(AuditSetSharedDocument).filter_by(
+        audit_set_id=audit_set_id, document_type="audit_programme",
+    ).all()
+    if not programmes:
+        failures.append("FR.222 Audit Programme has not been uploaded")
+    elif any(_unsigned_required_count(db, p.id) for p in programmes):
+        failures.append("FR.222 Audit Programme is not fully signed (Planner + Cert Manager)")
+
+    team_infos = _stage_docs(
+        db, audit_set_id, "team_info", "stage_1", include_null_stage=True,
+    )
+    if not team_infos:
+        failures.append("No FR.224 team-info documents exist for stage_1")
+    elif any(_unsigned_required_count(db, t.id) for t in team_infos):
+        failures.append("Not all stage_1 FR.224s are signed by their assigned auditors")
+
+    plans = _stage_docs(
+        db, audit_set_id, "audit_plan", "stage_1", include_null_stage=True,
+    )
+    if not plans:
+        failures.append("FR.223 Audit Plan for stage_1 has not been uploaded")
+    elif any(_unsigned_required_count(db, p.id) for p in plans):
+        failures.append("FR.223 Audit Plan (stage_1) is not signed by the organisation representative")
+
+    if failures:
+        raise HTTPException(409, "Gate not met: " + "; ".join(failures))
+
+
+def _assert_stage1_complete_gate(db: Session, audit_set_id: str) -> None:
+    """
+    Gate for stage1_complete → stage2_in_progress.
+    Verifies Stage 1 outcome documents are finished before the CM opens Stage 2.
+
+    Checks:
+      • All Stage 1 FR.224 (team_info) documents are fully signed.
+      • Stage 1 FR.231 (stage1_report) is uploaded and fully signed.
     """
     failures: list[str] = []
 
-    if stage == "stage_1":
-        programmes = db.query(AuditSetSharedDocument).filter_by(
-            audit_set_id=audit_set_id, document_type="audit_programme",
-        ).all()
-        if not programmes:
-            failures.append("FR.222 Audit Programme has not been uploaded")
-        elif any(_unsigned_required_count(db, p.id) for p in programmes):
-            failures.append("FR.222 Audit Programme is not fully signed (Planner + Cert Manager)")
-
     team_infos = _stage_docs(
-        db, audit_set_id, "team_info", stage,
-        include_null_stage=(stage == "stage_1"),
+        db, audit_set_id, "team_info", "stage_1", include_null_stage=True,
     )
-    if not team_infos:
-        failures.append(f"No FR.224 team-info documents exist for {stage}")
-    elif any(_unsigned_required_count(db, t.id) for t in team_infos):
-        failures.append(f"Not all {stage} FR.224s are signed by their assigned auditors")
+    if team_infos and any(_unsigned_required_count(db, t.id) for t in team_infos):
+        failures.append("Not all Stage 1 FR.224s are fully signed by their assigned auditors")
 
-    plans = _stage_docs(
-        db, audit_set_id, "audit_plan", stage,
-        include_null_stage=(stage == "stage_1"),
+    stage1_reports = _stage_docs(
+        db, audit_set_id, "stage1_report", "stage_1", include_null_stage=True,
     )
-    if not plans:
-        failures.append(f"FR.223 Audit Plan for {stage} has not been uploaded")
-    elif any(_unsigned_required_count(db, p.id) for p in plans):
-        failures.append(f"FR.223 Audit Plan ({stage}) is not signed by the organisation representative")
+    if not stage1_reports:
+        failures.append("Stage 1 FR.231 Stage Report has not been uploaded")
+    elif any(_unsigned_required_count(db, r.id) for r in stage1_reports):
+        failures.append("Stage 1 FR.231 Stage Report is not fully signed")
 
     if failures:
         raise HTTPException(409, "Gate not met: " + "; ".join(failures))
@@ -265,12 +292,15 @@ def update_workflow_status(
     if current_user.role not in allowed_roles:
         raise HTTPException(403, f"Role '{current_user.role}' cannot make this transition")
 
-    # Portal 49b — hard gates: a stage cannot start until its planning
-    # documents are fully signed (FR.222 / FR.224s / FR.223).
+    # Portal 49b — hard gates: Stage 1 cannot start until its planning
+    # documents are fully signed (FR.222 / FR.224s / FR.223). Stage 2 has
+    # no entry-doc gate (those docs are produced during the stage); instead
+    # Portal 57 verifies Stage 1 outcome documents are signed before opening
+    # Stage 2.
     if to_status == "stage1_in_progress":
         _assert_stage_entry_gate(db, audit_set_id, "stage_1")
     elif to_status == "stage2_in_progress":
-        _assert_stage_entry_gate(db, audit_set_id, "stage_2")
+        _assert_stage1_complete_gate(db, audit_set_id)
 
     audit_set.workflow_status = to_status
 
