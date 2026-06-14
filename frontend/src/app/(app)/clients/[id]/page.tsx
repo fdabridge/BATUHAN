@@ -921,6 +921,7 @@ function StageCard({
           stage_order:       s.stage_order,
           status:            s.status,
           lead_auditor_name: isThis ? (edit.lead_auditor_name || null) : s.lead_auditor_name,
+          lead_auditor_id:   isThis ? (edit.lead_auditor_id   || null) : (s.lead_auditor_id ?? null),
           audit_date_start:  isThis ? (edit.audit_date_start  || null) : s.audit_date_start,
           audit_date_end:    isThis ? (edit.audit_date_end    || null) : s.audit_date_end,
           auditors:          isThis ? edit.auditors          : ((s.auditors as TeamMember[]) ?? []),
