@@ -91,7 +91,7 @@ const INITIAL_PANELS: Record<string, ActionPanel> = {
   stage1_complete: {
     heading: 'Stage 1 complete — Certification Manager review',
     body: 'The Certification Manager reviews all Stage 1 work (FR.218, FR.222, FR.224s, FR.223, FR.225, FR.230, FR.231). When satisfied, click "Stage 1 appropriate" to begin Stage 2. Requires every Stage 2 FR.224 signed by its auditor and the Stage 2 FR.223 signed by the organisation representative.',
-    cta: { label: 'Stage 1 appropriate — Begin Stage 2', nextStatus: 'stage2_in_progress', allowedRoles: ['admin', 'executive'] },
+    cta: { label: 'Stage 1 appropriate — Begin Stage 2', nextStatus: 'stage2_in_progress', allowedRoles: ['admin', 'executive', 'certification_manager'] },
   },
   stage2_scheduled: {
     heading: 'Stage 2 scheduled (legacy)',
@@ -106,6 +106,7 @@ const INITIAL_PANELS: Record<string, ActionPanel> = {
   stage2_complete: {
     heading: 'Stage 2 complete — committee review next',
     body: 'Stage 2 is done. Certification is NOT automatic: generate FR.233 in the Review & Decision panel below to open the committee review.',
+    cta: { label: 'Open Committee Review', nextStatus: 'committee_review', allowedRoles: ['admin', 'planner', 'certification_manager'] },
   },
   committee_review: {
     heading: 'Committee review in progress',

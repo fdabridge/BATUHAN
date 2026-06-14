@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from audit_set.db_models import (
@@ -104,11 +105,20 @@ def get_eligible_users(
         db.query(AuditSetCommitteeMember).filter_by(audit_set_id=audit_set_id).all()
     }
 
-    cb_users = (
+    # Portal 54 — eligible candidates are CB staff PLUS external auditors with
+    # a linked auditor profile. Previously CB-only filtering excluded auditors
+    # from the committee picker even when they covered the right EA codes.
+    candidate_users = (
         auth_db.query(PlatformUser)
         .filter(
-            PlatformUser.role.in_(CB_ROLES),
             PlatformUser.is_active == True,  # noqa: E712
+            or_(
+                PlatformUser.role.in_(CB_ROLES),
+                and_(
+                    PlatformUser.role == "auditor",
+                    PlatformUser.auditor_id.isnot(None),
+                ),
+            ),
         )
         .all()
     )
@@ -118,7 +128,7 @@ def get_eligible_users(
     plan_ea_code = (audit_set.ea_code or "").strip()
 
     results = []
-    for u in cb_users:
+    for u in candidate_users:
         if u.id in already_appointed_user_ids:
             continue
 

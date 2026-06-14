@@ -63,13 +63,13 @@ VALID_TRANSITIONS: dict[tuple[Optional[str], str], set[str]] = {
     ("stage1_in_progress", "stage1_complete"):    {"admin", "planner", "auditor"},
     # ── Initial certification — Stage 2 ──────────────────────────────────────
     # Portal 49b: CM clicks "Stage 1 appropriate" → stage2_in_progress (gated).
-    ("stage1_complete",    "stage2_in_progress"): {"admin", "executive"},
+    ("stage1_complete",    "stage2_in_progress"): {"admin", "executive", "certification_manager"},
     ("stage1_complete",    "stage2_scheduled"):   {"admin", "planner"},  # legacy
     ("stage2_scheduled",   "stage2_in_progress"): {"admin", "planner", "auditor"},
     ("stage2_in_progress", "stage2_complete"):    {"admin", "planner", "auditor"},
     ("stage2_in_progress", "under_review"):       {"admin", "planner", "auditor"},  # legacy
     # ── Committee + closing ───────────────────────────────────────────────────
-    ("stage2_complete",    "committee_review"):   {"admin", "planner"},
+    ("stage2_complete",    "committee_review"):   {"admin", "planner", "certification_manager"},
     ("under_review",       "certified"):          {"admin", "executive"},
 }
 
