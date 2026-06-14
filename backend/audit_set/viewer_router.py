@@ -75,9 +75,38 @@ ORG_SIG_RE = re.compile(
     r"^ORG_(OPENING|CLOSING)_ORG_EMP_([0-9a-fA-F-]{36})$"
 )
 
+# Portal 59 — FR.225 audit-team signature slots (added to all 9 templates in
+# commit 90b77ab). Each auditor / technical expert signs their own Opening /
+# Closing slot using their own UserSignature. No AuditDocumentSignature row is
+# seeded — status is driven by VisualSignaturePlacement (mirrors ORG_SIG_RE).
+ORG_TEAM_RE = re.compile(
+    r"^ORG_(OPENING|CLOSING)_(LEAD_AUDITOR|AUDITOR_(\d+)|TE_(\d+))$"
+)
+
 # Portal 49a Part 3 — FR.233 certification committee signature slots.
 COMMITTEE_SIG_KEYS = {"COMMITTEE_CHAIR", "COMMITTEE_MEMBER_1", "COMMITTEE_MEMBER_2"}
 CERT_MANAGER_FR233_KEY = "CERT_MANAGER_FR233"
+
+# Portal 59 Fix 4 — legacy sig-key aliases for VSP lookup. Existing rendered
+# PDFs and existing VisualSignaturePlacement rows may carry pre-rename marker
+# names. Scan-time normalization lives in doc_converter._normalize_sig_key;
+# this map is the read-side fallback so VSP rows written under old names
+# (or against legacy-keyed PDFs) still resolve when the legend asks for the
+# new canonical key. Aliases are template-scoped at scan time, so adding an
+# old name here only widens the VSP lookup — it does not change behaviour
+# for documents where the old name is still canonical (FR.220/221/230 CLIENT,
+# FR.218/229 CB_REVIEWER).
+SIG_KEY_ALIASES: dict[str, str] = {
+    "AUDITOR_MEMBER":  "ASSIGNED_AUDITOR",   # FR.224
+    "CLIENT":          "ORG_REP",             # FR.211 / FR.223 only (template-scoped)
+    "CB_REVIEWER":     "APPOINTED_REVIEWER",  # FR.231 / FR.232 only (template-scoped)
+}
+
+
+def _aliased_sig_keys(sig_key: str) -> list[str]:
+    """Return [sig_key, ...old aliases mapping to sig_key] for legacy VSP lookup."""
+    aliases = [old for old, new in SIG_KEY_ALIASES.items() if new == sig_key]
+    return [sig_key, *aliases] if aliases else [sig_key]
 
 
 # ── Pydantic request bodies ───────────────────────────────────────────────────
@@ -358,6 +387,55 @@ def _prior_slots_unsigned(doc_id: str, order_index: int | None, db: Session) -> 
     )
 
 
+# ── Helpers: FR.225 audit-team slot resolution (Portal 59) ────────────────────
+
+def _resolve_org_team_member(
+    sig_key: str,
+    doc: AuditSetSharedDocument,
+    db: Session,
+) -> tuple[Optional[str], Optional[str]]:
+    """Return (auditor_id, display_name) for an ORG_TEAM_RE sig_key, or (None, None)."""
+    m = ORG_TEAM_RE.match(sig_key)
+    if not m:
+        return None, None
+    role_part = m.group(2)
+    stage = _find_stage(db, doc.audit_set_id, doc.stage_type)
+    if not stage:
+        return None, None
+    if role_part == "LEAD_AUDITOR":
+        return stage.lead_auditor_id, stage.lead_auditor_name or "Lead Auditor"
+    if role_part.startswith("AUDITOR_"):
+        idx = int(role_part.split("_")[1])
+        auditors = stage.auditors or []
+        if idx >= len(auditors):
+            return None, None
+        a = auditors[idx]
+        return a.get("id"), a.get("name") or f"Auditor {idx}"
+    if role_part.startswith("TE_"):
+        idx = int(role_part.split("_")[1])
+        tes = stage.technical_experts or []
+        if idx >= len(tes):
+            return None, None
+        t = tes[idx]
+        return t.get("id"), t.get("name") or f"Technical Expert {idx}"
+    return None, None
+
+
+def _org_team_eligible(
+    sig_key: str,
+    doc: AuditSetSharedDocument,
+    current_user: PlatformUser,
+    db: Session,
+) -> bool:
+    """True if current_user is the auditor assigned to this ORG_TEAM slot."""
+    if current_user.role == "admin":
+        return True
+    if current_user.role != "auditor" or not current_user.auditor_id:
+        return False
+    auditor_id, _ = _resolve_org_team_member(sig_key, doc, db)
+    return auditor_id is not None and auditor_id == current_user.auditor_id
+
+
 # ── Helper: _assert_can_sign ──────────────────────────────────────────────────
 
 def _assert_can_sign(
@@ -406,6 +484,13 @@ def _assert_can_sign(
                     f"{emp.full_name} has no signature on file. "
                     "Go to Employees, upload their signature, then try again.",
                 )
+
+        elif ORG_TEAM_RE.match(sig_key):
+            # Portal 59 — FR.225 audit-team slot. Auditor signs their own
+            # Opening/Closing cell using their own UserSignature. No ordering
+            # gate: all team slots may be signed independently.
+            if not _org_team_eligible(sig_key, doc, current_user, db):
+                raise HTTPException(403, "This signature slot is not assigned to you")
 
         elif sig_key in COMMITTEE_SIG_KEYS or sig_key == CERT_MANAGER_FR233_KEY:
             # Portal 49a Part 3 — FR.233 committee signing handled below by
@@ -537,10 +622,11 @@ def _get_field_status(
     auth_db: Session,
 ) -> dict:
     """Return signing status for one sig_key on one document."""
+    # Portal 59 Fix 4 — also accept VSP rows written under legacy alias names.
     vsp = db.query(VisualSignaturePlacement).filter(
         VisualSignaturePlacement.document_type == document_type,
         VisualSignaturePlacement.doc_id == doc_id,
-        VisualSignaturePlacement.sig_key == sig_key,
+        VisualSignaturePlacement.sig_key.in_(_aliased_sig_keys(sig_key)),
         VisualSignaturePlacement.signed_at.isnot(None),
     ).first()
 
@@ -589,6 +675,17 @@ def _get_field_status(
                     and current_user.audit_set_id == doc.audit_set_id):
                 return _result("current_user", emp_name)
             return _result("pending", emp_name)
+
+        # Portal 59 — FR.225 audit-team slots (Lead Auditor / Auditor_N / TE_N).
+        # No AuditDocumentSignature row is seeded; status mirrors ORG_SIG_RE
+        # and reads directly from VisualSignaturePlacement. No ordering gate.
+        if ORG_TEAM_RE.match(sig_key):
+            _, member_name = _resolve_org_team_member(sig_key, doc, db)
+            if vsp:
+                return _result("signed", member_name, vsp.signature_image)
+            if _org_team_eligible(sig_key, doc, current_user, db):
+                return _result("current_user", member_name)
+            return _result("pending", member_name)
 
         role_label = SIG_TO_ROLE.get(sig_key)
         if not role_label:
@@ -786,6 +883,11 @@ def _commit_existing_signing_record(
         elif ORG_SIG_RE.match(sig_key):
             # Portal 49a Part 2 — placement was already saved in sign_confirm.
             # No workflow status change is associated with org-attendee signing.
+            return
+
+        elif ORG_TEAM_RE.match(sig_key):
+            # Portal 59 — FR.225 audit-team placement was already saved in
+            # sign_confirm. No workflow status change is associated with it.
             return
 
         elif sig_key in COMMITTEE_SIG_KEYS or sig_key == CERT_MANAGER_FR233_KEY:

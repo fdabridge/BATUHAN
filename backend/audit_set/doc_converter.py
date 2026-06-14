@@ -28,6 +28,23 @@ if TYPE_CHECKING:
 _SIG_PATTERN = re.compile(r"^\[SIG:([A-Z0-9_]+)\]$")
 
 
+# Portal 59 Fix 4 — legacy sig-key migration. Older rendered PDFs on disk still
+# carry pre-rename marker names; remap them to the current canonical names so
+# the viewer can find the placement coordinates without forcing a re-upload.
+# Applied conditionally per template basename because some keys (CLIENT,
+# CB_REVIEWER) remain canonical in other templates (FR.220/221/230 use CLIENT;
+# FR.218/229 use CB_REVIEWER).
+def _normalize_sig_key(raw_key: str, docx_basename: str) -> str:
+    if raw_key == "AUDITOR_MEMBER":
+        return "ASSIGNED_AUDITOR"
+    name = docx_basename.upper()
+    if raw_key == "CLIENT" and ("FR.211" in name or "FR.223" in name):
+        return "ORG_REP"
+    if raw_key == "CB_REVIEWER" and ("FR.231" in name or "FR.232" in name):
+        return "APPOINTED_REVIEWER"
+    return raw_key
+
+
 # ── DOCX → PDF ───────────────────────────────────────────────────────────────
 
 def convert_docx_to_pdf(docx_path: str) -> str:
@@ -148,11 +165,12 @@ def prepare_document(docx_path: str, db: "Session") -> dict:
 
     # Step 3: Extract and store
     raw_fields = extract_sig_fields(pdf_path)
+    docx_basename = os.path.basename(docx_path)
     for field in raw_fields:
         db.add(DocumentSignatureField(
             docx_path   = docx_path,
             pdf_path    = pdf_path,
-            sig_key     = field["sig_key"],
+            sig_key     = _normalize_sig_key(field["sig_key"], docx_basename),
             page_number = field["page_number"],
             x0          = field["x0"],
             y0          = field["y0"],
