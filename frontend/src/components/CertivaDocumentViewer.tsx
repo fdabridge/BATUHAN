@@ -20,7 +20,7 @@ import api from '@/lib/api'
 
 export type DocumentType = 'shared_doc' | 'audit_report' | 'nc_form'
 
-export type SigStatus = 'pending' | 'current_user' | 'signed' | 'blocked'
+export type SigStatus = 'pending' | 'current_user' | 'signed' | 'blocked' | 'not_applicable'
 
 export interface SignatureOverride {
   sig_key:          string
@@ -144,6 +144,17 @@ function SignatureBox({
         <Lock size={13} className="text-gray-300" />
         <span className="text-center text-[10px] text-gray-400 leading-tight px-1">
           {sigLabel(field.sig_key)}<br />Waiting for prior signer
+        </span>
+      </div>
+    )
+  }
+
+  if (status === 'not_applicable') {
+    return (
+      <div style={style} className="pointer-events-none flex flex-col items-center justify-center
+        gap-1 rounded border border-dashed border-gray-200 bg-gray-50/60">
+        <span className="text-center text-[10px] text-gray-300 leading-tight px-1">
+          {sigLabel(field.sig_key)}<br />Not required for this standard
         </span>
       </div>
     )
@@ -333,17 +344,19 @@ export function CertivaDocumentViewer({
                   return (
                     <div key={sig_key} className="flex items-center gap-2">
                       <span className={`h-2.5 w-2.5 rounded-full ${
-                        ov.status === 'signed'         ? 'bg-emerald-500'
-                        : ov.status === 'current_user' ? 'bg-[#1A4731] animate-pulse'
-                        : ov.status === 'blocked'      ? 'bg-gray-200'
+                        ov.status === 'signed'          ? 'bg-emerald-500'
+                        : ov.status === 'current_user'  ? 'bg-[#1A4731] animate-pulse'
+                        : ov.status === 'blocked'       ? 'bg-gray-200'
+                        : ov.status === 'not_applicable'? 'bg-gray-100'
                         : 'bg-gray-300'
                       }`} />
-                      <span className="text-sm text-gray-700">{sigLabel(sig_key)}</span>
+                      <span className={`text-sm ${ov.status === 'not_applicable' ? 'text-gray-300' : 'text-gray-700'}`}>{sigLabel(sig_key)}</span>
                       <span className="text-xs text-gray-400">
                         {ov.status === 'signed'
                           ? (ov.signer_name ? `✓ ${ov.signer_name}` : '✓ Signed')
-                          : ov.status === 'current_user' ? 'Your signature'
-                          : ov.status === 'blocked'      ? 'Waiting for prior signer'
+                          : ov.status === 'current_user'   ? 'Your signature'
+                          : ov.status === 'blocked'        ? 'Waiting for prior signer'
+                          : ov.status === 'not_applicable' ? 'Not required'
                           : 'Awaiting'}
                       </span>
                     </div>

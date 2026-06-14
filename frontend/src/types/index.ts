@@ -160,6 +160,9 @@ export interface AuditSetResponse {
   application_date?: string | null
   // Standard-specific application form data (Prompt 35)
   application_data?: Record<string, unknown> | null
+  // Portal 51 — FR.218 Application Reviewer (FSMS/ISMS only)
+  fr218_reviewer_id?:   string | null
+  fr218_reviewer_name?: string | null
 }
 
 // ── Jobs (AI report pipeline) ─────────────────────────────────────────────────

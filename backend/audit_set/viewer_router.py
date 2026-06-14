@@ -52,7 +52,7 @@ router = APIRouter(prefix="/viewer", tags=["viewer"])
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-CB_ROLES = {"admin", "planner", "officer", "executive", "gm"}
+CB_ROLES = {"admin", "planner", "officer", "executive", "gm", "certification_manager"}
 
 ROLE_TO_SIG: dict[str, str] = {
     "cb_planner":       "CB_PLANNER",
@@ -294,7 +294,19 @@ def _shared_slot_eligible(
     if role_label == "cb_planner":
         return role in ("planner", "admin")
     if role_label == "cb_cert_manager":
-        return role in ("admin", "executive")
+        # Bug fix: include "certification_manager" (was incorrectly "executive" only)
+        return role in ("admin", "certification_manager", "executive")
+    if role_label == "cb_reviewer":
+        # For FR.218: only the appointed fr218_reviewer auditor may sign this slot.
+        if doc.document_type == "fr218_review":
+            if role == "admin":
+                return True
+            if role != "auditor" or not current_user.auditor_id:
+                return False
+            audit_set = db.query(AuditSet).filter_by(id=doc.audit_set_id).first()
+            return audit_set is not None and audit_set.fr218_reviewer_id == current_user.auditor_id
+        # For other doc types: fall through (committee membership checked separately)
+        return False
     if role_label == "org_rep":
         return role == "client" and current_user.audit_set_id == doc.audit_set_id
     if role_label == "assigned_auditor":
@@ -549,6 +561,10 @@ def _get_field_status(
             document_id=doc_id, signer_role_label=role_label,
         ).first()
         if not sig_record:
+            # No DB slot seeded for this sig_key on this document.
+            # For fr218_review CB_REVIEWER: this means FSMS/ISMS reviewer not required.
+            if doc and doc.document_type == "fr218_review" and role_label == "cb_reviewer":
+                return _result("not_applicable")
             return _result("pending")
 
         if sig_record.signed_at:

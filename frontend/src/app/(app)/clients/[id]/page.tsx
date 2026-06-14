@@ -622,6 +622,80 @@ function PlanOverview({
 }
 
 
+// ── FR.218 Reviewer Picker (Portal 51 — FSMS/ISMS only) ──────────────────────
+
+function needsFr218Reviewer(standards: string[]): boolean {
+  return standards.some(s => ['FSMS', 'ISMS'].includes(s))
+}
+
+function FR218ReviewerPicker({
+  auditSetId, currentReviewerId, currentReviewerName, onSaved,
+}: {
+  auditSetId: string
+  currentReviewerId: string | null | undefined
+  currentReviewerName: string | null | undefined
+  onSaved: (id: string | null, name: string | null) => void
+}) {
+  const [auditors, setAuditors] = useState<{ id: string; name: string }[]>([])
+  const [selected, setSelected] = useState(currentReviewerId ?? '')
+  const [saving, setSaving]     = useState(false)
+  const [msg, setMsg]           = useState('')
+
+  useEffect(() => {
+    api.get('/auditors').then(r => setAuditors(r.data as { id: string; name: string }[])).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    setSelected(currentReviewerId ?? '')
+  }, [currentReviewerId])
+
+  async function save() {
+    setSaving(true)
+    setMsg('')
+    try {
+      const aud = auditors.find(a => a.id === selected) ?? null
+      await api.patch(`/audit-sets/${auditSetId}/fr218-reviewer`, {
+        fr218_reviewer_id:   aud?.id ?? null,
+        fr218_reviewer_name: aud?.name ?? null,
+      })
+      onSaved(aud?.id ?? null, aud?.name ?? null)
+      setMsg('Saved ✓')
+    } catch {
+      setMsg('Error saving')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <select
+        value={selected}
+        onChange={e => setSelected(e.target.value)}
+        className="rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A4731]/30"
+      >
+        <option value="">— Select reviewer —</option>
+        {auditors.map(a => (
+          <option key={a.id} value={a.id}>{a.name}</option>
+        ))}
+      </select>
+      <button
+        type="button"
+        onClick={save}
+        disabled={saving}
+        className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+      >
+        {saving ? 'Saving…' : 'Assign'}
+      </button>
+      {currentReviewerName && (
+        <span className="text-xs text-gray-500">Current: <strong>{currentReviewerName}</strong></span>
+      )}
+      {msg && <span className={`text-xs ${msg.startsWith('Error') ? 'text-red-600' : 'text-green-600'}`}>{msg}</span>}
+    </div>
+  )
+}
+
+
 // ── Certification status section ──────────────────────────────────────────────
 
 function CertSection({
@@ -1637,6 +1711,25 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
         auditSetId={id}
         workflowStatus={data.workflow_status ?? null}
       />
+
+      {/* FR.218 Application Reviewer — Portal 51 (FSMS/ISMS only) */}
+      {needsFr218Reviewer((data.standards ?? []) as string[]) && (
+        <div className="mt-4 rounded-xl border bg-white p-4">
+          <h3 className="mb-1 text-sm font-semibold text-gray-700">
+            Application Reviewer (FR.218) — Required for FSMS / ISMS
+          </h3>
+          <p className="mb-3 text-xs text-gray-500">
+            Appoint the auditor or technical expert who will review the application
+            and sign FR.218. They will see the document in their auditor portal.
+          </p>
+          <FR218ReviewerPicker
+            auditSetId={id}
+            currentReviewerId={data.fr218_reviewer_id}
+            currentReviewerName={data.fr218_reviewer_name}
+            onSaved={invalidate}
+          />
+        </div>
+      )}
 
       {/* Certification Committee — Prompt 14 (reviewer / decision maker appointments) */}
       <CommitteeSection

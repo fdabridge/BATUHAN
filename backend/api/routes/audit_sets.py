@@ -10,12 +10,14 @@ DELETE /audit-sets/{id}          → soft-delete: status = "archived" (204)
 from __future__ import annotations
 import io
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from audit_set.db_models import get_db
+from audit_set.db_models import AuditSet, get_db
 from audit_set.packager import build_audit_set_zip
 from audit_set.schemas import (
     AuditSetCreateSchema,
@@ -35,6 +37,11 @@ from audit_set.service import (
 )
 from auth.db_models import PlatformUser
 from auth.dependencies import require_admin, require_planner, require_any
+
+
+class FR218ReviewerUpdate(BaseModel):
+    fr218_reviewer_id:   Optional[str] = None
+    fr218_reviewer_name: Optional[str] = None
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -172,6 +179,28 @@ def run_generate_nac(
         non_applicable_clauses=result["nac_text"],
         suggestions=result["suggestions"],
     )
+
+
+@router.patch("/{audit_set_id}/fr218-reviewer", status_code=200)
+def set_fr218_reviewer(
+    audit_set_id: str,
+    body: FR218ReviewerUpdate,
+    db: Session = Depends(get_db),
+    _: PlatformUser = Depends(require_planner),
+):
+    """Set (or clear) the appointed Application Reviewer for FR.218.
+    Only applicable when the audit set has FSMS or ISMS standards.
+    """
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    if not audit_set:
+        raise HTTPException(status_code=404, detail="Audit set not found")
+    audit_set.fr218_reviewer_id   = body.fr218_reviewer_id
+    audit_set.fr218_reviewer_name = body.fr218_reviewer_name
+    db.commit()
+    return {
+        "fr218_reviewer_id":   audit_set.fr218_reviewer_id,
+        "fr218_reviewer_name": audit_set.fr218_reviewer_name,
+    }
 
 
 @router.delete("/{audit_set_id}", status_code=204)

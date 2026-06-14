@@ -56,6 +56,7 @@ ALLOWED_DOC_TYPES = {
 AUDITOR_VISIBLE_TYPES = {
     "audit_plan", "meeting_form", "nc_form",
     "stage1_report", "stage2_report", "certificate", "audit_upload",
+    "fr218_review",   # visible to the appointed application reviewer (FSMS/ISMS only)
 }
 CLIENT_VISIBLE_TYPES = {
     "quotation", "agreement", "audit_plan", "meeting_form",
@@ -108,12 +109,19 @@ def _status_at_least(current: Optional[str], threshold: str) -> bool:
 
 
 def _needs_reviewer(audit_set: AuditSet) -> bool:
-    """FSMS/ISMS: ISO 22000, FSSC 22000, or ISO 27001 require a reviewer slot."""
+    """FSMS/ISMS audits require a committee reviewer slot on FR.218 and stage reports.
+
+    Standards are stored as codes ("FSMS", "ISMS") or legacy ISO strings ("ISO 22000").
+    """
     standards = audit_set.standards or []
     if isinstance(standards, str):
         standards = [standards]
-    joined = " ".join(str(s) for s in standards)
-    return "22000" in joined or "27001" in joined
+    joined = " ".join(str(s).upper() for s in standards)
+    # Match code-style ("FSMS", "ISMS") and legacy ISO-number style ("22000", "27001")
+    return any(
+        kw in joined
+        for kw in ("FSMS", "ISMS", "22000", "27001")
+    )
 
 
 def _doc_to_dict(d: AuditSetSharedDocument, db: Session | None = None) -> dict:
@@ -290,10 +298,14 @@ async def release_document(
         f.write(content)
 
     # Determine signature slots for this document type. Stage reports gain a
-    # reviewer slot when FSMS/ISMS standards apply.
+    # reviewer slot when FSMS/ISMS standards apply. FR.218 gains a cb_reviewer
+    # slot between cb_planner and cb_cert_manager for FSMS/ISMS audits.
     slot_labels = list(DOC_SIG_SLOTS.get(document_type, []))
     if document_type in ("stage1_report", "stage2_report") and _needs_reviewer(audit_set):
         slot_labels.append("reviewer")
+    if document_type == "fr218_review" and _needs_reviewer(audit_set):
+        # Insert cb_reviewer between cb_planner (idx 0) and cb_cert_manager (idx 1)
+        slot_labels = ["cb_planner", "cb_reviewer", "cb_cert_manager"]
 
     # Quotation and Agreement stay hidden from the client until the GM has
     # signed (status flips to "released" on GM sign in the viewer). All other

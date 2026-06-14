@@ -77,6 +77,9 @@ def create_tables():
     # Portal 50b — impartiality declaration PDF generation
     _safe_add_column("audit_set_impartiality_declarations", "file_path VARCHAR")
     _safe_add_column("audit_set_impartiality_declarations", "file_name VARCHAR")
+    # Portal 51 — FR.218 application reviewer (FSMS/ISMS only)
+    _safe_add_column("audit_sets", "fr218_reviewer_id VARCHAR")
+    _safe_add_column("audit_sets", "fr218_reviewer_name VARCHAR")
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +164,12 @@ class AuditSet(Base):
 
     # ── Standard-specific application data ────────────────────────────────────
     application_data = Column(JSON, nullable=True)   # EnMS/FSMS/ISMS inputs from application form
+
+    # ── FR.218 Application Reviewer (FSMS/ISMS only) ─────────────────────────
+    # auditor_id (FK to auditors.auditors.id) of the appointed application reviewer.
+    # Required when any standard in `standards` is FSMS or ISMS.
+    fr218_reviewer_id   = Column(String, nullable=True)
+    fr218_reviewer_name = Column(String, nullable=True)
 
     # ── Certificate ───────────────────────────────────────────────────────────
     cert_issued_date = Column(Date, nullable=True)

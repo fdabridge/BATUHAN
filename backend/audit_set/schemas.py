@@ -218,6 +218,9 @@ class AuditSetResponse(BaseModel):
     workflow_status: Optional[str] = None
     submitted_via_portal: bool = False
     application_date: Optional[date] = None          # retroactive override
+    # Portal 51 — FR.218 Application Reviewer (FSMS/ISMS only)
+    fr218_reviewer_id:   Optional[str] = None
+    fr218_reviewer_name: Optional[str] = None
     stages: list[StageResponse]
     created_at: datetime
     updated_at: datetime

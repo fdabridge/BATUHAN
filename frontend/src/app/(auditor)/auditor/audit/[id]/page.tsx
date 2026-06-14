@@ -43,6 +43,8 @@ interface AssignmentDetail {
   ea_category:            string | null
   accreditation_body:     string | null
   workflow_status:        string | null
+  // Portal 51 — FR.218 Application Reviewer (FSMS/ISMS only)
+  fr218_reviewer_id:      string | null
   stages:                 Stage[]
 }
 
@@ -702,6 +704,36 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
 }
 
 
+// ── FR.218 Reviewer document view — Portal 51 ────────────────────────────────
+
+function FR218ReviewerDocumentView({ auditSetId }: { auditSetId: string }) {
+  const [doc, setDoc]     = useState<{ id: string; label: string; status: string } | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    api.get(`/audit-sets/${auditSetId}/documents`)
+      .then(r => {
+        const fr218 = (r.data as { id: string; label: string; document_type: string; status: string }[])
+          .find(d => d.document_type === 'fr218_review')
+        setDoc(fr218 ?? null)
+      })
+      .finally(() => setLoading(false))
+  }, [auditSetId])
+
+  if (loading) return <p className="text-xs text-gray-400">Loading…</p>
+  if (!doc)    return <p className="text-xs text-gray-400">FR.218 not yet uploaded by the CB.</p>
+
+  return (
+    <a
+      href={`/auditor/viewer/shared_doc/${doc.id}`}
+      className="inline-block rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-800"
+    >
+      Open FR.218 to Review &amp; Sign
+    </a>
+  )
+}
+
+
 // ── Documents tab — Portal 49b ────────────────────────────────────────────────
 // Shared documents visible to this auditor (backend filters by role; team_info
 // FR.224 is own-only). Own pending FR.224 surfaces at the top with a sign prompt.
@@ -1025,7 +1057,22 @@ export default function AuditorAuditDetail() {
 
       {/* Documents tab — Portal 49b (shared docs incl. own FR.224) */}
       {tab === 'documents' && (
-        <AuditorSharedDocsView auditSetId={id} currentAuditorId={myAuditorId} />
+        <div className="space-y-4">
+          {/* Portal 51 — FR.218 Application Review sign prompt (appointed reviewer only) */}
+          {data.fr218_reviewer_id && myAuditorId && data.fr218_reviewer_id === myAuditorId && (
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+              <h3 className="mb-1 text-sm font-semibold text-blue-800">
+                Application Review (FR.218) — Your Signature Required
+              </h3>
+              <p className="mb-3 text-xs text-blue-600">
+                You are appointed as the Application Reviewer for this FSMS / ISMS audit.
+                Please review and sign FR.218 after the Planning Officer has signed.
+              </p>
+              <FR218ReviewerDocumentView auditSetId={id} />
+            </div>
+          )}
+          <AuditorSharedDocsView auditSetId={id} currentAuditorId={myAuditorId} />
+        </div>
       )}
 
       {/* Messages tab */}
