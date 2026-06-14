@@ -53,7 +53,9 @@ def _safe_add_column(table: str, col_def: str) -> None:
 
 
 def create_tables():
-    Base.metadata.create_all(bind=engine)
+    # Portal 56 — checkfirst=True (default) ensures any table added after the
+    # initial deploy (e.g. client_org_employees) is created on the running DB.
+    Base.metadata.create_all(bind=engine, checkfirst=True)
     # Safe migrations — add columns introduced after initial deployment
     _safe_add_column("audit_sets", "required_scope JSON")
     _safe_add_column("audit_sets", "scope_integration_level VARCHAR")

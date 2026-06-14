@@ -4,9 +4,12 @@
  * SignatureConfirmDialog — Signs a [SIG:KEY] field directly (no OTP).
  *
  * Flow:
- *   1. Fetches user's saved signature from /me/signature.
- *   2. Shows preview + "Sign Document" button.
- *   3. User clicks → POST /viewer/sign/confirm.
+ *   1. For client-side slots (CLIENT / ORG_REP): fetch /org/employees and
+ *      show an employee picker. The selected employee's saved signature is
+ *      used for the document. (Portal 56)
+ *   2. For all other slots: fetch the user's own saved signature from
+ *      /me/signature and show the preview.
+ *   3. User confirms → POST /viewer/sign/confirm (with employee_id when set).
  *   4. On success: calls onSigned(sigKey) and auto-closes.
  */
 
@@ -25,6 +28,15 @@ interface Props {
   onSigned:     (sigKey: string) => void
 }
 
+interface OrgEmployee {
+  id:             string
+  full_name:      string
+  role_title:     string
+  has_signature:  boolean
+}
+
+const CLIENT_SIDE_SIG_KEYS = new Set(['CLIENT', 'ORG_REP'])
+
 function getSignatureSettingsUrl(): string {
   if (typeof window === 'undefined') return '/settings/signature'
   const p = window.location.pathname
@@ -39,6 +51,7 @@ const SIG_KEY_LABELS: Record<string, string> = {
   CB_REVIEWER:     'Committee Reviewer',
   LEAD_AUDITOR:    'Lead Auditor',
   CLIENT:          'Organisation Representative',
+  ORG_REP:         'Organisation Representative',
   AUDITOR_MEMBER:  'Audit Team Member',
   GM:              'General Manager',
 }
@@ -55,10 +68,36 @@ export function SignatureConfirmDialog({
   const [errorMsg,   setErrorMsg]   = useState('')
   const [signedDate, setSignedDate] = useState(todayIso)
 
+  // Portal 56 — employee picker state, only used for client-side slots.
+  const needsEmployeePicker = CLIENT_SIDE_SIG_KEYS.has(sigKey)
+  const [employees,    setEmployees]    = useState<OrgEmployee[]>([])
+  const [selectedEmpId, setSelectedEmpId] = useState<string>('')
+  const selectedEmp = employees.find((e) => e.id === selectedEmpId) ?? null
+
   useEffect(() => {
     if (!isOpen) return
     setStage('loading')
     setErrorMsg('')
+    setSigImage(null)
+    setSelectedEmpId('')
+
+    if (needsEmployeePicker) {
+      api.get('/org/employees')
+        .then((r) => {
+          const list = Array.isArray(r.data) ? (r.data as OrgEmployee[]) : []
+          setEmployees(list)
+          if (list.length === 0) {
+            setStage('no_signature')
+          } else {
+            setStage('preview')
+          }
+        })
+        .catch(() => {
+          setEmployees([])
+          setStage('no_signature')
+        })
+      return
+    }
 
     api.get('/me/signature')
       .then((r) => {
@@ -66,26 +105,37 @@ export function SignatureConfirmDialog({
           setSigImage(r.data.image_data)
           setStage('preview')
         } else {
-          setSigImage(null)
           setStage('no_signature')
         }
       })
       .catch(() => {
-        setSigImage(null)
         setStage('no_signature')
       })
-  }, [isOpen, sigKey])
+  }, [isOpen, sigKey, needsEmployeePicker])
+
+  // Portal 56 — when an employee is picked, fetch their signature image for preview.
+  useEffect(() => {
+    if (!needsEmployeePicker || !selectedEmpId) {
+      if (needsEmployeePicker) setSigImage(null)
+      return
+    }
+    api.get(`/org/employees/${selectedEmpId}/signature`)
+      .then((r) => setSigImage(r.data?.image_data ?? null))
+      .catch(() => setSigImage(null))
+  }, [needsEmployeePicker, selectedEmpId])
 
   async function handleConfirm() {
     setStage('signing')
     setErrorMsg('')
     try {
-      await api.post('/viewer/sign/confirm', {
+      const body: Record<string, unknown> = {
         document_type: documentType,
         doc_id:        docId,
         sig_key:       sigKey,
         signed_date:   signedDate || todayIso(),
-      })
+      }
+      if (needsEmployeePicker) body.employee_id = selectedEmpId
+      await api.post('/viewer/sign/confirm', body)
       setStage('success')
       setTimeout(() => onSigned(sigKey), 1400)
     } catch (e: unknown) {
@@ -124,7 +174,24 @@ export function SignatureConfirmDialog({
             </div>
           )}
 
-          {stage === 'no_signature' && (
+          {stage === 'no_signature' && needsEmployeePicker && (
+            <>
+              <p className="text-sm text-gray-600">
+                No employees on file for your organisation. Add at least one employee
+                with a signature in <strong>Employees</strong>, then come back here to sign.
+              </p>
+              <a href="/client/employees" target="_blank" rel="noreferrer"
+                className="block w-full rounded-lg border-2 border-dashed border-[#1A4731] py-3 text-center
+                  text-sm font-medium text-[#1A4731] hover:bg-[#1A4731]/5 transition-colors">
+                Open Employees →
+              </a>
+              <p className="text-xs text-gray-400 text-center">
+                Opens in a new tab. Add an employee + upload a transparent-background PNG signature, then retry.
+              </p>
+            </>
+          )}
+
+          {stage === 'no_signature' && !needsEmployeePicker && (
             <>
               <p className="text-sm text-gray-600">
                 You don&apos;t have a saved signature yet. Go to{' '}
@@ -143,10 +210,40 @@ export function SignatureConfirmDialog({
 
           {stage === 'preview' && (
             <>
-              <p className="text-sm text-gray-600">
-                Your saved signature will be placed on the document. Click{' '}
-                <strong>Sign Document</strong> to proceed.
-              </p>
+              {needsEmployeePicker ? (
+                <>
+                  <p className="text-sm text-gray-600">
+                    Select which employee from your organisation is signing this document.
+                    Their saved signature will be placed on the document.
+                  </p>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">Signing on behalf of</label>
+                    <select
+                      value={selectedEmpId}
+                      onChange={(e) => setSelectedEmpId(e.target.value)}
+                      className="w-full rounded border border-gray-200 px-2 py-2 text-sm text-gray-700 focus:border-[#1A4731] focus:outline-none"
+                    >
+                      <option value="">— Pick an employee —</option>
+                      {employees.map((e) => (
+                        <option key={e.id} value={e.id} disabled={!e.has_signature}>
+                          {e.full_name} — {e.role_title}{e.has_signature ? '' : '  (no signature)'}
+                        </option>
+                      ))}
+                    </select>
+                    {selectedEmp && !selectedEmp.has_signature && (
+                      <p className="mt-1 text-xs text-amber-600">
+                        {selectedEmp.full_name} has no signature on file. Pick someone else or
+                        upload their signature in <a href="/client/employees" className="underline" target="_blank" rel="noreferrer">Employees</a>.
+                      </p>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-gray-600">
+                  Your saved signature will be placed on the document. Click{' '}
+                  <strong>Sign Document</strong> to proceed.
+                </p>
+              )}
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Signing date</label>
                 <input
@@ -161,8 +258,10 @@ export function SignatureConfirmDialog({
                 minHeight: 90,
               }}>
                 {sigImage
-                  ? <img src={sigImage} alt="Your signature" className="max-h-20 max-w-full object-contain drop-shadow" />
-                  : <span className="text-xs italic text-gray-400">No image preview</span>}
+                  ? <img src={sigImage} alt="Signature preview" className="max-h-20 max-w-full object-contain drop-shadow" />
+                  : <span className="text-xs italic text-gray-400">
+                      {needsEmployeePicker ? 'Pick an employee to preview their signature' : 'No image preview'}
+                    </span>}
               </div>
               {errorMsg && (
                 <div className="flex items-start gap-1.5 rounded-lg bg-red-50 p-3 text-sm text-red-600">
@@ -170,8 +269,10 @@ export function SignatureConfirmDialog({
                 </div>
               )}
               <button type="button" onClick={handleConfirm}
+                disabled={needsEmployeePicker && (!selectedEmp || !selectedEmp.has_signature || !sigImage)}
                 className="w-full rounded-lg bg-[#1A4731] py-2.5 text-sm font-medium
-                  text-white hover:bg-[#1A4731]/90 active:scale-[0.98] transition-all">
+                  text-white hover:bg-[#1A4731]/90 active:scale-[0.98] transition-all
+                  disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100">
                 Sign Document
               </button>
             </>

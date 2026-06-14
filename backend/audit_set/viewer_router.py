@@ -85,6 +85,10 @@ class SignConfirmRequest(BaseModel):
     doc_id:        str
     sig_key:       str
     signed_date:   Optional[date] = None  # user-selected signing date; defaults to today
+    # Portal 56 — required when the client is signing an org-rep slot
+    # (sig_key CLIENT or ORG_REP). Identifies which registered employee from
+    # the client's roster is signing on behalf of the organisation.
+    employee_id:   Optional[str]  = None
 
 
 # ── Helper ────────────────────────────────────────────────────────────────────
@@ -545,13 +549,35 @@ def _get_field_status(
 
         if sig_key == "CLIENT":
             if doc.signed_at:
-                return _result("signed", _user_name(doc.signed_by), vsp.signature_image if vsp else None)
+                # Portal 56 — prefer the employee name stored on the CLIENT
+                # slot (set when the org rep signed via the employee picker);
+                # fall back to the platform user's name for legacy rows.
+                client_slot = db.query(AuditDocumentSignature).filter_by(
+                    document_id=doc_id, signer_role_label="client",
+                ).first()
+                display_name = (client_slot.signer_name if client_slot and client_slot.signer_name
+                                else _user_name(doc.signed_by))
+                return _result("signed", display_name, vsp.signature_image if vsp else None)
             if (current_user.role == "client"
                     and current_user.audit_set_id == doc.audit_set_id
                     and doc.status == "released"):
                 return _result("current_user")
             blocked = doc.status == "pending_cb_signature"
             return _result("blocked" if blocked else "pending")
+
+        # Portal 56 — FR.225 organisation-personnel slots. Status comes from
+        # the VisualSignaturePlacement row (signed_at populated) since these
+        # keys are not in SIG_TO_ROLE and have no AuditDocumentSignature slot.
+        org_match = ORG_SIG_RE.match(sig_key)
+        if org_match:
+            emp = db.query(ClientOrgEmployee).filter_by(id=org_match.group(2)).first()
+            emp_name = emp.full_name if emp else None
+            if vsp:
+                return _result("signed", emp_name, vsp.signature_image)
+            if (current_user.role == "client"
+                    and current_user.audit_set_id == doc.audit_set_id):
+                return _result("current_user", emp_name)
+            return _result("pending", emp_name)
 
         role_label = SIG_TO_ROLE.get(sig_key)
         if not role_label:
@@ -658,9 +684,14 @@ def _commit_existing_signing_record(
     db: Session,
     auth_db: Session,
     signed_at: Optional[datetime] = None,
+    employee: Optional["ClientOrgEmployee"] = None,
 ) -> None:
     """Update existing signing tables so workflow/legal state stays consistent."""
     now = signed_at if signed_at is not None else datetime.utcnow()
+    # Portal 56 — when an org employee signs on behalf of the client, the
+    # legal user is still current_user (audit trail) but the displayed signer
+    # name is the employee's full_name.
+    signer_name = employee.full_name if employee else current_user.full_name
 
     if document_type == "shared_doc":
         if sig_key == "CLIENT":
@@ -682,7 +713,7 @@ def _commit_existing_signing_record(
             ).first()
             if client_slot and not client_slot.signed_at:
                 client_slot.signer_user_id = current_user.id
-                client_slot.signer_name    = current_user.full_name
+                client_slot.signer_name    = signer_name
                 client_slot.signer_email   = current_user.email
                 client_slot.signed_at      = now
                 client_slot.signed_ip      = ip
@@ -794,7 +825,7 @@ def _commit_existing_signing_record(
 
             if sig_record.signer_user_id is None:
                 sig_record.signer_user_id = current_user.id
-                sig_record.signer_name    = current_user.full_name
+                sig_record.signer_name    = signer_name
                 sig_record.signer_email   = current_user.email
 
             sig_record.signed_at      = now
@@ -1010,15 +1041,44 @@ def sign_confirm(
     """
     _assert_can_sign(body.document_type, body.doc_id, body.sig_key, current_user, db)
 
-    # Resolve the signature image to embed. For ORG_OPENING_*/ORG_CLOSING_* the
-    # image is the employee's saved signature; for everything else it is the
-    # current user's UserSignature.
+    # Portal 56 — client-side org-rep slots require an employee from the
+    # client's roster. The legal user is still current_user, but the displayed
+    # signer name and the embedded signature image are the employee's.
+    client_side_slots = {"CLIENT", "ORG_REP"}
+    selected_employee: Optional[ClientOrgEmployee] = None
+    if body.employee_id:
+        selected_employee = db.query(ClientOrgEmployee).filter_by(
+            id=body.employee_id,
+            client_user_id=current_user.id,
+            is_active=True,
+        ).first()
+        if not selected_employee:
+            raise HTTPException(404, "Employee not found in your roster.")
+        if not selected_employee.signature_data:
+            raise HTTPException(
+                400,
+                f"{selected_employee.full_name} has no signature on file. "
+                "Upload a signature for them in Employees, then try again.",
+            )
+    if body.sig_key in client_side_slots and selected_employee is None:
+        raise HTTPException(
+            400,
+            "Pick an employee from your organisation roster to sign on behalf of. "
+            "If your roster is empty, add employees with signatures in the Employees page first.",
+        )
+
+    # Resolve the signature image to embed.
+    #   ORG_OPENING_*/ORG_CLOSING_*  → embedded employee uuid in the sig_key
+    #   CLIENT / ORG_REP             → selected_employee from the picker (Portal 56)
+    #   everything else              → current user's UserSignature
     org_match = ORG_SIG_RE.match(body.sig_key)
     if org_match:
         emp = db.query(ClientOrgEmployee).filter_by(id=org_match.group(2)).first()
         if not emp or not emp.signature_data:
             raise HTTPException(400, "Employee signature missing — re-upload and try again.")
         signature_image_b64 = emp.signature_data
+    elif selected_employee is not None:
+        signature_image_b64 = selected_employee.signature_data
     else:
         user_sig = auth_db.query(UserSignature).filter_by(user_id=current_user.id).first()
         if not user_sig:
@@ -1064,6 +1124,7 @@ def sign_confirm(
     _commit_existing_signing_record(
         body.document_type, body.doc_id, body.sig_key, current_user, ip, db, auth_db,
         signed_at=signed_at,
+        employee=selected_employee,
     )
 
     return {
