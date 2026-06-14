@@ -37,3 +37,7 @@ frontend/.next/
 frontend/tsconfig.tsbuildinfo
 frontend/package-lock.json
 
+
+# Temp DOCX fix artifacts
+*.tmp.docx
+
