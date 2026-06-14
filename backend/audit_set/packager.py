@@ -191,6 +191,7 @@ def _resolve_org_attendees(audit_set, db) -> list[dict]:
     employees table is missing, or no employees are registered yet, so the
     rendered form never collapses to zero participant rows (Portal 57)."""
     if db is None or audit_set is None:
+        logger.warning("[FR225] _resolve_org_attendees called with db=%r audit_set=%r", db, audit_set)
         return _blank_org_attendee_rows()
     try:
         from audit_set.db_models import ClientOrgEmployee
@@ -203,6 +204,7 @@ def _resolve_org_attendees(audit_set, db) -> list[dict]:
                 .first()
             )
             if not client:
+                logger.warning("[FR225] No client user found for audit_set_id=%s", audit_set.id)
                 return _blank_org_attendee_rows()
             employees = (
                 db.query(ClientOrgEmployee)
@@ -210,7 +212,12 @@ def _resolve_org_attendees(audit_set, db) -> list[dict]:
                 .order_by(ClientOrgEmployee.created_at)
                 .all()
             )
+            logger.info(
+                "[FR225] Found %d employees for client_id=%s (audit_set=%s)",
+                len(employees), client.id, audit_set.id,
+            )
             if not employees:
+                logger.warning("[FR225] Zero employees registered — using blank placeholders")
                 return _blank_org_attendee_rows()
             return [
                 {"name": e.full_name, "role": e.role_title, "sig_key": f"ORG_EMP_{e.id}"}
@@ -219,8 +226,59 @@ def _resolve_org_attendees(audit_set, db) -> list[dict]:
         finally:
             auth_db.close()
     except Exception:  # pragma: no cover — defensive: never break the packager
-        logger.warning("[Packager] org_attendees resolution failed", exc_info=True)
+        logger.warning("[FR225] org_attendees resolution failed", exc_info=True)
         return _blank_org_attendee_rows()
+
+
+# Portal 60 — reverse map for single-document regeneration.
+STAGE_TYPE_TO_FOLDER = {v: k for k, v in FOLDER_TO_STAGE_TYPE.items()}
+
+
+def render_single_document(audit_set, db, fr_number: str, stage_type: str) -> tuple[str, bytes]:
+    """Portal 60 — render one DOCX from the resolved document set, using the
+    current org-employee roster + auditor context. Returns
+    ``(output_filename, docx_bytes)`` or raises ``ValueError`` when the
+    template isn't part of this audit set's document set.
+
+    Used by the FR.225 regeneration endpoint; mirrors the once-per-stage
+    branch of :func:`build_audit_set_zip`."""
+    document_set, _ = resolve_document_set(audit_set)
+    target_folder = STAGE_TYPE_TO_FOLDER.get(stage_type)
+    if not target_folder:
+        raise ValueError(f"Unknown stage_type {stage_type!r}")
+
+    specs = document_set.get(target_folder) or []
+    spec = next((s for s in specs if s.fr_number == fr_number), None)
+    if spec is None:
+        raise ValueError(
+            f"{fr_number} is not part of this audit set's document set "
+            f"for {stage_type}",
+        )
+
+    stages_by_type = {s.stage_type: s for s in (audit_set.stages or [])}
+    stage = stages_by_type.get(stage_type)
+    if stage is None:
+        raise ValueError(f"Audit set has no {stage_type} stage")
+
+    org_attendees = _resolve_org_attendees(audit_set, db)
+    auditor_lookup = _build_auditor_lookup(audit_set)
+    required_scope = audit_set.required_scope or {}
+    standards_codes = audit_set.standards or []
+
+    ctx = build_base_context(audit_set, stage, org_attendees=org_attendees)
+    ctx.update(build_auditor_scope_strings(stage, auditor_lookup, required_scope))
+    if not ctx.get("lead_auditor_codes"):
+        ctx["lead_auditor_codes"] = audit_set.ea_code or ""
+
+    if fr_number == "FR.211":
+        ctx["assessed_person_name"] = ctx.get("lead_auditor_name", "") or ""
+
+    data = render_docx(spec.template_path, ctx)
+    if fr_number in CHECKBOX_FORMS:
+        data = apply_checkbox_selection(data, standards_codes)
+        data = apply_standard_highlighting(data, standards_codes)
+        data = apply_audit_type_highlighting(data, audit_set.audit_type or "")
+    return spec.output_filename, data
 
 
 def build_audit_set_zip(audit_set, db) -> bytes:

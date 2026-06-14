@@ -22,6 +22,8 @@ from audit_set.db_models import (
     AuditSetSharedDocument,
     AuditSetStage,
     AuditSetStatusEvent,
+    DocumentSignatureField,
+    VisualSignaturePlacement,
     get_db,
 )
 from auth.db_models import PlatformUser, get_db as get_auth_db
@@ -677,3 +679,92 @@ async def upload_audit_document(
 
     return {"id": doc.id, "label": doc.label, "status": "uploaded"}
 
+
+# ── Portal 60 — FR.225 regeneration ─────────────────────────────────────────
+
+@router.post("/{audit_set_id}/meeting-form/regenerate")
+def regenerate_meeting_form(
+    audit_set_id: str,
+    stage_type: str,
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """Regenerate the FR.225 Opening/Closing Meeting Form for this audit set
+    and stage using the current client org-employee roster. Replaces the file
+    on disk for the latest `meeting_form` document and clears all viewer caches
+    so the next /viewer/prepare call re-scans the fresh DOCX.
+
+    Use after the client registers (or updates) their roster, before any
+    signatures have been placed on FR.225. CB-side roles only — clients cannot
+    trigger this."""
+    if current_user.role not in AUDITOR_UPLOAD_ROLES:
+        raise HTTPException(403, "Not authorized to regenerate the meeting form")
+    if stage_type not in ("stage_1", "stage_2", "surveillance"):
+        raise HTTPException(400, "stage_type must be 'stage_1', 'stage_2' or 'surveillance'")
+
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    if not audit_set:
+        raise HTTPException(404, "Audit set not found")
+
+    # Locate the most recent meeting_form upload for this stage.
+    doc = (
+        db.query(AuditSetSharedDocument)
+        .filter_by(
+            audit_set_id=audit_set_id,
+            document_type="meeting_form",
+            stage_type=stage_type,
+        )
+        .order_by(AuditSetSharedDocument.released_at.desc())
+        .first()
+    )
+    if not doc or not doc.file_path:
+        raise HTTPException(
+            404,
+            f"No meeting_form upload found for {stage_type}. "
+            "Upload FR.225 once, then regenerate.",
+        )
+
+    # Render fresh DOCX with the current employee roster.
+    from audit_set.packager import render_single_document
+    try:
+        _, docx_bytes = render_single_document(audit_set, db, "FR.225", stage_type)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:  # pragma: no cover — surface render errors
+        raise HTTPException(500, f"FR.225 render failed: {exc}")
+
+    # Overwrite the file in place so the existing doc id, signatures table,
+    # and any downstream links remain valid.
+    old_docx_path = os.path.abspath(doc.file_path)
+    os.makedirs(os.path.dirname(old_docx_path), exist_ok=True)
+    with open(old_docx_path, "wb") as f:
+        f.write(docx_bytes)
+
+    # Drop the cached PDF so doc_converter re-renders on next /viewer/prepare.
+    cached_pdf = os.path.splitext(old_docx_path)[0] + ".pdf"
+    if os.path.exists(cached_pdf):
+        try:
+            os.remove(cached_pdf)
+        except OSError:
+            pass
+
+    # Clear pdfplumber-scanned field rows (keyed by docx_path) and any
+    # existing visual placements / seeded signature slots so the viewer
+    # rebuilds the legend from the regenerated DOCX.
+    db.query(DocumentSignatureField).filter_by(docx_path=old_docx_path).delete()
+    db.query(VisualSignaturePlacement).filter_by(
+        document_type="shared_doc", doc_id=doc.id,
+    ).delete()
+    db.query(AuditDocumentSignature).filter_by(document_id=doc.id).delete()
+
+    # Reset doc-level signing metadata so the workflow treats it as fresh.
+    doc.signed_at = None
+    doc.signed_by = None
+    db.commit()
+    db.refresh(doc)
+
+    return {
+        "id": doc.id,
+        "stage_type": stage_type,
+        "message": "FR.225 regenerated with the current organisation roster.",
+    }

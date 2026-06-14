@@ -19,10 +19,13 @@ document_type values:
 """
 from __future__ import annotations
 
+import logging
 import os
 import re
 from datetime import datetime, date
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
@@ -81,6 +84,15 @@ ORG_SIG_RE = re.compile(
 # seeded — status is driven by VisualSignaturePlacement (mirrors ORG_SIG_RE).
 ORG_TEAM_RE = re.compile(
     r"^ORG_(OPENING|CLOSING)_(LEAD_AUDITOR|AUDITOR_(\d+)|TE_(\d+))$"
+)
+
+# Portal 60 — FR.225 blank-placeholder org-employee rows. The packager seeds
+# `sig_key="ORG_EMP_BLANK_N"` when no roster is registered yet, which the
+# template wraps as `ORG_OPENING_ORG_EMP_BLANK_N` / `ORG_CLOSING_ORG_EMP_BLANK_N`.
+# These markers must render as non-interactive ("awaiting registration") and
+# be rejected on sign attempts.
+ORG_BLANK_RE = re.compile(
+    r"^ORG_(OPENING|CLOSING)_ORG_EMP_BLANK_(\d+)$"
 )
 
 # Portal 49a Part 3 — FR.233 certification committee signature slots.
@@ -430,10 +442,25 @@ def _org_team_eligible(
     """True if current_user is the auditor assigned to this ORG_TEAM slot."""
     if current_user.role == "admin":
         return True
-    if current_user.role != "auditor" or not current_user.auditor_id:
+    if current_user.role != "auditor":
+        logger.debug("[ORG_TEAM] sig_key=%s user role=%s not auditor", sig_key, current_user.role)
+        return False
+    if not current_user.auditor_id:
+        logger.warning("[ORG_TEAM] sig_key=%s user id=%s has no auditor_id", sig_key, current_user.id)
         return False
     auditor_id, _ = _resolve_org_team_member(sig_key, doc, db)
-    return auditor_id is not None and auditor_id == current_user.auditor_id
+    if auditor_id is None:
+        logger.warning(
+            "[ORG_TEAM] sig_key=%s could not resolve auditor on stage (audit_set=%s stage_type=%s)",
+            sig_key, doc.audit_set_id, doc.stage_type,
+        )
+        return False
+    eligible = auditor_id == current_user.auditor_id
+    logger.debug(
+        "[ORG_TEAM] sig_key=%s user.auditor_id=%s vs stage.auditor_id=%s -> %s",
+        sig_key, current_user.auditor_id, auditor_id, eligible,
+    )
+    return eligible
 
 
 # ── Helper: _assert_can_sign ──────────────────────────────────────────────────
@@ -465,6 +492,16 @@ def _assert_can_sign(
                 )
             if doc.signed_at:
                 raise HTTPException(400, "Document already signed")
+
+        elif ORG_BLANK_RE.match(sig_key):
+            # Portal 60 — placeholder rows seeded when no client roster exists.
+            # Reject signing; ask the planner to refresh FR.225 once employees
+            # are registered.
+            raise HTTPException(
+                400,
+                "This row is a placeholder — register the organisation's employees "
+                "and refresh the meeting form before signing.",
+            )
 
         elif ORG_SIG_RE.match(sig_key):
             # Portal 49a Part 2 — FR.225 organisation-personnel signing.
@@ -661,6 +698,12 @@ def _get_field_status(
                 return _result("current_user")
             blocked = doc.status == "pending_cb_signature"
             return _result("blocked" if blocked else "pending")
+
+        # Portal 60 — FR.225 blank-placeholder rows render as non-interactive
+        # ("awaiting registration"); a planner/auditor must register the
+        # client's employees and call /meeting-form/regenerate before signing.
+        if ORG_BLANK_RE.match(sig_key):
+            return _result("pending", "Awaiting employee registration")
 
         # Portal 56 — FR.225 organisation-personnel slots. Status comes from
         # the VisualSignaturePlacement row (signed_at populated) since these

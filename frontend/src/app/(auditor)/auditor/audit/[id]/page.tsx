@@ -894,6 +894,24 @@ export default function AuditorAuditDetail() {
     }
   }
 
+  // Portal 60 — refresh the most recent FR.225 with the current employee
+  // roster (run after the client registers/updates employees, before signing).
+  async function handleMeetingRegenerate() {
+    setUploadingMeeting(true)
+    setMeetingMsg('')
+    try {
+      const qs = new URLSearchParams({ stage_type: meetingStage })
+      await api.post(`/audit-sets/${id}/meeting-form/regenerate?${qs.toString()}`)
+      setMeetingMsg('Meeting Form regenerated with the current organisation roster.')
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })
+        ?.response?.data?.detail
+      setMeetingMsg(detail || 'Regeneration failed')
+    } finally {
+      setUploadingMeeting(false)
+    }
+  }
+
   if (!data) {
     return <div className="p-8 text-sm text-gray-400">Loading…</div>
   }
@@ -1103,6 +1121,20 @@ export default function AuditorAuditDetail() {
                 className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
               >
                 {uploadingMeeting ? 'Uploading…' : 'Upload Meeting Form'}
+              </button>
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <p className="text-[11px] text-amber-800/70">
+                Already uploaded? Refresh the stored FR.225 with the current
+                organisation roster (clears any prior signatures).
+              </p>
+              <button
+                type="button"
+                onClick={handleMeetingRegenerate}
+                disabled={uploadingMeeting}
+                className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 disabled:opacity-40"
+              >
+                ↻ Refresh attendees
               </button>
             </div>
             {meetingMsg && <p className="mt-2 text-xs text-amber-900">{meetingMsg}</p>}
