@@ -818,14 +818,10 @@ function CommitteePlanningCard({
   onSuccess: () => void
 }) {
   // Ordered list: index 0 = Chairperson, rest = Members
-  const [selected, setSelected] = useState<AvailableCommitteeAuditor[]>(() => {
-    if (!initialCommittee) return []
-    return initialCommittee.map((m) => ({
-      id: m.id, full_name: m.name, email: m.email ?? '',
-      ea_codes: m.ea_codes, standards: m.standards,
-      covers_audit: true, covered_scope: {},  // enriched from pool on first load
-    }))
-  })
+  // Plain initializer — initialCommittee arrives asynchronously, so the lazy
+  // initializer would always see undefined on first render. Restoration is
+  // handled by the hasInitializedRef useEffect below.
+  const [selected, setSelected] = useState<AvailableCommitteeAuditor[]>([])
   // Available pool — all eligible auditors NOT already selected
   const [pool, setPool]             = useState<AvailableCommitteeAuditor[]>([])
   const [loadingPool, setLoadingPool] = useState(false)
@@ -836,6 +832,34 @@ function CommitteePlanningCard({
   // Ref lets the pool-fetch effect read current selected without a stale closure.
   const selectedRef = useRef<AvailableCommitteeAuditor[]>(selected)
   selectedRef.current = selected
+
+  // Ref guard: restores saved committee from initialCommittee exactly once,
+  // even though the prop arrives asynchronously after first render.
+  const hasInitializedRef = useRef(false)
+
+  useEffect(() => {
+    if (hasInitializedRef.current) return          // already initialized — don't overwrite user edits
+    if (!initialCommittee || initialCommittee.length === 0) return   // nothing saved yet
+
+    hasInitializedRef.current = true
+
+    const restored: AvailableCommitteeAuditor[] = initialCommittee.map((m) => ({
+      id:           m.id,
+      full_name:    m.name ?? '',       // backend stores "name"; UI expects "full_name"
+      email:        m.email ?? '',
+      ea_codes:     m.ea_codes ?? [],
+      standards:    m.standards ?? [],
+      covers_audit: true,
+      covered_scope: {},                // enriched by pool-fetch useEffect when pool arrives
+    }))
+
+    setSelected(restored)
+
+    // If the pool has already loaded (race: pool resolved before data),
+    // also remove the restored members from the dropdown pool.
+    const restoredIds = new Set(restored.map((r) => r.id))
+    setPool((prev) => prev.filter((a) => !restoredIds.has(a.id)))
+  }, [initialCommittee])
 
   // Stable string key from all stage team IDs — effect re-fires when assignments change.
   const stageAuditorIdsKey = useMemo(() => {
