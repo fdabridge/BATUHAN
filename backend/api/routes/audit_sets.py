@@ -91,7 +91,6 @@ def planning(
             raise HTTPException(status_code=404, detail=f"Audit set '{audit_set_id}' not found.")
 
         from audit_set.committee_router import (
-            _audit_iso_standards,
             _auditor_iso_quals,
             _collect_stage_auditor_ids,
         )
@@ -132,26 +131,6 @@ def planning(
         missing_auditors = [aid for aid in committee_ids if aid not in auditors]
         if missing_auditors:
             raise HTTPException(status_code=400, detail=f"Auditor(s) not found or inactive: {missing_auditors}")
-
-        audit_standards = _audit_iso_standards(audit_set_row)
-        plan_ea_code    = (audit_set_row.ea_code or "").strip()
-        team_ea_codes:  set[str] = set()
-        team_standards: set[str] = set()
-        for aid in committee_ids:
-            a = auditors[aid]
-            team_ea_codes.update(a.ea_codes or [])
-            team_standards.update(_auditor_iso_quals(db, aid))
-
-        gaps: list[str] = []
-        if plan_ea_code and plan_ea_code not in team_ea_codes:
-            gaps.append(f"EA code {plan_ea_code}")
-        for std in sorted(audit_standards - team_standards):
-            gaps.append(std)
-        if gaps:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Committee does not cover: {', '.join(gaps)} — add a qualified member",
-            )
 
         # Build canonical snapshot: first member = chairperson
         snapshot = []
