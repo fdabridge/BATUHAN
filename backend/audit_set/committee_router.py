@@ -511,7 +511,7 @@ def generate_fr233(
     from audit_set.fr233_generator import render_fr233_bytes
     from config.settings import get_settings
 
-    if current_user.role not in {"admin", "planner", "executive"}:
+    if current_user.role not in {"admin", "planner", "executive", "certification_manager"}:
         raise HTTPException(403, "Only Planner or Certification Manager may generate FR.233")
 
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
@@ -529,9 +529,12 @@ def generate_fr233(
             "Complete Stage 2 first.",
         )
 
-    members = db.query(AuditSetCommitteeMember).filter_by(audit_set_id=audit_set_id).count()
-    if members < 1:
-        raise HTTPException(400, "Appoint at least one committee member before generating FR.233")
+    committee_members = audit_set.committee_members or []
+    if not committee_members:
+        raise HTTPException(
+            400,
+            "Save the certification committee in the audit planning section before generating FR.233.",
+        )
 
     try:
         docx_bytes = render_fr233_bytes(audit_set, db)
