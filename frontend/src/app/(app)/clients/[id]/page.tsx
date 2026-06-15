@@ -779,16 +779,19 @@ function CertSection({
 }
 
 
-// ── Committee Planning Card (Portal 64) ──────────────────────────────────────
+// ── Committee Planning Card (Portal 66) ──────────────────────────────────────
+// Reuses the same chip + dropdown + coverage-breakdown pattern as StageCard.
+// Pool data comes from GET /planning/committee/available-auditors (Portal 64)
+// which returns covered_scope: {iso_std: [codes]} — identical to /auditors/available.
 
 interface AvailableCommitteeAuditor {
   id: string
   full_name: string
   email: string
   ea_codes: string[]
-  standards: string[]
+  standards: string[]        // ISO names — all standards the auditor is qualified for
   covers_audit: boolean
-  covered_scope: Record<string, string[]>   // {iso_std: [matched_codes]} — same as AuditorAvailabilityItem
+  covered_scope: Record<string, string[]>   // {iso_std: [matched_codes]}
 }
 
 // Short-code → ISO name map (mirrors backend _STD_CODE_TO_ISO)
@@ -814,39 +817,33 @@ function CommitteePlanningCard({
   initialCommittee: CommitteeTeamMember[] | null | undefined
   onSuccess: () => void
 }) {
+  // Ordered list: index 0 = Chairperson, rest = Members
   const [selected, setSelected] = useState<AvailableCommitteeAuditor[]>(() => {
     if (!initialCommittee) return []
     return initialCommittee.map((m) => ({
-      id: m.id,
-      full_name: m.name,
-      email: m.email ?? '',
-      ea_codes: m.ea_codes,
-      standards: m.standards,
-      covers_audit: true,
-      covered_scope: {},   // enriched from pool on first load
+      id: m.id, full_name: m.name, email: m.email ?? '',
+      ea_codes: m.ea_codes, standards: m.standards,
+      covers_audit: true, covered_scope: {},  // enriched from pool on first load
     }))
   })
-  const [available, setAvailable]   = useState<AvailableCommitteeAuditor[]>([])
+  // Available pool — all eligible auditors NOT already selected
+  const [pool, setPool]             = useState<AvailableCommitteeAuditor[]>([])
   const [loadingPool, setLoadingPool] = useState(false)
   const [saving, setSaving]         = useState(false)
   const [saved, setSaved]           = useState(false)
   const [error, setError]           = useState<string | null>(null)
 
-  // Keep a ref so the pool-fetch effect can read current selected without a
-  // stale closure (avoids adding `selected` to effect deps → no infinite loop).
+  // Ref lets the pool-fetch effect read current selected without a stale closure.
   const selectedRef = useRef<AvailableCommitteeAuditor[]>(selected)
   selectedRef.current = selected
 
-  // Build a stable string key from all stage auditor IDs so the effect only
-  // re-runs when the stage assignments actually change.
+  // Stable string key from all stage team IDs — effect re-fires when assignments change.
   const stageAuditorIdsKey = useMemo(() => {
     const ids: string[] = []
     for (const s of stages) {
       if (s.lead_auditor_id) ids.push(s.lead_auditor_id)
       for (const group of [s.auditors, s.technical_experts, s.observers] as ({ id?: string } | null)[][]) {
-        for (const a of group ?? []) {
-          if (a?.id) ids.push(a.id)
-        }
+        for (const a of group ?? []) { if (a?.id) ids.push(a.id) }
       }
     }
     return ids.sort().join(',')
@@ -857,71 +854,51 @@ function CommitteePlanningCard({
     const qs = stageAuditorIdsKey ? `?exclude_auditor_ids=${encodeURIComponent(stageAuditorIdsKey)}` : ''
     api.get<AvailableCommitteeAuditor[]>(`/audit-sets/${auditSetId}/planning/committee/available-auditors${qs}`)
       .then((r) => {
-        const pool = r.data
-        const poolById = new Map(pool.map((a) => [a.id, a]))
+        const all = r.data
+        const byId = new Map(all.map((a) => [a.id, a]))
         const currentSelected = selectedRef.current
-        const selectedIds = new Set(currentSelected.map((s) => s.id))
-        // Enrich pre-selected members with covered_scope + updated covers_audit from pool
+        const selectedIds = new Set(currentSelected.map((m) => m.id))
+        // Enrich pre-selected members with covered_scope from the fresh pool
         setSelected(currentSelected.map((m) => {
-          const fromPool = poolById.get(m.id)
-          return fromPool ? { ...m, covered_scope: fromPool.covered_scope, covers_audit: fromPool.covers_audit } : m
+          const enriched = byId.get(m.id)
+          return enriched ? { ...m, covered_scope: enriched.covered_scope, covers_audit: enriched.covers_audit } : m
         }))
-        setAvailable(pool.filter((a) => !selectedIds.has(a.id)))
+        setPool(all.filter((a) => !selectedIds.has(a.id)))
       })
       .catch(() => setError('Failed to load available auditors'))
       .finally(() => setLoadingPool(false))
   }, [auditSetId, stageAuditorIdsKey])
 
-  function addMember(auditor: AvailableCommitteeAuditor) {
+  function addMember(id: string) {
+    const auditor = pool.find((a) => a.id === id)
+    if (!auditor) return
     setSelected((prev) => [...prev, auditor])
-    setAvailable((prev) => prev.filter((a) => a.id !== auditor.id))
+    setPool((prev) => prev.filter((a) => a.id !== id))
     setError(null)
   }
 
-  function removeMember(auditorId: string) {
-    const removed = selected.find((s) => s.id === auditorId)
+  function removeMember(id: string) {
+    const removed = selected.find((m) => m.id === id)
     if (!removed) return
-    setSelected((prev) => prev.filter((s) => s.id !== auditorId))
-    setAvailable((prev) => {
-      const next = [...prev, removed]
-      next.sort((a, b) => (a.covers_audit === b.covers_audit ? 0 : a.covers_audit ? -1 : 1))
-      return next
-    })
+    setSelected((prev) => prev.filter((m) => m.id !== id))
+    setPool((prev) => [...prev, removed].sort((a, b) => (a.full_name ?? '').localeCompare(b.full_name ?? '')))
   }
 
-  // Coverage check (client-side)
-  // Map short codes ("QMS") → ISO names ("ISO 9001") before comparing against
-  // covered_scope keys (which are always ISO names from the backend).
+  // ── Coverage summary — per ISO standard ──────────────────────────────────────
   const auditStandardsISO = (standards ?? []).map((s) => _COMMITTEE_STD_TO_ISO[s] ?? s)
-
-  // An ISO standard is covered when at least one selected member's covered_scope
-  // has that standard key with non-empty matching codes.
-  const coveredIsoViaScope = new Set(
-    selected.flatMap((m) =>
-      Object.entries(m.covered_scope ?? {})
-        .filter(([, codes]) => codes.length > 0)
-        .map(([std]) => std)
-    )
-  )
-  // Fallback for audits with no EA code requirement (covered_scope may be empty):
-  // accept any standard in the member's full qualifications list.
-  const coveredIsoViaStds = new Set(selected.flatMap((m) => m.standards))
-
-  const missingStandards = auditStandardsISO.filter(
-    (s) => !coveredIsoViaScope.has(s) && !coveredIsoViaStds.has(s)
-  )
-  // EA coverage is already baked into covered_scope when the audit has an ea_code.
-  // If covered_scope is empty (no EA requirement), check numerically against ea_codes.
-  const _eaInt = (c: string) => parseInt(c.replace(/[^0-9]/g, ''), 10) || null
-  const eaMissing = eaCode && coveredIsoViaScope.size === 0 && !selected.some(
-    (m) => m.ea_codes.some((c) => _eaInt(c) === _eaInt(eaCode))
-  )
-  const coverageOk = missingStandards.length === 0 && !eaMissing
+  const coverageSummary = auditStandardsISO.map((std) => {
+    // Primary: covered_scope has EA-filtered matches
+    const viaScope = selected.filter((m) => (m.covered_scope?.[std] ?? []).length > 0)
+    // Fallback when no EA code required (covered_scope empty): accept raw standards list
+    const viaStds  = selected.filter((m) => m.standards.includes(std))
+    const contributors = viaScope.length > 0 ? viaScope : viaStds
+    return { standard: std, covered: contributors.length > 0, contributors, useScope: viaScope.length > 0 }
+  })
+  const allCovered = coverageSummary.length === 0 || coverageSummary.every((r) => r.covered)
 
   async function handleSave() {
-    setError(null)
     if (selected.length === 0) { setError('Select at least one member (Chairperson)'); return }
-    setSaving(true)
+    setSaving(true); setError(null)
     try {
       await api.put(`/audit-sets/${auditSetId}/planning`, {
         committee_members: selected.map((m, i) => ({
@@ -932,140 +909,113 @@ function CommitteePlanningCard({
           role:      i === 0 ? 'chairperson' : 'member',
         })),
       })
-      onSuccess()
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
+      onSuccess(); setSaved(true); setTimeout(() => setSaved(false), 2500)
     } catch (e: unknown) {
       const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       setError(detail ?? 'Save failed')
-    } finally {
-      setSaving(false)
-    }
+    } finally { setSaving(false) }
   }
 
   return (
     <div className="mt-4 rounded-xl border border-gray-100 bg-white p-5">
       <p className="mb-1 text-sm font-medium text-gray-700">Certification Committee</p>
-      <p className="mb-4 text-xs text-gray-400">
-        Must collectively cover all standards and EA codes. Cannot include any Stage 1 or Stage 2 team member.
-        First selected = Chairperson.
+      <p className="mb-3 text-xs text-gray-400">
+        First added = Chairperson. Must collectively cover all standards and EA codes.
+        Cannot include any Stage 1 or Stage 2 team member.
       </p>
 
-      <div className="flex gap-4">
-        {/* Left — available pool */}
-        <div className="flex-1">
-          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-gray-400">Available auditors</p>
-          {loadingPool ? (
-            <p className="text-xs text-gray-400">Loading…</p>
-          ) : available.length === 0 ? (
-            <p className="text-xs text-gray-400">All eligible auditors selected, or none available.</p>
-          ) : (
-            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-              {available.map((a) => {
-                // Build a "EA 3 (ISO 9001) | CI CIV (ISO 22000)" label from covered_scope
-                const coverLabel = a.covered_scope && Object.keys(a.covered_scope).length > 0
-                  ? Object.entries(a.covered_scope)
-                      .filter(([, codes]) => codes.length > 0)
-                      .map(([std, codes]) => `${codes.join(' ')} (${std})`)
-                      .join(' | ')
-                  : ''
-                return (
-                  <div
-                    key={a.id}
-                    className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"
-                  >
-                    <div>
-                      <p className="text-xs font-medium text-gray-800">{a.full_name}</p>
-                      <p className="mt-0.5 text-xs">
-                        {a.covers_audit ? (
-                          <span className="text-green-600">✓ {coverLabel || 'Covers audit'}</span>
-                        ) : coverLabel ? (
-                          <span className="text-amber-600">⚠ {coverLabel}</span>
-                        ) : (
-                          <span className="text-amber-600">⚠ Partial / no coverage</span>
-                        )}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => addMember(a)}
-                      className="rounded bg-[#1A4731] px-2.5 py-1 text-xs text-white hover:opacity-80"
-                    >
-                      Add
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          )}
+      {/* Committee member chips — same visual style as stage auditor chips */}
+      <div>
+        <label className={lblCls}>Committee members</label>
+        <div className="flex flex-wrap gap-1 mb-2 min-h-[24px]">
+          {selected.map((m, i) => {
+            const role = i === 0 ? 'chairperson' : 'member'
+            // "EA 3 (ISO 9001) | CI CIV (ISO 22000)" — same format as stage coverLabel
+            const scopeLabel = m.covered_scope && Object.keys(m.covered_scope).length > 0
+              ? Object.entries(m.covered_scope)
+                  .filter(([, codes]) => codes.length > 0)
+                  .map(([std, codes]) => `${codes.join(' ')} (${std})`)
+                  .join(' | ')
+              : ''
+            return (
+              <span key={m.id}
+                className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
+                style={{ background: '#F0FAF4', color: '#1A4731', border: '1px solid #BBF7D0' }}>
+                {m.full_name}
+                <span className="opacity-60">— {role}</span>
+                {scopeLabel && <span className="opacity-60">— {scopeLabel}</span>}
+                <button type="button"
+                  className="ml-1 text-gray-400 hover:text-red-500"
+                  onClick={() => removeMember(m.id)}>
+                  ×
+                </button>
+              </span>
+            )
+          })}
         </div>
 
-        {/* Right — selected committee */}
-        <div className="flex-1">
-          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-gray-400">Selected committee</p>
-          {selected.length === 0 ? (
-            <p className="text-xs text-gray-400">No members selected yet.</p>
-          ) : (
-            <div className="space-y-1.5">
-              {selected.map((m, i) => (
-                <div
-                  key={m.id}
-                  className="flex items-center justify-between rounded-lg border border-gray-100 bg-white px-3 py-2"
-                >
-                  <div>
-                    <p className="text-xs font-medium text-gray-800">
-                      <span className="mr-1 text-gray-400">{i === 0 ? 'Chair:' : 'Member:'}</span>
-                      {m.full_name}
-                    </p>
-                    <p className="mt-0.5 text-xs text-gray-400">
-                      {m.covered_scope && Object.keys(m.covered_scope).length > 0
-                        ? Object.entries(m.covered_scope)
-                            .filter(([, codes]) => codes.length > 0)
-                            .map(([std, codes]) => `${codes.join(' ')} (${std})`)
-                            .join(' | ')
-                        : m.ea_codes.length > 0
-                          ? `EA: ${m.ea_codes.join(', ')}`
-                          : null}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeMember(m.id)}
-                    className="text-xs text-gray-400 hover:text-red-500"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* Dropdown to add — identical pattern to "Add auditor…" in StageCard */}
+        {loadingPool && <p className="mb-1 text-xs text-gray-400">Loading available auditors…</p>}
+        <select
+          className={inputCls}
+          value=""
+          disabled={loadingPool}
+          onChange={(e) => { if (e.target.value) addMember(e.target.value) }}
+        >
+          <option value="">
+            {loadingPool ? 'Loading…' : `+ Add committee member… (${pool.length} eligible)`}
+          </option>
+          {pool.map((a) => {
+            // Show covered codes in option text — same format as stage auditor dropdown
+            const coverLabel = a.covered_scope && Object.keys(a.covered_scope).length > 0
+              ? ' — ' + Object.entries(a.covered_scope)
+                  .filter(([, codes]) => codes.length > 0)
+                  .map(([std, codes]) => `${codes.join(' ')} (${std})`)
+                  .join(' | ')
+              : ''
+            return (
+              <option key={a.id} value={a.id}>
+                {a.full_name}{coverLabel}{!a.covers_audit ? ' ⚠' : ''}
+              </option>
+            )
+          })}
+        </select>
       </div>
 
-      {/* Coverage indicator */}
-      {selected.length > 0 && (
-        <div className={`mt-3 rounded-md px-3 py-2 text-xs ${coverageOk ? 'border border-green-200 bg-[#F0FAF4] text-green-800' : 'border border-amber-200 bg-amber-50 text-amber-800'}`}>
-          {coverageOk ? (
-            <span>✓ Committee covers all required standards{eaCode ? ` and EA ${eaCode}` : ''}</span>
-          ) : (
-            <span>
-              ⚠ Missing:{' '}
-              {[...(eaMissing ? [`EA ${eaCode}`] : []), ...missingStandards].join(', ')}
-              {missingStandards.length === 0 && !eaMissing ? 'none' : ''}
-            </span>
-          )}
+      {/* Coverage summary — identical style to stage picker coverage block */}
+      {coverageSummary.length > 0 && (
+        <div
+          className={`mt-3 rounded-md p-3 text-sm ${allCovered ? 'border border-green-200' : 'border border-amber-200'}`}
+          style={{ background: allCovered ? '#F0FAF4' : '#FFFBEB' }}
+        >
+          <p className="font-medium mb-1" style={{ color: allCovered ? '#1A4731' : '#92400E' }}>
+            {allCovered ? '✓ Committee covers all required standards' : '⚠ Coverage incomplete'}
+          </p>
+          {coverageSummary.map((r) => (
+            <div key={r.standard} className="mt-0.5">
+              <span className="text-xs" style={{ color: r.covered ? '#1A4731' : '#92400E' }}>
+                {r.covered ? '✓' : '✗'} {r.standard}
+                {r.covered
+                  ? ': ' + r.contributors
+                      .map((m) => {
+                        const codes = r.useScope ? (m.covered_scope[r.standard] ?? []).join(' ') : ''
+                        return codes ? `${codes} — ${m.full_name.split(' ')[0]}` : m.full_name.split(' ')[0]
+                      })
+                      .join(' · ')
+                  : ' — not covered by any committee member'}
+              </span>
+            </div>
+          ))}
         </div>
       )}
 
-      {error && (
-        <p className="mt-2 text-xs text-red-600">{error}</p>
-      )}
+      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
 
       <div className="mt-4 flex items-center gap-3">
         <button
           type="button"
           onClick={handleSave}
-          disabled={saving || selected.length === 0 || !coverageOk}
+          disabled={saving || selected.length === 0}
           className="flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium text-white disabled:opacity-60 hover:opacity-90"
           style={{ background: '#1A4731' }}
         >
