@@ -884,6 +884,10 @@ function CommitteePlanningCard({
     setPool((prev) => [...prev, removed].sort((a, b) => (a.full_name ?? '').localeCompare(b.full_name ?? '')))
   }
 
+  // Clear stale backend error whenever selection changes (e.g. a 422 from a prior
+  // save attempt should vanish as soon as the user adjusts the committee).
+  useEffect(() => { setError(null) }, [selected])
+
   // ── Coverage summary — per-code check (same as computeCoverage in StageCard) ──
   const auditStandardsISO = (standards ?? []).map((s) => _COMMITTEE_STD_TO_ISO[s] ?? s)
 
