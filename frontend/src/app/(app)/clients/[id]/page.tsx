@@ -958,7 +958,13 @@ function CommitteePlanningCard({
       return { standard: std, covered, coveredCodes: [] as { code: string; by: string }[], missingCodes: [] as string[] }
     }
     const codeResults = requiredCodes.map((code) => {
-      const coveringMember = selected.find((m) => (m.covered_scope?.[std] ?? []).includes(code))
+      const coveringMember = selected.find((m) => {
+        // Direct coverage: member explicitly covers this standard + code
+        if ((m.covered_scope?.[std] ?? []).includes(code)) return true
+        // Cross-standard: sector expertise (EA code) spans all audit standards —
+        // if the member covers this EA code for ANY standard, they cover it here too.
+        return Object.values(m.covered_scope ?? {}).some((codes) => codes.includes(code))
+      })
       return { code, coveredBy: coveringMember?.full_name ?? null }
     })
     return {
@@ -1204,11 +1210,13 @@ function StageCard({
 
   // Reactive: when team size changes and a start date exists, recompute end date
   // so that: calendar days = ceil(audit_days / teamCount)
+  // Falls back to `recommended` when stage.audit_days is null (unscheduled stage).
   useEffect(() => {
     if (!edit.audit_date_start) return           // no start date yet — nothing to do
-    if (!stage.audit_days) return                // no IAF recommendation — nothing to base on
+    const baseAuditDays = stage.audit_days ?? recommended   // use recommendation when not yet scheduled
+    if (!baseAuditDays) return                   // no IAF recommendation — nothing to base on
     if (teamCount === 0) return                  // no auditors yet — keep existing date
-    const calendarDaysNeeded = Math.ceil(stage.audit_days / teamCount)
+    const calendarDaysNeeded = Math.ceil(baseAuditDays / teamCount)
     const newEnd = suggestEndDate(edit.audit_date_start, calendarDaysNeeded)
     if (newEnd !== edit.audit_date_end) {
       patch({ audit_date_end: newEnd })
@@ -1433,15 +1441,23 @@ function StageCard({
               <input type="date" className={inputCls} value={edit.audit_date_end} onChange={(e) => patch({ audit_date_end: e.target.value })} />
             </div>
           </div>
-          {recommended != null && edit.audit_date_start && (
-            <button
-              type="button"
-              onClick={() => patch({ audit_date_end: suggestEndDate(edit.audit_date_start, recommended) })}
-              className="text-xs text-certiva-primary underline hover:opacity-70"
-            >
-              Suggest end date ({recommended} working days from start)
-            </button>
-          )}
+          {recommended != null && edit.audit_date_start && (() => {
+            const calendarDaysNeeded = Math.ceil(recommended / Math.max(1, teamCount))
+            return (
+              <button
+                type="button"
+                onClick={() => patch({ audit_date_end: suggestEndDate(edit.audit_date_start, calendarDaysNeeded) })}
+                className="text-xs text-certiva-primary underline hover:opacity-70"
+              >
+                Suggest end date ({calendarDaysNeeded} working days from start)
+                {teamCount > 1 && (
+                  <span className="ml-1 opacity-70">
+                    ({recommended} person-days ÷ {teamCount} auditors)
+                  </span>
+                )}
+              </button>
+            )
+          })()}
         </div>
 
         {/* Auditors multi-select */}
