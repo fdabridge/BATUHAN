@@ -884,17 +884,52 @@ function CommitteePlanningCard({
     setPool((prev) => [...prev, removed].sort((a, b) => (a.full_name ?? '').localeCompare(b.full_name ?? '')))
   }
 
-  // ── Coverage summary — per ISO standard ──────────────────────────────────────
+  // ── Coverage summary — per-code check (same as computeCoverage in StageCard) ──
   const auditStandardsISO = (standards ?? []).map((s) => _COMMITTEE_STD_TO_ISO[s] ?? s)
+
+  // Step 1: derive required codes per standard from the union of pool covered_scope.
+  // The backend puts only audit-relevant codes in covered_scope, so this union
+  // represents exactly the codes that must be collectively covered.
+  const requiredScopeMap: Record<string, string[]> = {}
+  for (const a of pool) {
+    for (const [std, codes] of Object.entries(a.covered_scope ?? {})) {
+      requiredScopeMap[std] = [...new Set([...(requiredScopeMap[std] ?? []), ...codes])]
+    }
+  }
+  // Also include codes from already-selected members so the map is complete
+  // even when a member has been moved out of the pool.
+  for (const m of selected) {
+    for (const [std, codes] of Object.entries(m.covered_scope ?? {})) {
+      requiredScopeMap[std] = [...new Set([...(requiredScopeMap[std] ?? []), ...codes])]
+    }
+  }
+
+  // Step 2: for every required standard, check every required code individually.
   const coverageSummary = auditStandardsISO.map((std) => {
-    // Primary: covered_scope has EA-filtered matches
-    const viaScope = selected.filter((m) => (m.covered_scope?.[std] ?? []).length > 0)
-    // Fallback when no EA code required (covered_scope empty): accept raw standards list
-    const viaStds  = selected.filter((m) => m.standards.includes(std))
-    const contributors = viaScope.length > 0 ? viaScope : viaStds
-    return { standard: std, covered: contributors.length > 0, contributors, useScope: viaScope.length > 0 }
+    const requiredCodes = requiredScopeMap[std] ?? []
+    if (requiredCodes.length === 0) {
+      // No EA code breakdown — simple qualification check
+      const covered = selected.some((m) => m.standards.includes(std))
+      return { standard: std, covered, coveredCodes: [] as { code: string; by: string }[], missingCodes: [] as string[] }
+    }
+    const codeResults = requiredCodes.map((code) => {
+      const coveringMember = selected.find((m) => (m.covered_scope?.[std] ?? []).includes(code))
+      return { code, coveredBy: coveringMember?.full_name ?? null }
+    })
+    return {
+      standard: std,
+      covered: codeResults.every((r) => r.coveredBy !== null),
+      coveredCodes: codeResults.filter((r) => r.coveredBy !== null).map((r) => ({ code: r.code, by: r.coveredBy! })),
+      missingCodes: codeResults.filter((r) => !r.coveredBy).map((r) => r.code),
+    }
   })
-  const allCovered = coverageSummary.length === 0 || coverageSummary.every((r) => r.covered)
+  const coverageComplete = coverageSummary.length === 0 || coverageSummary.every((r) => r.covered)
+
+  // Filter pool to only auditors with at least one covered code — same as StageCard's
+  // dropdownList filter (coveredTotal > 0). Hides zero-match auditors entirely.
+  const eligiblePool = pool.filter(
+    (a) => Object.values(a.covered_scope ?? {}).flat().length > 0
+  )
 
   async function handleSave() {
     if (selected.length === 0) { setError('Select at least one member (Chairperson)'); return }
@@ -954,7 +989,8 @@ function CommitteePlanningCard({
           })}
         </div>
 
-        {/* Dropdown to add — identical pattern to "Add auditor…" in StageCard */}
+        {/* Dropdown to add — identical pattern to "Add auditor…" in StageCard.
+            Only auditors with coveredTotal > 0 are shown (same as StageCard dropdownList filter). */}
         {loadingPool && <p className="mb-1 text-xs text-gray-400">Loading available auditors…</p>}
         <select
           className={inputCls}
@@ -963,19 +999,17 @@ function CommitteePlanningCard({
           onChange={(e) => { if (e.target.value) addMember(e.target.value) }}
         >
           <option value="">
-            {loadingPool ? 'Loading…' : `+ Add committee member… (${pool.length} eligible)`}
+            {loadingPool ? 'Loading…' : `+ Add committee member… (${eligiblePool.length} qualifying)`}
           </option>
-          {pool.map((a) => {
+          {eligiblePool.map((a) => {
             // Show covered codes in option text — same format as stage auditor dropdown
-            const coverLabel = a.covered_scope && Object.keys(a.covered_scope).length > 0
-              ? ' — ' + Object.entries(a.covered_scope)
-                  .filter(([, codes]) => codes.length > 0)
-                  .map(([std, codes]) => `${codes.join(' ')} (${std})`)
-                  .join(' | ')
-              : ''
+            const coverLabel = ' — ' + Object.entries(a.covered_scope)
+              .filter(([, codes]) => codes.length > 0)
+              .map(([std, codes]) => `${codes.join(' ')} (${std})`)
+              .join(' | ')
             return (
               <option key={a.id} value={a.id}>
-                {a.full_name}{coverLabel}{!a.covers_audit ? ' ⚠' : ''}
+                {a.full_name}{coverLabel}
               </option>
             )
           })}
@@ -985,25 +1019,36 @@ function CommitteePlanningCard({
       {/* Coverage summary — identical style to stage picker coverage block */}
       {coverageSummary.length > 0 && (
         <div
-          className={`mt-3 rounded-md p-3 text-sm ${allCovered ? 'border border-green-200' : 'border border-amber-200'}`}
-          style={{ background: allCovered ? '#F0FAF4' : '#FFFBEB' }}
+          className={`mt-3 rounded-md p-3 text-sm ${coverageComplete ? 'border border-green-200' : 'border border-amber-200'}`}
+          style={{ background: coverageComplete ? '#F0FAF4' : '#FFFBEB' }}
         >
-          <p className="font-medium mb-1" style={{ color: allCovered ? '#1A4731' : '#92400E' }}>
-            {allCovered ? '✓ Committee covers all required standards' : '⚠ Coverage incomplete'}
+          <p className="font-medium mb-1" style={{ color: coverageComplete ? '#1A4731' : '#92400E' }}>
+            {coverageComplete ? '✓ Committee covers all required standards' : '⚠ Coverage incomplete'}
           </p>
           {coverageSummary.map((r) => (
             <div key={r.standard} className="mt-0.5">
               <span className="text-xs" style={{ color: r.covered ? '#1A4731' : '#92400E' }}>
                 {r.covered ? '✓' : '✗'} {r.standard}
-                {r.covered
-                  ? ': ' + r.contributors
-                      .map((m) => {
-                        const codes = r.useScope ? (m.covered_scope[r.standard] ?? []).join(' ') : ''
-                        return codes ? `${codes} — ${m.full_name.split(' ')[0]}` : m.full_name.split(' ')[0]
-                      })
-                      .join(' · ')
-                  : ' — not covered by any committee member'}
               </span>
+              {/* Per-code breakdown — same as stage picker codeResults display */}
+              {r.coveredCodes.length > 0 || r.missingCodes.length > 0 ? (
+                <div className="ml-4 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                  {r.coveredCodes.map(({ code, by }) => (
+                    <span key={code} className="text-xs" style={{ color: '#1A4731' }}>
+                      ✓ {code} — {by.split(' ')[0]}
+                    </span>
+                  ))}
+                  {r.missingCodes.map((code) => (
+                    <span key={code} className="text-xs" style={{ color: '#92400E' }}>
+                      ✗ {code} — not covered
+                    </span>
+                  ))}
+                </div>
+              ) : !r.covered ? (
+                <span className="ml-1 text-xs" style={{ color: '#92400E' }}>
+                  — not covered by any committee member
+                </span>
+              ) : null}
             </div>
           ))}
         </div>
@@ -1015,7 +1060,7 @@ function CommitteePlanningCard({
         <button
           type="button"
           onClick={handleSave}
-          disabled={saving || selected.length === 0}
+          disabled={saving || selected.length === 0 || !coverageComplete}
           className="flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium text-white disabled:opacity-60 hover:opacity-90"
           style={{ background: '#1A4731' }}
         >
