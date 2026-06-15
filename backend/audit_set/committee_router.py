@@ -4,15 +4,38 @@ BATUHAN — Certification Committee appointment (Prompt 14).
 Endpoints under /audit-sets:
   GET    /audit-sets/{id}/committee
   GET    /audit-sets/{id}/committee/eligible-users
+  GET    /audit-sets/{id}/committee/cert-manager
   POST   /audit-sets/{id}/committee/appoint
   DELETE /audit-sets/{id}/committee/{member_id}
+  GET    /audit-sets/{id}/planning/committee/available-auditors  (Portal 64)
+  POST   /audit-sets/{id}/fr233/generate
+  POST   /audit-sets/{id}/fr233/upload
+  GET    /audit-sets/{id}/fr233
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
+
+# Portal 62 — short-code → ISO-name mapping used to match audit_set.standards
+# (e.g. "QMS") against AuditorStandardQualification.standard_code ("ISO 9001").
+# Mirrors backend/audit_set/service.py _CODE_TO_ISO to avoid cross-module import.
+_STD_CODE_TO_ISO: dict[str, str] = {
+    "QMS":        "ISO 9001",
+    "EMS":        "ISO 14001",
+    "OHSMS":      "ISO 45001",
+    "FSMS":       "ISO 22000",
+    "FSSC 22000": "FSSC 22000",
+    "MDQMS":      "ISO 13485",
+    "MDMS":       "ISO 13485",
+    "ISMS":       "ISO 27001",
+    "ENMS":       "ISO 50001",
+    "EnMS":       "ISO 50001",
+    "ABMS":       "ISO 37001",
+    "CMS":        "ISO 37301",
+}
 
 from audit_set.db_models import (
     AuditSet, AuditSetCommitteeMember, AuditSetFR233Record, AuditSetSharedDocument,
@@ -191,6 +214,87 @@ def get_cert_manager(
     if not cm:
         return {"cert_manager": None}
     return {"cert_manager": {"user_id": cm.id, "full_name": cm.full_name, "email": cm.email}}
+
+
+# ── Portal 62 — FR.233 certification committee team (auditor pool) ───────────
+
+def _auditor_iso_quals(db: Session, auditor_id: str) -> set[str]:
+    """Return the set of ISO standard codes the auditor is currently qualified for."""
+    from auditors.models import AuditorStandardQualification
+    rows = (
+        db.query(AuditorStandardQualification.standard_code)
+        .filter(AuditorStandardQualification.auditor_id == auditor_id)
+        .filter(AuditorStandardQualification.is_qualified == True)  # noqa: E712
+        .all()
+    )
+    return {r[0] for r in rows if r[0]}
+
+
+def _audit_iso_standards(audit_set) -> set[str]:
+    """Return audit_set.standards mapped to ISO names ({'ISO 9001', ...})."""
+    return {_STD_CODE_TO_ISO.get(s, s) for s in (audit_set.standards or [])}
+
+
+@router.get("/{audit_set_id}/planning/committee/available-auditors")
+def get_planning_committee_available(
+    audit_set_id: str,
+    exclude_auditor_ids: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """Portal 64 — available auditors for the committee picker during planning.
+
+    Replaces Portal 62's GET /committee/available-auditors. Called during
+    planning before the audit starts; the frontend passes the current (unsaved)
+    Stage 1 + Stage 2 auditor IDs as `exclude_auditor_ids` (comma-separated)
+    so the exclusion list stays live as the planner selects team members.
+
+    Returns each active auditor not in `exclude_auditor_ids`, with a
+    `covers_audit` flag that is true when the auditor's EA codes include the
+    audit's EA code AND they hold at least one matching ISO qualification.
+    Auditors with `covers_audit=true` are sorted first.
+    """
+    if current_user.role not in CB_ROLES:
+        raise HTTPException(403, "Not authorized")
+
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    if not audit_set:
+        raise HTTPException(404, "Audit set not found")
+
+    excluded: set[str] = set()
+    if exclude_auditor_ids:
+        excluded = {aid.strip() for aid in exclude_auditor_ids.split(",") if aid.strip()}
+
+    from auditors.models import Auditor as AuditorModel
+
+    plan_ea_code    = (audit_set.ea_code or "").strip()
+    audit_standards = _audit_iso_standards(audit_set)
+
+    auditors = (
+        db.query(AuditorModel)
+        .filter(AuditorModel.is_active == True)  # noqa: E712
+        .all()
+    )
+
+    results = []
+    for a in auditors:
+        if a.id in excluded:
+            continue
+        ea_codes = a.ea_codes or []
+        ea_ok    = (not plan_ea_code) or (plan_ea_code in ea_codes)
+        iso_q    = _auditor_iso_quals(db, a.id)
+        std_ok   = (not audit_standards) or bool(audit_standards & iso_q)
+        results.append({
+            "id":           a.id,
+            "full_name":    a.name,
+            "email":        a.email,
+            "ea_codes":     ea_codes,
+            "standards":    sorted(iso_q),
+            "covers_audit": ea_ok and std_ok,
+        })
+
+    results.sort(key=lambda x: (not x["covers_audit"], x["full_name"] or ""))
+    return results
 
 
 @router.post("/{audit_set_id}/committee/appoint")

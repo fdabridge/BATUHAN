@@ -153,6 +153,9 @@ class AuditSetUpdatePlanningSchema(BaseModel):
     application_date: Optional[date] = None          # retroactive override — when the client actually applied
     application_data: Optional[ApplicationDataSchema] = None   # ← ADD
     stages: list[StageInput] = []
+    # Portal 64 — committee picker moved to planning; list of dicts with id, full_name,
+    # ea_codes, standards (used to validate and store committee_members JSON on audit_set)
+    committee_members: Optional[list] = None
 
 
 class QuickCalcSchema(BaseModel):
@@ -221,6 +224,8 @@ class AuditSetResponse(BaseModel):
     # Portal 51 — FR.218 Application Reviewer (FSMS/ISMS only)
     fr218_reviewer_id:   Optional[str] = None
     fr218_reviewer_name: Optional[str] = None
+    # Portal 64 — committee appointed during planning (JSON snapshot)
+    committee_members: Optional[list] = None
     stages: list[StageResponse]
     created_at: datetime
     updated_at: datetime

@@ -11,7 +11,6 @@ import { CertBadge } from '@/components/ui/CertBadge'
 import { MessageThread } from '@/components/ui/MessageThread'
 import { SharedDocumentsSection } from '@/components/ui/SharedDocumentsSection'
 import { InternalApprovalsSection } from '@/components/ui/InternalApprovalsSection'
-import { CommitteeSection } from '@/components/ui/CommitteeSection'
 import { FR233Panel } from '@/components/ui/FR233Panel'
 // Portal 55 — MeetingAttendeesSection removed from the planner view. FR.225
 // signers are now picked from the client's employee roster (ClientOrgEmployee)
@@ -22,7 +21,7 @@ import { NCFormManagementSection } from '@/components/ui/NCFormManagementSection
 import { DeclarationManagementSection } from '@/components/ui/DeclarationManagementSection'
 import { AuditReportSection } from '@/components/ui/AuditReportSection'
 import { WorkflowStatusBar } from '@/components/ui/WorkflowStatusBar'
-import type { AuditSetResponse, StageResponse, ManDayResult, AuditorSummary, AuditorAvailabilityItem, RequiredScope } from '@/types'
+import type { AuditSetResponse, CommitteeTeamMember, StageResponse, ManDayResult, AuditorSummary, AuditorAvailabilityItem, RequiredScope } from '@/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -775,6 +774,248 @@ function CertSection({
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+
+// ── Committee Planning Card (Portal 64) ──────────────────────────────────────
+
+interface AvailableCommitteeAuditor {
+  id: string
+  full_name: string
+  email: string
+  ea_codes: string[]
+  standards: string[]
+  covers_audit: boolean
+}
+
+function CommitteePlanningCard({
+  auditSetId,
+  stages,
+  standards,
+  eaCode,
+  initialCommittee,
+  onSuccess,
+}: {
+  auditSetId: string
+  stages: StageResponse[]
+  standards: string[]
+  eaCode: string | null
+  initialCommittee: CommitteeTeamMember[] | null | undefined
+  onSuccess: () => void
+}) {
+  const [selected, setSelected] = useState<AvailableCommitteeAuditor[]>(() => {
+    if (!initialCommittee) return []
+    return initialCommittee.map((m) => ({
+      id: m.id,
+      full_name: m.name,
+      email: m.email ?? '',
+      ea_codes: m.ea_codes,
+      standards: m.standards,
+      covers_audit: true,
+    }))
+  })
+  const [available, setAvailable]   = useState<AvailableCommitteeAuditor[]>([])
+  const [loadingPool, setLoadingPool] = useState(false)
+  const [saving, setSaving]         = useState(false)
+  const [saved, setSaved]           = useState(false)
+  const [error, setError]           = useState<string | null>(null)
+
+  // Build exclude list from saved stage auditors
+  const stageAuditorIds = stages.flatMap((s) => {
+    const ids: string[] = []
+    if (s.lead_auditor_id) ids.push(s.lead_auditor_id)
+    for (const group of [s.auditors, s.technical_experts, s.observers] as ({ id?: string } | null)[][]) {
+      for (const a of group ?? []) {
+        if (a?.id) ids.push(a.id)
+      }
+    }
+    return ids
+  })
+
+  useEffect(() => {
+    setLoadingPool(true)
+    const excludeParam = stageAuditorIds.join(',')
+    const qs = excludeParam ? `?exclude_auditor_ids=${encodeURIComponent(excludeParam)}` : ''
+    api.get<AvailableCommitteeAuditor[]>(`/audit-sets/${auditSetId}/planning/committee/available-auditors${qs}`)
+      .then((r) => {
+        // Filter out already-selected members from the available list
+        const selectedIds = new Set(selected.map((s) => s.id))
+        setAvailable(r.data.filter((a) => !selectedIds.has(a.id)))
+      })
+      .catch(() => setError('Failed to load available auditors'))
+      .finally(() => setLoadingPool(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auditSetId])
+
+  function addMember(auditor: AvailableCommitteeAuditor) {
+    setSelected((prev) => [...prev, auditor])
+    setAvailable((prev) => prev.filter((a) => a.id !== auditor.id))
+    setError(null)
+  }
+
+  function removeMember(auditorId: string) {
+    const removed = selected.find((s) => s.id === auditorId)
+    if (!removed) return
+    setSelected((prev) => prev.filter((s) => s.id !== auditorId))
+    setAvailable((prev) => {
+      const next = [...prev, removed]
+      next.sort((a, b) => (a.covers_audit === b.covers_audit ? 0 : a.covers_audit ? -1 : 1))
+      return next
+    })
+  }
+
+  // Coverage check (client-side)
+  const auditStandards = standards ?? []
+  const coveredStandards = new Set(selected.flatMap((m) => m.standards))
+  const coveredEaCodes   = new Set(selected.flatMap((m) => m.ea_codes))
+  const missingStandards = auditStandards.filter((s) => !coveredStandards.has(s))
+  const eaMissing = eaCode && !coveredEaCodes.has(eaCode)
+  const coverageOk = missingStandards.length === 0 && !eaMissing
+
+  async function handleSave() {
+    setError(null)
+    if (selected.length === 0) { setError('Select at least one member (Chairperson)'); return }
+    setSaving(true)
+    try {
+      await api.put(`/audit-sets/${auditSetId}/planning`, {
+        committee_members: selected.map((m, i) => ({
+          id:        m.id,
+          full_name: m.full_name,
+          ea_codes:  m.ea_codes,
+          standards: m.standards,
+          role:      i === 0 ? 'chairperson' : 'member',
+        })),
+      })
+      onSuccess()
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setError(detail ?? 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="mt-4 rounded-xl border border-gray-100 bg-white p-5">
+      <p className="mb-1 text-sm font-medium text-gray-700">Certification Committee</p>
+      <p className="mb-4 text-xs text-gray-400">
+        Must collectively cover all standards and EA codes. Cannot include any Stage 1 or Stage 2 team member.
+        First selected = Chairperson.
+      </p>
+
+      <div className="flex gap-4">
+        {/* Left — available pool */}
+        <div className="flex-1">
+          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-gray-400">Available auditors</p>
+          {loadingPool ? (
+            <p className="text-xs text-gray-400">Loading…</p>
+          ) : available.length === 0 ? (
+            <p className="text-xs text-gray-400">All eligible auditors selected, or none available.</p>
+          ) : (
+            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+              {available.map((a) => (
+                <div
+                  key={a.id}
+                  className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"
+                >
+                  <div>
+                    <p className="text-xs font-medium text-gray-800">{a.full_name}</p>
+                    <p className="mt-0.5 text-xs text-gray-400">
+                      {a.covers_audit ? (
+                        <span className="text-green-600">✓ Covers audit</span>
+                      ) : (
+                        <span className="text-amber-600">⚠ Partial coverage</span>
+                      )}
+                      {a.ea_codes.length > 0 ? ` · EA: ${a.ea_codes.join(', ')}` : ''}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => addMember(a)}
+                    className="rounded bg-[#1A4731] px-2.5 py-1 text-xs text-white hover:opacity-80"
+                  >
+                    Add
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Right — selected committee */}
+        <div className="flex-1">
+          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-gray-400">Selected committee</p>
+          {selected.length === 0 ? (
+            <p className="text-xs text-gray-400">No members selected yet.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {selected.map((m, i) => (
+                <div
+                  key={m.id}
+                  className="flex items-center justify-between rounded-lg border border-gray-100 bg-white px-3 py-2"
+                >
+                  <div>
+                    <p className="text-xs font-medium text-gray-800">
+                      <span className="mr-1 text-gray-400">{i === 0 ? 'Chair:' : 'Member:'}</span>
+                      {m.full_name}
+                    </p>
+                    {m.ea_codes.length > 0 && (
+                      <p className="mt-0.5 text-xs text-gray-400">EA: {m.ea_codes.join(', ')}</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeMember(m.id)}
+                    className="text-xs text-gray-400 hover:text-red-500"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Coverage indicator */}
+      {selected.length > 0 && (
+        <div className={`mt-3 rounded-md px-3 py-2 text-xs ${coverageOk ? 'border border-green-200 bg-[#F0FAF4] text-green-800' : 'border border-amber-200 bg-amber-50 text-amber-800'}`}>
+          {coverageOk ? (
+            <span>✓ Committee covers all required standards{eaCode ? ` and EA ${eaCode}` : ''}</span>
+          ) : (
+            <span>
+              ⚠ Missing:{' '}
+              {[...(eaMissing ? [`EA ${eaCode}`] : []), ...missingStandards].join(', ')}
+            </span>
+          )}
+        </div>
+      )}
+
+      {error && (
+        <p className="mt-2 text-xs text-red-600">{error}</p>
+      )}
+
+      <div className="mt-4 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving || selected.length === 0 || !coverageOk}
+          className="flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium text-white disabled:opacity-60 hover:opacity-90"
+          style={{ background: '#1A4731' }}
+        >
+          {saving && <Loader2 size={13} className="animate-spin" />}
+          Save committee
+        </button>
+        {saved && (
+          <span className="flex items-center gap-1 text-xs text-green-600">
+            <Check size={13} /> Saved
+          </span>
+        )}
+      </div>
     </div>
   )
 }
@@ -1665,6 +1906,15 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
               )
             })}
           </div>
+          {/* Portal 64 — Certification Committee picker (planning phase) */}
+          <CommitteePlanningCard
+            auditSetId={id}
+            stages={data.stages}
+            standards={(data.standards ?? []) as string[]}
+            eaCode={data.ea_code ?? null}
+            initialCommittee={data.committee_members}
+            onSuccess={invalidate}
+          />
         </div>
       )}
 
@@ -1735,11 +1985,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
         </div>
       )}
 
-      {/* Certification Committee — Prompt 14 (reviewer / decision maker appointments) */}
-      <CommitteeSection
-        auditSetId={id}
-        workflowStatus={data.workflow_status ?? null}
-      />
+      {/* Portal 64 — Certification Committee moved to planning phase (see CommitteePlanningCard inside Audit stages block) */}
 
       {/* FR.233 Review & Decision — Portal 49a Part 3 */}
       <FR233Panel

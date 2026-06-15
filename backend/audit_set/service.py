@@ -718,6 +718,11 @@ def update_planning(
                 **payload,
             ))
 
+    # Portal 64 — persist committee_members snapshot when provided.
+    # Validation (no-overlap, coverage) is done upstream in the router.
+    if data.committee_members is not None:
+        audit_set.committee_members = data.committee_members
+
     # Auto-populate ea_code (and required_scope on legacy records) so
     # documents stop showing "None" for EA/IAF Code. The user's manual
     # ea_code from the payload wins because that branch runs above.

@@ -163,6 +163,17 @@ export interface AuditSetResponse {
   // Portal 51 — FR.218 Application Reviewer (FSMS/ISMS only)
   fr218_reviewer_id?:   string | null
   fr218_reviewer_name?: string | null
+  // Portal 64 — committee appointed during planning (JSON snapshot from committee_members column)
+  committee_members?: CommitteeTeamMember[] | null
+}
+
+export interface CommitteeTeamMember {
+  id: string
+  name: string
+  email?: string | null
+  ea_codes: string[]
+  standards: string[]
+  role: 'chairperson' | 'member'
 }
 
 // ── Jobs (AI report pipeline) ─────────────────────────────────────────────────

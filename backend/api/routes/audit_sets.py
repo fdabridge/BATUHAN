@@ -82,7 +82,91 @@ def planning(
     """
     Update EA classification, fees, and stage auditor/date assignments.
     Creates missing stage rows; advances status from 'draft' to 'planning'.
+    Portal 64: also accepts and validates committee_members (optional).
     """
+    # Portal 64 — validate committee before touching the DB
+    if payload.committee_members is not None and len(payload.committee_members) > 0:
+        audit_set_row = db.query(AuditSet).filter_by(id=audit_set_id).first()
+        if not audit_set_row:
+            raise HTTPException(status_code=404, detail=f"Audit set '{audit_set_id}' not found.")
+
+        from audit_set.committee_router import (
+            _audit_iso_standards,
+            _auditor_iso_quals,
+            _collect_stage_auditor_ids,
+        )
+        from audit_set.db_models import AuditSetStage
+        from auditors.models import Auditor as AuditorModel
+
+        # Collect all stage-team auditor IDs from BOTH the payload and DB-saved stages
+        all_team_ids: set[str] = set()
+        for si in payload.stages:
+            if si.lead_auditor_id:
+                all_team_ids.add(si.lead_auditor_id)
+            for group in (si.auditors, si.technical_experts, si.observers, si.ik_experts, si.evaluators):
+                for a in group:
+                    if a.id:
+                        all_team_ids.add(a.id)
+        db_stages = db.query(AuditSetStage).filter_by(audit_set_id=audit_set_id).all()
+        all_team_ids |= _collect_stage_auditor_ids(db_stages)
+
+        committee_ids = [m["id"] for m in payload.committee_members if m.get("id")]
+        if not committee_ids:
+            raise HTTPException(status_code=422, detail="Committee must have at least one member (Chairperson)")
+
+        overlap = set(committee_ids) & all_team_ids
+        if overlap:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Committee members cannot be on the audit team: {sorted(overlap)}",
+            )
+
+        # Look up live auditor data for coverage validation
+        auditors = {
+            a.id: a for a in
+            db.query(AuditorModel)
+            .filter(AuditorModel.id.in_(committee_ids))
+            .filter(AuditorModel.is_active == True)  # noqa: E712
+            .all()
+        }
+        missing_auditors = [aid for aid in committee_ids if aid not in auditors]
+        if missing_auditors:
+            raise HTTPException(status_code=400, detail=f"Auditor(s) not found or inactive: {missing_auditors}")
+
+        audit_standards = _audit_iso_standards(audit_set_row)
+        plan_ea_code    = (audit_set_row.ea_code or "").strip()
+        team_ea_codes:  set[str] = set()
+        team_standards: set[str] = set()
+        for aid in committee_ids:
+            a = auditors[aid]
+            team_ea_codes.update(a.ea_codes or [])
+            team_standards.update(_auditor_iso_quals(db, aid))
+
+        gaps: list[str] = []
+        if plan_ea_code and plan_ea_code not in team_ea_codes:
+            gaps.append(f"EA code {plan_ea_code}")
+        for std in sorted(audit_standards - team_standards):
+            gaps.append(std)
+        if gaps:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Committee does not cover: {', '.join(gaps)} — add a qualified member",
+            )
+
+        # Build canonical snapshot: first member = chairperson
+        snapshot = []
+        for i, mid in enumerate(committee_ids):
+            a = auditors[mid]
+            snapshot.append({
+                "id":       a.id,
+                "name":     a.name,
+                "email":    a.email,
+                "ea_codes": list(a.ea_codes or []),
+                "standards": sorted(_auditor_iso_quals(db, mid)),
+                "role":     "chairperson" if i == 0 else "member",
+            })
+        payload.committee_members = snapshot
+
     audit_set = update_planning(db, audit_set_id, payload)
     if not audit_set:
         raise HTTPException(status_code=404, detail=f"Audit set '{audit_set_id}' not found.")
