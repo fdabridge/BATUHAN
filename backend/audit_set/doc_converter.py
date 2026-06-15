@@ -42,6 +42,13 @@ def _normalize_sig_key(raw_key: str, docx_basename: str) -> str:
         return "ORG_REP"
     if raw_key == "CB_REVIEWER" and ("FR.231" in name or "FR.232" in name):
         return "APPOINTED_REVIEWER"
+    # Portal 61 — FR.233 static template ships [SIG:CERT_MANAGER_REVIEW] in the
+    # CM Approval row; the dynamic fr233_generator overwrites the same cell with
+    # [SIG:CERT_MANAGER_FR233]. Whichever is in the rendered DOCX, collapse to
+    # the canonical CERT_MANAGER_FR233 key so the certification gate (FR233
+    # status → "certified" transition) and all VSP lookups stay aligned.
+    if raw_key == "CERT_MANAGER_REVIEW" and "FR.233" in name:
+        return "CERT_MANAGER_FR233"
     return raw_key
 
 

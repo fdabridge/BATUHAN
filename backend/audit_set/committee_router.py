@@ -166,8 +166,31 @@ def get_eligible_users(
 
 
 class AppointRequest(BaseModel):
-    user_id: str
+    # Portal 61 — user_id optional for role="reviewer" (auto-resolves to the
+    # system's certification_manager). Still required for decision_maker.
+    user_id: str | None = None
     role: str  # "reviewer" | "decision_maker"
+
+
+@router.get("/{audit_set_id}/committee/cert-manager")
+def get_cert_manager(
+    audit_set_id: str,
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """Portal 61 — return the single active Certification Manager for display
+    in the auto-assign reviewer confirmation UI."""
+    if current_user.role not in CB_ROLES:
+        raise HTTPException(403, "Not authorized")
+    if not db.query(AuditSet).filter_by(id=audit_set_id).first():
+        raise HTTPException(404, "Audit set not found")
+    cm = auth_db.query(PlatformUser).filter_by(
+        role="certification_manager", is_active=True,
+    ).first()
+    if not cm:
+        return {"cert_manager": None}
+    return {"cert_manager": {"user_id": cm.id, "full_name": cm.full_name, "email": cm.email}}
 
 
 @router.post("/{audit_set_id}/committee/appoint")
@@ -188,12 +211,25 @@ def appoint_committee_member(
     if not audit_set:
         raise HTTPException(404, "Audit set not found")
 
-    user = auth_db.query(PlatformUser).filter_by(id=body.user_id).first()
-    if not user or user.role not in CB_ROLES:
-        raise HTTPException(400, "User not found or not a CB user")
+    # Portal 61 — reviewer role is auto-assigned to the system's single
+    # Certification Manager; any caller-supplied user_id is ignored.
+    if body.role == "reviewer":
+        user = auth_db.query(PlatformUser).filter_by(
+            role="certification_manager", is_active=True,
+        ).first()
+        if not user:
+            raise HTTPException(
+                400, "No active Certification Manager account found",
+            )
+    else:
+        if not body.user_id:
+            raise HTTPException(400, "user_id is required for decision_maker")
+        user = auth_db.query(PlatformUser).filter_by(id=body.user_id).first()
+        if not user or user.role not in CB_ROLES:
+            raise HTTPException(400, "User not found or not a CB user")
 
     already = db.query(AuditSetCommitteeMember).filter_by(
-        audit_set_id=audit_set_id, user_id=body.user_id
+        audit_set_id=audit_set_id, user_id=user.id
     ).first()
     if already:
         raise HTTPException(409, "User is already a committee member for this audit set")

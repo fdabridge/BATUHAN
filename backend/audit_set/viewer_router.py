@@ -109,9 +109,10 @@ CERT_MANAGER_FR233_KEY = "CERT_MANAGER_FR233"
 # for documents where the old name is still canonical (FR.220/221/230 CLIENT,
 # FR.218/229 CB_REVIEWER).
 SIG_KEY_ALIASES: dict[str, str] = {
-    "AUDITOR_MEMBER":  "ASSIGNED_AUDITOR",   # FR.224
-    "CLIENT":          "ORG_REP",             # FR.211 / FR.223 only (template-scoped)
-    "CB_REVIEWER":     "APPOINTED_REVIEWER",  # FR.231 / FR.232 only (template-scoped)
+    "AUDITOR_MEMBER":      "ASSIGNED_AUDITOR",   # FR.224
+    "CLIENT":              "ORG_REP",             # FR.211 / FR.223 only (template-scoped)
+    "CB_REVIEWER":         "APPOINTED_REVIEWER",  # FR.231 / FR.232 only (template-scoped)
+    "CERT_MANAGER_REVIEW": "CERT_MANAGER_FR233",  # FR.233 only (template-scoped)
 }
 
 
@@ -290,7 +291,9 @@ def _check_committee_sig(
 ) -> None:
     """Raise HTTPException(403) if `current_user` may not sign `sig_key` on FR.233."""
     if sig_key == CERT_MANAGER_FR233_KEY:
-        if current_user.role not in ("admin", "executive"):
+        # Portal 61 — certification_manager is the canonical CM role; admin /
+        # executive retained as escape hatches for existing data.
+        if current_user.role not in ("certification_manager", "admin", "executive"):
             raise HTTPException(
                 403, "Only the Certification Manager may sign this slot",
             )
@@ -375,14 +378,10 @@ def _shared_slot_eligible(
         ).first()
         return member is not None
     if role_label == "appointed_reviewer":
-        # Portal 55 — stage reports (FR.231/FR.232) require the committee
-        # member appointed with role="reviewer" to sign after the LA.
-        if role == "admin":
-            return True
-        reviewer_member = db.query(AuditSetCommitteeMember).filter_by(
-            audit_set_id=doc.audit_set_id, role="reviewer",
-        ).first()
-        return reviewer_member is not None and reviewer_member.user_id == current_user.id
+        # Portal 61 — APPOINTED_REVIEWER (FR.231/FR.232) is always the system's
+        # Certification Manager. The committee-member detour from Portal 55 is
+        # gone: any active certification_manager (or admin) is eligible.
+        return role in ("certification_manager", "admin")
     return False
 
 
@@ -746,18 +745,26 @@ def _get_field_status(
 
         if sig_record.signed_at:
             return _result("signed", sig_record.signer_name, vsp.signature_image if vsp else None)
-        # Portal 55 — stage reports' appointed_reviewer slot is N/A until a
-        # committee member with role="reviewer" is appointed on this audit set.
+        # Portal 61 — APPOINTED_REVIEWER on stage reports is the Certification
+        # Manager. Display name comes from the assigned slot if any, otherwise
+        # from the directory; eligibility is "current user is the CM" via
+        # _shared_slot_eligible below.
         if role_label == "appointed_reviewer":
-            reviewer_member = db.query(AuditSetCommitteeMember).filter_by(
-                audit_set_id=doc.audit_set_id, role="reviewer",
+            cm_user = auth_db.query(PlatformUser).filter_by(
+                role="certification_manager", is_active=True,
             ).first()
-            if not reviewer_member:
-                return _result("not_applicable")
-            reviewer_name = reviewer_member.user_name
+            reviewer_name = (
+                sig_record.signer_name
+                or (cm_user.full_name if cm_user else None)
+                or _user_name(sig_record.signer_user_id)
+            )
             if _prior_slots_unsigned(doc_id, sig_record.order_index, db) > 0:
                 return _result("blocked", reviewer_name)
-            if current_user.id == reviewer_member.user_id:
+            if sig_record.signer_user_id and sig_record.signer_user_id == current_user.id:
+                return _result("current_user", reviewer_name)
+            if sig_record.signer_user_id is None and _shared_slot_eligible(
+                role_label, doc, current_user, db,
+            ):
                 return _result("current_user", reviewer_name)
             return _result("pending", reviewer_name)
         if _prior_slots_unsigned(doc_id, sig_record.order_index, db) > 0:
