@@ -147,7 +147,21 @@ export function SignatureConfirmDialog({
 
   if (!isOpen) return null
 
-  const roleLabel = SIG_KEY_LABELS[sigKey] ?? sigKey
+  // Resolve dynamic key labels (COMMITTEE_MEMBER_<id>, ORG_OPENING_*, ORG_CLOSING_*).
+  function resolveSigLabel(key: string): string {
+    if (SIG_KEY_LABELS[key]) return SIG_KEY_LABELS[key]
+    if (key.startsWith('COMMITTEE_MEMBER_')) return 'Committee Member'
+    if (key === 'ORG_OPENING_LEAD_AUDITOR') return 'Lead Auditor (Opening Meeting)'
+    if (key === 'ORG_CLOSING_LEAD_AUDITOR') return 'Lead Auditor (Closing Meeting)'
+    if (key.startsWith('ORG_OPENING_AUDITOR_')) return 'Auditor (Opening Meeting)'
+    if (key.startsWith('ORG_CLOSING_AUDITOR_')) return 'Auditor (Closing Meeting)'
+    if (key.startsWith('ORG_OPENING_TE_'))     return 'Technical Expert (Opening Meeting)'
+    if (key.startsWith('ORG_CLOSING_TE_'))     return 'Technical Expert (Closing Meeting)'
+    if (key.startsWith('ORG_OPENING_'))        return 'Organisation Attendee (Opening)'
+    if (key.startsWith('ORG_CLOSING_'))        return 'Organisation Attendee (Closing)'
+    return key
+  }
+  const roleLabel = resolveSigLabel(sigKey)
   const busy      = stage === 'signing'
 
   return (

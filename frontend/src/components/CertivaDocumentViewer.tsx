@@ -62,7 +62,16 @@ const SIG_LABELS: Record<string, string> = {
 }
 function sigLabel(key: string) {
   if (SIG_LABELS[key]) return SIG_LABELS[key]
-  // Portal 49a Part 2: dynamic ORG_OPENING_<uuid> / ORG_CLOSING_<uuid> keys.
+  // Portal 63 — dynamic COMMITTEE_MEMBER_<auditor_id> from FR.233 loop.
+  if (key.startsWith('COMMITTEE_MEMBER_')) return 'Committee Member'
+  // Portal 59 — FR.225 audit-team static slots (Opening / Closing meeting).
+  if (key === 'ORG_OPENING_LEAD_AUDITOR') return 'Lead Auditor (Opening Meeting)'
+  if (key === 'ORG_CLOSING_LEAD_AUDITOR') return 'Lead Auditor (Closing Meeting)'
+  if (key.startsWith('ORG_OPENING_AUDITOR_')) return 'Auditor (Opening Meeting)'
+  if (key.startsWith('ORG_CLOSING_AUDITOR_')) return 'Auditor (Closing Meeting)'
+  if (key.startsWith('ORG_OPENING_TE_'))     return 'Technical Expert (Opening Meeting)'
+  if (key.startsWith('ORG_CLOSING_TE_'))     return 'Technical Expert (Closing Meeting)'
+  // Portal 49a Part 2 — dynamic ORG_OPENING_ORG_EMP_<uuid> / ORG_CLOSING_ORG_EMP_<uuid> keys.
   if (key.startsWith('ORG_OPENING_'))  return 'Organisation Attendee (Opening)'
   if (key.startsWith('ORG_CLOSING_'))  return 'Organisation Attendee (Closing)'
   return key

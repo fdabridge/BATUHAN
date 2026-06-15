@@ -26,14 +26,6 @@ interface EligibleUser {
   eligible_as_reviewer: boolean
 }
 
-// Portal 61 — single CM returned by /committee/cert-manager for the
-// auto-assigned reviewer confirmation panel.
-interface CertManager {
-  user_id: string
-  full_name: string
-  email: string
-}
-
 const ROLE_LABELS: Record<string, string> = {
   reviewer:       'Reviewer',
   decision_maker: 'Decision Maker',
@@ -53,13 +45,9 @@ export function CommitteeSection({
 }) {
   const [members, setMembers]                 = useState<CommitteeMember[]>([])
   const [showPicker, setShowPicker]           = useState(false)
-  const [pickRole, setPickRole]               = useState<'reviewer' | 'decision_maker'>('reviewer')
+  const [pickRole, setPickRole]               = useState<'decision_maker'>('decision_maker')
   const [eligible, setEligible]               = useState<EligibleUser[]>([])
   const [loadingEligible, setLoadingEligible] = useState(false)
-  // Portal 61 — reviewer panel state: prefetched CM identity for the
-  // auto-assign confirmation card (no user picker for reviewer role).
-  const [certManager, setCertManager]         = useState<CertManager | null>(null)
-  const [loadingCM, setLoadingCM]             = useState(false)
   const [busy, setBusy]                       = useState(false)
   const [error, setError]                     = useState('')
 
@@ -85,28 +73,10 @@ export function CommitteeSection({
   const showSection = workflowStatus != null && COMMITTEE_STAGES.includes(workflowStatus)
   if (!showSection) return null
 
-  async function openPicker(role: 'reviewer' | 'decision_maker') {
+  async function openPicker(role: 'decision_maker') {
     setPickRole(role)
     setShowPicker(true)
     setError('')
-    if (role === 'reviewer') {
-      // Portal 61 — reviewer panel skips the user picker. Prefetch the single
-      // active CM so the confirm card can display their name; the actual
-      // appointment call sends only {role: "reviewer"} (no user_id).
-      setLoadingCM(true)
-      setCertManager(null)
-      try {
-        const r = await api.get<{ cert_manager: CertManager | null }>(
-          `/audit-sets/${auditSetId}/committee/cert-manager`,
-        )
-        setCertManager(r.data.cert_manager)
-      } catch {
-        setError('Failed to load Certification Manager')
-      } finally {
-        setLoadingCM(false)
-      }
-      return
-    }
     setLoadingEligible(true)
     try {
       const r = await api.get<EligibleUser[]>(`/audit-sets/${auditSetId}/committee/eligible-users`)
@@ -151,8 +121,6 @@ export function CommitteeSection({
     }
   }
 
-  const hasReviewer = members.some(m => m.role === 'reviewer')
-
   return (
     <div className="mt-6">
       <div className="mb-3 flex items-center justify-between">
@@ -160,16 +128,6 @@ export function CommitteeSection({
           Certification Committee
         </h2>
         <div className="flex gap-2">
-          {!hasReviewer && (
-            <button
-              type="button"
-              onClick={() => openPicker('reviewer')}
-              disabled={busy}
-              className="rounded-lg border border-[#1A4731] px-3 py-1.5 text-xs font-medium text-[#1A4731] hover:bg-green-50 disabled:opacity-40"
-            >
-              + Appoint Reviewer
-            </button>
-          )}
           <button
             type="button"
             onClick={() => openPicker('decision_maker')}
@@ -226,7 +184,7 @@ export function CommitteeSection({
         <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
           <div className="mb-3 flex items-center justify-between">
             <p className="text-sm font-semibold text-gray-700">
-              {pickRole === 'reviewer' ? 'Appoint Reviewer' : `Select ${ROLE_LABELS[pickRole]}`}
+              {`Select ${ROLE_LABELS[pickRole]}`}
             </p>
             <button
               type="button"
@@ -237,35 +195,7 @@ export function CommitteeSection({
             </button>
           </div>
 
-          {pickRole === 'reviewer' ? (
-            // Portal 61 — reviewer is the system's single Certification Manager;
-            // no picker, just a confirm action.
-            loadingCM ? (
-              <p className="text-xs text-gray-400">Loading Certification Manager…</p>
-            ) : !certManager ? (
-              <p className="text-xs text-red-500">
-                No active Certification Manager account found. Create one in
-                User Management before appointing a reviewer.
-              </p>
-            ) : (
-              <div className="flex items-center justify-between rounded-lg border bg-white px-3 py-2.5">
-                <div>
-                  <p className="text-xs font-medium text-gray-800">{certManager.full_name}</p>
-                  <p className="mt-0.5 text-xs text-gray-400">
-                    Certification Manager · auto-assigned
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => appoint(null)}
-                  disabled={busy}
-                  className="rounded bg-[#1A4731] px-2.5 py-1 text-xs text-white disabled:opacity-40"
-                >
-                  {busy ? '…' : 'Confirm appointment'}
-                </button>
-              </div>
-            )
-          ) : loadingEligible ? (
+          {loadingEligible ? (
             <p className="text-xs text-gray-400">Loading eligible users…</p>
           ) : eligible.length === 0 ? (
             <p className="text-xs text-gray-400">No eligible users available.</p>

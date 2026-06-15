@@ -580,18 +580,26 @@ def _assert_can_sign(
                 )
             if sig_record.signed_at:
                 raise HTTPException(400, "This field has already been signed")
-            if sig_record.signer_user_id is not None and sig_record.signer_user_id != current_user.id:
-                raise HTTPException(403, "This signature slot is assigned to a different user")
-            if sig_record.signer_user_id is None and not _shared_slot_eligible(
-                role_label, doc, current_user, db,
-            ):
-                raise HTTPException(403, "This signature slot is not assigned to you")
-            if _prior_slots_unsigned(doc_id, sig_record.order_index, db) > 0:
-                raise HTTPException(
-                    400,
-                    "An earlier signature on this document is still pending. "
-                    "Signatures must be placed in order.",
-                )
+            # Portal 63 — APPOINTED_REVIEWER: pure role check, no signer_user_id
+            # gate and no ordering gate. CM and LA may sign in any order.
+            if role_label == "appointed_reviewer":
+                if current_user.role not in ("certification_manager", "admin"):
+                    raise HTTPException(
+                        403, "Only the Certification Manager may sign this slot",
+                    )
+            else:
+                if sig_record.signer_user_id is not None and sig_record.signer_user_id != current_user.id:
+                    raise HTTPException(403, "This signature slot is assigned to a different user")
+                if sig_record.signer_user_id is None and not _shared_slot_eligible(
+                    role_label, doc, current_user, db,
+                ):
+                    raise HTTPException(403, "This signature slot is not assigned to you")
+                if _prior_slots_unsigned(doc_id, sig_record.order_index, db) > 0:
+                    raise HTTPException(
+                        400,
+                        "An earlier signature on this document is still pending. "
+                        "Signatures must be placed in order.",
+                    )
 
     elif document_type == "audit_report":
         report = db.query(AuditSetAuditReport).filter_by(id=doc_id).first()
@@ -798,10 +806,9 @@ def _get_field_status(
 
         if sig_record.signed_at:
             return _result("signed", sig_record.signer_name, vsp.signature_image if vsp else None)
-        # Portal 61 — APPOINTED_REVIEWER on stage reports is the Certification
-        # Manager. Display name comes from the assigned slot if any, otherwise
-        # from the directory; eligibility is "current user is the CM" via
-        # _shared_slot_eligible below.
+        # Portal 63 — APPOINTED_REVIEWER (FR.231/FR.232) is the Certification
+        # Manager. Pure role check — no ordering gate and no pre-appointment
+        # required. The CM opens the document and signs immediately.
         if role_label == "appointed_reviewer":
             cm_user = auth_db.query(PlatformUser).filter_by(
                 role="certification_manager", is_active=True,
@@ -811,13 +818,7 @@ def _get_field_status(
                 or (cm_user.full_name if cm_user else None)
                 or _user_name(sig_record.signer_user_id)
             )
-            if _prior_slots_unsigned(doc_id, sig_record.order_index, db) > 0:
-                return _result("blocked", reviewer_name)
-            if sig_record.signer_user_id and sig_record.signer_user_id == current_user.id:
-                return _result("current_user", reviewer_name)
-            if sig_record.signer_user_id is None and _shared_slot_eligible(
-                role_label, doc, current_user, db,
-            ):
+            if current_user.role in ("certification_manager", "admin"):
                 return _result("current_user", reviewer_name)
             return _result("pending", reviewer_name)
         if _prior_slots_unsigned(doc_id, sig_record.order_index, db) > 0:
