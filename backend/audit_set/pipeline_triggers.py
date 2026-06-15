@@ -108,29 +108,53 @@ def check_fr218_completion(
     audit_set_id: str, triggered_by: str, db: Session,
     effective_ts: Optional[datetime] = None,
 ) -> bool:
-    """Advance fr218_in_progress → fr218_complete once all fr218_review
-    signature slots (linked to an uploaded fr218_review shared document) are
-    fully signed via the viewer."""
+    """Advance fr218_in_progress → fr218_complete once all FR.218 signature
+    slots are fully signed.
+
+    Two paths are supported:
+    • New-style (post-Portal 47): checks the most recently released
+      fr218_review AuditSetSharedDocument and its linked AuditDocumentSignature
+      rows.  Uses ORDER BY id DESC so a re-upload never shadows the signed doc.
+    • Legacy fallback (Portal 47 backfill path): if no fr218_review document
+      exists, checks old-style FR218 internal-approval slots (document_id=None,
+      document_type="FR218").  This fires immediately when the last FR218 slot
+      is signed via signatures_router, without waiting for the next restart.
+    """
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
     if not audit_set or audit_set.workflow_status != "fr218_in_progress":
         return False
 
+    # ── New-style: viewer-signed fr218_review document ────────────────────────
     fr218_doc = (
         db.query(AuditSetSharedDocument)
         .filter_by(audit_set_id=audit_set_id, document_type="fr218_review")
+        .order_by(AuditSetSharedDocument.id.desc())   # most recent upload first
         .first()
     )
-    if not fr218_doc:
-        return False  # document not yet uploaded
-
-    remaining = (
-        db.query(AuditDocumentSignature)
-        .filter_by(document_id=fr218_doc.id, required=True)
-        .filter(AuditDocumentSignature.signed_at.is_(None))
-        .count()
-    )
-    if remaining > 0:
-        return False
+    if fr218_doc:
+        remaining = (
+            db.query(AuditDocumentSignature)
+            .filter_by(document_id=fr218_doc.id, required=True)
+            .filter(AuditDocumentSignature.signed_at.is_(None))
+            .count()
+        )
+        if remaining > 0:
+            return False
+    else:
+        # ── Legacy fallback: Portal 47-style internal FR218 slots ─────────────
+        total = (
+            db.query(AuditDocumentSignature)
+            .filter_by(audit_set_id=audit_set_id, document_type="FR218", required=True)
+            .count()
+        )
+        unsigned = (
+            db.query(AuditDocumentSignature)
+            .filter_by(audit_set_id=audit_set_id, document_type="FR218", required=True)
+            .filter(AuditDocumentSignature.signed_at.is_(None))
+            .count()
+        )
+        if total == 0 or unsigned > 0:
+            return False
 
     audit_set.workflow_status = "fr218_complete"
     db.add(AuditSetStatusEvent(

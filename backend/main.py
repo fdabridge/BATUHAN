@@ -183,9 +183,13 @@ def on_startup():
 
     # Portal 47e — backfill: any audit set at fr218_in_progress where all required
     # FR.218 slots are already signed should advance to fr218_complete.
+    # Handles both paths:
+    #   • Old-style (Portal 47 internal-approval rows, document_type="FR218")
+    #   • New-style (viewer-signed fr218_review AuditSetSharedDocument rows)
     try:
         from audit_set.db_models import (
             AuditSet, AuditDocumentSignature, AuditSetStatusEvent,
+            AuditSetSharedDocument,
             get_db as audit_get_db,
         )
         from datetime import datetime as _dt
@@ -194,18 +198,53 @@ def on_startup():
             stuck218 = adb2.query(AuditSet).filter_by(workflow_status="fr218_in_progress").all()
             completed = 0
             for aset in stuck218:
+                # ── Old-style: internal FR218 slots ───────────────────────────
                 total = (
                     adb2.query(AuditDocumentSignature)
                     .filter_by(audit_set_id=aset.id, document_type="FR218", required=True)
                     .count()
                 )
-                unsigned = (
+                if total > 0:
+                    unsigned = (
+                        adb2.query(AuditDocumentSignature)
+                        .filter_by(audit_set_id=aset.id, document_type="FR218", required=True)
+                        .filter(AuditDocumentSignature.signed_at.is_(None))
+                        .count()
+                    )
+                    if unsigned == 0:
+                        aset.workflow_status = "fr218_complete"
+                        adb2.add(AuditSetStatusEvent(
+                            audit_set_id=aset.id,
+                            from_status="fr218_in_progress",
+                            to_status="fr218_complete",
+                            triggered_by="system_backfill",
+                            triggered_at=_dt.utcnow(),
+                            notes="Portal 47e backfill: all FR.218 slots were signed (old-style), advancing to fr218_complete",
+                        ))
+                        completed += 1
+                    continue  # old-style slots present — skip new-style check
+
+                # ── New-style: viewer-signed fr218_review document ─────────────
+                fr218_doc = (
+                    adb2.query(AuditSetSharedDocument)
+                    .filter_by(audit_set_id=aset.id, document_type="fr218_review")
+                    .order_by(AuditSetSharedDocument.id.desc())
+                    .first()
+                )
+                if not fr218_doc:
+                    continue
+                new_total = (
                     adb2.query(AuditDocumentSignature)
-                    .filter_by(audit_set_id=aset.id, document_type="FR218", required=True)
+                    .filter_by(document_id=fr218_doc.id, required=True)
+                    .count()
+                )
+                new_unsigned = (
+                    adb2.query(AuditDocumentSignature)
+                    .filter_by(document_id=fr218_doc.id, required=True)
                     .filter(AuditDocumentSignature.signed_at.is_(None))
                     .count()
                 )
-                if total > 0 and unsigned == 0:
+                if new_total > 0 and new_unsigned == 0:
                     aset.workflow_status = "fr218_complete"
                     adb2.add(AuditSetStatusEvent(
                         audit_set_id=aset.id,
@@ -213,7 +252,7 @@ def on_startup():
                         to_status="fr218_complete",
                         triggered_by="system_backfill",
                         triggered_at=_dt.utcnow(),
-                        notes="Portal 47e backfill: all FR.218 slots were signed, advancing to fr218_complete",
+                        notes="Portal 47e backfill: fr218_review document fully signed (new-style), advancing to fr218_complete",
                     ))
                     completed += 1
             adb2.commit()
