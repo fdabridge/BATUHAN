@@ -1209,14 +1209,13 @@ function StageCard({
   const teamCount = (edit.lead_auditor_name ? 1 : 0) + edit.auditors.length
 
   // Reactive: when team size changes and a start date exists, recompute end date
-  // so that: calendar days = ceil(audit_days / teamCount)
-  // Falls back to `recommended` when stage.audit_days is null (unscheduled stage).
+  // so that: calendar days = ceil(recommended / teamCount).
+  // Always divides the IAF man-day figure — never stage.audit_days (stale calendar-day artifact).
   useEffect(() => {
     if (!edit.audit_date_start) return           // no start date yet — nothing to do
-    const baseAuditDays = stage.audit_days ?? recommended   // use recommendation when not yet scheduled
-    if (!baseAuditDays) return                   // no IAF recommendation — nothing to base on
+    if (!recommended) return                     // no IAF recommendation — nothing to base on
     if (teamCount === 0) return                  // no auditors yet — keep existing date
-    const calendarDaysNeeded = Math.ceil(baseAuditDays / teamCount)
+    const calendarDaysNeeded = Math.ceil(recommended / teamCount)
     const newEnd = suggestEndDate(edit.audit_date_start, calendarDaysNeeded)
     if (newEnd !== edit.audit_date_end) {
       patch({ audit_date_end: newEnd })
