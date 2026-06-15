@@ -244,14 +244,12 @@ def get_planning_committee_available(
 ):
     """Portal 64 — available auditors for the committee picker during planning.
 
-    Replaces Portal 62's GET /committee/available-auditors. Called during
-    planning before the audit starts; the frontend passes the current (unsaved)
-    Stage 1 + Stage 2 auditor IDs as `exclude_auditor_ids` (comma-separated)
-    so the exclusion list stays live as the planner selects team members.
+    Returns each active auditor not in `exclude_auditor_ids` with:
+      - `covered_scope`: {iso_std: [matched_codes]} — same format as
+        AuditorAvailabilityItem.covered_scope from GET /auditors/available
+      - `covers_audit`: true when the auditor covers every required ISO standard
+        AND the audit's EA code (numeric-normalised to handle "EA 5" vs "5")
 
-    Returns each active auditor not in `exclude_auditor_ids`, with a
-    `covers_audit` flag that is true when the auditor's EA codes include the
-    audit's EA code AND they hold at least one matching ISO qualification.
     Auditors with `covers_audit=true` are sorted first.
     """
     if current_user.role not in CB_ROLES:
@@ -268,7 +266,59 @@ def get_planning_committee_available(
     from auditors.models import Auditor as AuditorModel
 
     plan_ea_code    = (audit_set.ea_code or "").strip()
-    audit_standards = _audit_iso_standards(audit_set)
+    audit_standards = _audit_iso_standards(audit_set)   # {"ISO 9001", ...}
+
+    # Build required_scope dict (same format used by /auditors/available).
+    # Prefer the stored required_scope when available; fall back to deriving
+    # it from standards + ea_code for older audit sets.
+    if audit_set.required_scope:
+        req_cat: dict = audit_set.required_scope
+    elif audit_standards and plan_ea_code:
+        req_cat = {iso_std: {"type": "ea", "codes": [plan_ea_code]}
+                   for iso_std in audit_standards}
+    else:
+        req_cat = {}
+
+    def _ea_int(code: str) -> int | None:
+        """Strip 'EA' prefix and return the integer sector number, or None."""
+        try:
+            return int(code.strip().upper().replace("EA", "").replace(" ", ""))
+        except (ValueError, AttributeError):
+            return None
+
+    target_ea = _ea_int(plan_ea_code) if plan_ea_code else None
+
+    def _compute_covered_scope(qualifications: list, req: dict) -> dict:
+        """Mirror of /auditors/available._compute_covered_scope.
+
+        For each required ISO standard + required codes, check whether this
+        auditor's qualification record covers any of those codes.
+        Returns {iso_std: [matched_codes]}.
+        """
+        covered: dict = {}
+        for iso_std, entry in req.items():
+            scope_type      = entry.get("type", "ea")
+            required_codes: list = entry.get("codes", []) or []
+            if not required_codes:
+                continue
+            std_lower = iso_std.lower().replace("iso ", "").replace(" ", "")
+            qual = next(
+                (q for q in (qualifications or [])
+                 if q.is_qualified is not False and std_lower in
+                 (q.standard_code or "").lower().replace("iso ", "").replace(" ", "")),
+                None,
+            )
+            if not qual:
+                continue
+            if scope_type in ("food", "medical", "sector", "energy"):
+                raw = qual.scope_category or ""
+                auditor_codes = [c.strip() for c in raw.split(",") if c.strip()]
+            else:
+                auditor_codes = qual.ea_codes or []
+            matched = [c for c in required_codes if c in auditor_codes]
+            if matched:
+                covered[iso_std] = matched
+        return covered
 
     auditors = (
         db.query(AuditorModel)
@@ -280,17 +330,34 @@ def get_planning_committee_available(
     for a in auditors:
         if a.id in excluded:
             continue
+
         ea_codes = a.ea_codes or []
-        ea_ok    = (not plan_ea_code) or (plan_ea_code in ea_codes)
-        iso_q    = _auditor_iso_quals(db, a.id)
-        std_ok   = (not audit_standards) or bool(audit_standards & iso_q)
+
+        # EA coverage — check per-standard EA codes first, fall back to top-level.
+        # Use numeric normalisation so "EA 5" matches "5" and vice-versa.
+        if plan_ea_code and target_ea is not None:
+            per_std_ea: list[str] = []
+            for q in (a.standard_qualifications or []):
+                if q.is_qualified is not False:
+                    per_std_ea.extend(q.ea_codes or [])
+            codes_to_check = per_std_ea if per_std_ea else ea_codes
+            ea_ok = any(_ea_int(c) == target_ea for c in codes_to_check)
+        else:
+            ea_ok = True
+
+        iso_q  = _auditor_iso_quals(db, a.id)
+        std_ok = (not audit_standards) or bool(audit_standards & iso_q)
+
+        covered_scope = _compute_covered_scope(a.standard_qualifications, req_cat)
+
         results.append({
-            "id":           a.id,
-            "full_name":    a.name,
-            "email":        a.email,
-            "ea_codes":     ea_codes,
-            "standards":    sorted(iso_q),
-            "covers_audit": ea_ok and std_ok,
+            "id":            a.id,
+            "full_name":     a.name,
+            "email":         a.email,
+            "ea_codes":      ea_codes,
+            "standards":     sorted(iso_q),
+            "covers_audit":  ea_ok and std_ok,
+            "covered_scope": covered_scope,
         })
 
     results.sort(key=lambda x: (not x["covers_audit"], x["full_name"] or ""))

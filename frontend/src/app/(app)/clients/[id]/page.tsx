@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, ChevronDown, ChevronRight, Download, Loader2, Pencil, Check, Sparkles, Trash2 } from 'lucide-react'
@@ -788,6 +788,15 @@ interface AvailableCommitteeAuditor {
   ea_codes: string[]
   standards: string[]
   covers_audit: boolean
+  covered_scope: Record<string, string[]>   // {iso_std: [matched_codes]} — same as AuditorAvailabilityItem
+}
+
+// Short-code → ISO name map (mirrors backend _STD_CODE_TO_ISO)
+const _COMMITTEE_STD_TO_ISO: Record<string, string> = {
+  "QMS": "ISO 9001", "EMS": "ISO 14001", "OHSMS": "ISO 45001",
+  "FSMS": "ISO 22000", "FSSC 22000": "FSSC 22000", "MDQMS": "ISO 13485",
+  "MDMS": "ISO 13485", "ISMS": "ISO 27001", "ENMS": "ISO 50001",
+  "EnMS": "ISO 50001", "ABMS": "ISO 37001", "CMS": "ISO 37301",
 }
 
 function CommitteePlanningCard({
@@ -814,6 +823,7 @@ function CommitteePlanningCard({
       ea_codes: m.ea_codes,
       standards: m.standards,
       covers_audit: true,
+      covered_scope: {},   // enriched from pool on first load
     }))
   })
   const [available, setAvailable]   = useState<AvailableCommitteeAuditor[]>([])
@@ -822,32 +832,45 @@ function CommitteePlanningCard({
   const [saved, setSaved]           = useState(false)
   const [error, setError]           = useState<string | null>(null)
 
-  // Build exclude list from saved stage auditors
-  const stageAuditorIds = stages.flatMap((s) => {
+  // Keep a ref so the pool-fetch effect can read current selected without a
+  // stale closure (avoids adding `selected` to effect deps → no infinite loop).
+  const selectedRef = useRef<AvailableCommitteeAuditor[]>(selected)
+  selectedRef.current = selected
+
+  // Build a stable string key from all stage auditor IDs so the effect only
+  // re-runs when the stage assignments actually change.
+  const stageAuditorIdsKey = useMemo(() => {
     const ids: string[] = []
-    if (s.lead_auditor_id) ids.push(s.lead_auditor_id)
-    for (const group of [s.auditors, s.technical_experts, s.observers] as ({ id?: string } | null)[][]) {
-      for (const a of group ?? []) {
-        if (a?.id) ids.push(a.id)
+    for (const s of stages) {
+      if (s.lead_auditor_id) ids.push(s.lead_auditor_id)
+      for (const group of [s.auditors, s.technical_experts, s.observers] as ({ id?: string } | null)[][]) {
+        for (const a of group ?? []) {
+          if (a?.id) ids.push(a.id)
+        }
       }
     }
-    return ids
-  })
+    return ids.sort().join(',')
+  }, [stages])
 
   useEffect(() => {
     setLoadingPool(true)
-    const excludeParam = stageAuditorIds.join(',')
-    const qs = excludeParam ? `?exclude_auditor_ids=${encodeURIComponent(excludeParam)}` : ''
+    const qs = stageAuditorIdsKey ? `?exclude_auditor_ids=${encodeURIComponent(stageAuditorIdsKey)}` : ''
     api.get<AvailableCommitteeAuditor[]>(`/audit-sets/${auditSetId}/planning/committee/available-auditors${qs}`)
       .then((r) => {
-        // Filter out already-selected members from the available list
-        const selectedIds = new Set(selected.map((s) => s.id))
-        setAvailable(r.data.filter((a) => !selectedIds.has(a.id)))
+        const pool = r.data
+        const poolById = new Map(pool.map((a) => [a.id, a]))
+        const currentSelected = selectedRef.current
+        const selectedIds = new Set(currentSelected.map((s) => s.id))
+        // Enrich pre-selected members with covered_scope + updated covers_audit from pool
+        setSelected(currentSelected.map((m) => {
+          const fromPool = poolById.get(m.id)
+          return fromPool ? { ...m, covered_scope: fromPool.covered_scope, covers_audit: fromPool.covers_audit } : m
+        }))
+        setAvailable(pool.filter((a) => !selectedIds.has(a.id)))
       })
       .catch(() => setError('Failed to load available auditors'))
       .finally(() => setLoadingPool(false))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auditSetId])
+  }, [auditSetId, stageAuditorIdsKey])
 
   function addMember(auditor: AvailableCommitteeAuditor) {
     setSelected((prev) => [...prev, auditor])
@@ -867,11 +890,32 @@ function CommitteePlanningCard({
   }
 
   // Coverage check (client-side)
-  const auditStandards = standards ?? []
-  const coveredStandards = new Set(selected.flatMap((m) => m.standards))
-  const coveredEaCodes   = new Set(selected.flatMap((m) => m.ea_codes))
-  const missingStandards = auditStandards.filter((s) => !coveredStandards.has(s))
-  const eaMissing = eaCode && !coveredEaCodes.has(eaCode)
+  // Map short codes ("QMS") → ISO names ("ISO 9001") before comparing against
+  // covered_scope keys (which are always ISO names from the backend).
+  const auditStandardsISO = (standards ?? []).map((s) => _COMMITTEE_STD_TO_ISO[s] ?? s)
+
+  // An ISO standard is covered when at least one selected member's covered_scope
+  // has that standard key with non-empty matching codes.
+  const coveredIsoViaScope = new Set(
+    selected.flatMap((m) =>
+      Object.entries(m.covered_scope ?? {})
+        .filter(([, codes]) => codes.length > 0)
+        .map(([std]) => std)
+    )
+  )
+  // Fallback for audits with no EA code requirement (covered_scope may be empty):
+  // accept any standard in the member's full qualifications list.
+  const coveredIsoViaStds = new Set(selected.flatMap((m) => m.standards))
+
+  const missingStandards = auditStandardsISO.filter(
+    (s) => !coveredIsoViaScope.has(s) && !coveredIsoViaStds.has(s)
+  )
+  // EA coverage is already baked into covered_scope when the audit has an ea_code.
+  // If covered_scope is empty (no EA requirement), check numerically against ea_codes.
+  const _eaInt = (c: string) => parseInt(c.replace(/[^0-9]/g, ''), 10) || null
+  const eaMissing = eaCode && coveredIsoViaScope.size === 0 && !selected.some(
+    (m) => m.ea_codes.some((c) => _eaInt(c) === _eaInt(eaCode))
+  )
   const coverageOk = missingStandards.length === 0 && !eaMissing
 
   async function handleSave() {
@@ -917,31 +961,41 @@ function CommitteePlanningCard({
             <p className="text-xs text-gray-400">All eligible auditors selected, or none available.</p>
           ) : (
             <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-              {available.map((a) => (
-                <div
-                  key={a.id}
-                  className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"
-                >
-                  <div>
-                    <p className="text-xs font-medium text-gray-800">{a.full_name}</p>
-                    <p className="mt-0.5 text-xs text-gray-400">
-                      {a.covers_audit ? (
-                        <span className="text-green-600">✓ Covers audit</span>
-                      ) : (
-                        <span className="text-amber-600">⚠ Partial coverage</span>
-                      )}
-                      {a.ea_codes.length > 0 ? ` · EA: ${a.ea_codes.join(', ')}` : ''}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => addMember(a)}
-                    className="rounded bg-[#1A4731] px-2.5 py-1 text-xs text-white hover:opacity-80"
+              {available.map((a) => {
+                // Build a "EA 3 (ISO 9001) | CI CIV (ISO 22000)" label from covered_scope
+                const coverLabel = a.covered_scope && Object.keys(a.covered_scope).length > 0
+                  ? Object.entries(a.covered_scope)
+                      .filter(([, codes]) => codes.length > 0)
+                      .map(([std, codes]) => `${codes.join(' ')} (${std})`)
+                      .join(' | ')
+                  : ''
+                return (
+                  <div
+                    key={a.id}
+                    className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"
                   >
-                    Add
-                  </button>
-                </div>
-              ))}
+                    <div>
+                      <p className="text-xs font-medium text-gray-800">{a.full_name}</p>
+                      <p className="mt-0.5 text-xs">
+                        {a.covers_audit ? (
+                          <span className="text-green-600">✓ {coverLabel || 'Covers audit'}</span>
+                        ) : coverLabel ? (
+                          <span className="text-amber-600">⚠ {coverLabel}</span>
+                        ) : (
+                          <span className="text-amber-600">⚠ Partial / no coverage</span>
+                        )}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => addMember(a)}
+                      className="rounded bg-[#1A4731] px-2.5 py-1 text-xs text-white hover:opacity-80"
+                    >
+                      Add
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>
@@ -963,9 +1017,16 @@ function CommitteePlanningCard({
                       <span className="mr-1 text-gray-400">{i === 0 ? 'Chair:' : 'Member:'}</span>
                       {m.full_name}
                     </p>
-                    {m.ea_codes.length > 0 && (
-                      <p className="mt-0.5 text-xs text-gray-400">EA: {m.ea_codes.join(', ')}</p>
-                    )}
+                    <p className="mt-0.5 text-xs text-gray-400">
+                      {m.covered_scope && Object.keys(m.covered_scope).length > 0
+                        ? Object.entries(m.covered_scope)
+                            .filter(([, codes]) => codes.length > 0)
+                            .map(([std, codes]) => `${codes.join(' ')} (${std})`)
+                            .join(' | ')
+                        : m.ea_codes.length > 0
+                          ? `EA: ${m.ea_codes.join(', ')}`
+                          : null}
+                    </p>
                   </div>
                   <button
                     type="button"
@@ -990,6 +1051,7 @@ function CommitteePlanningCard({
             <span>
               ⚠ Missing:{' '}
               {[...(eaMissing ? [`EA ${eaCode}`] : []), ...missingStandards].join(', ')}
+              {missingStandards.length === 0 && !eaMissing ? 'none' : ''}
             </span>
           )}
         </div>
