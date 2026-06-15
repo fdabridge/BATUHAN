@@ -24,8 +24,12 @@ import pdfplumber
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
-# Regex for [SIG:KEY] tokens — KEY is uppercase letters, digits, underscores
-_SIG_PATTERN = re.compile(r"^\[SIG:([A-Z0-9_]+)\]$")
+# Portal 65 — KEY now allows lowercase and hyphens so UUID-based sig keys
+# (e.g. ORG_OPENING_ORG_EMP_<uuid> and COMMITTEE_MEMBER_<auditor_id>) are
+# matched when the UUID contains lowercase hex digits and hyphens.
+_SIG_PATTERN = re.compile(r"^\[SIG:([A-Za-z0-9_-]+)\]$")
+# Search pattern used with page.search() — must match _SIG_PATTERN exactly.
+_SIG_SEARCH  = r"\[SIG:[A-Za-z0-9_\-]+\]"
 
 
 # Portal 59 Fix 4 — legacy sig-key migration. Older rendered PDFs on disk still
@@ -105,25 +109,27 @@ def extract_sig_fields(pdf_path: str) -> list[dict]:
     Returns a list of dicts, one per found placeholder:
       { sig_key, page_number, x0, y0, x1, y1, page_width, page_height }
     A document with no placeholders returns an empty list.
+
+    Portal 65 — uses page.search() instead of extract_words() so that:
+      1. Keys whose text spans multiple PDF text runs (produced when docxtpl
+         substitutes a Jinja2 expression inside a sig marker) are still found.
+      2. UUID-embedded keys (ORG_OPENING_ORG_EMP_<uuid>, COMMITTEE_MEMBER_<id>)
+         that contain lowercase hex digits and hyphens are matched correctly.
     """
     fields: list[dict] = []
     with pdfplumber.open(pdf_path) as pdf:
         for page_idx, page in enumerate(pdf.pages):
-            words = page.extract_words(
-                x_tolerance=3,
-                y_tolerance=3,
-                keep_blank_chars=True,
-            )
-            for word in words:
-                m = _SIG_PATTERN.match(word.get("text", ""))
+            matches = page.search(_SIG_SEARCH, regex=True)
+            for match in matches:
+                m = _SIG_PATTERN.match(match.get("text", ""))
                 if m:
                     fields.append({
                         "sig_key":     m.group(1),
                         "page_number": page_idx,
-                        "x0":          float(word["x0"]),
-                        "y0":          float(word["top"]),
-                        "x1":          float(word["x1"]),
-                        "y1":          float(word["bottom"]),
+                        "x0":          float(match["x0"]),
+                        "y0":          float(match["top"]),
+                        "x1":          float(match["x1"]),
+                        "y1":          float(match["bottom"]),
                         "page_width":  float(page.width),
                         "page_height": float(page.height),
                     })
