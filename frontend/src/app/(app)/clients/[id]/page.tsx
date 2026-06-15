@@ -226,8 +226,15 @@ function computeCoverage(
     if (rsEntry && rsEntry.codes.length > 0) {
       const codeResults = rsEntry.codes.map((code) => {
         const coveringAuditor = teamAuditors.find((a) => {
+          // Standard path: auditor covers this code for this specific standard
           const cs = a.covered_scope?.[std]
-          return cs && cs.includes(code)
+          if (cs && cs.includes(code)) return true
+          // TE path: a Technical Expert's EA code applies to ALL audit standards,
+          // not only the standard they hold a formal auditor qualification for.
+          if (teNames?.has(a.name ?? '')) {
+            return Object.values(a.covered_scope ?? {}).some((codes) => codes.includes(code))
+          }
+          return false
         })
         const coveredBy = labelName(coveringAuditor?.name ?? null)
         return { code, coveredBy }
@@ -245,6 +252,16 @@ function computeCoverage(
 
     // ── Fallback: per-standard check ────────────────────────────────────────
     const cover = teamAuditors.find((a) => {
+      // TE short-circuit: if this auditor is a TE and covers the client EA code
+      // in any standard, they satisfy this standard's coverage requirement.
+      if (teNames?.has(a.name ?? '') && scopeType === 'ea' && clientEACode) {
+        const clientNum = clientEACode.replace(/[^0-9]/g, '')
+        const coversEA = Object.values(a.covered_scope ?? {}).some((codes) =>
+          codes.some((c) => c.replace(/[^0-9]/g, '') === clientNum)
+        )
+        if (coversEA) return true
+      }
+
       const qual = a.standard_qualifications.find((q) => {
         const qNorm = q.standard_code.toLowerCase().replace('iso ', '').replace(/\s/g, '')
         return qNorm === stdNorm || qNorm.startsWith(stdNorm) || stdNorm.startsWith(qNorm)
