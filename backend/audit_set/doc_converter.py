@@ -209,23 +209,35 @@ def prepare_document(docx_path: str, db: "Session") -> dict:
     if not os.path.exists(pdf_path):
         pdf_path = convert_docx_to_pdf(docx_path)
 
-    # Step 2: Return from cache if already extracted
+    # Step 2: Return from cache if already extracted.
+    # Exception: if the ONLY cached row is the "__none__" sentinel it means a
+    # previous scan found nothing (possibly before the sliding-window scanner
+    # was deployed, or before the document was regenerated with real UUID
+    # markers). Delete the sentinel and fall through to re-scan so the improved
+    # scanner gets a chance to find the markers now.
     existing = db.query(DocumentSignatureField).filter_by(docx_path=docx_path).all()
     if existing:
-        return {
-            "pdf_path": pdf_path,
-            "fields": [
-                {
-                    "sig_key":     f.sig_key,
-                    "page_number": f.page_number,
-                    "x0": f.x0, "y0": f.y0,
-                    "x1": f.x1, "y1": f.y1,
-                    "page_width":  f.page_width,
-                    "page_height": f.page_height,
-                }
-                for f in existing
-            ],
-        }
+        if len(existing) == 1 and existing[0].sig_key == "__none__":
+            db.query(DocumentSignatureField).filter_by(
+                docx_path=docx_path, sig_key="__none__"
+            ).delete()
+            db.commit()
+            existing = []
+        else:
+            return {
+                "pdf_path": pdf_path,
+                "fields": [
+                    {
+                        "sig_key":     f.sig_key,
+                        "page_number": f.page_number,
+                        "x0": f.x0, "y0": f.y0,
+                        "x1": f.x1, "y1": f.y1,
+                        "page_width":  f.page_width,
+                        "page_height": f.page_height,
+                    }
+                    for f in existing
+                ],
+            }
 
     # Step 3: Extract and store
     raw_fields = extract_sig_fields(pdf_path)

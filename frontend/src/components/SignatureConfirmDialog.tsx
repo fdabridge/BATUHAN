@@ -37,6 +37,11 @@ interface OrgEmployee {
 
 const CLIENT_SIDE_SIG_KEYS = new Set(['CLIENT', 'ORG_REP'])
 
+// Portal 73 — UUID-based org-employee slots embedded in sig_key (FR.225).
+// Format: ORG_OPENING_ORG_EMP_<uuid> | ORG_CLOSING_ORG_EMP_<uuid>
+// The employee is already determined by the key — no picker needed.
+const ORG_EMP_RE = /^ORG_(OPENING|CLOSING)_ORG_EMP_([0-9a-fA-F-]{36})$/
+
 function getSignatureSettingsUrl(): string {
   if (typeof window === 'undefined') return '/settings/signature'
   const p = window.location.pathname
@@ -68,11 +73,19 @@ export function SignatureConfirmDialog({
   const [errorMsg,   setErrorMsg]   = useState('')
   const [signedDate, setSignedDate] = useState(todayIso)
 
-  // Portal 56 — employee picker state, only used for client-side slots.
+  // Portal 56 — employee picker state, only used for generic CLIENT / ORG_REP slots.
   const needsEmployeePicker = CLIENT_SIDE_SIG_KEYS.has(sigKey)
-  const [employees,    setEmployees]    = useState<OrgEmployee[]>([])
+  const [employees,     setEmployees]     = useState<OrgEmployee[]>([])
   const [selectedEmpId, setSelectedEmpId] = useState<string>('')
   const selectedEmp = employees.find((e) => e.id === selectedEmpId) ?? null
+
+  // Portal 73 — UUID-embedded org-employee slots (FR.225 opening/closing rows).
+  // The employee is already identified by the sig_key — no picker needed.
+  const orgEmpMatch    = ORG_EMP_RE.exec(sigKey)
+  const isOrgEmpSlot   = orgEmpMatch !== null
+  const orgEmpUuid     = orgEmpMatch ? orgEmpMatch[2] : null
+  const orgEmpPhase    = orgEmpMatch ? orgEmpMatch[1] : null   // 'OPENING' | 'CLOSING'
+  const [orgEmployee,  setOrgEmployee]  = useState<OrgEmployee | null>(null)
 
   useEffect(() => {
     if (!isOpen) return
@@ -80,6 +93,30 @@ export function SignatureConfirmDialog({
     setErrorMsg('')
     setSigImage(null)
     setSelectedEmpId('')
+    setOrgEmployee(null)
+
+    // Portal 73 — UUID-embedded employee slot: fetch that specific employee.
+    if (isOrgEmpSlot && orgEmpUuid) {
+      api.get('/org/employees')
+        .then((r) => {
+          const list: OrgEmployee[] = Array.isArray(r.data) ? r.data : []
+          const emp = list.find((e) => e.id === orgEmpUuid) ?? null
+          setOrgEmployee(emp)
+          if (!emp || !emp.has_signature) {
+            setStage('no_signature')
+          } else {
+            return api.get(`/org/employees/${orgEmpUuid}/signature`).then((sr) => {
+              setSigImage(sr.data?.image_data ?? null)
+              setStage('preview')
+            })
+          }
+        })
+        .catch(() => {
+          setOrgEmployee(null)
+          setStage('no_signature')
+        })
+      return
+    }
 
     if (needsEmployeePicker) {
       api.get('/org/employees')
@@ -111,7 +148,7 @@ export function SignatureConfirmDialog({
       .catch(() => {
         setStage('no_signature')
       })
-  }, [isOpen, sigKey, needsEmployeePicker])
+  }, [isOpen, sigKey, needsEmployeePicker, isOrgEmpSlot, orgEmpUuid])
 
   // Portal 56 — when an employee is picked, fetch their signature image for preview.
   useEffect(() => {
@@ -134,6 +171,8 @@ export function SignatureConfirmDialog({
         sig_key:       sigKey,
         signed_date:   signedDate || todayIso(),
       }
+      // Portal 56 — picker slots need employee_id; Portal 73 UUID slots do not
+      // (backend reads the employee UUID directly from the sig_key).
       if (needsEmployeePicker) body.employee_id = selectedEmpId
       await api.post('/viewer/sign/confirm', body)
       setStage('success')
@@ -157,6 +196,11 @@ export function SignatureConfirmDialog({
     if (key.startsWith('ORG_CLOSING_AUDITOR_')) return 'Auditor (Closing Meeting)'
     if (key.startsWith('ORG_OPENING_TE_'))     return 'Technical Expert (Opening Meeting)'
     if (key.startsWith('ORG_CLOSING_TE_'))     return 'Technical Expert (Closing Meeting)'
+    // Portal 73 — UUID-embedded slots: show employee name if available
+    if (isOrgEmpSlot) {
+      const phase = orgEmpPhase === 'OPENING' ? 'Opening' : 'Closing'
+      return orgEmployee ? `${orgEmployee.full_name} (${phase} Meeting)` : `Organisation Attendee (${phase})`
+    }
     if (key.startsWith('ORG_OPENING_'))        return 'Organisation Attendee (Opening)'
     if (key.startsWith('ORG_CLOSING_'))        return 'Organisation Attendee (Closing)'
     return key
@@ -188,7 +232,24 @@ export function SignatureConfirmDialog({
             </div>
           )}
 
-          {stage === 'no_signature' && needsEmployeePicker && (
+          {/* Portal 73 — UUID org-employee slot: no signature on file */}
+          {stage === 'no_signature' && isOrgEmpSlot && (
+            <>
+              <p className="text-sm text-gray-600">
+                {orgEmployee
+                  ? <><strong>{orgEmployee.full_name}</strong> does not have a saved signature yet.</>
+                  : <>This employee is not found in your roster.</>}
+                {' '}Go to <strong>Employees</strong> to upload their signature, then try again.
+              </p>
+              <a href="/client/employees" target="_blank" rel="noreferrer"
+                className="block w-full rounded-lg border-2 border-dashed border-[#1A4731] py-3 text-center
+                  text-sm font-medium text-[#1A4731] hover:bg-[#1A4731]/5 transition-colors">
+                Open Employees →
+              </a>
+            </>
+          )}
+
+          {stage === 'no_signature' && !isOrgEmpSlot && needsEmployeePicker && (
             <>
               <p className="text-sm text-gray-600">
                 No employees on file for your organisation. Add at least one employee
@@ -205,7 +266,7 @@ export function SignatureConfirmDialog({
             </>
           )}
 
-          {stage === 'no_signature' && !needsEmployeePicker && (
+          {stage === 'no_signature' && !isOrgEmpSlot && !needsEmployeePicker && (
             <>
               <p className="text-sm text-gray-600">
                 You don&apos;t have a saved signature yet. Go to{' '}
@@ -224,7 +285,14 @@ export function SignatureConfirmDialog({
 
           {stage === 'preview' && (
             <>
-              {needsEmployeePicker ? (
+              {/* Portal 73 — UUID org-employee slot: employee is determined by the key */}
+              {isOrgEmpSlot && orgEmployee ? (
+                <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-0.5">Signing as</p>
+                  <p className="text-sm font-semibold text-gray-900">{orgEmployee.full_name}</p>
+                  <p className="text-xs text-gray-500">{orgEmployee.role_title}</p>
+                </div>
+              ) : needsEmployeePicker ? (
                 <>
                   <p className="text-sm text-gray-600">
                     Select which employee from your organisation is signing this document.
