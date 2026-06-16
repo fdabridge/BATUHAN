@@ -720,8 +720,11 @@ def update_planning(
 
     # Portal 64 — persist committee_members snapshot when provided.
     # Validation (no-overlap, coverage) is done upstream in the router.
+    # flag_modified is required for JSON columns so SQLAlchemy detects the
+    # change even when replacing the entire value (not just mutating in-place).
     if data.committee_members is not None:
         audit_set.committee_members = data.committee_members
+        flag_modified(audit_set, "committee_members")
 
     # Auto-populate ea_code (and required_scope on legacy records) so
     # documents stop showing "None" for EA/IAF Code. The user's manual

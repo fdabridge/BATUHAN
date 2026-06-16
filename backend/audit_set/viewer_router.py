@@ -1248,6 +1248,53 @@ def viewer_signing_status(
             if mapped:
                 db_sig_keys.add(mapped)
 
+        # Portal 73 — FR.225 (meeting_form) fallback: seed sig keys from the
+        # org-employee roster + stage team so signing buttons appear even when
+        # pdfplumber misses the wrapped UUID-based markers in narrow cells.
+        # Seeding is additive; pdf_sig_keys (with coordinates) take precedence
+        # via the union below, so the overlay boxes still appear when the PDF
+        # scan succeeds.
+        doc_row = db.query(AuditSetSharedDocument).filter_by(id=doc_id).first()
+        if doc_row and doc_row.document_type == "meeting_form":
+            # Org-employee slots (ORG_OPENING + ORG_CLOSING for each employee)
+            try:
+                client_user = (
+                    auth_db.query(PlatformUser)
+                    .filter_by(role="client", audit_set_id=doc_row.audit_set_id)
+                    .first()
+                )
+                if client_user:
+                    employees = (
+                        db.query(ClientOrgEmployee)
+                        .filter_by(client_user_id=client_user.id, is_active=True)
+                        .all()
+                    )
+                    for emp in employees:
+                        db_sig_keys.add(f"ORG_OPENING_ORG_EMP_{emp.id}")
+                        db_sig_keys.add(f"ORG_CLOSING_ORG_EMP_{emp.id}")
+            except Exception:
+                logger.warning("[FR225] Could not seed employee sig keys for doc=%s", doc_id, exc_info=True)
+
+            # Audit-team slots derived from the stage assignment
+            try:
+                stage = (
+                    db.query(AuditSetStage)
+                    .filter_by(
+                        audit_set_id=doc_row.audit_set_id,
+                        stage_type=doc_row.stage_type,
+                    )
+                    .first()
+                )
+                if stage:
+                    for prefix in ("ORG_OPENING", "ORG_CLOSING"):
+                        db_sig_keys.add(f"{prefix}_LEAD_AUDITOR")
+                        for idx, _ in enumerate(stage.auditors or []):
+                            db_sig_keys.add(f"{prefix}_AUDITOR_{idx}")
+                        for idx, _ in enumerate(stage.technical_experts or []):
+                            db_sig_keys.add(f"{prefix}_TE_{idx}")
+            except Exception:
+                logger.warning("[FR225] Could not seed team sig keys for doc=%s", doc_id, exc_info=True)
+
     all_sig_keys = pdf_sig_keys | db_sig_keys
 
     fields = [

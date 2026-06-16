@@ -110,21 +110,31 @@ def extract_sig_fields(pdf_path: str) -> list[dict]:
       { sig_key, page_number, x0, y0, x1, y1, page_width, page_height }
     A document with no placeholders returns an empty list.
 
-    Portal 65 — uses page.search() instead of extract_words() so that:
+    Portal 65 — primary scan uses page.search() so that:
       1. Keys whose text spans multiple PDF text runs (produced when docxtpl
          substitutes a Jinja2 expression inside a sig marker) are still found.
       2. UUID-embedded keys (ORG_OPENING_ORG_EMP_<uuid>, COMMITTEE_MEMBER_<id>)
          that contain lowercase hex digits and hyphens are matched correctly.
+
+    Portal 73 — fallback scan uses word-level concatenation to detect long
+    UUID-based sig keys (e.g. ORG_OPENING_ORG_EMP_<uuid>, 60+ chars) that
+    wrap across PDF lines in narrow FR.225 table cells and therefore escape
+    the single-line page.search() regex.  The bounding box is computed from
+    the union of the words that together form the wrapped key.
     """
     fields: list[dict] = []
     with pdfplumber.open(pdf_path) as pdf:
         for page_idx, page in enumerate(pdf.pages):
+            # ── Primary scan ───────────────────────────────────────────────
+            found_keys: set[str] = set()
             matches = page.search(_SIG_SEARCH, regex=True)
             for match in matches:
                 m = _SIG_PATTERN.match(match.get("text", ""))
                 if m:
+                    sig_key = m.group(1)
+                    found_keys.add(sig_key)
                     fields.append({
-                        "sig_key":     m.group(1),
+                        "sig_key":     sig_key,
                         "page_number": page_idx,
                         "x0":          float(match["x0"]),
                         "y0":          float(match["top"]),
@@ -133,6 +143,47 @@ def extract_sig_fields(pdf_path: str) -> list[dict]:
                         "page_width":  float(page.width),
                         "page_height": float(page.height),
                     })
+
+            # ── Fallback scan for line-wrapped keys (Portal 73) ────────────
+            # FR.225 uses UUID-based sig keys (60+ chars) inside narrow table
+            # cells (~1.7 in).  LibreOffice wraps these across two PDF lines,
+            # breaking page.search()'s single-line regex.  We use extract_words()
+            # and slide a growing window over adjacent words, concatenating their
+            # text until a complete [SIG:...] pattern is formed.
+            words = page.extract_words(use_text_flow=True, keep_blank_chars=False)
+            i = 0
+            while i < len(words):
+                w_text = words[i]["text"]
+                if "[SIG:" not in w_text:
+                    i += 1
+                    continue
+                # A word containing "[SIG:" found — grow window to find the "]"
+                accumulated = w_text
+                j = i
+                while "]" not in accumulated and j < len(words) - 1:
+                    j += 1
+                    accumulated += words[j]["text"]
+                m = _SIG_PATTERN.match(accumulated.strip())
+                if m:
+                    sig_key = m.group(1)
+                    if sig_key not in found_keys:
+                        window = words[i: j + 1]
+                        x0 = float(min(w["x0"]     for w in window))
+                        y0 = float(min(w["top"]    for w in window))
+                        x1 = float(max(w["x1"]     for w in window))
+                        y1 = float(max(w["bottom"] for w in window))
+                        fields.append({
+                            "sig_key":     sig_key,
+                            "page_number": page_idx,
+                            "x0":          x0,
+                            "y0":          y0,
+                            "x1":          x1,
+                            "y1":          y1,
+                            "page_width":  float(page.width),
+                            "page_height": float(page.height),
+                        })
+                        found_keys.add(sig_key)
+                i += 1
     return fields
 
 
