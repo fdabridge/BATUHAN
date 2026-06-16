@@ -82,6 +82,11 @@ def create_tables():
     # Portal 51 — FR.218 application reviewer (FSMS/ISMS only)
     _safe_add_column("audit_sets", "fr218_reviewer_id VARCHAR")
     _safe_add_column("audit_sets", "fr218_reviewer_name VARCHAR")
+    # Portal 62 — FR.233 certification committee (auditor pool snapshot)
+    _safe_add_column("audit_sets", "committee_members JSON")
+    # Stage planning — IK experts and evaluators (added after initial deploy)
+    _safe_add_column("audit_set_stages", "ik_experts JSON")
+    _safe_add_column("audit_set_stages", "evaluators JSON")
 
 
 # ---------------------------------------------------------------------------
@@ -172,6 +177,14 @@ class AuditSet(Base):
     # Required when any standard in `standards` is FSMS or ISMS.
     fr218_reviewer_id   = Column(String, nullable=True)
     fr218_reviewer_name = Column(String, nullable=True)
+
+    # ── FR.233 Certification Committee (Portal 62) ───────────────────────────
+    # JSON list of appointed committee members from the auditor pool. Each
+    # entry: {id, name, ea_codes: [...], standards: [...], role: "chairperson"|"member"}.
+    # The chairperson is the first entry; members follow. Populated via
+    # POST /committee/appoint-team; consumed by fr233_generator (docxtpl loop)
+    # and viewer_router for COMMITTEE_MEMBER_<auditor_id> slot eligibility.
+    committee_members   = Column(JSON, nullable=True)
 
     # ── Certificate ───────────────────────────────────────────────────────────
     cert_issued_date = Column(Date, nullable=True)

@@ -185,6 +185,8 @@ class StageResponse(BaseModel):
     auditors: Optional[list]
     technical_experts: Optional[list]
     observers: Optional[list]
+    ik_experts: Optional[list] = None
+    evaluators: Optional[list] = None
     audit_days: Optional[float]
     status: str
 

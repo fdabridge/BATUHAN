@@ -15,10 +15,10 @@ from io import BytesIO
 
 from docx import Document
 from docx.oxml.ns import qn
+from docxtpl import DocxTemplate
 from lxml import etree
 from sqlalchemy.orm import Session
 
-from audit_set.db_models import AuditSetCommitteeMember, AuditSetStage
 from audit_set.resolver import resolve_document_set
 
 
@@ -53,28 +53,38 @@ def _fmt_d(d) -> str:
     return d.strftime("%d.%m.%Y") if d else ""
 
 
-def _build_committee_payload(audit_set, db: Session) -> dict:
-    members = (
-        db.query(AuditSetCommitteeMember)
-        .filter_by(audit_set_id=audit_set.id)
-        .order_by(AuditSetCommitteeMember.appointed_at)
-        .all()
-    )
-    chair = next((m for m in members if m.role == "decision_maker"), None)
-    regulars = [m for m in members if m is not chair]
+def _build_committee_context(audit_set) -> list[dict]:
+    """Portal 62 — context for the docxtpl `{%tr for member in committee_members %}`
+    loop. Reads the denormalized snapshot stored on AuditSet.committee_members.
 
-    def ea(m):
-        codes = m.ea_codes_at_appointment or []
-        return codes[0] if codes else ""
+    Falls back to 3 blank placeholder rows (id ``BLANK_<n>``) when the
+    committee has not yet been appointed so the template still renders
+    readable rows. The viewer treats `COMMITTEE_MEMBER_BLANK_*` sig_keys as
+    non-signable "awaiting committee appointment" placeholders.
+    """
+    raw = audit_set.committee_members or []
+    members = list(raw) if isinstance(raw, list) else []
 
-    return {
-        "chair_name":    chair.user_name if chair else "",
-        "chair_ea":      ea(chair) if chair else "",
-        "member1_name":  regulars[0].user_name if len(regulars) > 0 else "",
-        "member1_ea":    ea(regulars[0]) if len(regulars) > 0 else "",
-        "member2_name":  regulars[1].user_name if len(regulars) > 1 else "",
-        "member2_ea":    ea(regulars[1]) if len(regulars) > 1 else "",
-    }
+    # Chairperson first.
+    members.sort(key=lambda m: 0 if m.get("role") == "chairperson" else 1)
+
+    ctx = [
+        {
+            "id":            m.get("id", ""),
+            "name":          m.get("name", "") or "",
+            "ea_codes_str":  ", ".join(m.get("ea_codes") or []),
+            "role":          m.get("role", "member"),
+        }
+        for m in members
+    ]
+
+    if not ctx:
+        ctx = [
+            {"id": f"BLANK_{i}", "name": "", "ea_codes_str": "", "role": "member"}
+            for i in range(3)
+        ]
+
+    return ctx
 
 
 def _resolve_fr233_template(audit_set):
@@ -87,12 +97,30 @@ def _resolve_fr233_template(audit_set):
 
 
 def render_fr233_bytes(audit_set, db: Session) -> bytes:
+    """Render FR.233 bytes.
+
+    Portal 62 — two-pass render:
+      1. docxtpl pass expands the committee-rows ``{%tr for member ... %}``
+         loop in the patched template using ``committee_members`` context.
+      2. python-docx pass fills Table 0 metadata (project number, dates, etc.)
+         on the docxtpl output.
+
+    The legacy static committee-row fill (`_fill_committee_table`) is gone:
+    committee rows are now generated dynamically by docxtpl.
+    """
     template_path = _resolve_fr233_template(audit_set)
     if template_path is None:
         raise RuntimeError("FR.233 template not found for this audit set")
 
-    doc = Document(str(template_path))
-    committee = _build_committee_payload(audit_set, db)
+    # Pass 1 — docxtpl committee loop expansion.
+    tpl = DocxTemplate(str(template_path))
+    tpl.render({"committee_members": _build_committee_context(audit_set)})
+    buf1 = BytesIO()
+    tpl.save(buf1)
+    buf1.seek(0)
+
+    # Pass 2 — python-docx Table 0 metadata fill on the docxtpl output.
+    doc = Document(buf1)
 
     stages = {s.stage_type: s for s in (audit_set.stages or [])}
     stage1 = stages.get("stage_1")
@@ -104,18 +132,11 @@ def render_fr233_bytes(audit_set, db: Session) -> bytes:
     )
 
     if len(doc.tables) >= 1:
-        t0 = doc.tables[0]
-        _safe_fill_table0(t0, audit_set, team_str, stage1, stage2)
+        _safe_fill_table0(doc.tables[0], audit_set, team_str, stage1, stage2)
 
-    # Portal 57 — committee block lives in the LAST table (index 4 in current
-    # templates). Earlier code targeted tables[3], which is the Decision
-    # checklist, so the committee names + [SIG:...] markers were never written.
-    if len(doc.tables) >= 5:
-        _fill_committee_table(doc.tables[4], committee)
-
-    buf = BytesIO()
-    doc.save(buf)
-    return buf.getvalue()
+    buf2 = BytesIO()
+    doc.save(buf2)
+    return buf2.getvalue()
 
 
 def _safe_fill_table0(t0, audit_set, team_str: str, stage1, stage2) -> None:
@@ -139,35 +160,4 @@ def _safe_fill_table0(t0, audit_set, team_str: str, stage1, stage2) -> None:
             _set_cell_text(rows[ri].cells[ci]._tc, value)
 
 
-def _fill_committee_table(t, c: dict) -> None:
-    """Portal 57 — fill the FR.233 committee signature table.
 
-    Template layout (verified in uaf_blank_set FR.233 R5&09.10.2025):
-      Row 0: header  ['', 'Name Surname', 'EA/IAF Code', 'Sign']    (4 cells)
-      Row 1: chairperson    cells = [label, name, ea, sign]         (4 cells)
-      Row 2: member 1       cells = [label, name, ea, sign]         (4 cells)
-      Row 3: member 2       cells = [label, name, ea, sign]         (4 cells)
-      Row 4: spacer
-      Row 5: 'To Endorse the Decision on Behalf of …'
-      Row 6: cert manager   cells = ['Certification Manager Approval', sign, 'Sign']  (3 cells)
-    """
-    rows = t.rows
-    triples = [
-        (1, c["chair_name"],   c["chair_ea"],   "[SIG:COMMITTEE_CHAIR]"),
-        (2, c["member1_name"], c["member1_ea"], "[SIG:COMMITTEE_MEMBER_1]"),
-        (3, c["member2_name"], c["member2_ea"], "[SIG:COMMITTEE_MEMBER_2]"),
-    ]
-    for ri, name, ea, sig in triples:
-        if ri >= len(rows):
-            continue
-        cells = rows[ri].cells
-        if len(cells) > 1: _set_cell_text(cells[1]._tc, name)
-        if len(cells) > 2: _set_cell_text(cells[2]._tc, ea)
-        if len(cells) > 3: _set_cell_text(cells[3]._tc, sig)
-
-    if len(rows) > 6:
-        cm_cells = rows[6].cells
-        # CM row has fewer cells (label, sig, 'Sign' label). Drop the SIG
-        # marker into the middle cell, which is the empty signature box.
-        if len(cm_cells) > 1:
-            _set_cell_text(cm_cells[1]._tc, "[SIG:CERT_MANAGER_FR233]")

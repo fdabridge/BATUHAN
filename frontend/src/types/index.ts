@@ -43,6 +43,8 @@ export interface StageResponse {
   auditors: unknown[] | null
   technical_experts: unknown[] | null
   observers: unknown[] | null
+  ik_experts: unknown[] | null
+  evaluators: unknown[] | null
   audit_days: number | null
   status: string
 }

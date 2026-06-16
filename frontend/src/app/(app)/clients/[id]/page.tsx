@@ -879,11 +879,12 @@ function CommitteePlanningCard({
   }, [initialCommittee])
 
   // Stable string key from all stage team IDs — effect re-fires when assignments change.
+  // Includes ik_experts and evaluators so they are excluded from the committee pool.
   const stageAuditorIdsKey = useMemo(() => {
     const ids: string[] = []
     for (const s of stages) {
       if (s.lead_auditor_id) ids.push(s.lead_auditor_id)
-      for (const group of [s.auditors, s.technical_experts, s.observers] as ({ id?: string } | null)[][]) {
+      for (const group of [s.auditors, s.technical_experts, s.observers, s.ik_experts, s.evaluators] as ({ id?: string } | null)[][]) {
         for (const a of group ?? []) { if (a?.id) ids.push(a.id) }
       }
     }
