@@ -40,7 +40,9 @@ from email_service import (
 
 router = APIRouter(tags=["audit_reports"])
 
-CB_ROLES      = {"admin", "planner", "officer", "executive", "gm"}
+# Portal 75 — certification_manager added so the CM can list, download and
+# approve audit reports (same access as other CB staff).
+CB_ROLES      = {"admin", "planner", "officer", "executive", "gm", "certification_manager"}
 UPLOAD_ROLES  = {"auditor", "admin", "planner"}
 AUDITOR_ROLES = {"auditor", "admin"}
 OTP_EXPIRY    = 10  # minutes
@@ -136,7 +138,10 @@ def list_audit_reports(
     if current_user.role not in CB_ROLES | AUDITOR_ROLES:
         raise HTTPException(403, "Not authorized")
 
-    is_reviewer = _get_committee_reviewer(audit_set_id, current_user, db) is not None
+    # Portal 75 — CM and admin/executive can review directly; other CB roles
+    # need a committee-reviewer appointment to see the approve button.
+    is_cm = current_user.role in ("certification_manager", "admin", "executive")
+    is_reviewer = is_cm or (_get_committee_reviewer(audit_set_id, current_user, db) is not None)
 
     rows = (
         db.query(AuditSetAuditReport)
@@ -484,9 +489,9 @@ def review_sign_direct(
     db:   Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
-    # Admin and executive can always approve.
-    # Other roles must be a registered Committee Reviewer for this audit set.
-    if current_user.role not in ("admin", "executive"):
+    # Portal 75 — Certification Manager, admin and executive can approve directly.
+    # Other CB roles must be a registered Committee Reviewer for this audit set.
+    if current_user.role not in ("admin", "executive", "certification_manager"):
         reviewer = _get_committee_reviewer(audit_set_id, current_user, db)
         if not reviewer:
             raise HTTPException(403, "You are not a registered reviewer for this audit set")

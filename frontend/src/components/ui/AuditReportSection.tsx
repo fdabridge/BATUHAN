@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { ExternalLink } from 'lucide-react'
 import api from '@/lib/api'
 
 interface AuditReport {
@@ -22,9 +23,9 @@ const STAGE_LABELS: Record<string, string> = {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; chip: string }> = {
-  pending_la:     { label: 'Awaiting Lead Auditor',  chip: 'bg-amber-100 text-amber-700' },
-  pending_review: { label: 'Awaiting Review',         chip: 'bg-blue-100 text-blue-700' },
-  approved:       { label: 'Approved',                chip: 'bg-green-100 text-green-700' },
+  pending_la:     { label: 'Awaiting Lead Auditor',          chip: 'bg-amber-100 text-amber-700' },
+  pending_review: { label: 'Awaiting Certification Manager', chip: 'bg-blue-100 text-blue-700' },
+  approved:       { label: 'Approved',                       chip: 'bg-green-100 text-green-700' },
 }
 
 function fmtDate(iso: string | null) {
@@ -121,13 +122,21 @@ export function AuditReportSection({
                     <p className="mt-0.5 text-xs text-gray-400">
                       {STAGE_LABELS[r.stage_type] ?? r.stage_type} · {r.report_form}
                       {r.la_signed_at && ` · LA signed ${fmtDate(r.la_signed_at)}`}
-                      {r.reviewer_signed_at && ` · Approved ${fmtDate(r.reviewer_signed_at)}`}
+                      {r.reviewer_signed_at && ` · CM approved ${fmtDate(r.reviewer_signed_at)}`}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${cfg.chip}`}>
                       {cfg.label}
                     </span>
+                    {/* Portal 75 — Open in Viewer so CM can sign CB_REVIEWER slot inline */}
+                    <a
+                      href={`/viewer/audit_report/${r.id}`}
+                      className="flex items-center gap-1 text-xs text-[#1A4731] underline"
+                    >
+                      <ExternalLink size={11} />
+                      View
+                    </a>
                     <button
                       type="button"
                       onClick={() => download(r.id, r.file_name)}

@@ -625,22 +625,18 @@ def _assert_can_sign(
                 raise HTTPException(403, "Only the Lead Auditor for this stage may sign")
 
         elif sig_key == "CB_REVIEWER":
+            # Portal 75 — CB_REVIEWER on audit_report is signed by the Certification
+            # Manager directly (no committee appointment needed). Same pattern as the
+            # CB_CERT_MANAGER slot on FR.218 (application review).
             if report.reviewer_signed_at:
-                raise HTTPException(400, "Committee Reviewer has already signed this report")
-            if current_user.role not in CB_ROLES:
-                raise HTTPException(403, "CB staff account required")
-            if report.status != "pending_review":
+                raise HTTPException(400, "Certification Manager has already signed this report")
+            if current_user.role not in ("certification_manager", "admin"):
+                raise HTTPException(403, "Only the Certification Manager may sign this slot")
+            if not report.la_signed_at:
                 raise HTTPException(
                     400,
-                    "The Lead Auditor must sign before the Committee Reviewer can sign",
+                    "The Lead Auditor must sign before the Certification Manager can sign",
                 )
-            member = db.query(AuditSetCommitteeMember).filter_by(
-                audit_set_id=report.audit_set_id,
-                user_id=current_user.id,
-                role="reviewer",
-            ).first()
-            if not member:
-                raise HTTPException(403, "You are not the appointed committee reviewer for this audit set")
 
         else:
             raise HTTPException(400, f"Unexpected sig_key '{sig_key}' for audit_report")
@@ -851,16 +847,19 @@ def _get_field_status(
             return _result("current_user" if is_la else "pending")
 
         elif sig_key == "CB_REVIEWER":
+            # Portal 75 — CB_REVIEWER on audit_report is the Certification Manager.
+            # No committee membership check; pure role gate matches _assert_can_sign.
             if report.reviewer_signed_at:
                 return _result("signed", _user_name(report.reviewer_user_id), vsp.signature_image if vsp else None)
             if not report.la_signed_at:
                 return _result("blocked")
-            member = db.query(AuditSetCommitteeMember).filter_by(
-                audit_set_id=report.audit_set_id,
-                user_id=current_user.id,
-                role="reviewer",
+            cm_user = auth_db.query(PlatformUser).filter_by(
+                role="certification_manager", is_active=True,
             ).first()
-            return _result("current_user" if member else "pending")
+            reviewer_name = cm_user.full_name if cm_user else "Certification Manager"
+            if current_user.role in ("certification_manager", "admin"):
+                return _result("current_user", reviewer_name)
+            return _result("pending", reviewer_name)
 
         return _result("pending")
 

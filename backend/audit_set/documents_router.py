@@ -33,7 +33,9 @@ from email_service import send_client_status_update, send_document_released
 
 router = APIRouter(prefix="/audit-sets", tags=["documents"])
 
-CB_ROLES = {"admin", "planner", "officer", "executive", "gm"}
+# Portal 75 — certification_manager added: CM can see all shared docs and
+# perform CB-side document actions (release, view, download).
+CB_ROLES = {"admin", "planner", "officer", "executive", "gm", "certification_manager"}
 AUDITOR_UPLOAD_ROLES = {"auditor", "admin", "planner"}
 
 # Portal 49b — full document-type vocabulary (Document Type Reference table)
@@ -76,11 +78,11 @@ DOC_SIG_SLOTS: dict[str, list[str]] = {
     "team_info":       ["assigned_auditor"],
     "audit_plan":      ["org_rep"],
     "nc_form":         ["lead_auditor", "org_rep"],
-    # Portal 55 — stage reports always include the appointed_reviewer slot.
-    # If no committee member with role="reviewer" is appointed yet, the
-    # viewer marks the slot "not_applicable"; once appointed, it activates.
-    "stage1_report":   ["lead_auditor", "appointed_reviewer"],
-    "stage2_report":   ["lead_auditor", "appointed_reviewer"],
+    # Portal 75 — stage reports are reviewed by the Certification Manager directly.
+    # No committee appointment needed; CM signs the cb_cert_manager slot the same
+    # way they sign the application review (FR.218 audit_programme).
+    "stage1_report":   ["lead_auditor", "cb_cert_manager"],
+    "stage2_report":   ["lead_auditor", "cb_cert_manager"],
     # Portal 58 — per-stage FR.211: client uploads the completed assessment and
     # signs it via the viewer using the Portal 56 org-rep employee picker.
     "auditor_assessment": ["org_rep"],
