@@ -2137,6 +2137,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
       <AuditReportSection
         auditSetId={id}
         workflowStatus={data.workflow_status ?? null}
+        userRole={currentUser?.role}
       />
     </div>
   )

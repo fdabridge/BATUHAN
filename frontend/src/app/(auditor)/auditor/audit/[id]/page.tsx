@@ -365,10 +365,9 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
   const [uploadMsg, setUploadMsg] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  // Reviewer OTP signing state (Portal 76)
-  const [reviewOtpStep,  setReviewOtpStep]  = useState<Record<string, 'idle'|'sent'|'signing'>>({})
-  const [reviewOtp,      setReviewOtp]      = useState<Record<string, string>>({})
+  // Reviewer direct-sign state (Portal 77)
   const [reviewSignDate, setReviewSignDate] = useState<Record<string, string>>({})
+  const [reviewSigning,  setReviewSigning]  = useState<Record<string, boolean>>({})
   const [reviewErr,      setReviewErr]      = useState<Record<string, string>>({})
 
   const STAGE_LABELS: Record<string, string> = {
@@ -430,34 +429,25 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
     }
   }
 
-  async function handleReviewRequestOtp(id: string) {
-    setReviewOtpStep(s => ({ ...s, [id]: 'signing' }))
-    setReviewErr(e => ({ ...e, [id]: '' }))
-    try {
-      await api.post(`/audit-sets/${auditSetId}/audit-reports/${id}/sign/review/request-otp`)
-      setReviewOtpStep(s => ({ ...s, [id]: 'sent' }))
-    } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setReviewErr(e => ({ ...e, [id]: detail || 'Failed to send OTP' }))
-      setReviewOtpStep(s => ({ ...s, [id]: 'idle' }))
-    }
-  }
-
-  async function handleReviewVerifyOtp(id: string) {
-    setReviewOtpStep(s => ({ ...s, [id]: 'signing' }))
+  async function handleReviewSign(id: string) {
+    setReviewSigning(s => ({ ...s, [id]: true }))
     setReviewErr(e => ({ ...e, [id]: '' }))
     try {
       const signed_date = reviewSignDate[id] || new Date().toISOString().slice(0, 10)
       const r = await api.post(
-        `/audit-sets/${auditSetId}/audit-reports/${id}/sign/review/verify?otp=${encodeURIComponent(reviewOtp[id] || '')}`,
+        `/audit-sets/${auditSetId}/audit-reports/${id}/sign/review/direct`,
         { signed_date }
       )
-      setReports(prev => prev.map(rpt => rpt.id === id ? { ...rpt, ...(r.data as object), can_review: false } : rpt))
-      setReviewOtpStep(s => ({ ...s, [id]: 'idle' }))
+      setReports(prev =>
+        prev.map(rpt =>
+          rpt.id === id ? { ...rpt, ...(r.data as object), can_review: false } : rpt
+        )
+      )
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setReviewErr(e => ({ ...e, [id]: detail || 'Verification failed' }))
-      setReviewOtpStep(s => ({ ...s, [id]: 'sent' }))
+      setReviewErr(e => ({ ...e, [id]: detail || 'Signing failed' }))
+    } finally {
+      setReviewSigning(s => ({ ...s, [id]: false }))
     }
   }
 
@@ -577,7 +567,6 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
           <div className="rounded-xl border bg-white divide-y divide-gray-50">
             {uploaded.map(r => {
               const cfg = STATUS_CONFIG[r.status] ?? { label: r.status, chip: 'bg-gray-100 text-gray-500' }
-              const step = reviewOtpStep[r.id] || 'idle'
               return (
                 <div key={r.id} className="px-4 py-3">
                   <div className="flex items-center justify-between">
@@ -608,54 +597,29 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
                     </div>
                   </div>
 
-                  {/* Portal 76 — Reviewer signing panel */}
+                  {/* Portal 77 — Reviewer direct-sign panel */}
                   {r.can_review && r.status === 'pending_review' && (
                     <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
                       <p className="mb-2 text-xs font-medium text-blue-800">
                         You are assigned as the reviewer for this report.
                       </p>
-                      {step === 'idle' && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="date"
+                          value={reviewSignDate[r.id] || new Date().toISOString().slice(0, 10)}
+                          onChange={e => setReviewSignDate(d => ({ ...d, [r.id]: e.target.value }))}
+                          className="rounded-lg border bg-white px-2 py-1.5 text-sm"
+                        />
                         <button
                           type="button"
-                          onClick={() => handleReviewRequestOtp(r.id)}
-                          className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs text-white hover:bg-[#143828]"
+                          disabled={reviewSigning[r.id]}
+                          onClick={() => handleReviewSign(r.id)}
+                          className="flex items-center gap-1.5 rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs text-white disabled:opacity-40 hover:bg-[#143828]"
                         >
-                          Sign as Reviewer — Send OTP
+                          {reviewSigning[r.id] && <span className="animate-spin">⟳</span>}
+                          {reviewSigning[r.id] ? 'Signing…' : 'Sign as Reviewer'}
                         </button>
-                      )}
-                      {step === 'sent' && (
-                        <div className="space-y-2">
-                          <p className="text-xs text-blue-700">
-                            A verification code was sent to your email. Enter it below.
-                          </p>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <input
-                              type="text"
-                              placeholder="6-digit code"
-                              value={reviewOtp[r.id] || ''}
-                              onChange={e => setReviewOtp(ot => ({ ...ot, [r.id]: e.target.value }))}
-                              className="w-32 rounded-lg border px-2 py-1.5 text-sm"
-                            />
-                            <input
-                              type="date"
-                              value={reviewSignDate[r.id] || new Date().toISOString().slice(0, 10)}
-                              onChange={e => setReviewSignDate(d => ({ ...d, [r.id]: e.target.value }))}
-                              className="rounded-lg border px-2 py-1.5 text-sm"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleReviewVerifyOtp(r.id)}
-                              disabled={!reviewOtp[r.id]}
-                              className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs text-white disabled:opacity-40 hover:bg-[#143828]"
-                            >
-                              Confirm Signature
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                      {step === 'signing' && (
-                        <p className="text-xs text-gray-500">Processing…</p>
-                      )}
+                      </div>
                       {reviewErr[r.id] && (
                         <p className="mt-1 text-xs text-red-500">{reviewErr[r.id]}</p>
                       )}

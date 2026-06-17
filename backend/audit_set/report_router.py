@@ -1,23 +1,22 @@
 """
-BATUHAN — FR.231 / FR.229 / FR.232 Audit Report Signing (Prompt 19).
+BATUHAN — FR.231 / FR.229 / FR.232 Audit Report Signing.
 
-Lead Auditor uploads the report file and signs it (auditor portal).
-Committee Reviewer then approves via OTP (CB portal).
+Lead Auditor uploads and signs via direct-sign (auditor portal).
+Assigned Reviewer Auditor (or CM/admin bypass) approves via direct-sign.
 
 Routes:
-  POST /audit-sets/{id}/audit-reports/upload             (auditor + admin/planner)
-  GET  /audit-sets/{id}/audit-reports                    (CB + auditor)
-  GET  /audit-sets/{id}/audit-reports/{rid}/download     (CB + auditor)
-  POST /audit-sets/{id}/audit-reports/{rid}/sign/la/request-otp   (lead auditor)
-  POST /audit-sets/{id}/audit-reports/{rid}/sign/la/verify         (lead auditor)
-  POST /audit-sets/{id}/audit-reports/{rid}/sign/review/request-otp  (committee reviewer)
-  POST /audit-sets/{id}/audit-reports/{rid}/sign/review/verify       (committee reviewer)
+  POST /audit-sets/{id}/audit-reports/upload                     (auditor + admin/planner)
+  GET  /audit-sets/{id}/audit-reports                            (CB + auditor)
+  GET  /audit-sets/{id}/audit-reports/reviewer-candidates        (CB)
+  GET  /audit-sets/{id}/audit-reports/{rid}/download             (CB + auditor)
+  PUT  /audit-sets/{id}/audit-reports/{rid}/reviewer             (planner/admin)
+  POST /audit-sets/{id}/audit-reports/{rid}/sign/la/direct       (lead auditor)
+  POST /audit-sets/{id}/audit-reports/{rid}/sign/review/direct   (reviewer auditor / CM)
 """
 from __future__ import annotations
-import hashlib
 import os
 import secrets
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile
@@ -35,7 +34,6 @@ from config.settings import get_settings
 from email_service import (
     send_audit_report_review_request,
     send_client_status_update,
-    send_otp_code,
 )
 
 router = APIRouter(tags=["audit_reports"])
@@ -45,7 +43,7 @@ router = APIRouter(tags=["audit_reports"])
 CB_ROLES      = {"admin", "planner", "officer", "executive", "gm", "certification_manager"}
 UPLOAD_ROLES  = {"auditor", "admin", "planner"}
 AUDITOR_ROLES = {"auditor", "admin"}
-OTP_EXPIRY    = 10  # minutes
+# (OTP_EXPIRY removed — OTP signing was removed system-wide)
 
 VALID_FORMS = {"FR.231", "FR.229", "FR.232"}
 
@@ -63,8 +61,7 @@ _STD_CODE_TO_ISO: dict[str, str] = {
 }
 
 
-def _hash(val: str) -> str:
-    return hashlib.sha256(val.encode()).hexdigest()
+
 
 
 def _report_dict(r: AuditSetAuditReport, can_review: bool = False) -> dict:
@@ -242,102 +239,19 @@ def _check_la_auth(
         )
 
 
-@router.post("/audit-sets/{audit_set_id}/audit-reports/{rid}/sign/la/request-otp")
-def la_request_otp(
-    audit_set_id: str,
-    rid: str,
-    db:      Session = Depends(get_db),
-    auth_db: Session = Depends(get_auth_db),
-    current_user: PlatformUser = Depends(get_current_user),
-):
-    report = db.query(AuditSetAuditReport).filter_by(
-        id=rid, audit_set_id=audit_set_id
-    ).first()
-    if not report:
-        raise HTTPException(404, "Report not found")
-    _check_la_auth(report, current_user, db)
-    if report.la_signed_at:
-        raise HTTPException(400, "Already signed")
-
-    otp = f"{secrets.randbelow(900000) + 100000}"
-    report.la_otp_hash    = _hash(otp)
-    report.la_otp_expires = datetime.utcnow() + timedelta(minutes=OTP_EXPIRY)
-    db.commit()
-
-    try:
-        send_otp_code(
-            to=current_user.email,
-            full_name=current_user.full_name,
-            otp=otp,
-            document_label=f"{report.report_form} — {report.label}",
-        )
-    except Exception:
-        pass
-
-    return {"message": f"Code sent to {current_user.email}. Valid for {OTP_EXPIRY} minutes."}
-
-
 class SignReportBody(BaseModel):
     signed_date: Optional[date] = None
 
 
-@router.post("/audit-sets/{audit_set_id}/audit-reports/{rid}/sign/la/verify")
-def la_verify_otp(
-    audit_set_id: str,
-    rid: str,
-    otp: str,
-    request: Request,
-    body:    SignReportBody = Body(default_factory=SignReportBody),
-    db:      Session = Depends(get_db),
-    auth_db: Session = Depends(get_auth_db),
-    current_user: PlatformUser = Depends(get_current_user),
-):
-    report = db.query(AuditSetAuditReport).filter_by(
-        id=rid, audit_set_id=audit_set_id
-    ).first()
-    if not report:
-        raise HTTPException(404, "Report not found")
-    _check_la_auth(report, current_user, db)
-    if report.la_signed_at:
-        raise HTTPException(400, "Already signed")
-    if not report.la_otp_hash or not report.la_otp_expires:
-        raise HTTPException(400, "No pending OTP. Request one first.")
-    if datetime.utcnow() > report.la_otp_expires:
-        raise HTTPException(400, "OTP expired. Please request a new one.")
-    if _hash(otp.strip()) != report.la_otp_hash:
-        raise HTTPException(400, "Invalid code.")
-
-    signed_dt = (
-        datetime.combine(body.signed_date, datetime.min.time())
-        if body.signed_date else datetime.utcnow()
-    )
-    report.la_user_id      = current_user.id
-    report.la_signed_at    = signed_dt
-    report.la_signed_ip    = request.client.host if request.client else None
-    report.la_otp_hash     = None
-    report.la_otp_expires  = None
-    report.status          = "pending_review"
-    db.commit()
-
-    # Portal 76 — notify the assigned reviewer auditor (or legacy committee reviewer).
-    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
-    _notify_reviewer(db, report, audit_set)
-
-    return {
-        "signed": True,
-        "status": "pending_review",
-        "la_signed_at": report.la_signed_at.isoformat(),
-    }
-
-
-# ── Lead Auditor: direct-sign (no OTP) ──────────────────────────────────────
+# ── Lead Auditor: direct-sign ────────────────────────────────────────────────
 
 @router.post("/audit-sets/{audit_set_id}/audit-reports/{rid}/sign/la/direct")
 def la_sign_direct(
     audit_set_id: str,
-    rid: str,
-    body: SignReportBody = Body(default_factory=SignReportBody),
-    db:   Session = Depends(get_db),
+    rid:     str,
+    request: Request,
+    body:    SignReportBody = Body(default_factory=SignReportBody),
+    db:      Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     report = db.query(AuditSetAuditReport).filter_by(
@@ -351,12 +265,19 @@ def la_sign_direct(
     if report.status not in ("pending_la",):
         raise HTTPException(400, f"Report status is '{report.status}', expected 'pending_la'")
 
+    report.la_user_id   = current_user.id
     report.la_signed_at = (
         datetime.combine(body.signed_date, datetime.min.time())
         if body.signed_date else datetime.utcnow()
     )
+    report.la_signed_ip = request.client.host if request.client else None
     report.status       = "pending_review"
     db.commit()
+
+    # Notify assigned reviewer that the report is ready for their signature.
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    _notify_reviewer(db, report, audit_set)
+
     db.refresh(report)
     return _report_dict(report)
 
@@ -451,81 +372,40 @@ def _check_reviewer_auth(
         )
 
 
-@router.post("/audit-sets/{audit_set_id}/audit-reports/{rid}/sign/review/request-otp")
-def review_request_otp(
+# ── Reviewer: direct-sign (Portal 77 — only signing path, no OTP) ────────────
+
+@router.post("/audit-sets/{audit_set_id}/audit-reports/{rid}/sign/review/direct")
+def review_sign_direct(
     audit_set_id: str,
-    rid: str,
-    db:      Session = Depends(get_db),
-    auth_db: Session = Depends(get_auth_db),
-    current_user: PlatformUser = Depends(get_current_user),
-):
-    report = db.query(AuditSetAuditReport).filter_by(
-        id=rid, audit_set_id=audit_set_id
-    ).first()
-    if not report:
-        raise HTTPException(404, "Report not found")
-    _check_reviewer_auth(report, current_user, db)
-    if report.status != "pending_review":
-        raise HTTPException(
-            400,
-            "Report is not awaiting review. "
-            + ("Lead Auditor must sign first." if report.status == "pending_la" else "Already approved.")
-        )
-
-    otp = f"{secrets.randbelow(900000) + 100000}"
-    report.reviewer_otp_hash    = _hash(otp)
-    report.reviewer_otp_expires = datetime.utcnow() + timedelta(minutes=OTP_EXPIRY)
-    db.commit()
-
-    try:
-        send_otp_code(
-            to=current_user.email,
-            full_name=current_user.full_name,
-            otp=otp,
-            document_label=f"{report.report_form} Review — {report.label}",
-        )
-    except Exception:
-        pass
-
-    return {"message": f"Code sent to {current_user.email}. Valid for {OTP_EXPIRY} minutes."}
-
-
-@router.post("/audit-sets/{audit_set_id}/audit-reports/{rid}/sign/review/verify")
-def review_verify_otp(
-    audit_set_id: str,
-    rid: str,
-    otp: str,
+    rid:     str,
     request: Request,
     body:    SignReportBody = Body(default_factory=SignReportBody),
     db:      Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
+    # Fetch once — 404 first, then auth.
     report = db.query(AuditSetAuditReport).filter_by(
         id=rid, audit_set_id=audit_set_id
     ).first()
     if not report:
         raise HTTPException(404, "Report not found")
+
     _check_reviewer_auth(report, current_user, db)
-    if report.reviewer_signed_at:
-        raise HTTPException(400, "Already approved")
-    if not report.reviewer_otp_hash or not report.reviewer_otp_expires:
-        raise HTTPException(400, "No pending OTP. Request one first.")
-    if datetime.utcnow() > report.reviewer_otp_expires:
-        raise HTTPException(400, "OTP expired. Please request a new one.")
-    if _hash(otp.strip()) != report.reviewer_otp_hash:
-        raise HTTPException(400, "Invalid code.")
+
+    if report.status == "approved":
+        raise HTTPException(400, "Report already approved")
+    if report.status != "pending_review":
+        raise HTTPException(400, f"Report status is '{report.status}', expected 'pending_review'")
 
     signed_dt = (
         datetime.combine(body.signed_date, datetime.min.time())
         if body.signed_date else datetime.utcnow()
     )
-    report.reviewer_user_id      = current_user.id
-    report.reviewer_signed_at    = signed_dt
-    report.reviewer_signed_ip    = request.client.host if request.client else None
-    report.reviewer_otp_hash     = None
-    report.reviewer_otp_expires  = None
-    report.status                = "approved"
+    report.reviewer_user_id   = current_user.id
+    report.reviewer_signed_at = signed_dt
+    report.reviewer_signed_ip = request.client.host if request.client else None
+    report.status             = "approved"
     db.commit()
 
     # ── Auto-advance workflow: under_review → certified ───────────────────────
@@ -538,11 +418,14 @@ def review_verify_otp(
             from_status="under_review",
             to_status="certified",
             triggered_by=current_user.id,
-            notes=f"Audit report '{report.report_form} — {report.label}' approved by committee reviewer.",
+            notes=(
+                f"Audit report '{report.report_form} — {report.label}' "
+                "approved by assigned reviewer."
+            ),
         ))
         db.commit()
 
-        # Notify the linked client account (silent failure — best-effort)
+        # Notify client — best-effort
         try:
             client_user = auth_db.query(PlatformUser).filter_by(
                 audit_set_id=audit_set_id, role="client",
@@ -552,54 +435,14 @@ def review_verify_otp(
                     to=client_user.email,
                     full_name=client_user.full_name,
                     new_status="certified",
-                    notes="Your audit report has been reviewed and approved by the certification committee.",
+                    notes=(
+                        "Your audit report has been reviewed and approved "
+                        "by the certification committee."
+                    ),
                 )
         except Exception:
             pass
 
-    return {
-        "approved": True,
-        "status": "approved",
-        "reviewer_signed_at": report.reviewer_signed_at.isoformat(),
-        "workflow_advanced": audit_set.workflow_status == "certified" if audit_set else False,
-    }
-
-
-# ── Committee Reviewer: direct-approve (no OTP) ──────────────────────────────
-
-@router.post("/audit-sets/{audit_set_id}/audit-reports/{rid}/sign/review/direct")
-def review_sign_direct(
-    audit_set_id: str,
-    rid: str,
-    body: SignReportBody = Body(default_factory=SignReportBody),
-    db:   Session = Depends(get_db),
-    current_user: PlatformUser = Depends(get_current_user),
-):
-    # Portal 76 — use unified auth: admin/CM bypass, assigned auditor, or
-    # legacy committee-reviewer fallback.
-    if current_user.role not in ("admin", "executive", "certification_manager"):
-        report_pre = db.query(AuditSetAuditReport).filter_by(
-            id=rid, audit_set_id=audit_set_id
-        ).first()
-        if report_pre:
-            _check_reviewer_auth(report_pre, current_user, db)
-
-    report = db.query(AuditSetAuditReport).filter_by(
-        id=rid, audit_set_id=audit_set_id
-    ).first()
-    if not report:
-        raise HTTPException(404, "Report not found")
-    if report.status == "approved":
-        raise HTTPException(400, "Report already approved")
-    if report.status != "pending_review":
-        raise HTTPException(400, f"Report status is '{report.status}', expected 'pending_review'")
-
-    report.reviewer_signed_at = (
-        datetime.combine(body.signed_date, datetime.min.time())
-        if body.signed_date else datetime.utcnow()
-    )
-    report.status             = "approved"
-    db.commit()
     db.refresh(report)
     return _report_dict(report, can_review=False)
 

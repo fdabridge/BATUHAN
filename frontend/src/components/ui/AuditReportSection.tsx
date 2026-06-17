@@ -48,15 +48,19 @@ function fmtDate(iso: string | null) {
 export function AuditReportSection({
   auditSetId,
   workflowStatus,
+  userRole,
 }: {
   auditSetId: string
   workflowStatus: string | null
+  userRole?: string
 }) {
   const [reports, setReports]     = useState<AuditReport[]>([])
   const [loading, setLoading]     = useState(true)
   const [approving, setApproving] = useState<Record<string, boolean>>({})
   const [errors,    setErrors]    = useState<Record<string, string>>({})
   const [approveDates, setApproveDates] = useState<Record<string, string>>({})
+
+  const canAssignReviewer = ['admin', 'planner', 'certification_manager', 'executive'].includes(userRole ?? '')
 
   // Reviewer assignment state
   const [assigningFor, setAssigningFor] = useState<string | null>(null)
@@ -207,8 +211,8 @@ export function AuditReportSection({
                       className="text-xs text-[#1A4731] underline">
                       Download
                     </button>
-                    {/* Assign Reviewer button — only before approval */}
-                    {r.status !== 'approved' && (
+                    {/* Assign Reviewer button — planner/admin only, before approval */}
+                    {canAssignReviewer && r.status !== 'approved' && (
                       <button
                         type="button"
                         onClick={() => openAssignPanel(r.id)}
