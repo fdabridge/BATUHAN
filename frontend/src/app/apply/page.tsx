@@ -57,7 +57,8 @@ interface FormState {
   full_time_employees: string; part_time_employees: string
   subcontractor_employees: string; seasonal_employees: string
   shift_count: string; shift_same_process: boolean
-  has_additional_sites: boolean; additional_site_count: string
+  has_additional_sites: boolean
+  site_details: Array<{ name: string; address: string; employee_count: string; process: string }>
   // EnMS (ISO 50001)
   enms_annual_energy_tj: string; enms_num_energy_types: string; enms_num_seus: string
   // FSMS (ISO 22000 / FSSC 22000)
@@ -78,7 +79,8 @@ const INITIAL: FormState = {
   full_time_employees: '', part_time_employees: '',
   subcontractor_employees: '', seasonal_employees: '',
   shift_count: '1', shift_same_process: false,
-  has_additional_sites: false, additional_site_count: '',
+  has_additional_sites: false,
+  site_details: [],
   enms_annual_energy_tj: '', enms_num_energy_types: '', enms_num_seus: '',
   fsms_food_chain_categories: [], fsms_haccp_studies: '',
   fsms_offsite_storage_count: '', fsms_separate_head_office: false,
@@ -168,8 +170,14 @@ export default function ApplyPage() {
         seasonal_employees:       pInt(form.seasonal_employees),
         shift_count:              pInt(form.shift_count) || 1,
         shift_same_process:       form.shift_same_process,
-        has_additional_sites:     form.has_additional_sites,
-        additional_site_count:    pInt(form.additional_site_count),
+        has_additional_sites:     form.has_additional_sites && form.site_details.length > 0,
+        additional_site_count:    form.site_details.length,
+        site_details:             form.site_details.map(s => ({
+          name:           s.name.trim(),
+          address:        s.address.trim(),
+          employee_count: pInt(s.employee_count),
+          process:        s.process.trim(),
+        })),
         // EnMS
         ...(hasStd('ENMS') && {
           enms_annual_energy_tj:  pFloat(form.enms_annual_energy_tj),
@@ -446,10 +454,43 @@ export default function ApplyPage() {
               <span className="text-sm text-gray-700">We have additional sites / branches</span>
             </label>
             {form.has_additional_sites && (
-              <Field label="Number of additional sites">
-                <input className={inputCls} type="number" min="1" value={form.additional_site_count}
-                  onChange={e => sel({ additional_site_count: e.target.value })} />
-              </Field>
+              <div className="space-y-4 mt-2">
+                {form.site_details.map((site, i) => (
+                  <div key={i} className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-700">Site {i + 1}</span>
+                      <button type="button"
+                        onClick={() => sel({ site_details: form.site_details.filter((_, idx) => idx !== i) })}
+                        className="text-xs text-red-500 hover:text-red-700">Remove</button>
+                    </div>
+                    <Field label="Site name / label">
+                      <input className={inputCls} placeholder="e.g. Branch in İstanbul"
+                        value={site.name}
+                        onChange={e => sel({ site_details: form.site_details.map((s, idx) => idx === i ? { ...s, name: e.target.value } : s) })} />
+                    </Field>
+                    <Field label="Address">
+                      <input className={inputCls} placeholder="Street, City, Country"
+                        value={site.address}
+                        onChange={e => sel({ site_details: form.site_details.map((s, idx) => idx === i ? { ...s, address: e.target.value } : s) })} />
+                    </Field>
+                    <Field label="Employees at this site">
+                      <input className={inputCls} type="number" min="0" placeholder="0"
+                        value={site.employee_count}
+                        onChange={e => sel({ site_details: form.site_details.map((s, idx) => idx === i ? { ...s, employee_count: e.target.value } : s) })} />
+                    </Field>
+                    <Field label="Main activities at this site">
+                      <input className={inputCls} placeholder="e.g. Warehousing and distribution"
+                        value={site.process}
+                        onChange={e => sel({ site_details: form.site_details.map((s, idx) => idx === i ? { ...s, process: e.target.value } : s) })} />
+                    </Field>
+                  </div>
+                ))}
+                <button type="button"
+                  onClick={() => sel({ site_details: [...form.site_details, { name: '', address: '', employee_count: '', process: '' }] })}
+                  className="text-sm text-[#1A4731] hover:underline">
+                  + Add another site
+                </button>
+              </div>
             )}
           </div>
 

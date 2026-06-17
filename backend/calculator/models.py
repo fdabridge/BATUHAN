@@ -14,7 +14,8 @@ from pydantic import BaseModel, Field
 
 class SiteInfo(BaseModel):
     """A single additional site on the application form."""
-    address: str
+    name: str = ""
+    address: str = ""
     process_description: str = ""
     employee_count: int = 0
 

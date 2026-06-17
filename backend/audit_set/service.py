@@ -439,12 +439,14 @@ def _run_calculation(audit_set: AuditSet) -> dict | None:
         sites_raw = audit_set.sites or []
         sites = [
             SiteInfo(
+                name=s.get("name", ""),
                 address=s.get("address", ""),
                 process_description=s.get("process", ""),
                 employee_count=s.get("employee_count", 0),
             )
             for s in sites_raw
-            if s.get("employee_count", 0) > 0
+            # Note: allow sites with 0 employees through — CB can see them;
+            # the engine's own _lookup_for_eps call only adds time when > 0.
         ]
 
         # ── EnMS energy data (ISO 50001) ─────────────────────────────────────────

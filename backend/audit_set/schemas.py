@@ -30,7 +30,8 @@ class PersonnelData(BaseModel):
 
 
 class SiteData(BaseModel):
-    address: str
+    name: str = ""
+    address: str = ""
     process: str = ""
     employee_count: int = 0
     energy_tj: Optional[float] = None

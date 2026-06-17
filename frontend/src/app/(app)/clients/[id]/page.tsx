@@ -21,7 +21,7 @@ import { NCFormManagementSection } from '@/components/ui/NCFormManagementSection
 import { DeclarationManagementSection } from '@/components/ui/DeclarationManagementSection'
 import { AuditReportSection } from '@/components/ui/AuditReportSection'
 import { WorkflowStatusBar } from '@/components/ui/WorkflowStatusBar'
-import type { AuditSetResponse, CommitteeTeamMember, StageResponse, ManDayResult, AuditorSummary, AuditorAvailabilityItem, RequiredScope } from '@/types'
+import type { AuditSetResponse, AuditSite, CommitteeTeamMember, StageResponse, ManDayResult, AuditorSummary, AuditorAvailabilityItem, RequiredScope } from '@/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -362,6 +362,17 @@ function PlanOverview({
   // Keep textarea in sync with server value after PUT round-trips invalidate the query.
   useEffect(() => { setNacText(data.non_applicable_clauses ?? '') }, [data.non_applicable_clauses])
 
+  // Portal 78 — per-site details inline editor
+  const [sitesEditing, setSitesEditing] = useState(false)
+  const [sitesDraft, setSitesDraft] = useState<AuditSite[]>(data.sites ?? [])
+  useEffect(() => { setSitesDraft(data.sites ?? []) }, [data.sites])
+
+  const { mutate: saveSites, isPending: savingSites } = useMutation({
+    mutationFn: () =>
+      api.put(`/audit-sets/${auditSetId}/planning`, { sites: sitesDraft }),
+    onSuccess: () => { onInvalidate(); setSitesEditing(false) },
+  })
+
   // Application date — retroactive override
   const [appDate, setAppDate] = useState<string>(
     data.application_date ? String(data.application_date) : ''
@@ -518,6 +529,121 @@ function PlanOverview({
           <span className="text-gray-500">{data.scope_en || '—'}</span>
         </LabeledField>
         <LabeledField label="Personnel">{personnelStr}</LabeledField>
+
+        {/* Portal 78 — Additional sites */}
+        {((data.sites && data.sites.length > 0) || sitesEditing) && (
+          <div className="col-span-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="font-medium uppercase tracking-wide text-gray-400" style={{ fontSize: 11 }}>
+                Additional sites ({sitesDraft.length})
+              </p>
+              {!sitesEditing ? (
+                <button
+                  type="button"
+                  onClick={() => setSitesEditing(true)}
+                  className="flex items-center gap-1 text-xs text-certiva-primary hover:underline"
+                >
+                  <Pencil size={11} /> Edit sites
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setSitesDraft(data.sites ?? []); setSitesEditing(false) }}
+                    className="text-xs text-gray-400 hover:text-gray-600"
+                  >Cancel</button>
+                  <button
+                    type="button"
+                    disabled={savingSites}
+                    onClick={() => saveSites()}
+                    className="flex items-center gap-1 rounded bg-certiva-primary px-2 py-1 text-xs text-white disabled:opacity-50"
+                  >
+                    {savingSites ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
+                    Save
+                  </button>
+                </div>
+              )}
+            </div>
+            {!sitesEditing ? (
+              <div className="space-y-2">
+                {sitesDraft.map((site, i) => (
+                  <div key={i} className="rounded-md border border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                    <span className="font-medium">{site.name || `Site ${i + 1}`}</span>
+                    {site.address && <span className="text-gray-400"> · {site.address}</span>}
+                    {site.employee_count != null && site.employee_count > 0 && (
+                      <span className="text-gray-400"> · {site.employee_count} emp.</span>
+                    )}
+                    {site.process && <span className="text-gray-400"> · {site.process}</span>}
+                  </div>
+                ))}
+                {sitesDraft.length === 0 && (
+                  <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                    Sites were declared but details are missing — edit to add site names, addresses and headcounts so audit duration can be calculated correctly.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {sitesDraft.map((site, i) => (
+                  <div key={i} className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-gray-600">Site {i + 1}</span>
+                      <button
+                        type="button"
+                        onClick={() => setSitesDraft(sitesDraft.filter((_, idx) => idx !== i))}
+                        className="text-xs text-red-400 hover:text-red-600"
+                      ><Trash2 size={11} /></button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] text-gray-400 mb-0.5">Name / label</label>
+                        <input
+                          className="w-full rounded border border-gray-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-certiva-primary"
+                          placeholder="e.g. İstanbul branch"
+                          value={site.name ?? ''}
+                          onChange={e => setSitesDraft(sitesDraft.map((s, idx) => idx === i ? { ...s, name: e.target.value } : s))}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-gray-400 mb-0.5">Employees</label>
+                        <input
+                          type="number" min="0"
+                          className="w-full rounded border border-gray-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-certiva-primary"
+                          placeholder="0"
+                          value={site.employee_count ?? ''}
+                          onChange={e => setSitesDraft(sitesDraft.map((s, idx) => idx === i ? { ...s, employee_count: parseInt(e.target.value) || 0 } : s))}
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-[10px] text-gray-400 mb-0.5">Address</label>
+                        <input
+                          className="w-full rounded border border-gray-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-certiva-primary"
+                          placeholder="Street, City, Country"
+                          value={site.address ?? ''}
+                          onChange={e => setSitesDraft(sitesDraft.map((s, idx) => idx === i ? { ...s, address: e.target.value } : s))}
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-[10px] text-gray-400 mb-0.5">Main activities</label>
+                        <input
+                          className="w-full rounded border border-gray-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-certiva-primary"
+                          placeholder="e.g. Warehousing and distribution"
+                          value={site.process ?? ''}
+                          onChange={e => setSitesDraft(sitesDraft.map((s, idx) => idx === i ? { ...s, process: e.target.value } : s))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setSitesDraft([...sitesDraft, { name: '', address: '', employee_count: 0, process: '' }])}
+                  className="text-xs text-certiva-primary hover:underline"
+                >+ Add site</button>
+              </div>
+            )}
+          </div>
+        )}
 
         {rs && Object.keys(rs).length > 0 && (
           <div className="col-span-3">

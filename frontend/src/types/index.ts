@@ -167,6 +167,15 @@ export interface AuditSetResponse {
   fr218_reviewer_name?: string | null
   // Portal 64 — committee appointed during planning (JSON snapshot from committee_members column)
   committee_members?: CommitteeTeamMember[] | null
+  // Portal 78 — per-site details (name, address, employee_count, process)
+  sites?: AuditSite[] | null
+}
+
+export interface AuditSite {
+  name?: string
+  address?: string
+  employee_count?: number
+  process?: string
 }
 
 export interface CommitteeTeamMember {

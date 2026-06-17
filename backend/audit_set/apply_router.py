@@ -25,6 +25,13 @@ ALLOWED_STANDARDS = {"QMS", "EMS", "OHSMS", "FSMS", "ISMS", "MDQMS", "ABMS", "EN
 ALLOWED_AUDIT_TYPES = {"initial", "surveillance", "recertification"}
 
 
+class SiteDetailInput(BaseModel):
+    name: str = ""
+    address: str = ""
+    employee_count: int = 0
+    process: str = ""
+
+
 class ClientApplicationSchema(BaseModel):
     # ── Company info ──────────────────────────────────────────────────────
     company_name: str
@@ -59,6 +66,7 @@ class ClientApplicationSchema(BaseModel):
     # ── Additional sites ──────────────────────────────────────────────────
     has_additional_sites: bool = False
     additional_site_count: int = 0
+    site_details: list[SiteDetailInput] = []
 
     # ── ISO 50001 — EnMS energy profile ──────────────────────────────────
     enms_annual_energy_tj: Optional[float] = None
@@ -124,11 +132,24 @@ def submit_application(
     max_plan = audit_db.query(func.max(AuditSet.plan_number)).scalar() or 1599
     plan_number = max_plan + 1
 
-    # Build sites list from has_additional_sites
-    sites = []
-    if payload.has_additional_sites and payload.additional_site_count > 0:
-        for _ in range(payload.additional_site_count):
-            sites.append({"address": "", "process": "", "employee_count": 0})
+    # Build sites list — prefer detailed entries, fall back to count-only stubs
+    sites: list[dict] = []
+    if payload.site_details:
+        sites = [
+            {
+                "name":           s.name,
+                "address":        s.address,
+                "employee_count": s.employee_count,
+                "process":        s.process,
+            }
+            for s in payload.site_details
+        ]
+    elif payload.has_additional_sites and payload.additional_site_count > 0:
+        # Legacy fallback — old clients without per-site detail
+        sites = [
+            {"name": f"Site {i + 1}", "address": "", "employee_count": 0, "process": ""}
+            for i in range(payload.additional_site_count)
+        ]
 
     # Resolve effective full-time count (new fields take priority over legacy total_employees)
     ft = payload.full_time_employees or payload.total_employees
