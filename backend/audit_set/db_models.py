@@ -87,6 +87,9 @@ def create_tables():
     # Stage planning — IK experts and evaluators (added after initial deploy)
     _safe_add_column("audit_set_stages", "ik_experts JSON")
     _safe_add_column("audit_set_stages", "evaluators JSON")
+    # Portal 76 — assigned reviewer auditor on audit reports
+    _safe_add_column("audit_set_audit_reports", "reviewer_auditor_id VARCHAR")
+    _safe_add_column("audit_set_audit_reports", "reviewer_auditor_name VARCHAR")
 
 
 # ---------------------------------------------------------------------------
@@ -579,6 +582,13 @@ class AuditSetAuditReport(Base):
     status       = Column(String, default="pending_la", nullable=False)
 
     uploaded_by  = Column(String, nullable=True)   # PlatformUser.id of uploader
+
+    # ── Assigned Report Reviewer (Portal 76) ──────────────────────────────────
+    # Auditor assigned by the planner to review this report.
+    # Must cover at least one of the audit's standards.
+    reviewer_auditor_id   = Column(String, nullable=True)   # Auditor.id (auditors DB)
+    reviewer_auditor_name = Column(String, nullable=True)   # denormalized full name
+
     created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 

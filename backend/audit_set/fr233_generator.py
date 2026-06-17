@@ -71,7 +71,7 @@ def _build_committee_context(audit_set) -> list[dict]:
     ctx = [
         {
             "id":            m.get("id", ""),
-            "name":          m.get("name", "") or "",
+            "name":          m.get("name") or m.get("full_name") or "",
             "ea_codes_str":  ", ".join(m.get("ea_codes") or []),
             "role":          m.get("role", "member"),
         }

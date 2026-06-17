@@ -49,6 +49,19 @@ OTP_EXPIRY    = 10  # minutes
 
 VALID_FORMS = {"FR.231", "FR.229", "FR.232"}
 
+# Portal 76 — maps AuditSet.standards abbreviations to ISO standard names
+# (same mapping as committee_router._STD_CODE_TO_ISO).
+_STD_CODE_TO_ISO: dict[str, str] = {
+    "QMS":   "ISO 9001",
+    "EMS":   "ISO 14001",
+    "OHSMS": "ISO 45001",
+    "FSMS":  "ISO 22000",
+    "ISMS":  "ISO 27001",
+    "MDQMS": "ISO 13485",
+    "ENMS":  "ISO 50001",
+    "ABMS":  "ISO 37001",
+}
+
 
 def _hash(val: str) -> str:
     return hashlib.sha256(val.encode()).hexdigest()
@@ -56,17 +69,20 @@ def _hash(val: str) -> str:
 
 def _report_dict(r: AuditSetAuditReport, can_review: bool = False) -> dict:
     return {
-        "id":                 r.id,
-        "audit_set_id":       r.audit_set_id,
-        "stage_type":         r.stage_type,
-        "report_form":        r.report_form,
-        "label":              r.label,
-        "file_name":          r.file_name,
-        "status":             r.status,
-        "la_signed_at":       r.la_signed_at.isoformat() if r.la_signed_at else None,
-        "reviewer_signed_at": r.reviewer_signed_at.isoformat() if r.reviewer_signed_at else None,
-        "created_at":         r.created_at.isoformat() if r.created_at else None,
-        "can_review":         can_review,
+        "id":                     r.id,
+        "audit_set_id":           r.audit_set_id,
+        "stage_type":             r.stage_type,
+        "report_form":            r.report_form,
+        "label":                  r.label,
+        "file_name":              r.file_name,
+        "status":                 r.status,
+        "la_signed_at":           r.la_signed_at.isoformat() if r.la_signed_at else None,
+        "reviewer_signed_at":     r.reviewer_signed_at.isoformat() if r.reviewer_signed_at else None,
+        "created_at":             r.created_at.isoformat() if r.created_at else None,
+        "can_review":             can_review,
+        # Portal 76 — reviewer assignment
+        "reviewer_auditor_id":    r.reviewer_auditor_id,
+        "reviewer_auditor_name":  r.reviewer_auditor_name,
     }
 
 
@@ -138,10 +154,17 @@ def list_audit_reports(
     if current_user.role not in CB_ROLES | AUDITOR_ROLES:
         raise HTTPException(403, "Not authorized")
 
-    # Portal 75 — CM and admin/executive can review directly; other CB roles
-    # need a committee-reviewer appointment to see the approve button.
+    # Portal 76 — CM/admin bypass, assigned auditor reviewer, or legacy committee reviewer.
     is_cm = current_user.role in ("certification_manager", "admin", "executive")
-    is_reviewer = is_cm or (_get_committee_reviewer(audit_set_id, current_user, db) is not None)
+    is_assigned_reviewer = (
+        current_user.role == "auditor"
+        and current_user.auditor_id is not None
+    )
+    is_reviewer = (
+        is_cm
+        or is_assigned_reviewer  # can_review per-report determined below
+        or (_get_committee_reviewer(audit_set_id, current_user, db) is not None)
+    )
 
     rows = (
         db.query(AuditSetAuditReport)
@@ -149,10 +172,18 @@ def list_audit_reports(
         .order_by(AuditSetAuditReport.created_at)
         .all()
     )
-    return [
-        _report_dict(r, can_review=is_reviewer and r.status == "pending_review")
-        for r in rows
-    ]
+
+    def _can_review(r: AuditSetAuditReport) -> bool:
+        if r.status != "pending_review":
+            return False
+        if is_cm:
+            return True
+        if is_assigned_reviewer:
+            return (r.reviewer_auditor_id is not None
+                    and current_user.auditor_id == r.reviewer_auditor_id)
+        return is_reviewer  # legacy committee reviewer
+
+    return [_report_dict(r, can_review=_can_review(r)) for r in rows]
 
 
 
@@ -288,23 +319,9 @@ def la_verify_otp(
     report.status          = "pending_review"
     db.commit()
 
-    # Notify the appointed committee reviewer
-    reviewer = db.query(AuditSetCommitteeMember).filter_by(
-        audit_set_id=audit_set_id, role="reviewer"
-    ).first()
-    if reviewer:
-        try:
-            audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
-            send_audit_report_review_request(
-                to=reviewer.user_email,
-                full_name=reviewer.user_name,
-                company_name=audit_set.company_name if audit_set else audit_set_id,
-                stage_label=report.stage_type.replace("_", " ").title(),
-                report_form=report.report_form,
-                label=report.label,
-            )
-        except Exception:
-            pass
+    # Portal 76 — notify the assigned reviewer auditor (or legacy committee reviewer).
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    _notify_reviewer(db, report, audit_set)
 
     return {
         "signed": True,
@@ -346,15 +363,85 @@ def la_sign_direct(
 
 # ── Committee Reviewer: approve party 2 ──────────────────────────────────────
 
+def _notify_reviewer(
+    db: Session,
+    report: AuditSetAuditReport,
+    audit_set,
+) -> None:
+    """Send review-request email to the assigned reviewer (auditor or committee member)."""
+    company = (audit_set.company_name if audit_set else report.audit_set_id) or ""
+    stage   = report.stage_type.replace("_", " ").title()
+
+    # Prefer assigned auditor reviewer (Portal 76)
+    if report.reviewer_auditor_id:
+        from auditors.models import Auditor as _Auditor
+        auditor = db.query(_Auditor).filter_by(id=report.reviewer_auditor_id).first()
+        if auditor and auditor.email:
+            try:
+                send_audit_report_review_request(
+                    to=auditor.email,
+                    full_name=auditor.name,
+                    company_name=company,
+                    stage_label=stage,
+                    report_form=report.report_form,
+                    label=report.label,
+                )
+            except Exception:
+                pass
+            return
+
+    # Fallback: legacy committee reviewer
+    reviewer = db.query(AuditSetCommitteeMember).filter_by(
+        audit_set_id=report.audit_set_id, role="reviewer"
+    ).first()
+    if reviewer:
+        try:
+            send_audit_report_review_request(
+                to=reviewer.user_email,
+                full_name=reviewer.user_name,
+                company_name=company,
+                stage_label=stage,
+                report_form=report.report_form,
+                label=report.label,
+            )
+        except Exception:
+            pass
+
+
 def _check_reviewer_auth(
     report: AuditSetAuditReport,
     current_user: PlatformUser,
     db: Session,
-) -> AuditSetCommitteeMember:
-    """Verify current user is the appointed committee reviewer for this audit set."""
-    if current_user.role not in CB_ROLES:
-        raise HTTPException(403, "CB access only")
+) -> None:
+    """Verify current user may sign the reviewer slot.
 
+    Priority order:
+    1. Admin / certification_manager / executive — always allowed (bypass).
+    2. Auditor whose auditor_id matches report.reviewer_auditor_id.
+    3. CB staff member who is the appointed AuditSetCommitteeMember reviewer
+       (backward-compat fallback).
+    """
+    # 1. Admin/CM bypass
+    if current_user.role in ("admin", "certification_manager", "executive"):
+        return
+
+    # 2. Assigned auditor reviewer
+    if current_user.role == "auditor":
+        if not report.reviewer_auditor_id:
+            raise HTTPException(
+                403,
+                "No reviewer has been assigned to this report yet. "
+                "Ask a planner to assign a reviewer.",
+            )
+        if current_user.auditor_id != report.reviewer_auditor_id:
+            raise HTTPException(
+                403, "You are not the assigned reviewer for this report."
+            )
+        return
+
+    # 3. Legacy CB committee reviewer fallback
+    if current_user.role not in CB_ROLES:
+        raise HTTPException(403, "Not authorised to review this report.")
     member = _get_committee_reviewer(report.audit_set_id, current_user, db)
     if not member:
         raise HTTPException(
@@ -362,7 +449,6 @@ def _check_reviewer_auth(
             "You are not the appointed committee reviewer for this audit set. "
             "Contact an admin to assign or reassign the reviewer role.",
         )
-    return member
 
 
 @router.post("/audit-sets/{audit_set_id}/audit-reports/{rid}/sign/review/request-otp")
@@ -489,12 +575,14 @@ def review_sign_direct(
     db:   Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
-    # Portal 75 — Certification Manager, admin and executive can approve directly.
-    # Other CB roles must be a registered Committee Reviewer for this audit set.
+    # Portal 76 — use unified auth: admin/CM bypass, assigned auditor, or
+    # legacy committee-reviewer fallback.
     if current_user.role not in ("admin", "executive", "certification_manager"):
-        reviewer = _get_committee_reviewer(audit_set_id, current_user, db)
-        if not reviewer:
-            raise HTTPException(403, "You are not a registered reviewer for this audit set")
+        report_pre = db.query(AuditSetAuditReport).filter_by(
+            id=rid, audit_set_id=audit_set_id
+        ).first()
+        if report_pre:
+            _check_reviewer_auth(report_pre, current_user, db)
 
     report = db.query(AuditSetAuditReport).filter_by(
         id=rid, audit_set_id=audit_set_id
@@ -514,3 +602,115 @@ def review_sign_direct(
     db.commit()
     db.refresh(report)
     return _report_dict(report, can_review=False)
+
+
+# ── Reviewer assignment (Portal 76) ──────────────────────────────────────────
+
+class AssignReviewerBody(BaseModel):
+    auditor_id: str
+
+
+@router.put("/audit-sets/{audit_set_id}/audit-reports/{rid}/reviewer")
+def assign_reviewer(
+    audit_set_id: str,
+    rid:          str,
+    body:         AssignReviewerBody,
+    db:      Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """Assign or re-assign a reviewer auditor to this report.
+
+    The auditor must have at least one standard qualification overlapping with
+    the audit set's standards.  Planner/admin only.
+    """
+    if current_user.role not in ("admin", "planner", "certification_manager", "executive"):
+        raise HTTPException(403, "Planner or admin access required")
+
+    report = db.query(AuditSetAuditReport).filter_by(
+        id=rid, audit_set_id=audit_set_id
+    ).first()
+    if not report:
+        raise HTTPException(404, "Report not found")
+
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    if not audit_set:
+        raise HTTPException(404, "Audit set not found")
+
+    from auditors.models import Auditor as _Auditor, AuditorStandardQualification as _ASQ
+    auditor = db.query(_Auditor).filter_by(id=body.auditor_id).first()
+    if not auditor:
+        raise HTTPException(404, "Auditor not found")
+
+    # Eligibility: auditor must cover at least one audit standard
+    audit_iso = {_STD_CODE_TO_ISO.get(s, s) for s in (audit_set.standards or [])}
+    if audit_iso:
+        qualified_isos = {
+            q.standard_code
+            for q in db.query(_ASQ).filter_by(
+                auditor_id=body.auditor_id, is_qualified=True
+            ).all()
+            if q.standard_code
+        }
+        # Normalise: strip "ISO " prefix and spaces for loose matching
+        def _norm(s: str) -> str:
+            return s.lower().replace("iso ", "").replace(" ", "").replace("/iec", "")
+        audit_norms     = {_norm(s) for s in audit_iso}
+        qualified_norms = {_norm(s) for s in qualified_isos}
+        if not audit_norms.intersection(qualified_norms):
+            raise HTTPException(
+                400,
+                f"Auditor '{auditor.name}' does not cover any of the required standards: "
+                f"{', '.join(sorted(audit_set.standards or []))}."
+            )
+
+    report.reviewer_auditor_id   = auditor.id
+    report.reviewer_auditor_name = auditor.name
+    db.commit()
+    db.refresh(report)
+    return _report_dict(report)
+
+
+@router.get("/audit-sets/{audit_set_id}/audit-reports/reviewer-candidates")
+def get_reviewer_candidates(
+    audit_set_id: str,
+    db:      Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """List auditors eligible to be assigned as reviewer for this audit set.
+
+    An auditor is eligible if they cover at least one standard of the audit.
+    """
+    if current_user.role not in CB_ROLES:
+        raise HTTPException(403, "CB access only")
+
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    if not audit_set:
+        raise HTTPException(404, "Audit set not found")
+
+    from auditors.models import Auditor as _Auditor, AuditorStandardQualification as _ASQ
+
+    audit_iso = {_STD_CODE_TO_ISO.get(s, s) for s in (audit_set.standards or [])}
+
+    def _norm(s: str) -> str:
+        return s.lower().replace("iso ", "").replace(" ", "").replace("/iec", "")
+
+    audit_norms = {_norm(s) for s in audit_iso}
+
+    all_auditors = db.query(_Auditor).filter_by(is_active=True).all()
+    results = []
+    for a in all_auditors:
+        qualifications = db.query(_ASQ).filter_by(
+            auditor_id=a.id, is_qualified=True
+        ).all()
+        qualified_norms = {_norm(q.standard_code) for q in qualifications if q.standard_code}
+        covers = not audit_norms or bool(audit_norms.intersection(qualified_norms))
+        if covers:
+            results.append({
+                "id":           a.id,
+                "name":         a.name,
+                "email":        a.email,
+                "standards":    [q.standard_code for q in qualifications if q.standard_code],
+                "covers_audit": covers,
+            })
+    results.sort(key=lambda x: x["name"] or "")
+    return results

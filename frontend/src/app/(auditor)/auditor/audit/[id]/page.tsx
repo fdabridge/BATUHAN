@@ -354,6 +354,8 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
     id: string; stage_type: string; report_form: string; label: string
     file_name: string | null; status: string
     la_signed_at: string | null; reviewer_signed_at: string | null
+    can_review: boolean
+    reviewer_auditor_id: string | null; reviewer_auditor_name: string | null
   }[]>([])
   const [loading, setLoading]   = useState(true)
   const [showUpload, setShowUpload] = useState(false)
@@ -362,6 +364,12 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
   const [uploading, setUploading] = useState(false)
   const [uploadMsg, setUploadMsg] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+
+  // Reviewer OTP signing state (Portal 76)
+  const [reviewOtpStep,  setReviewOtpStep]  = useState<Record<string, 'idle'|'sent'|'signing'>>({})
+  const [reviewOtp,      setReviewOtp]      = useState<Record<string, string>>({})
+  const [reviewSignDate, setReviewSignDate] = useState<Record<string, string>>({})
+  const [reviewErr,      setReviewErr]      = useState<Record<string, string>>({})
 
   const STAGE_LABELS: Record<string, string> = {
     stage_1: 'Stage 1', stage_2: 'Stage 2',
@@ -419,6 +427,37 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
       setUploadMsg(detail || 'Upload failed')
     } finally {
       setUploading(false)
+    }
+  }
+
+  async function handleReviewRequestOtp(id: string) {
+    setReviewOtpStep(s => ({ ...s, [id]: 'signing' }))
+    setReviewErr(e => ({ ...e, [id]: '' }))
+    try {
+      await api.post(`/audit-sets/${auditSetId}/audit-reports/${id}/sign/review/request-otp`)
+      setReviewOtpStep(s => ({ ...s, [id]: 'sent' }))
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setReviewErr(e => ({ ...e, [id]: detail || 'Failed to send OTP' }))
+      setReviewOtpStep(s => ({ ...s, [id]: 'idle' }))
+    }
+  }
+
+  async function handleReviewVerifyOtp(id: string) {
+    setReviewOtpStep(s => ({ ...s, [id]: 'signing' }))
+    setReviewErr(e => ({ ...e, [id]: '' }))
+    try {
+      const signed_date = reviewSignDate[id] || new Date().toISOString().slice(0, 10)
+      const r = await api.post(
+        `/audit-sets/${auditSetId}/audit-reports/${id}/sign/review/verify?otp=${encodeURIComponent(reviewOtp[id] || '')}`,
+        { signed_date }
+      )
+      setReports(prev => prev.map(rpt => rpt.id === id ? { ...rpt, ...(r.data as object), can_review: false } : rpt))
+      setReviewOtpStep(s => ({ ...s, [id]: 'idle' }))
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setReviewErr(e => ({ ...e, [id]: detail || 'Verification failed' }))
+      setReviewOtpStep(s => ({ ...s, [id]: 'sent' }))
     }
   }
 
@@ -538,33 +577,90 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
           <div className="rounded-xl border bg-white divide-y divide-gray-50">
             {uploaded.map(r => {
               const cfg = STATUS_CONFIG[r.status] ?? { label: r.status, chip: 'bg-gray-100 text-gray-500' }
+              const step = reviewOtpStep[r.id] || 'idle'
               return (
-                <div key={r.id} className="flex items-center justify-between px-4 py-3">
-                  <div>
-                    <p className="text-sm font-medium text-gray-800">{r.label}</p>
-                    <p className="text-xs text-gray-400">
-                      {STAGE_LABELS[r.stage_type] ?? r.stage_type} · {r.report_form}
-                    </p>
+                <div key={r.id} className="px-4 py-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">{r.label}</p>
+                      <p className="text-xs text-gray-400">
+                        {STAGE_LABELS[r.stage_type] ?? r.stage_type} · {r.report_form}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${cfg.chip}`}>
+                        {cfg.label}
+                      </span>
+                      <a
+                        href={`/auditor/viewer/audit_report/${r.id}`}
+                        className="inline-flex items-center rounded-lg border border-[#1A4731] px-2.5 py-1
+                          text-xs font-medium text-[#1A4731] hover:bg-[#1A4731]/5 transition-colors"
+                      >
+                        Open
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => download(r.id, r.file_name)}
+                        className="rounded-lg border border-[#1A4731] px-3 py-1.5 text-xs font-medium text-[#1A4731] hover:bg-green-50"
+                      >
+                        Download
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${cfg.chip}`}>
-                      {cfg.label}
-                    </span>
-                    <a
-                      href={`/auditor/viewer/audit_report/${r.id}`}
-                      className="inline-flex items-center rounded-lg border border-[#1A4731] px-2.5 py-1
-                        text-xs font-medium text-[#1A4731] hover:bg-[#1A4731]/5 transition-colors"
-                    >
-                      Open
-                    </a>
-                    <button
-                      type="button"
-                      onClick={() => download(r.id, r.file_name)}
-                      className="text-xs text-[#1A4731] underline"
-                    >
-                      Download
-                    </button>
-                  </div>
+
+                  {/* Portal 76 — Reviewer signing panel */}
+                  {r.can_review && r.status === 'pending_review' && (
+                    <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                      <p className="mb-2 text-xs font-medium text-blue-800">
+                        You are assigned as the reviewer for this report.
+                      </p>
+                      {step === 'idle' && (
+                        <button
+                          type="button"
+                          onClick={() => handleReviewRequestOtp(r.id)}
+                          className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs text-white hover:bg-[#143828]"
+                        >
+                          Sign as Reviewer — Send OTP
+                        </button>
+                      )}
+                      {step === 'sent' && (
+                        <div className="space-y-2">
+                          <p className="text-xs text-blue-700">
+                            A verification code was sent to your email. Enter it below.
+                          </p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <input
+                              type="text"
+                              placeholder="6-digit code"
+                              value={reviewOtp[r.id] || ''}
+                              onChange={e => setReviewOtp(ot => ({ ...ot, [r.id]: e.target.value }))}
+                              className="w-32 rounded-lg border px-2 py-1.5 text-sm"
+                            />
+                            <input
+                              type="date"
+                              value={reviewSignDate[r.id] || new Date().toISOString().slice(0, 10)}
+                              onChange={e => setReviewSignDate(d => ({ ...d, [r.id]: e.target.value }))}
+                              className="rounded-lg border px-2 py-1.5 text-sm"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleReviewVerifyOtp(r.id)}
+                              disabled={!reviewOtp[r.id]}
+                              className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs text-white disabled:opacity-40 hover:bg-[#143828]"
+                            >
+                              Confirm Signature
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {step === 'signing' && (
+                        <p className="text-xs text-gray-500">Processing…</p>
+                      )}
+                      {reviewErr[r.id] && (
+                        <p className="mt-1 text-xs text-red-500">{reviewErr[r.id]}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             })}

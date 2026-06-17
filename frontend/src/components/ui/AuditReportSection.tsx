@@ -5,16 +5,26 @@ import { ExternalLink } from 'lucide-react'
 import api from '@/lib/api'
 
 interface AuditReport {
-  id:                   string
-  stage_type:           string
-  report_form:          string
-  label:                string
-  file_name:            string | null
-  status:               string
-  la_signed_at:         string | null
-  reviewer_signed_at:   string | null
-  can_review:           boolean
-  created_at:           string
+  id:                    string
+  stage_type:            string
+  report_form:           string
+  label:                 string
+  file_name:             string | null
+  status:                string
+  la_signed_at:          string | null
+  reviewer_signed_at:    string | null
+  can_review:            boolean
+  created_at:            string
+  reviewer_auditor_id:   string | null
+  reviewer_auditor_name: string | null
+}
+
+interface ReviewerCandidate {
+  id:           string
+  name:         string
+  email:        string
+  standards:    string[]
+  covers_audit: boolean
 }
 
 const STAGE_LABELS: Record<string, string> = {
@@ -23,9 +33,9 @@ const STAGE_LABELS: Record<string, string> = {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; chip: string }> = {
-  pending_la:     { label: 'Awaiting Lead Auditor',          chip: 'bg-amber-100 text-amber-700' },
-  pending_review: { label: 'Awaiting Certification Manager', chip: 'bg-blue-100 text-blue-700' },
-  approved:       { label: 'Approved',                       chip: 'bg-green-100 text-green-700' },
+  pending_la:     { label: 'Awaiting Lead Auditor', chip: 'bg-amber-100 text-amber-700' },
+  pending_review: { label: 'Awaiting Reviewer',     chip: 'bg-blue-100 text-blue-700' },
+  approved:       { label: 'Approved',              chip: 'bg-green-100 text-green-700' },
 }
 
 function fmtDate(iso: string | null) {
@@ -42,11 +52,19 @@ export function AuditReportSection({
   auditSetId: string
   workflowStatus: string | null
 }) {
-  const [reports, setReports]   = useState<AuditReport[]>([])
-  const [loading, setLoading]   = useState(true)
+  const [reports, setReports]     = useState<AuditReport[]>([])
+  const [loading, setLoading]     = useState(true)
   const [approving, setApproving] = useState<Record<string, boolean>>({})
   const [errors,    setErrors]    = useState<Record<string, string>>({})
   const [approveDates, setApproveDates] = useState<Record<string, string>>({})
+
+  // Reviewer assignment state
+  const [assigningFor, setAssigningFor] = useState<string | null>(null)
+  const [candidates,   setCandidates]   = useState<ReviewerCandidate[]>([])
+  const [loadingCands, setLoadingCands] = useState(false)
+  const [selectedCand, setSelectedCand] = useState('')
+  const [assigning,    setAssigning]    = useState(false)
+  const [assignErr,    setAssignErr]    = useState('')
 
   const relevantStatuses = new Set([
     'stage1_in_progress', 'stage1_complete',
@@ -97,6 +115,43 @@ export function AuditReportSection({
     }
   }
 
+  async function openAssignPanel(reportId: string) {
+    if (assigningFor === reportId) { setAssigningFor(null); return }
+    setAssigningFor(reportId)
+    setSelectedCand('')
+    setAssignErr('')
+    setLoadingCands(true)
+    try {
+      const r = await api.get<ReviewerCandidate[]>(
+        `/audit-sets/${auditSetId}/audit-reports/reviewer-candidates`
+      )
+      setCandidates(r.data)
+    } catch {
+      setCandidates([])
+    } finally {
+      setLoadingCands(false)
+    }
+  }
+
+  async function handleAssign(reportId: string) {
+    if (!selectedCand) return
+    setAssigning(true)
+    setAssignErr('')
+    try {
+      const r = await api.put<AuditReport>(
+        `/audit-sets/${auditSetId}/audit-reports/${reportId}/reviewer`,
+        { auditor_id: selectedCand }
+      )
+      setReports(prev => prev.map(rpt => rpt.id === reportId ? { ...rpt, ...r.data } : rpt))
+      setAssigningFor(null)
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setAssignErr(detail || 'Assignment failed')
+    } finally {
+      setAssigning(false)
+    }
+  }
+
   return (
     <div className="mt-6">
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-700">
@@ -113,23 +168,34 @@ export function AuditReportSection({
         <div className="space-y-2">
           {reports.map(r => {
             const cfg = STATUS_CONFIG[r.status] ?? { label: r.status, chip: 'bg-gray-100 text-gray-500' }
+            const isPanelOpen = assigningFor === r.id
 
             return (
-              <div key={r.id} className={`rounded-xl border bg-white p-4 ${r.can_review && r.status === 'pending_review' ? 'border-blue-200' : ''}`}>
+              <div
+                key={r.id}
+                className={`rounded-xl border bg-white p-4 ${r.can_review && r.status === 'pending_review' ? 'border-blue-200' : ''}`}
+              >
+                {/* Header row */}
                 <div className="mb-2 flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="font-medium text-gray-800 truncate">{r.label}</p>
                     <p className="mt-0.5 text-xs text-gray-400">
                       {STAGE_LABELS[r.stage_type] ?? r.stage_type} · {r.report_form}
                       {r.la_signed_at && ` · LA signed ${fmtDate(r.la_signed_at)}`}
-                      {r.reviewer_signed_at && ` · CM approved ${fmtDate(r.reviewer_signed_at)}`}
+                      {r.reviewer_signed_at && ` · Reviewer approved ${fmtDate(r.reviewer_signed_at)}`}
+                    </p>
+                    {/* Reviewer assignment badge */}
+                    <p className="mt-0.5 text-xs text-gray-500">
+                      {r.reviewer_auditor_name
+                        ? <>Reviewer: <span className="font-medium text-gray-700">{r.reviewer_auditor_name}</span></>
+                        : <span className="text-amber-600">No reviewer assigned</span>
+                      }
                     </p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
                     <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${cfg.chip}`}>
                       {cfg.label}
                     </span>
-                    {/* Portal 75 — Open in Viewer so CM can sign CB_REVIEWER slot inline */}
                     <a
                       href={`/viewer/audit_report/${r.id}`}
                       className="flex items-center gap-1 text-xs text-[#1A4731] underline"
@@ -137,16 +203,73 @@ export function AuditReportSection({
                       <ExternalLink size={11} />
                       View
                     </a>
-                    <button
-                      type="button"
-                      onClick={() => download(r.id, r.file_name)}
-                      className="text-xs text-[#1A4731] underline"
-                    >
+                    <button type="button" onClick={() => download(r.id, r.file_name)}
+                      className="text-xs text-[#1A4731] underline">
                       Download
                     </button>
+                    {/* Assign Reviewer button — only before approval */}
+                    {r.status !== 'approved' && (
+                      <button
+                        type="button"
+                        onClick={() => openAssignPanel(r.id)}
+                        className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
+                          isPanelOpen
+                            ? 'border-gray-400 bg-gray-100 text-gray-700'
+                            : 'border-[#1A4731] text-[#1A4731] hover:bg-green-50'
+                        }`}
+                      >
+                        {r.reviewer_auditor_name ? 'Change Reviewer' : 'Assign Reviewer'}
+                      </button>
+                    )}
                   </div>
                 </div>
 
+                {/* Assign reviewer panel */}
+                {isPanelOpen && (
+                  <div className="mt-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3">
+                    <p className="mb-2 text-xs font-medium text-gray-600">
+                      Select reviewer from eligible auditors:
+                    </p>
+                    {loadingCands ? (
+                      <p className="text-xs text-gray-400">Loading candidates…</p>
+                    ) : candidates.length === 0 ? (
+                      <p className="text-xs text-red-500">
+                        No eligible auditors found for this audit&apos;s standards.
+                      </p>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={selectedCand}
+                          onChange={e => setSelectedCand(e.target.value)}
+                          className="flex-1 rounded-lg border bg-white px-2 py-1.5 text-sm"
+                        >
+                          <option value="">— choose auditor —</option>
+                          {candidates.map(c => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          disabled={!selectedCand || assigning}
+                          onClick={() => handleAssign(r.id)}
+                          className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs text-white disabled:opacity-40 hover:bg-[#143828]"
+                        >
+                          {assigning ? 'Saving…' : 'Assign'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAssigningFor(null)}
+                          className="text-xs text-gray-400 hover:text-gray-600"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                    {assignErr && <p className="mt-1 text-xs text-red-500">{assignErr}</p>}
+                  </div>
+                )}
+
+                {/* CM/reviewer direct-approve (only for CB staff with can_review) */}
                 {r.can_review && r.status === 'pending_review' && (
                   <div className="mt-2 flex items-end gap-3">
                     <div>
