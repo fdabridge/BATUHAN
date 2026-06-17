@@ -121,7 +121,7 @@ FR223_MAP = {
     "scope_en":              (0, 8, 1),
     "non_applicable_clauses": (0, 9, 1),
     "audit_type_str":        (0, 10, 1),
-    "stage_1_date":          (0, 10, 4),   # Audit Date/s
+    "audit_dates":           (0, 10, 4),   # Audit Date/s (current stage)
     "effective_employees":   (0, 11, 1),
     "audit_days":            (0, 11, 4),
     "shift_count":           (0, 12, 1),
@@ -161,7 +161,7 @@ FR224_MAP = {
     "scope_en":              (0, 8, 1),
     "non_applicable_clauses": (0, 9, 1),
     "audit_type_str":        (0, 10, 1),
-    "stage_1_date":          (0, 10, 4),
+    "audit_dates":           (0, 10, 4),   # Audit Date/s (current stage)
     "effective_employees":   (0, 11, 1),
     "audit_days":            (0, 11, 4),
 
@@ -228,7 +228,7 @@ FR231_MAP = {
     "technical_expert_1_name": (3, 6, 1),
     "observer_1_name":       (3, 9, 1),
     "representative":        (3, 10, 1),
-    "stage_1_date":          (4, 0, 1),    # Audit Date/s
+    "audit_dates":           (4, 0, 1),    # Audit Date/s (current stage)
     "audit_days":            (4, 0, 3),    # Audit/Day Number
 
     # GENERAL section (Table 12)
@@ -254,7 +254,7 @@ FR232_MAP = {
     "technical_expert_1_name": (3, 6, 1),
     "observer_1_name":       (3, 9, 1),
     "representative":        (3, 10, 1),
-    "stage_2_date":          (4, 0, 1),
+    "audit_dates":           (4, 0, 1),   # Audit Date/s (current stage — Stage 2 or Surveillance)
     "audit_days":            (4, 0, 3),
 
     "effective_employees":     (11, 3, 1),
@@ -299,7 +299,7 @@ FR234_MAP = {
 # ---------------------------------------------------------------------------
 FR211_MAP = {
     "lead_auditor_name":     (0, 0, 1),
-    "stage_1_date":          (0, 1, 1),    # Audit Date/s — caller may override with stage date
+    "audit_dates":           (0, 1, 1),    # Audit Date/s (current stage)
     "company_name":          (0, 2, 1),
     "standards_str":         (0, 3, 1),
 }

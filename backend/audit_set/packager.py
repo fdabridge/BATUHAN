@@ -275,10 +275,12 @@ def render_single_document(audit_set, db, fr_number: str, stage_type: str) -> tu
         ctx["assessed_person_name"] = ctx.get("lead_auditor_name", "") or ""
 
     data = render_docx(spec.template_path, ctx)
+    # Always apply colour highlighting (safe no-op on forms without standard/audit-type cells).
+    data = apply_standard_highlighting(data, standards_codes)
+    data = apply_audit_type_highlighting(data, audit_set.audit_type or "")
+    # Tick legacy Word checkboxes only on FR.220 / FR.221.
     if fr_number in CHECKBOX_FORMS:
         data = apply_checkbox_selection(data, standards_codes)
-        data = apply_standard_highlighting(data, standards_codes)
-        data = apply_audit_type_highlighting(data, audit_set.audit_type or "")
     return spec.output_filename, data
 
 
@@ -335,12 +337,13 @@ def build_audit_set_zip(audit_set, db) -> bytes:
                         else:
                             rctx = ctx
                         data = render_docx(doc.template_path, rctx)
+                        # Always apply colour highlighting (safe no-op on forms without
+                        # standard/audit-type cells).
+                        data = apply_standard_highlighting(data, standards_codes)
+                        data = apply_audit_type_highlighting(data, audit_set.audit_type or "")
+                        # Tick legacy Word checkboxes only on FR.220 / FR.221.
                         if doc.fr_number in CHECKBOX_FORMS:
                             data = apply_checkbox_selection(data, standards_codes)
-                            data = apply_standard_highlighting(data, standards_codes)
-                            data = apply_audit_type_highlighting(
-                                data, audit_set.audit_type or ""
-                            )
                         zf.writestr(f"{company_slug}/{output_folder}/{base_out}", data)
                 except Exception as exc:
                     logger.warning(

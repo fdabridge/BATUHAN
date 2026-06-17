@@ -381,6 +381,8 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
         # Audit type
         "audit_type": audit_type,
         "audit_type_display": AUDIT_TYPE_DISPLAY.get(audit_type, audit_type),
+        # Alias used by FR.223 / FR.224 / FR.225 field maps (must match audit_type_display).
+        "audit_type_str": AUDIT_TYPE_DISPLAY.get(audit_type, audit_type),
         "is_initial": is_initial,
         "is_surveillance": is_surveillance,
         "is_recertification": is_recertification,
@@ -396,6 +398,13 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
         "closing_meeting_date": format_date(closing_meeting_date),
         "stage1_dates": format_date_range(stage1.audit_date_start, stage1.audit_date_end) if stage1 else "",
         "stage2_dates": format_date_range(stage2.audit_date_start, stage2.audit_date_end) if stage2 else "",
+        # Underscore-named aliases used by FR.233, FR.232, FR.231, FR.211 field maps.
+        "stage_1_date": format_date_range(stage1.audit_date_start, stage1.audit_date_end) if stage1 else "",
+        "stage_2_date": (
+            format_date_range(stage2.audit_date_start, stage2.audit_date_end) if stage2
+            else (format_date_range(start, end) if (is_surveillance or is_recertification) else "")
+        ),
+        "surveillance_date": format_date_range(start, end) if is_surveillance else "",
         "stage2_start_date": format_date(stage2.audit_date_start) if stage2 else "",
         "surv1_estimated_date": format_date(surv1_estimated),
         "surv2_estimated_date": format_date(surv2_estimated),

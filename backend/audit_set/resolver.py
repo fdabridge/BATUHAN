@@ -225,18 +225,32 @@ def _build_surveillance(needs_base, needs_mdqms, needs_isms, sub: str, missing: 
     specs: list[DocumentSpec] = []
     seen: set[str] = set()
 
+    # Common plan / meeting / NC forms — same template for all standard groups.
     for fr, fmap in [
         ("FR.223", FR223_MAP), ("FR.224", FR224_MAP), ("FR.225", FR225_MAP),
-        ("FR.230", FR230_MAP), ("FR.232", FR232_MAP), ("FR.234", FR234_MAP),
-        ("FR.211", FR211_MAP),
+        ("FR.230", FR230_MAP),
     ]:
         if needs_base:  _add(specs, seen, fr, "base",  sub, fmap, "surveillance", missing)
         if needs_mdqms: _add(specs, seen, fr, "mdqms", sub, fmap, "surveillance", missing)
         if needs_isms:  _add(specs, seen, fr, "isms",  sub, fmap, "surveillance", missing)
 
-    # FR.233 — Review & Decision Form (certification committee)
+    # Audit report — standard-specific form (mirrors _build_stage_2).
+    if needs_base:
+        _add(specs, seen, "FR.232",   "base",  sub, FR232_MAP, "surveillance", missing)
+    if needs_mdqms:
+        _add(specs, seen, "FR.232-1", "mdqms", sub, FR232_MAP, "surveillance", missing)
+    if needs_isms:
+        _add(specs, seen, "FR.229",   "isms",  sub, FR232_MAP, "surveillance", missing)
+
+    # Auditor assessment — one per standard group.
+    if needs_base:  _add(specs, seen, "FR.211", "base",  sub, FR211_MAP, "surveillance", missing)
+    if needs_mdqms: _add(specs, seen, "FR.211", "mdqms", sub, FR211_MAP, "surveillance", missing)
+    if needs_isms:  _add(specs, seen, "FR.211", "isms",  sub, FR211_MAP, "surveillance", missing)
+
+    # Single-instance forms (primary group only).
     primary = "base" if needs_base else ("mdqms" if needs_mdqms else ("isms" if needs_isms else None))
     if primary:
+        _add(specs, seen, "FR.234", primary, sub, FR234_MAP, "surveillance", missing)
         _add(specs, seen, "FR.233", primary, sub, FR233_MAP, "surveillance", missing)
 
     return specs
