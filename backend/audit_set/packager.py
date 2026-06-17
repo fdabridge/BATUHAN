@@ -185,7 +185,8 @@ def _resolve_org_attendees(audit_set, db) -> list[dict]:
     """Portal 49a — resolve the client's active ClientOrgEmployee roster for
     FR.225 docxtpl injection. The template wraps ``emp.sig_key`` with
     ``ORG_OPENING_`` / ``ORG_CLOSING_`` prefixes per row, so this function
-    must return the bare ``ORG_EMP_<uuid>`` token.
+    must return the bare ``ORG_EMP_N`` token (Portal 73: 1-based row index,
+    ordered by created_at — must stay in sync with viewer_router lookup).
 
     Falls back to 3 blank placeholder rows when no client is linked, the
     employees table is missing, or no employees are registered yet, so the
@@ -220,8 +221,8 @@ def _resolve_org_attendees(audit_set, db) -> list[dict]:
                 logger.warning("[FR225] Zero employees registered — using blank placeholders")
                 return _blank_org_attendee_rows()
             return [
-                {"name": e.full_name, "role": e.role_title, "sig_key": f"ORG_EMP_{e.id}"}
-                for e in employees
+                {"name": e.full_name, "role": e.role_title, "sig_key": f"ORG_EMP_{i}"}
+                for i, e in enumerate(employees, 1)
             ]
         finally:
             auth_db.close()

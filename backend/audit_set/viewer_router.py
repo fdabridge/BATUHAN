@@ -73,9 +73,10 @@ ROLE_TO_SIG: dict[str, str] = {
 SIG_TO_ROLE: dict[str, str] = {v: k for k, v in ROLE_TO_SIG.items()}
 
 # Portal 49a Part 2 — FR.225 organisation-personnel signature slots.
-# Format: ORG_OPENING_ORG_EMP_<uuid> or ORG_CLOSING_ORG_EMP_<uuid>
+# Portal 73: format changed from ORG_OPENING_ORG_EMP_<uuid> to ORG_OPENING_ORG_EMP_<N>
+# (1-based row index, ordering matches packager created_at).
 ORG_SIG_RE = re.compile(
-    r"^ORG_(OPENING|CLOSING)_ORG_EMP_([0-9a-fA-F-]{36})$"
+    r"^ORG_(OPENING|CLOSING)_ORG_EMP_(\d+)$"
 )
 
 # Portal 59 — FR.225 audit-team signature slots (added to all 9 templates in
@@ -115,7 +116,11 @@ COMMITTEE_MEMBER_RE = re.compile(r"^COMMITTEE_MEMBER_(.+)$")
 SIG_KEY_ALIASES: dict[str, str] = {
     "AUDITOR_MEMBER":      "ASSIGNED_AUDITOR",   # FR.224
     "CLIENT":              "ORG_REP",             # FR.211 / FR.223 only (template-scoped)
-    "CB_REVIEWER":         "APPOINTED_REVIEWER",  # FR.231 / FR.232 only (template-scoped)
+    # Portal 73 — FR.231/FR.232 templates now use CB_CERT_MANAGER.
+    # Keep aliases so existing VisualSignaturePlacement rows written under the
+    # old names (CB_REVIEWER, APPOINTED_REVIEWER) still resolve at read-time.
+    "CB_REVIEWER":         "CB_CERT_MANAGER",
+    "APPOINTED_REVIEWER":  "CB_CERT_MANAGER",
     "CERT_MANAGER_REVIEW": "CERT_MANAGER_FR233",  # FR.233 only (template-scoped)
 }
 
@@ -489,6 +494,36 @@ def _org_team_eligible(
     return eligible
 
 
+# ── Helper: resolve org employee by 1-based row index (Portal 73) ────────────
+
+def _resolve_org_emp_by_index(
+    audit_set_id: str,
+    row_index: int,
+    db: Session,
+    auth_db: Session,
+) -> Optional["ClientOrgEmployee"]:
+    """Return the ClientOrgEmployee at 1-based row_index (created_at order).
+
+    Ordering must match packager._resolve_org_attendees exactly so the
+    sig_key ORG_EMP_N always refers to the same employee in both the DOCX
+    template and this lookup.
+    """
+    client_user = auth_db.query(PlatformUser).filter_by(
+        role="client", audit_set_id=audit_set_id
+    ).first()
+    if not client_user:
+        return None
+    employees = (
+        db.query(ClientOrgEmployee)
+        .filter_by(client_user_id=client_user.id, is_active=True)
+        .order_by(ClientOrgEmployee.created_at)
+        .all()
+    )
+    if 1 <= row_index <= len(employees):
+        return employees[row_index - 1]
+    return None
+
+
 # ── Helper: _assert_can_sign ──────────────────────────────────────────────────
 
 def _assert_can_sign(
@@ -497,6 +532,7 @@ def _assert_can_sign(
     sig_key: str,
     current_user: PlatformUser,
     db: Session,
+    auth_db: Optional[Session] = None,
 ) -> None:
     """Raise HTTPException(403/400) if current_user may not sign sig_key."""
 
@@ -537,8 +573,8 @@ def _assert_can_sign(
                 raise HTTPException(403, "Only the client account may sign organisation slots")
             if current_user.audit_set_id != doc.audit_set_id:
                 raise HTTPException(403, "This document is not for your audit set")
-            employee_id = ORG_SIG_RE.match(sig_key).group(2)
-            emp = db.query(ClientOrgEmployee).filter_by(id=employee_id, is_active=True).first()
+            row_idx = int(ORG_SIG_RE.match(sig_key).group(2))
+            emp = _resolve_org_emp_by_index(doc.audit_set_id, row_idx, db, auth_db)
             if not emp or emp.client_user_id != current_user.id:
                 raise HTTPException(404, "Employee not in your roster")
             if not emp.signature_data:
@@ -624,10 +660,8 @@ def _assert_can_sign(
             if not stage or stage.lead_auditor_id != current_user.auditor_id:
                 raise HTTPException(403, "Only the Lead Auditor for this stage may sign")
 
-        elif sig_key == "CB_REVIEWER":
-            # Portal 75 — CB_REVIEWER on audit_report is signed by the Certification
-            # Manager directly (no committee appointment needed). Same pattern as the
-            # CB_CERT_MANAGER slot on FR.218 (application review).
+        elif sig_key in ("CB_REVIEWER", "CB_CERT_MANAGER"):
+            # Portal 73 — templates now use CB_CERT_MANAGER; CB_REVIEWER kept as alias.
             if report.reviewer_signed_at:
                 raise HTTPException(400, "Certification Manager has already signed this report")
             if current_user.role not in ("certification_manager", "admin"):
@@ -743,7 +777,8 @@ def _get_field_status(
         # keys are not in SIG_TO_ROLE and have no AuditDocumentSignature slot.
         org_match = ORG_SIG_RE.match(sig_key)
         if org_match:
-            emp = db.query(ClientOrgEmployee).filter_by(id=org_match.group(2)).first()
+            row_idx = int(org_match.group(2))
+            emp = _resolve_org_emp_by_index(doc.audit_set_id, row_idx, db, auth_db)
             emp_name = emp.full_name if emp else None
             if vsp:
                 return _result("signed", emp_name, vsp.signature_image)
@@ -846,9 +881,8 @@ def _get_field_status(
                 is_la = stage is not None and stage.lead_auditor_id == current_user.auditor_id
             return _result("current_user" if is_la else "pending")
 
-        elif sig_key == "CB_REVIEWER":
-            # Portal 75 — CB_REVIEWER on audit_report is the Certification Manager.
-            # No committee membership check; pure role gate matches _assert_can_sign.
+        elif sig_key in ("CB_REVIEWER", "CB_CERT_MANAGER"):
+            # Portal 73 — templates now use CB_CERT_MANAGER; CB_REVIEWER kept as alias.
             if report.reviewer_signed_at:
                 return _result("signed", _user_name(report.reviewer_user_id), vsp.signature_image if vsp else None)
             if not report.la_signed_at:
@@ -1165,7 +1199,7 @@ def _commit_existing_signing_record(
             report.status         = "pending_review"
             db.commit()
 
-        elif sig_key == "CB_REVIEWER" and not report.reviewer_signed_at:
+        elif sig_key in ("CB_REVIEWER", "CB_CERT_MANAGER") and not report.reviewer_signed_at:
             report.reviewer_user_id     = current_user.id
             report.reviewer_signed_at   = now
             report.reviewer_signed_ip   = ip
@@ -1266,11 +1300,13 @@ def viewer_signing_status(
                     employees = (
                         db.query(ClientOrgEmployee)
                         .filter_by(client_user_id=client_user.id, is_active=True)
+                        .order_by(ClientOrgEmployee.created_at)  # must match packager order
                         .all()
                     )
-                    for emp in employees:
-                        db_sig_keys.add(f"ORG_OPENING_ORG_EMP_{emp.id}")
-                        db_sig_keys.add(f"ORG_CLOSING_ORG_EMP_{emp.id}")
+                    # Portal 73 — use 1-based index (matches packager._resolve_org_attendees)
+                    for i, _ in enumerate(employees, 1):
+                        db_sig_keys.add(f"ORG_OPENING_ORG_EMP_{i}")
+                        db_sig_keys.add(f"ORG_CLOSING_ORG_EMP_{i}")
             except Exception:
                 logger.warning("[FR225] Could not seed employee sig keys for doc=%s", doc_id, exc_info=True)
 
@@ -1324,7 +1360,7 @@ def sign_confirm(
     saved signature image, then mirrors the event into workflow/legal tables
     via _commit_existing_signing_record.
     """
-    _assert_can_sign(body.document_type, body.doc_id, body.sig_key, current_user, db)
+    _assert_can_sign(body.document_type, body.doc_id, body.sig_key, current_user, db, auth_db)
 
     # Portal 56 — client-side org-rep slots require an employee from the
     # client's roster. The legal user is still current_user, but the displayed
@@ -1353,12 +1389,16 @@ def sign_confirm(
         )
 
     # Resolve the signature image to embed.
-    #   ORG_OPENING_*/ORG_CLOSING_*  → embedded employee uuid in the sig_key
+    #   ORG_OPENING_*/ORG_CLOSING_*  → employee resolved by 1-based row index (Portal 73)
     #   CLIENT / ORG_REP             → selected_employee from the picker (Portal 56)
     #   everything else              → current user's UserSignature
     org_match = ORG_SIG_RE.match(body.sig_key)
     if org_match:
-        emp = db.query(ClientOrgEmployee).filter_by(id=org_match.group(2)).first()
+        row_idx = int(org_match.group(2))
+        # Resolve audit_set_id from the shared-document record (meeting_form is always shared_doc).
+        _doc = db.query(AuditSetSharedDocument).filter_by(id=body.doc_id).first()
+        audit_set_id = _doc.audit_set_id if _doc else None
+        emp = _resolve_org_emp_by_index(audit_set_id, row_idx, db, auth_db) if audit_set_id else None
         if not emp or not emp.signature_data:
             raise HTTPException(400, "Employee signature missing — re-upload and try again.")
         signature_image_b64 = emp.signature_data
