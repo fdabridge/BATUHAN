@@ -419,15 +419,16 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
         "site_addresses": "\n".join(s.get("address", "") for s in sites) or (audit_set.company_address or ""),
         # Portal 78 — per-site template variables (site_1_* … site_5_*)
         "additional_sites_count": len(sites_raw) if (audit_set.sites or []) else 0,
-        **{k: v for k, v in (
-            {
+        **{
+            k: v
+            for i, s in enumerate((audit_set.sites or [])[:5], start=1)
+            for k, v in {
                 f"site_{i}_name":      s.get("name", f"Site {i}"),
                 f"site_{i}_address":   s.get("address", ""),
                 f"site_{i}_employees": s.get("employee_count", "") or "",
                 f"site_{i}_process":   s.get("process", ""),
-            }
-            for i, s in enumerate((audit_set.sites or [])[:5], start=1)
-        ).items()},
+            }.items()
+        },
         **{k: "" for k in (
             f"site_{i}_{field}"
             for i in range(len(audit_set.sites or []) + 1, 6)
