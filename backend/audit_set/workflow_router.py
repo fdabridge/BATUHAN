@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from audit_set.db_models import (
     AuditDocumentSignature,
     AuditSet,
+    AuditSetAuditReport,
     AuditSetSharedDocument,
     AuditSetStage,
     AuditSetStatusEvent,
@@ -169,12 +170,20 @@ def _assert_stage1_complete_gate(db: Session, audit_set_id: str) -> None:
     if team_infos and any(_unsigned_required_count(db, t.id) for t in team_infos):
         failures.append("Not all Stage 1 FR.224s are fully signed by their assigned auditors")
 
-    stage1_reports = _stage_docs(
-        db, audit_set_id, "stage1_report", "stage_1", include_null_stage=True,
+    # FR.231 is stored in AuditSetAuditReport (uploaded via report_router),
+    # not in AuditSetSharedDocument — check the correct table.
+    stage1_audit_reports = (
+        db.query(AuditSetAuditReport)
+        .filter_by(audit_set_id=audit_set_id, stage_type="stage_1")
+        .filter(AuditSetAuditReport.report_form.in_(["FR.231", "FR.229"]))
+        .all()
     )
-    if not stage1_reports:
+    if not stage1_audit_reports:
         failures.append("Stage 1 FR.231 Stage Report has not been uploaded")
-    elif any(_unsigned_required_count(db, r.id) for r in stage1_reports):
+    elif not any(
+        r.la_signed_at is not None and r.reviewer_signed_at is not None
+        for r in stage1_audit_reports
+    ):
         failures.append("Stage 1 FR.231 Stage Report is not fully signed")
 
     if failures:
