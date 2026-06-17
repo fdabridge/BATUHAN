@@ -90,9 +90,18 @@ _SECTOR_KW: dict[str, tuple[str, ...]] = {
 _ENERGY_HIGH_KW = ("chemical", "steel", "cement", "refinery", "petrochemical", "mining", "smelting")
 _ENERGY_MED_KW  = ("manufacturing", "production", "industrial", "plant", "factory", "assembly")
 
-# Scope text → EA code keyword map (IAF EA 1–39)
+# Scope text → EA code keyword map (IAF EA 1–39, per TÜRKAK R40.01 / IAF MD 1)
+# Keys are the official IAF EA code numbers. Keyword sets derived from NACE Rev.2 sub-sectors.
 _SCOPE_TO_EA_KW: dict[str, tuple[str, ...]] = {
-    "EA 1":  ("agriculture", "farming", "horticulture", "fishery", "aquaculture", "forestry", "livestock"),
+    # EA 1  – Agriculture, forestry and fishing (NACE 01, 02, 03)
+    "EA 1":  ("agriculture", "farming", "horticulture", "fishery", "aquaculture",
+              "forestry", "livestock", "poultry", "crop", "harvest", "animal husbandry"),
+
+    # EA 2  – Mining and quarrying (NACE 05–09)
+    "EA 2":  ("mining", "quarrying", "coal mining", "oil extraction", "gas extraction",
+              "mineral extraction", "stone quarry", "gravel extraction", "sand extraction"),
+
+    # EA 3  – Food products, beverages and tobacco (NACE 10, 11, 12)
     "EA 3":  ("food", "beverage", "tobacco", "bakery", "confectionery", "dairy", "meat processing",
               "cake", "tortilla", "snack", "sandwich", "pastry", "bread", "milling", "brewing",
               "gluten", "biscuit", "cookie", "cracker", "noodle", "pasta production",
@@ -100,35 +109,167 @@ _SCOPE_TO_EA_KW: dict[str, tuple[str, ...]] = {
               "cereal", "flour", "sugar", "chocolate", "candy", "jam", "sauce", "condiment",
               "olive", "oil production", "bottling", "canning", "packaging food", "food production",
               "food processing", "food manufacturing", "food storage", "halal", "organic food"),
-    "EA 4":  ("textile", "clothing", "apparel", "garment", "leather", "footwear", "fabric"),
-    "EA 5":  ("wood", "furniture", "paper", "pulp", "printing", "packaging material"),
-    "EA 6":  ("chemical", "petrochemical", "pharmaceutical", "cosmetic", "paint", "coating", "adhesive"),
-    "EA 7":  ("metal", "steel", "aluminium", "foundry", "forging", "casting", "metallurgy", "welding"),
-    "EA 8":  ("machinery", "equipment manufacturing", "pump", "compressor", "valve", "industrial equipment"),
-    "EA 9":  ("electrical", "electronics", "semiconductor", "circuit board", "pcb", "electronic component"),
-    "EA 10": ("shipbuilding", "marine", "aerospace", "aircraft", "defence", "military equipment"),
-    "EA 11": ("automotive", "vehicle", "car", "truck", "bus", "motorcycle", "spare part", "auto component"),
-    "EA 13": ("rubber", "plastic", "polymer", "composite"),
-    "EA 14": ("glass", "ceramic", "stone", "mineral", "tile", "brick"),
-    "EA 15": ("concrete", "cement", "construction material", "aggregate"),
-    "EA 16": ("construction", "building", "civil engineering", "infrastructure", "contractor", "installation"),
-    "EA 17": ("wholesale", "retail", "trade", "distribution", "import", "export", "commerce"),
-    "EA 18": ("hotel", "restaurant", "catering", "hospitality", "tourism", "accommodation"),
-    "EA 19": ("transport", "logistics", "freight", "courier", "shipping", "warehousing", "supply chain"),
-    "EA 20": ("mining", "quarrying", "extraction", "oil", "gas", "refinery", "petroleum"),
-    "EA 21": ("water treatment", "waste management", "recycling", "environmental services", "sewage"),
-    "EA 22": ("electricity generation", "power plant", "gas supply", "energy utility", "grid"),
-    "EA 23": ("education", "training", "school", "university", "academy", "e-learning"),
-    "EA 24": ("healthcare", "hospital", "clinic", "medical services", "diagnostic laboratory"),
-    "EA 26": ("financial", "banking", "insurance", "investment", "fintech", "audit firm"),
-    "EA 27": ("information technology", "it services", "data centre", "cloud", "managed services"),
-    "EA 28": ("telecom", "telecommunication", "internet service provider", "isp"),
-    "EA 29": ("engineering services", "technical consulting", "testing laboratory", "inspection"),
-    "EA 33": ("software development", "software house", "it consulting", "technology consulting", "saas"),
-    "EA 34": ("management consulting", "business services", "legal services", "advisory"),
-    "EA 35": ("public administration", "government services", "municipality"),
-    "EA 37": ("media", "publishing", "broadcasting", "advertising"),
-    "EA 39": ("beauty", "cleaning services", "laundry", "personal services"),
+
+    # EA 4  – Textiles and textile products (NACE 13, 14)
+    "EA 4":  ("textile", "clothing", "apparel", "garment", "fabric", "weaving", "knitting",
+              "yarn", "thread", "embroidery", "fashion", "tailor", "sewing"),
+
+    # EA 5  – Leather and leather products (NACE 15)
+    "EA 5":  ("leather", "tanning", "hide processing", "skin processing",
+              "leather goods", "leatherwork", "footwear"),
+
+    # EA 6  – Wood and wood products (NACE 16)
+    "EA 6":  ("wood", "timber", "sawmill", "lumber", "furniture", "carpentry", "joinery",
+              "plywood", "particleboard", "woodworking"),
+
+    # EA 7  – Pulp, paper and paper products (NACE 17)
+    "EA 7":  ("paper", "pulp", "paperboard", "cardboard", "packaging material",
+              "paper manufacturing", "cellulose", "tissue paper", "stationery"),
+
+    # EA 8  – Publishing companies (NACE 58.1, 59.2)
+    "EA 8":  ("publishing", "book publishing", "journal publishing", "sound recording",
+              "music publishing"),
+
+    # EA 9  – Printing companies (NACE 18)
+    "EA 9":  ("printing", "print shop", "offset printing", "digital printing",
+              "flexography", "gravure", "screen printing", "print production"),
+
+    # EA 10 – Manufacture of coke and refined petroleum products (NACE 19)
+    "EA 10": ("coke production", "coke manufacture", "petroleum refinery", "oil refinery",
+              "refining", "fuel production", "refined petroleum"),
+
+    # EA 11 – Nuclear fuel (NACE 24.46)
+    "EA 11": ("nuclear", "nuclear fuel", "uranium", "radioactive", "atomic energy"),
+
+    # EA 12 – Chemicals, chemical products and fibres (NACE 20)
+    "EA 12": ("chemical", "petrochemical", "fertilizer", "pesticide", "dye", "pigment",
+              "adhesive", "paint", "coating", "varnish", "ink", "detergent",
+              "industrial chemical", "synthetic fibre", "resin", "cosmetic"),
+
+    # EA 13 – Pharmaceuticals (NACE 21)
+    "EA 13": ("pharmaceutical", "medicine", "drug manufacturing", "medication",
+              "biopharmaceutical", "vaccine", "active pharmaceutical", "api"),
+
+    # EA 14 – Rubber and plastic products (NACE 22)
+    "EA 14": ("rubber", "plastic", "polymer", "composite", "silicone", "elastomer",
+              "plastic moulding", "injection moulding", "rubber product"),
+
+    # EA 15 – Non-metallic mineral products (NACE 23, excl. 23.5/23.6)
+    "EA 15": ("glass", "ceramic", "stone", "mineral product", "tile", "brick",
+              "refractory", "abrasive", "porcelain", "fireclay", "insulation material"),
+
+    # EA 16 – Concrete, cement, lime, plaster (NACE 23.5, 23.6)
+    "EA 16": ("concrete", "cement", "lime", "plaster", "mortar", "readymix", "ready-mix",
+              "precast", "aggregate", "asphalt"),
+
+    # EA 17 – Basic metals and fabricated metal products (NACE 24 excl. 24.46, 25 excl. 25.4, 33.11)
+    "EA 17": ("metal", "steel", "aluminium", "aluminum", "copper", "iron", "zinc",
+              "foundry", "forging", "casting", "metallurgy", "welding", "sheet metal",
+              "metal fabrication", "structural steel", "metal product", "wire drawing",
+              "pipe fitting"),
+
+    # EA 18 – Machinery and equipment (NACE 25.4, 28, 30.4, 33.12, 33.2)
+    "EA 18": ("machinery", "equipment manufacturing", "pump", "compressor", "valve",
+              "industrial equipment", "machine tool", "lifting equipment",
+              "agricultural machinery", "food processing machinery", "mechanical engineering"),
+
+    # EA 19 – Electrical and optical equipment (NACE 26, 27, 33.13, 33.14, 95.1)
+    "EA 19": ("electrical", "electronics", "semiconductor", "circuit board", "pcb",
+              "electronic component", "optical equipment", "lighting", "motor",
+              "transformer", "switchgear", "instrumentation", "measurement equipment",
+              "optical instrument"),
+
+    # EA 20 – Shipbuilding (NACE 30.1, 33.15)
+    "EA 20": ("shipbuilding", "ship repair", "marine vessel", "yacht", "boat building",
+              "naval", "offshore platform", "marine engineering"),
+
+    # EA 21 – Aerospace (NACE 30.3, 33.16)
+    "EA 21": ("aerospace", "aircraft", "aviation", "spacecraft", "satellite",
+              "helicopter", "aeronautical"),
+
+    # EA 22 – Other transport equipment (NACE 29, 30.2, 30.9, 33.17)
+    "EA 22": ("automotive", "vehicle", "car", "truck", "bus", "motorcycle",
+              "auto component", "rail vehicle", "locomotive", "tram",
+              "transport equipment manufacturing"),
+
+    # EA 23 – Manufacturing not elsewhere classified (NACE 31, 32, 33.19)
+    "EA 23": ("furniture manufacturing", "jewellery", "musical instrument", "toy",
+              "sport equipment", "sign making", "miscellaneous manufacturing"),
+
+    # EA 24 – Recycling (NACE 38.3)
+    "EA 24": ("recycling", "scrap", "secondary raw material", "material recovery",
+              "waste recycling", "metal recycling", "paper recycling"),
+
+    # EA 25 – Electricity supply (NACE 35.1)
+    "EA 25": ("electricity generation", "power plant", "power generation", "solar power",
+              "wind power", "hydroelectric", "electricity supply", "grid operator"),
+
+    # EA 26 – Gas supply (NACE 35.2)
+    "EA 26": ("gas supply", "gas distribution", "natural gas", "lpg", "gas network"),
+
+    # EA 27 – Water supply (NACE 35.3, 36)
+    "EA 27": ("water supply", "water treatment", "water distribution", "drinking water",
+              "water utility", "irrigation"),
+
+    # EA 28 – Construction (NACE 41, 42, 43)
+    "EA 28": ("construction", "building", "civil engineering", "infrastructure",
+              "contractor", "installation services", "demolition", "real estate development",
+              "building contractor", "road construction", "bridge construction", "earthworks"),
+
+    # EA 29 – Wholesale and retail trade (NACE 45, 46, 47, 95.2)
+    "EA 29": ("wholesale", "retail", "trade", "distribution", "import", "export",
+              "commerce", "sales", "marketing", "medical devices", "medical supplies",
+              "medical equipment", "spare parts", "dealership", "reseller", "supplier",
+              "procurement", "motor vehicle trade", "consumer goods", "merchandise"),
+
+    # EA 30 – Hotels and restaurants (NACE 55, 56)
+    "EA 30": ("hotel", "restaurant", "catering", "hospitality", "tourism",
+              "accommodation", "food service", "canteen", "cafeteria", "resort"),
+
+    # EA 31 – Transport, storage and communication (NACE 49, 50, 51, 52, 53, 61)
+    "EA 31": ("transport", "logistics", "freight", "courier", "shipping", "warehousing",
+              "supply chain", "postal", "air transport", "road transport", "rail transport",
+              "sea transport", "telecommunication", "telecom", "internet service provider", "isp"),
+
+    # EA 32 – Financial intermediation; real estate; renting (NACE 64, 65, 66, 68, 77)
+    "EA 32": ("financial", "banking", "insurance", "investment", "fintech",
+              "asset management", "real estate", "property", "leasing", "renting equipment"),
+
+    # EA 33 – Information technology (NACE 58.2, 62, 63.1)
+    "EA 33": ("information technology", "it services", "data centre", "cloud",
+              "managed services", "software development", "software house", "it consulting",
+              "technology consulting", "saas", "data processing", "web development",
+              "cybersecurity"),
+
+    # EA 34 – Engineering services (NACE 71, 72, 74 excl. 74.2/74.3)
+    "EA 34": ("engineering services", "technical consulting", "testing laboratory",
+              "inspection services", "research and development", "r&d", "technical services",
+              "design engineering", "architectural", "surveying", "scientific research"),
+
+    # EA 35 – Other services (NACE 69, 70, 73, 74.2, 74.3, 78, 80, 81, 82)
+    "EA 35": ("management consulting", "business services", "legal services", "advisory",
+              "accounting", "audit firm", "market research", "advertising agency",
+              "photography", "translation", "staffing", "security services",
+              "facility management", "cleaning company", "office support"),
+
+    # EA 36 – Public administration (NACE 84)
+    "EA 36": ("public administration", "government services", "government agency",
+              "ministry", "public authority", "state institution"),
+
+    # EA 37 – Education (NACE 85)
+    "EA 37": ("education", "training", "school", "university", "academy", "e-learning",
+              "vocational training", "language school", "tutoring"),
+
+    # EA 38 – Health and social work (NACE 75, 86, 87, 88)
+    "EA 38": ("healthcare", "hospital", "clinic", "medical services", "diagnostic laboratory",
+              "veterinary", "social work", "nursing home", "rehabilitation", "dental"),
+
+    # EA 39 – Other social services (NACE 37, 38.1/38.2, 39, 59–60, 63.9, 79, 90–96)
+    "EA 39": ("waste collection", "sewage", "remediation", "film production",
+              "media production", "broadcasting", "radio", "television",
+              "libraries", "museums", "sports", "recreation", "fitness",
+              "membership organisation", "beauty", "laundry", "personal services",
+              "travel agency", "cultural activities", "entertainment"),
 }
 
 # Risk level keywords for ISO 9001 / 45001 (affects table lookup in the engine)

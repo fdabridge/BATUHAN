@@ -1,56 +1,67 @@
 # ISO / IAF Standards Reference — Certiva Platform
 
-**Last updated:** 2026-05-17  
-**Source:** IAF mandatory documents, ISO standards, FSSC 22000 Scheme v6, TÜRKAK/UAF rules  
+**Last updated:** 2026-06-17  
+**Source:** IAF mandatory documents, ISO standards, FSSC 22000 Scheme v6, TÜRKAK/UAF rules, TÜRKAK R40.01, technical_sectors.xlsx (IAF Sector Library)  
 **Purpose:** Authoritative reference for coding decisions in Certiva. Do not deviate from this without reverifying against primary sources.
 
 ---
 
 ## 1. IAF EA Code System
 
-EA codes are **industry sector identifiers** (not risk levels). They are used by ABs and CBs to define accreditation/certification scope. 39 official codes:
+EA codes are **industry sector identifiers** (not risk levels). They are used by ABs and CBs to define accreditation/certification scope. 39 official codes per TÜRKAK R40.01 / IAF MD 1:
 
-| Code | Description |
-|------|-------------|
-| 1 | Agriculture, forestry and fishing |
-| 2 | Mining and quarrying |
-| 3 | Food products, beverages and tobacco |
-| 4 | Textiles and textile products |
-| 5 | Leather and leather products |
-| 6 | Wood and wood products |
-| 7 | Pulp, paper and paper products |
-| 8 | Publishing companies |
-| 9 | Printing companies |
-| 10 | Manufacture of coke and refined petroleum products |
-| 11 | Nuclear fuel |
-| 12 | Chemicals, chemical products and fibres |
-| 13 | Pharmaceuticals |
-| 14 | Rubber and plastic products |
-| 15 | Non-metallic mineral products |
-| 16 | Concrete, cement, lime, plaster etc. |
-| 17 | Basic metals and fabricated metal products |
-| 18 | Machinery and equipment |
-| 19 | Electrical and optical equipment |
-| 20 | Shipbuilding |
-| 21 | Aerospace |
-| 22 | Other transport equipment |
-| 23 | Manufacturing not elsewhere classified |
-| 24 | Recycling |
-| 25 | Electricity supply |
-| 26 | Gas supply |
-| 27 | Water supply |
-| 28 | Construction |
-| 29 | Wholesale and retail trade; repair of motor vehicles etc. |
-| 30 | Hotels and restaurants |
-| 31 | Transport, storage and communications |
-| 32 | Financial intermediation; real estate; renting |
-| 33 | Information technology |
-| 34 | Engineering services |
-| 35 | Other services |
-| 36 | Public administration |
-| 37 | Education |
-| 38 | Health and social work |
-| 39 | Other social services |
+**Format in Certiva:** stored and matched as `"EA 29"` (with prefix and space). This is the canonical format for `audit_set.ea_code`, auditor `ea_codes` list entries, and `_SCOPE_TO_EA_KW` dict keys.
+
+| Code | Description | NACE Rev.2 |
+|------|-------------|------------|
+| EA 1 | Agriculture, forestry and fishing | 01, 02, 03 |
+| EA 2 | Mining and quarrying | 05–09 |
+| EA 3 | Food products, beverages and tobacco | 10, 11, 12 |
+| EA 4 | Textiles and textile products | 13, 14 |
+| EA 5 | Leather and leather products | 15 |
+| EA 6 | Wood and wood products | 16 |
+| EA 7 | Pulp, paper and paper products | 17 |
+| EA 8 | Publishing companies | 58.1, 59.2 |
+| EA 9 | Printing companies | 18 |
+| EA 10 | Manufacture of coke and refined petroleum products | 19 |
+| EA 11 | Nuclear fuel | 24.46 |
+| EA 12 | Chemicals, chemical products and fibres | 20 |
+| EA 13 | Pharmaceuticals | 21 |
+| EA 14 | Rubber and plastic products | 22 |
+| EA 15 | Non-metallic mineral products | 23 (excl. 23.5/23.6) |
+| EA 16 | Concrete, cement, lime, plaster etc. | 23.5, 23.6 |
+| EA 17 | Basic metals and fabricated metal products | 24 (excl. 24.46), 25 (excl. 25.4), 33.11 |
+| EA 18 | Machinery and equipment | 25.4, 28, 30.4, 33.12, 33.2 |
+| EA 19 | Electrical and optical equipment | 26, 27, 33.13, 33.14, 95.1 |
+| EA 20 | Shipbuilding | 30.1, 33.15 |
+| EA 21 | Aerospace | 30.3, 33.16 |
+| EA 22 | Other transport equipment (automotive, rail, etc.) | 29, 30.2, 30.9, 33.17 |
+| EA 23 | Manufacturing not elsewhere classified | 31, 32, 33.19 |
+| EA 24 | Recycling | 38.3 |
+| EA 25 | Electricity supply | 35.1 |
+| EA 26 | Gas supply | 35.2 |
+| EA 27 | Water supply | 35.3, 36 |
+| EA 28 | Construction | 41, 42, 43 |
+| EA 29 | Wholesale and retail trade; repair of motor vehicles etc. | 45, 46, 47, 95.2 |
+| EA 30 | Hotels and restaurants | 55, 56 |
+| EA 31 | Transport, storage and communications | 49, 50, 51, 52, 53, 61 |
+| EA 32 | Financial intermediation; real estate; renting | 64, 65, 66, 68, 77 |
+| EA 33 | Information technology | 58.2, 62, 63.1 |
+| EA 34 | Engineering services | 71, 72, 74 (excl. 74.2/74.3) |
+| EA 35 | Other services (consulting, legal, accounting, facility mgmt.) | 69, 70, 73, 74.2, 74.3, 78, 80, 81, 82 |
+| EA 36 | Public administration | 84 |
+| EA 37 | Education | 85 |
+| EA 38 | Health and social work | 75, 86, 87, 88 |
+| EA 39 | Other social services (media, sports, arts, personal services) | 37, 38.1, 38.2, 39, 59.1, 60, 63.9, 79, 90–96 |
+
+**Common traps:**
+- EA 17 = **metals/steel** — NOT wholesale/retail (that is EA 29)
+- EA 29 = **wholesale/retail trade** — includes sales of medical devices, import/export, dealerships
+- EA 12 = **chemicals** — NOT pharmaceuticals (that is EA 13)
+- EA 22 = **automotive/other transport** — NOT shipbuilding (EA 20) or aerospace (EA 21)
+- EA 28 = **construction** — NOT concrete manufacturing (EA 16)
+- EA 33 = **IT services + software** — covers NACE 58.2 (software publishing), 62 (IT), 63.1 (data processing)
+- EA 35 = **consulting/advisory/legal** — management consulting, audit firms, advertising agencies
 
 ---
 

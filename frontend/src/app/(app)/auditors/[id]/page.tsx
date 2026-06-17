@@ -639,7 +639,7 @@ function EligibilityChecker({ id }: { id: string }) {
         </div>
         <div>
           <label className={lblCls}>Company EA code</label>
-          <input type="text" placeholder="e.g. 17, 29" className={inputCls} value={form.company_ea_code}
+          <input type="text" placeholder="e.g. EA 17, EA 29" className={inputCls} value={form.company_ea_code}
             onChange={(e) => setForm({ ...form, company_ea_code: e.target.value })} />
         </div>
         <div>
