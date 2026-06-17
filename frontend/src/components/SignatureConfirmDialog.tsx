@@ -37,10 +37,10 @@ interface OrgEmployee {
 
 const CLIENT_SIDE_SIG_KEYS = new Set(['CLIENT', 'ORG_REP'])
 
-// Portal 73 — UUID-based org-employee slots embedded in sig_key (FR.225).
-// Format: ORG_OPENING_ORG_EMP_<uuid> | ORG_CLOSING_ORG_EMP_<uuid>
-// The employee is already determined by the key — no picker needed.
-const ORG_EMP_RE = /^ORG_(OPENING|CLOSING)_ORG_EMP_([0-9a-fA-F-]{36})$/
+// Portal 74 — digit-indexed org-employee slots (FR.225 after Portal 73).
+// Format: ORG_OPENING_ORG_EMP_<N> | ORG_CLOSING_ORG_EMP_<N>  (N is 1-based)
+// The employee is resolved by position — no picker needed.
+const ORG_EMP_RE = /^ORG_(OPENING|CLOSING)_ORG_EMP_(\d+)$/
 
 function getSignatureSettingsUrl(): string {
   if (typeof window === 'undefined') return '/settings/signature'
@@ -79,11 +79,11 @@ export function SignatureConfirmDialog({
   const [selectedEmpId, setSelectedEmpId] = useState<string>('')
   const selectedEmp = employees.find((e) => e.id === selectedEmpId) ?? null
 
-  // Portal 73 — UUID-embedded org-employee slots (FR.225 opening/closing rows).
-  // The employee is already identified by the sig_key — no picker needed.
+  // Portal 74 — digit-indexed org-employee slots (FR.225 opening/closing rows).
+  // The employee is resolved by 1-based row index (created_at order) — no picker needed.
   const orgEmpMatch    = ORG_EMP_RE.exec(sigKey)
   const isOrgEmpSlot   = orgEmpMatch !== null
-  const orgEmpUuid     = orgEmpMatch ? orgEmpMatch[2] : null
+  const orgEmpIndex    = orgEmpMatch ? parseInt(orgEmpMatch[2]) : null  // 1-based
   const orgEmpPhase    = orgEmpMatch ? orgEmpMatch[1] : null   // 'OPENING' | 'CLOSING'
   const [orgEmployee,  setOrgEmployee]  = useState<OrgEmployee | null>(null)
 
@@ -95,17 +95,18 @@ export function SignatureConfirmDialog({
     setSelectedEmpId('')
     setOrgEmployee(null)
 
-    // Portal 73 — UUID-embedded employee slot: fetch that specific employee.
-    if (isOrgEmpSlot && orgEmpUuid) {
+    // Portal 74 — digit-indexed employee slot: fetch by 1-based position in
+    // created_at-ordered roster (mirrors packager._resolve_org_attendees).
+    if (isOrgEmpSlot && orgEmpIndex !== null) {
       api.get('/org/employees')
         .then((r) => {
           const list: OrgEmployee[] = Array.isArray(r.data) ? r.data : []
-          const emp = list.find((e) => e.id === orgEmpUuid) ?? null
+          const emp = list[orgEmpIndex - 1] ?? null   // 0-based array index
           setOrgEmployee(emp)
           if (!emp || !emp.has_signature) {
             setStage('no_signature')
           } else {
-            return api.get(`/org/employees/${orgEmpUuid}/signature`).then((sr) => {
+            return api.get(`/org/employees/${emp.id}/signature`).then((sr) => {
               setSigImage(sr.data?.image_data ?? null)
               setStage('preview')
             })
@@ -148,7 +149,7 @@ export function SignatureConfirmDialog({
       .catch(() => {
         setStage('no_signature')
       })
-  }, [isOpen, sigKey, needsEmployeePicker, isOrgEmpSlot, orgEmpUuid])
+  }, [isOpen, sigKey, needsEmployeePicker, isOrgEmpSlot, orgEmpIndex])
 
   // Portal 56 — when an employee is picked, fetch their signature image for preview.
   useEffect(() => {
