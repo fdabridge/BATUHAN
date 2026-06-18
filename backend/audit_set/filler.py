@@ -518,16 +518,29 @@ def build_auditor_scope_strings(stage, auditor_lookup: dict, required_scope: dic
         computed = _covered_codes_display(
             _compute_covered_scope(aud.standard_qualifications, required_scope)
         )
-        return computed or fallback
+        if computed:
+            return computed
+        # Second fallback: auditor's own top-level ea_codes list (Auditor.ea_codes)
+        # covers the case where required_scope is empty or the per-qualification
+        # ea_codes column has not been filled in yet.
+        if aud.ea_codes:
+            return " ".join(str(c) for c in aud.ea_codes)
+        return fallback
 
-    enriched_auditors = [
-        {**a, "covered_codes_display": disp(auditor_lookup.get(a.get("id")), a)}
-        for a in (stage.auditors or [])
-    ]
-    enriched_tes = [
-        {**te, "covered_codes_display": disp(auditor_lookup.get(te.get("id")), te)}
-        for te in (stage.technical_experts or [])
-    ]
+    def _enrich(member: dict) -> dict:
+        """Return the member dict with both ea_code and covered_codes_display
+        guaranteed to be strings (never Python None, which docxtpl renders as 'None')."""
+        codes = disp(auditor_lookup.get(member.get("id")), member)
+        return {
+            **member,
+            # Keep ea_code as a non-None string so templates using {{ auditor.ea_code }}
+            # also work correctly.
+            "ea_code": codes or (member.get("ea_code") or ""),
+            "covered_codes_display": codes,
+        }
+
+    enriched_auditors = [_enrich(a) for a in (stage.auditors or [])]
+    enriched_tes = [_enrich(te) for te in (stage.technical_experts or [])]
     return {
         "lead_auditor_codes": disp(auditor_lookup.get(stage.lead_auditor_id)),
         "auditors": enriched_auditors,
