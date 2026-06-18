@@ -184,6 +184,8 @@ def _build_stage_1(needs_base, needs_mdqms, needs_isms, sub: str, missing: list[
         _add(specs, seen, "FR.231",   "base",  sub, FR231_MAP, "stage_1", missing)
     if needs_mdqms:
         _add(specs, seen, "FR.231-1", "mdqms", sub, FR231_MAP, "stage_1", missing)
+    if needs_isms:
+        _add(specs, seen, "FR.231",   "isms",  sub, FR231_MAP, "stage_1", missing)
 
     if needs_base:  _add(specs, seen, "FR.211", "base",  sub, FR211_MAP, "stage_1", missing)
     if needs_mdqms: _add(specs, seen, "FR.211", "mdqms", sub, FR211_MAP, "stage_1", missing)

@@ -510,6 +510,10 @@ def get_available_auditors(
                     auditor_codes = [c.strip() for c in raw.split(',') if c.strip()]
                 else:  # ea
                     auditor_codes = qual.ea_codes or []
+                # If no EA codes are recorded for this auditor, treat as qualifying for
+                # any code. (Common for auditors imported without per-standard EA breakdown.)
+                if not auditor_codes:
+                    return True
                 if any(c in auditor_codes for c in required_codes):
                     return True
             return False
@@ -600,6 +604,10 @@ def get_available_auditors(
                 elif scope_type == "ea":
                     auditor_codes = qual.ea_codes or []
 
+                # If auditor has no recorded EA codes, count them as covering all required codes.
+                if scope_type == "ea" and not auditor_codes:
+                    covered[iso_std] = required_codes
+                    continue
                 # Intersection of required codes and auditor's codes
                 matched = [c for c in required_codes if c in auditor_codes]
                 if matched:
