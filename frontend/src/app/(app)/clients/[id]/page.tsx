@@ -362,6 +362,16 @@ function PlanOverview({
   // Keep textarea in sync with server value after PUT round-trips invalidate the query.
   useEffect(() => { setNacText(data.non_applicable_clauses ?? '') }, [data.non_applicable_clauses])
 
+  // Scope editor state
+  const [scopeEditing, setScopeEditing] = useState(false)
+  const [scopeDraft, setScopeDraft] = useState<RequiredScope>(data.required_scope ?? {})
+  const [newCodeInput, setNewCodeInput] = useState<Record<string, string>>({})
+  const [scopeSaved, setScopeSaved] = useState(false)
+  // Keep draft in sync whenever server data changes (but not while the user is editing)
+  useEffect(() => {
+    if (!scopeEditing) setScopeDraft(data.required_scope ?? {})
+  }, [data.required_scope])  // eslint-disable-line react-hooks/exhaustive-deps
+
   // Portal 78 — per-site details inline editor
   const [sitesEditing, setSitesEditing] = useState(false)
   const [sitesDraft, setSitesDraft] = useState<AuditSite[]>(data.sites ?? [])
@@ -441,6 +451,19 @@ function PlanOverview({
       onInvalidate()
       setNacSaved(true)
       setTimeout(() => setNacSaved(false), 2000)
+    },
+  })
+
+  const { mutate: saveScope, isPending: savingScope } = useMutation({
+    mutationFn: () =>
+      api.put<AuditSetResponse>(`/audit-sets/${auditSetId}/planning`, {
+        required_scope: scopeDraft,
+      }),
+    onSuccess: () => {
+      onInvalidate()
+      setScopeEditing(false)
+      setScopeSaved(true)
+      setTimeout(() => setScopeSaved(false), 2000)
     },
   })
 
@@ -647,21 +670,111 @@ function PlanOverview({
 
         {rs && Object.keys(rs).length > 0 && (
           <div className="col-span-3">
-            <p className="mb-0.5 font-medium uppercase tracking-wide text-gray-400" style={{ fontSize: 11 }}>Required scope (derived)</p>
-            <div className="mt-1 space-y-1">
-              {Object.entries(rs).map(([std, entry]) => (
-                <div key={std} className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-xs font-medium text-gray-600 w-24 shrink-0">{std}</span>
-                  {entry.codes.length === 0 ? (
-                    <span className="text-xs text-gray-400 italic">no codes derived</span>
-                  ) : entry.codes.map((code) => (
-                    <span key={code} className="rounded px-2 py-0.5 text-xs font-medium" style={scopeBadgeStyle(entry.type, code)}>
-                      {code}
-                    </span>
-                  ))}
-                </div>
-              ))}
+            <div className="mb-1 flex items-center justify-between">
+              <p className="font-medium uppercase tracking-wide text-gray-400" style={{ fontSize: 11 }}>Required scope (derived)</p>
+              {!scopeEditing && (
+                <button
+                  type="button"
+                  onClick={() => { setScopeDraft(data.required_scope ?? {}); setScopeEditing(true) }}
+                  className="flex items-center gap-1 text-xs text-certiva-primary hover:underline"
+                >
+                  <Pencil size={11} /> Edit
+                </button>
+              )}
             </div>
+
+            {!scopeEditing ? (
+              /* ── VIEW MODE — read-only badges ── */
+              <div className="space-y-1">
+                {Object.entries(rs).map(([std, entry]) => (
+                  <div key={std} className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs font-medium text-gray-600 w-24 shrink-0">{std}</span>
+                    {entry.codes.length === 0 ? (
+                      <span className="text-xs text-gray-400 italic">no codes derived</span>
+                    ) : entry.codes.map((code) => (
+                      <span key={code} className="rounded px-2 py-0.5 text-xs font-medium" style={scopeBadgeStyle(entry.type, code)}>
+                        {code}
+                      </span>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              /* ── EDIT MODE — removable chips + add-code input per standard ── */
+              <div className="space-y-2">
+                {Object.entries(scopeDraft).map(([std, entry]) => (
+                  <div key={std} className="flex flex-wrap items-start gap-1.5">
+                    <span className="w-24 shrink-0 pt-1 text-xs font-medium text-gray-600">{std}</span>
+                    <div className="flex flex-1 flex-wrap items-center gap-1">
+                      {entry.codes.map((code) => (
+                        <span
+                          key={code}
+                          className="flex items-center gap-0.5 rounded px-2 py-0.5 text-xs font-medium"
+                          style={scopeBadgeStyle(entry.type, code)}
+                        >
+                          {code}
+                          <button
+                            type="button"
+                            title={`Remove ${code}`}
+                            className="ml-0.5 leading-none opacity-60 hover:opacity-100"
+                            onClick={() =>
+                              setScopeDraft((prev) => ({
+                                ...prev,
+                                [std]: { ...entry, codes: entry.codes.filter((c) => c !== code) },
+                              }))
+                            }
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                      <input
+                        type="text"
+                        placeholder="Add code…"
+                        value={newCodeInput[std] ?? ''}
+                        onChange={(e) => setNewCodeInput((p) => ({ ...p, [std]: e.target.value }))}
+                        onKeyDown={(e) => {
+                          if (e.key !== 'Enter') return
+                          e.preventDefault()
+                          const val = (newCodeInput[std] ?? '').trim().toUpperCase()
+                          if (val && !entry.codes.includes(val)) {
+                            setScopeDraft((prev) => ({
+                              ...prev,
+                              [std]: { ...entry, codes: [...entry.codes, val] },
+                            }))
+                          }
+                          setNewCodeInput((p) => ({ ...p, [std]: '' }))
+                        }}
+                        className="h-6 w-24 rounded border border-gray-200 px-1.5 text-xs focus:border-certiva-primary focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                ))}
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={savingScope}
+                    onClick={() => saveScope()}
+                    className="flex items-center gap-1 rounded-lg bg-certiva-primary px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
+                  >
+                    {savingScope ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
+                    Save scope
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setScopeEditing(false); setScopeDraft(data.required_scope ?? {}) }}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  {scopeSaved && (
+                    <span className="flex items-center gap-1 text-xs text-green-600">
+                      <Check size={11} /> Saved
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
