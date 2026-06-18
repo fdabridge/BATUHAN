@@ -69,17 +69,70 @@ _FOOD_CHAIN_KW: dict[str, tuple[str, ...]] = {
 }
 
 _MEDICAL_TA_KW: dict[str, tuple[str, ...]] = {
-    "A1.1": ("bandage", "wound care", "catheter", "surgical instrument", "syringe"),
-    "A1.2": ("hip replacement", "dental implant", "non-active implant", "orthopaedic"),
-    "A1.3": ("imaging equipment", "monitoring equipment", "ventilator"),
-    "A1.4": ("pacemaker", "active implant", "defibrillator"),
-    "A1.5": ("sterilization", "sterilisation", "ethylene oxide", "gamma steriliz"),
-    "A1.6": ("software as medical device", "samd", "medical software", "ai medical"),
-    "A1.7": ("medical device component", "medical parts supplier"),
-    "A2.1": ("in-vitro diagnostic", "ivd reagent"),
-    "A2.2": ("ivd self-test", "self-testing diagnostic"),
-    "A2.3": ("ivd professional", "professional diagnostic"),
-    "A2.4": ("companion diagnostic",),
+    "A1.1": (
+        "bandage", "wound care", "catheter", "surgical instrument", "syringe",
+        # Turkish
+        "yara örtüsü", "pansuman", "kateter", "cerrahi alet", "şırınga", "enjektör",
+        "tek kullanımlık", "disposable",
+    ),
+    "A1.2": (
+        "hip replacement", "dental implant", "non-active implant", "orthopaedic",
+        # Turkish
+        "kalça protezi", "diş implantı", "kemik çivisi", "ortopedik implant",
+        "pasif implant", "aktif olmayan implant",
+    ),
+    "A1.3": (
+        "imaging equipment", "monitoring equipment", "ventilator",
+        # Turkish
+        "görüntüleme cihazı", "hasta monitörü", "solunum cihazı", "ventilatör",
+        "ultrason cihazı", "mri", "tomografi", "endoskop",
+    ),
+    "A1.4": (
+        "pacemaker", "active implant", "defibrillator",
+        # Turkish
+        "kalp pili", "defibrilatör", "aktif implant", "koklear implant",
+    ),
+    "A1.5": (
+        "sterilization", "sterilisation", "ethylene oxide", "gamma steriliz",
+        # Turkish
+        "sterilizasyon", "etilen oksit", "gama sterilizasyon", "steril",
+        "dezenfeksiyon hizmeti",
+    ),
+    "A1.6": (
+        "software as medical device", "samd", "medical software", "ai medical",
+        # Turkish
+        "tıbbi yazılım", "tıbbi yapay zeka", "klinik karar destek",
+        "sağlık bilgi sistemi", "hastane yönetim sistemi",
+    ),
+    "A1.7": (
+        "medical device component", "medical parts supplier",
+        # Turkish
+        "tıbbi cihaz bileşeni", "tıbbi parça", "medikal komponent",
+        "tıbbi malzeme tedarikçisi",
+    ),
+    "A2.1": (
+        "in-vitro diagnostic", "ivd reagent",
+        # Turkish
+        "in vitro tanı", "ivd", "teşhis reaktifi", "laboratuvar kiti",
+        "biyokimya kiti", "immünoloji kiti",
+    ),
+    "A2.2": (
+        "ivd self-test", "self-testing diagnostic",
+        # Turkish
+        "kendi kendine test", "hızlı test", "ev tipi test",
+        "antijen testi", "hamilelik testi", "glikoz ölçüm",
+    ),
+    "A2.3": (
+        "ivd professional", "professional diagnostic",
+        # Turkish
+        "profesyonel tanı", "laboratuvar cihazı", "analizör",
+        "kan sayım cihazı", "koagülasyon",
+    ),
+    "A2.4": (
+        "companion diagnostic",
+        # Turkish
+        "eşlik eden tanı", "biyobelirteç testi", "hedefe yönelik tedavi testi",
+    ),
 }
 
 _SECTOR_KW: dict[str, tuple[str, ...]] = {

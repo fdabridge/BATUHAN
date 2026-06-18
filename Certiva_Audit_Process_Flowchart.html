@@ -1,0 +1,1103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Certiva — Audit Process Flowchart</title>
+<style>
+  /* ── Reset & base ──────────────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    background: #F4F6F4;
+    color: #1A2B1A;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+  /* ── Page layout ───────────────────────────────────────────────────── */
+  .page { max-width: 1100px; margin: 0 auto; padding: 32px 20px 60px; }
+
+  /* ── Header ────────────────────────────────────────────────────────── */
+  .header {
+    background: #1A4731;
+    color: #fff;
+    border-radius: 14px;
+    padding: 28px 36px;
+    margin-bottom: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+  }
+  .header-left h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+  .header-left p { font-size: 13px; opacity: .75; margin-top: 4px; }
+  .header-badge {
+    background: rgba(255,255,255,0.12);
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-size: 11px;
+    text-align: center;
+    line-height: 1.6;
+    flex-shrink: 0;
+  }
+  .header-badge strong { font-size: 13px; display: block; }
+
+  /* ── Legend ────────────────────────────────────────────────────────── */
+  .legend {
+    background: #fff;
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 28px;
+    border: 1.5px solid #D8E8D8;
+  }
+  .legend h3 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #1A4731; margin-bottom: 10px; }
+  .legend-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .legend-dot { width: 14px; height: 14px; border-radius: 4px; flex-shrink: 0; }
+
+  /* ── Section headings ──────────────────────────────────────────────── */
+  .section-heading {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    margin-top: 8px;
+  }
+  .section-heading .icon {
+    background: #1A4731;
+    color: #fff;
+    border-radius: 50%;
+    width: 32px; height: 32px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px;
+    flex-shrink: 0;
+  }
+  .section-heading h2 { font-size: 18px; font-weight: 800; color: #1A4731; }
+  .section-heading p { font-size: 12px; color: #4A6A4A; margin-top: 1px; }
+
+  /* ── Phase card ────────────────────────────────────────────────────── */
+  .flow { display: flex; flex-direction: column; gap: 0; }
+
+  .phase-row {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    position: relative;
+  }
+
+  /* vertical connector between phases */
+  .phase-row:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    left: 19px;
+    top: 48px;
+    width: 2px;
+    bottom: 0;
+    background: #C6DBC6;
+    z-index: 0;
+  }
+
+  .phase-num {
+    width: 40px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 12px;
+    position: relative;
+    z-index: 1;
+  }
+  .phase-num .num {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: #1A4731;
+    color: #fff;
+    font-weight: 800;
+    font-size: 13px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .phase-card {
+    background: #fff;
+    border-radius: 12px;
+    border: 1.5px solid #D8E8D8;
+    padding: 14px 18px;
+    margin-left: 12px;
+    margin-bottom: 10px;
+    flex: 1;
+    transition: box-shadow .15s;
+  }
+  .phase-card:hover { box-shadow: 0 4px 18px rgba(26,71,49,.09); }
+
+  .phase-title {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #1A2B1A;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .phase-title .fr-tag {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 5px;
+    background: #E8F4EC;
+    color: #1A4731;
+    font-family: 'Courier New', monospace;
+    letter-spacing: .3px;
+  }
+  .phase-title .fr-tag.blue { background: #EEF2FF; color: #3730A3; }
+  .phase-title .fr-tag.amber { background: #FEF3C7; color: #92400E; }
+  .phase-title .fr-tag.red { background: #FEE2E2; color: #991B1B; }
+  .phase-title .fr-tag.pink { background: #FCE7F3; color: #9D174D; }
+
+  .phase-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 8px;
+  }
+
+  .action-block {
+    border-radius: 8px;
+    padding: 9px 12px;
+    border-left: 3px solid;
+  }
+  .action-block .ab-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    margin-bottom: 3px;
+    opacity: .7;
+  }
+  .action-block .ab-text {
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.4;
+  }
+  .action-block .ab-who {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin-top: 4px;
+  }
+
+  /* ── Role colour definitions ─────────────────────────────────────── */
+  /* CB Planner — blue */
+  .role-planner { background:#EFF6FF; border-color:#2563EB; }
+  .role-planner .ab-who { background:#DBEAFE; color:#1D4ED8; }
+  /* General Manager — charcoal */
+  .role-gm { background:#F9FAFB; border-color:#374151; }
+  .role-gm .ab-who { background:#E5E7EB; color:#111827; }
+  /* Cert Manager — red */
+  .role-cm { background:#FEF2F2; border-color:#DC2626; }
+  .role-cm .ab-who { background:#FEE2E2; color:#991B1B; }
+  /* Lead Auditor — teal */
+  .role-lead { background:#ECFEFF; border-color:#0891B2; }
+  .role-lead .ab-who { background:#CFFAFE; color:#164E63; }
+  /* Audit Team — green-teal */
+  .role-team { background:#F0FDFA; border-color:#0D9488; }
+  .role-team .ab-who { background:#CCFBF1; color:#134E4A; }
+  /* Client / Org Rep — amber */
+  .role-client { background:#FFFBEB; border-color:#D97706; }
+  .role-client .ab-who { background:#FEF3C7; color:#92400E; }
+  /* Committee — indigo */
+  .role-committee { background:#EEF2FF; border-color:#4F46E5; }
+  .role-committee .ab-who { background:#E0E7FF; color:#3730A3; }
+  /* Reviewer — pink */
+  .role-reviewer { background:#FDF2F8; border-color:#BE185D; }
+  .role-reviewer .ab-who { background:#FCE7F3; color:#9D174D; }
+  /* System — grey */
+  .role-system { background:#F8FAFC; border-color:#64748B; }
+  .role-system .ab-who { background:#E2E8F0; color:#334155; }
+
+  /* ── Gate card (decision point) ─────────────────────────────────── */
+  .gate-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 4px 0 10px 52px;
+  }
+  .gate-card {
+    background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%);
+    border: 2px solid #F59E0B;
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #78350F;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .gate-card .gate-icon { font-size: 16px; }
+
+  /* ── Note / callout boxes ────────────────────────────────────────── */
+  .note {
+    border-radius: 8px;
+    padding: 9px 13px;
+    font-size: 12px;
+    margin-top: 8px;
+    line-height: 1.5;
+  }
+  .note-blue { background:#EFF6FF; border-left:3px solid #3B82F6; color:#1E3A5F; }
+  .note-pink { background:#FDF2F8; border-left:3px solid #BE185D; color:#5B1A35; }
+  .note-amber { background:#FFFBEB; border-left:3px solid #F59E0B; color:#78350F; }
+  .note-grey { background:#F8FAFC; border-left:3px solid #94A3B8; color:#334155; }
+  .note strong { font-weight: 700; }
+
+  /* ── Situation callout panel ─────────────────────────────────────── */
+  .situations {
+    background: #fff;
+    border-radius: 14px;
+    border: 1.5px solid #D8E8D8;
+    padding: 20px 24px;
+    margin-bottom: 28px;
+  }
+  .situations h2 { font-size: 15px; font-weight: 800; color: #1A4731; margin-bottom: 14px; }
+  .sit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+  .sit-card {
+    border-radius: 10px;
+    padding: 13px 15px;
+    border: 1.5px solid;
+  }
+  .sit-card h4 { font-size: 12.5px; font-weight: 700; margin-bottom: 6px; }
+  .sit-card ul { padding-left: 14px; }
+  .sit-card li { font-size: 12px; margin-bottom: 3px; line-height: 1.4; }
+  .sit-card.isms { border-color:#BE185D; background:#FDF2F8; color:#4A0F26; }
+  .sit-card.isms h4 { color:#9D174D; }
+  .sit-card.mdqms { border-color:#4F46E5; background:#EEF2FF; color:#1E1B4B; }
+  .sit-card.mdqms h4 { color:#3730A3; }
+  .sit-card.integrated { border-color:#0891B2; background:#ECFEFF; color:#0C1F25; }
+  .sit-card.integrated h4 { color:#0E7490; }
+  .sit-card.signing { border-color:#1A4731; background:#F0FAF2; color:#1A2B1A; }
+  .sit-card.signing h4 { color:#1A4731; }
+
+  /* ── Divider ─────────────────────────────────────────────────────── */
+  .section-divider { height: 1px; background: #D8E8D8; margin: 32px 0; }
+
+  /* ── Footer ──────────────────────────────────────────────────────── */
+  .footer {
+    text-align: center;
+    font-size: 11px;
+    color: #6B8F6B;
+    margin-top: 32px;
+    border-top: 1px solid #D8E8D8;
+    padding-top: 16px;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ───────────── HEADER ───────────── -->
+  <div class="header">
+    <div class="header-left">
+      <h1>Certiva · Audit Process Flowchart</h1>
+      <p>Complete process guide — Initial Certification &amp; Surveillance Audits</p>
+    </div>
+    <div class="header-badge">
+      <strong>IFC Global LLC</strong>
+      Who · Signs · Uploads<br />at every step
+    </div>
+  </div>
+
+  <!-- ───────────── LEGEND ───────────── -->
+  <div class="legend">
+    <h3>Role Colour Key</h3>
+    <div class="legend-grid">
+      <div class="legend-item"><div class="legend-dot" style="background:#2563EB"></div> CB Planner</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#374151"></div> General Manager (GM)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#DC2626"></div> Certification Manager</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#0891B2"></div> Lead Auditor</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#0D9488"></div> Audit Team (all auditors / TEs)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#D97706"></div> Client / Org Representative</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#4F46E5"></div> Certification Committee</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#BE185D"></div> FSMS / ISMS Reviewer</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#64748B"></div> System (automatic)</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- SECTION 1 — INITIAL CERTIFICATION                              -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <div class="section-heading">
+    <div class="icon">🏆</div>
+    <div>
+      <h2>Initial Certification</h2>
+      <p>14-phase pipeline from setup through certificate issuance</p>
+    </div>
+  </div>
+
+  <div class="flow">
+
+    <!-- Phase 1 -->
+    <div class="phase-row">
+      <div class="phase-num"><div class="num">1</div></div>
+      <div class="phase-card">
+        <div class="phase-title">
+          Setup &amp; Planning
+          <span class="fr-tag blue">FR.222</span>
+        </div>
+        <div class="phase-grid">
+          <div class="action-block role-planner">
+            <div class="ab-label">Action</div>
+            <div class="ab-text">Creates audit set, selects standards &amp; scope, assigns Stage 1 AND Stage 2 teams with dates, sets audit days &amp; plan number.</div>
+            <span class="ab-who">CB Planner</span>
+          </div>
+          <div class="action-block role-planner">
+            <div class="ab-label">Upload</div>
+            <div class="ab-text">FR.222 Audit Programme uploaded (visible only to CB — not to client or auditors).</div>
+            <span class="ab-who">CB Planner</span>
+          </div>
+          <div class="action-block role-planner">
+            <div class="ab-label">Signs</div>
+            <div class="ab-text">CB Planner signs FR.222 (visual signature), then Cert Manager co-signs.</div>
+            <span class="ab-who">CB Planner + Cert Manager</span>
+          </div>
+        </div>
+        <div class="note note-grey">System auto-generates the audit set ZIP containing all blank forms for Stage 1 and Stage 2.</div>
+      </div>
+    </div>
+
+    <!-- Phase 2 -->
+    <div class="phase-row">
+      <div class="phase-num"><div class="num">2</div></div>
+      <div class="phase-card">
+        <div class="phase-title">
+          Quotation
+          <span class="fr-tag">FR.220</span>
+        </div>
+        <div class="phase-grid">
+          <div class="action-block role-gm">
+            <div class="ab-label">Signs first</div>
+            <div class="ab-text">General Manager signs FR.220 Quotation with visual signature. Client cannot sign until GM has signed.</div>
+            <span class="ab-who">General Manager</span>
+          </div>
+          <div class="action-block role-client">
+            <div class="ab-label">Signs second</div>
+            <div class="ab-text">Client signs FR.220 (visual signature). Gated — only unlocked after GM signature.</div>
+            <span class="ab-who">Client</span>
+          </div>
+        </div>
+        <div class="note note-amber">Both signatures required before the agreement can proceed.</div>
+      </div>
+    </div>
+
+    <!-- Phase 3 -->
+    <div class="phase-row">
+      <div class="phase-num"><div class="num">3</div></div>
+      <div class="phase-card">
+        <div class="phase-title">
+          Agreement
+          <span class="fr-tag">FR.221</span>
+        </div>
+        <div class="phase-grid">
+          <div class="action-block role-gm">
+            <div class="ab-label">Signs first</div>
+            <div class="ab-text">GM signs FR.221 Agreement (visual).</div>
+            <span class="ab-who">General Manager</span>
+          </div>
+          <div class="action-block role-client">
+            <div class="ab-label">Signs second</div>
+            <div class="ab-text">Client signs FR.221 (visual). Gated until GM signs.</div>
+            <span class="ab-who">Client</span>
+          </div>
+          <div class="action-block role-system">
+            <div class="ab-label">Automatic</div>
+            <div class="ab-text">System triggers FR.218 Application Review upon both signatures being complete.</div>
+            <span class="ab-who">System</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phase 4 -->
+    <div class="phase-row">
+      <div class="phase-num"><div class="num">4</div></div>
+      <div class="phase-card">
+        <div class="phase-title">
+          Application Review
+          <span class="fr-tag">FR.218</span>
+        </div>
+        <div class="phase-grid">
+          <div class="action-block role-planner">
+            <div class="ab-label">Signs</div>
+            <div class="ab-text">CB Planner reviews the application form and signs (visual).</div>
+            <span class="ab-who">CB Planner</span>
+          </div>
+          <div class="action-block role-cm">
+            <div class="ab-label">Co-signs</div>
+            <div class="ab-text">Certification Manager countersigns (visual).</div>
+            <span class="ab-who">Cert Manager</span>
+          </div>
+          <div class="action-block role-reviewer">
+            <div class="ab-label">Also signs (if FSMS or ISMS)</div>
+            <div class="ab-text">A designated reviewer co-signs FR.218 for food safety or information security audits.</div>
+            <span class="ab-who">Reviewer ★</span>
+          </div>
+        </div>
+        <div class="note note-pink"><strong>★ FSMS / ISMS only:</strong> A third reviewer signature slot appears on FR.218. All three must sign before the review is complete.</div>
+      </div>
+    </div>
+
+    <!-- Phase 5 — already covered in Phase 1 (FR.222) but signing happens here -->
+    <!-- Skipped as separate row since FR.222 is covered in Phase 1 -->
+
+    <!-- Phase 6 -->
+    <div class="phase-row">
+      <div class="phase-num"><div class="num">5</div></div>
+      <div class="phase-card">
+        <div class="phase-title">
+          Stage 1 — Audit Team Info
+          <span class="fr-tag">FR.224 (S1)</span>
+        </div>
+        <div class="phase-grid">
+          <div class="action-block role-planner">
+            <div class="ab-label">Uploads</div>
+            <div class="ab-text">Planner uploads one FR.224 per auditor / Technical Expert assigned to Stage 1.</div>
+            <span class="ab-who">CB Planner</span>
+          </div>
+          <div class="action-block role-team">
+            <div class="ab-label">Signs (private)</div>
+            <div class="ab-text">Each auditor / TE signs only their own FR.224. Forms are private — each person sees only theirs.</div>
+            <span class="ab-who">Each Auditor / TE individually</span>
+          </div>
+        </div>
+        <div class="note note-grey">Client and other auditors cannot view another person's FR.224. Each form is scoped per team member.</div>
+      </div>
+    </div>
+
+    <!-- Phase 7 -->
+    <div class="phase-row">
+      <div class="phase-num"><div class="num">6</div></div>
+      <div class="phase-card">
+        <div class="phase-title">
+          Stage 1 — Audit Plan
+          <span class="fr-tag">FR.223 (S1)</span>
+        </div>
+        <div class="phase-grid">
+          <div class="action-block role-lead">
+            <div class="ab-label">Uploads</div>
+            <div class="ab-text">Lead Auditor prepares and uploads the filled FR.223 Audit Plan for Stage 1.</div>
+            <span class="ab-who">Lead Auditor</span>
+          </div>
+          <div class="action-block role-client">
+            <div class="ab-label">Signs</div>
+            <div class="ab-text">Organisation Representative reviews and signs FR.223 to acknowledge the plan (visual).</div>
+            <span class="ab-who">Org Representative</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phase 8 — Stage 1 Audit -->
+    <div class="phase-row">
+      <div class="phase-num"><div class="num">7</div></div>
+      <div class="phase-card">
+        <div class="phase-title">
+          Stage 1 Audit — Opening / Closing Meeting &amp; Findings
+          <span class="fr-tag">FR.225</span>
+          <span class="fr-tag amber">FR.230 (if NCs)</span>
+          <span class="fr-tag pink">FR.231 (S1 Report)</span>
+        </div>
+        <div class="phase-grid">
+          <div class="action-block role-lead">
+            <div class="ab-label">Uploads</div>
+            <div class="ab-text">Lead Auditor uploads FR.225 Opening/Closing Meeting form.</div>
+            <span class="ab-who">Lead Auditor</span>
+          </div>
+          <div class="action-block role-team">
+            <div class="ab-label">Signs FR.225</div>
+            <div class="ab-text">All auditors and Technical Experts sign the meeting record.</div>
+            <span class="ab-who">All Auditors / TEs</span>
+          </div>
+          <div class="action-block role-client">
+            <div class="ab-label">Signs FR.225</div>
+            <div class="ab-text">Org employees (from client roster) sign the opening/closing meeting record.</div>
+            <span class="ab-who">Org Employees</span>
+          </div>
+          <div class="action-block role-lead">
+            <div class="ab-label">NC Form (if needed)</div>
+            <div class="ab-text">If nonconformities found, Lead Auditor and Org Rep both sign FR.230 NC Form.</div>
+            <span class="ab-who">Lead Auditor + Org Rep</span>
+          </div>
+          <div class="action-block role-lead">
+            <div class="ab-label">S1 Report — Signs</div>
+            <div class="ab-text">Lead Auditor signs FR.231 Stage 1 Report (visual).</div>
+            <span class="ab-who">Lead Auditor</span>
+          </div>
+          <div class="action-block role-reviewer">
+            <div class="ab-label">S1 Report — Also signs (FSMS/ISMS)</div>
+            <div class="ab-text">If audit includes FSMS or ISMS scope, the designated reviewer co-signs FR.231.</div>
+            <span class="ab-who">Reviewer ★</span>
+          </div>
+        </div>
+        <div class="note note-pink"><strong>★ FSMS / ISMS:</strong> FR.231 has a reviewer co-signature slot that must be signed before Stage 1 is considered complete.</div>
+        <div class="note note-blue" style="margin-top:6px"><strong>MDQMS:</strong> Uses FR.231-1 (MDQMS variant) instead of FR.231. ISMS-only audits use FR.231 from the 27001 template folder.</div>
+      </div>
+    </div>
+
+    <!-- Gate — CM review -->
+    <div class="gate-row">
+      <div class="gate-card">
+        <span class="gate-icon">🔒</span>
+        <span><strong>Certification Manager Gate</strong> — CM reviews all Stage 1 work (FR.218, FR.223, FR.225, FR.231). If adequate, clicks "Stage 1 appropriate — proceed to Stage 2." Without this, Stage 2 documents do not unlock.</span>
+      </div>
+    </div>
+
+    <!-- Phase 9 -->
+    <div class="phase-row">
+      <div class="phase-num"><div class="num">8</div></div>
+      <div class="phase-card">
+        <div class="phase-title">
+          Stage 2 — Audit Team Info
+          <span class="fr-tag">FR.224 (S2)</span>
+        </div>
+        <div class="phase-grid">
+          <div class="action-block role-planner">
+            <div class="ab-label">Uploads</div>
+            <div class="ab-text">Planner uploads FR.224 for each Stage 2 team member (may differ from Stage 1 team).</div>
+            <span class="ab-who">CB Planner</span>
+          </div>
+          <div class="action-block role-team">
+            <div class="ab-label">Signs (private)</div>
+            <div class="ab-text">Each Stage 2 auditor / TE signs their own form privately.</div>
+            <span class="ab-who">Each Auditor / TE individually</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phase 10 -->
+    <div class="phase-row">
+      <div class="phase-num"><div class="num">9</div></div>
+      <div class="phase-card">
+        <div class="phase-title">
+          Stage 2 — Audit Plan
+          <span class="fr-tag">FR.223 (S2)</span>
+        </div>
+        <div class="phase-grid">
+          <div class="action-block role-lead">
+            <div class="ab-label">Uploads</div>
+            <div class="ab-text">Lead Auditor uploads filled FR.223 for Stage 2.</div>
+            <span class="ab-who">Lead Auditor</span>
+          </div>
+          <div class="action-block role-client">
+            <div class="ab-label">Signs</div>
+            <div class="ab-text">Org Representative signs to acknowledge the Stage 2 plan.</div>
+            <span class="ab-who">Org Representative</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phase 11 — Stage 2 Audit -->
+    <div class="phase-row">
+      <div class="phase-num"><div class="num">10</div></div>
+      <div class="phase-card">
+        <div class="phase-title">
+          Stage 2 Audit — Meeting, Findings &amp; Report
+          <span class="fr-tag">FR.225</span>
+          <span class="fr-tag amber">FR.230 (if NCs)</span>
+          <span class="fr-tag pink">FR.232 / FR.229 / FR.232-1</span>
+        </div>
+        <div class="phase-grid">
+          <div class="action-block role-lead">
+            <div class="ab-label">Uploads FR.225</div>
+            <div class="ab-text">Lead Auditor uploads Opening/Closing Meeting form.</div>
+            <span class="ab-who">Lead Auditor</span>
+          </div>
+          <div class="action-block role-team">
+            <div class="ab-label">Signs FR.225</div>
+            <div class="ab-text">All auditors and TEs sign the meeting record.</div>
+            <span class="ab-who">All Auditors / TEs</span>
+          </div>
+          <div class="action-block role-client">
+            <div class="ab-label">Signs FR.225</div>
+            <div class="ab-text">Org employees sign the opening/closing meeting.</div>
+            <span class="ab-who">Org Employees</span>
+          </div>
+          <div class="action-block role-lead">
+            <div class="ab-label">NC Form (if needed)</div>
+            <div class="ab-text">Lead Auditor + Org Rep sign FR.230 if nonconformities are raised.</div>
+            <span class="ab-who">Lead Auditor + Org Rep</span>
+          </div>
+          <div class="action-block role-lead">
+            <div class="ab-label">Audit Report — Signs</div>
+            <div class="ab-text">Lead Auditor signs the Stage 2 Audit Report (FR.232 for QMS/EMS/etc).</div>
+            <span class="ab-who">Lead Auditor</span>
+          </div>
+          <div class="action-block role-reviewer">
+            <div class="ab-label">Audit Report — Also signs (FSMS/ISMS)</div>
+            <div class="ab-text">Reviewer co-signs FR.232 or FR.229 for FSMS/ISMS scope.</div>
+            <span class="ab-who">Reviewer ★</span>
+          </div>
+        </div>
+        <div class="note note-pink"><strong>★ Which report form?</strong> QMS/EMS/OHSMS/FSMS/ENMS/ABMS → <strong>FR.232</strong> &nbsp;|&nbsp; ISMS (ISO 27001) → <strong>FR.229</strong> &nbsp;|&nbsp; MDQMS (ISO 13485) → <strong>FR.232-1</strong>. Integrated audits include one report per standard group.</div>
+      </div>
+    </div>
+
+    <!-- Phase 12 — Committee -->
+    <div class="phase-row">
+      <div class="phase-num"><div class="num">11</div></div>
+      <div class="phase-card">
+        <div class="phase-title">
+          Certification Committee Review
+          <span class="fr-tag">FR.233</span>
+        </div>
+        <div class="phase-grid">
+          <div class="action-block role-planner">
+            <div class="ab-label">Appoints &amp; Uploads</div>
+            <div class="ab-text">CB Planner appoints committee members (must NOT be from the audit team; must cover all required EA codes). Planner uploads FR.233 Review &amp; Decision Form.</div>
+            <span class="ab-who">CB Planner</span>
+          </div>
+          <div class="action-block role-committee">
+            <div class="ab-label">Signs in order</div>
+            <div class="ab-text">Each committee member signs FR.233 individually (visual signature). Order matters — Cert Manager signs last.</div>
+            <span class="ab-who">Committee Members → Cert Manager (last)</span>
+          </div>
+        </div>
+        <div class="note note-amber">Client cannot see FR.233 at any time. Committee deliberation is CB-internal.</div>
+      </div>
+    </div>
+
+    <!-- Phase 13 — Certificate -->
+    <div class="phase-row">
+      <div class="phase-num"><div class="num">12</div></div>
+      <div class="phase-card">
+        <div class="phase-title">
+          Certificate Issued
+          <span class="fr-tag" style="background:#D1FAE5;color:#065F46">CERTIFICATE</span>
+        </div>
+        <div class="phase-grid">
+          <div class="action-block role-planner">
+            <div class="ab-label">Uploads</div>
+            <div class="ab-text">CB Planner uploads the signed certificate document to the audit set.</div>
+            <span class="ab-who">CB Planner</span>
+          </div>
+          <div class="action-block role-system">
+            <div class="ab-label">Status update</div>
+            <div class="ab-text">Audit set status is set to "Certified / Done." Certificate becomes visible to client, auditors, and CB.</div>
+            <span class="ab-who">System</span>
+          </div>
+        </div>
+        <div class="note note-grey">No signature required on the certificate upload step — the document is pre-signed before upload. All parties can view and download the final certificate.</div>
+      </div>
+    </div>
+
+  </div><!-- end .flow -->
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- SECTION 2 — SURVEILLANCE                                       -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <div class="section-heading">
+    <div class="icon">🔄</div>
+    <div>
+      <h2>Surveillance Audit</h2>
+      <p>Abbreviated flow — no Stage 1, no quotation/agreement cycle. Same signing rules apply.</p>
+    </div>
+  </div>
+
+  <div class="flow">
+
+    <!-- Surv Phase 1 -->
+    <div class="phase-row">
+      <div class="phase-num"><div class="num">1</div></div>
+      <div class="phase-card">
+        <div class="phase-title">
+          Setup — Surveillance Audit Set Created
+        </div>
+        <div class="phase-grid">
+          <div class="action-block role-planner">
+            <div class="ab-label">Action</div>
+            <div class="ab-text">CB Planner creates a new Surveillance audit set linked to the certified client. Assigns audit team, dates, and audit days. Standards and scope are inherited from the certification.</div>
+            <span class="ab-who">CB Planner</span>
+          </div>
+          <div class="action-block role-system">
+            <div class="ab-label">Automatic</div>
+            <div class="ab-text">System generates surveillance audit ZIP: FR.223, FR.224, FR.225, FR.230, FR.232/FR.229/FR.232-1, FR.211, FR.234, FR.233.</div>
+            <span class="ab-who">System</span>
+          </div>
+        </div>
+        <div class="note note-grey">Surveillance has NO FR.218 Application Review, NO FR.220 Quotation, NO FR.221 Agreement, NO FR.222 Audit Programme, and NO Stage 1 / Stage 2 split. It is a single-stage process.</div>
+      </div>
+    </div>
+
+    <!-- Surv Phase 2 -->
+    <div class="phase-row">
+      <div class="phase-num"><div class="num">2</div></div>
+      <div class="phase-card">
+        <div class="phase-title">
+          Surveillance Notification
+          <span class="fr-tag">FR.234</span>
+        </div>
+        <div class="phase-grid">
+          <div class="action-block role-planner">
+            <div class="ab-label">Sends / Uploads</div>
+            <div class="ab-text">CB Planner uploads FR.234 Surveillance Notification. The notification is sent to the client informing them of the upcoming audit date and scope.</div>
+            <span class="ab-who">CB Planner</span>
+          </div>
+          <div class="action-block role-client">
+            <div class="ab-label">Acknowledges</div>
+            <div class="ab-text">Client acknowledges receipt of the notification (platform confirmation).</div>
+            <span class="ab-who">Client</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Surv Phase 3 -->
+    <div class="phase-row">
+      <div class="phase-num"><div class="num">3</div></div>
+      <div class="phase-card">
+        <div class="phase-title">
+          Audit Team Info
+          <span class="fr-tag">FR.224</span>
+        </div>
+        <div class="phase-grid">
+          <div class="action-block role-planner">
+            <div class="ab-label">Uploads</div>
+            <div class="ab-text">Planner uploads one FR.224 per surveillance team member.</div>
+            <span class="ab-who">CB Planner</span>
+          </div>
+          <div class="action-block role-team">
+            <div class="ab-label">Signs (private)</div>
+            <div class="ab-text">Each auditor / TE signs their own form privately (same as initial cert).</div>
+            <span class="ab-who">Each Auditor / TE individually</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Surv Phase 4 -->
+    <div class="phase-row">
+      <div class="phase-num"><div class="num">4</div></div>
+      <div class="phase-card">
+        <div class="phase-title">
+          Audit Plan
+          <span class="fr-tag">FR.223</span>
+        </div>
+        <div class="phase-grid">
+          <div class="action-block role-lead">
+            <div class="ab-label">Uploads</div>
+            <div class="ab-text">Lead Auditor uploads the filled Surveillance Audit Plan (FR.223).</div>
+            <span class="ab-who">Lead Auditor</span>
+          </div>
+          <div class="action-block role-client">
+            <div class="ab-label">Signs</div>
+            <div class="ab-text">Org Representative signs to acknowledge the plan.</div>
+            <span class="ab-who">Org Representative</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Surv Phase 5 — Audit -->
+    <div class="phase-row">
+      <div class="phase-num"><div class="num">5</div></div>
+      <div class="phase-card">
+        <div class="phase-title">
+          Surveillance Audit — Meeting, Findings &amp; Report
+          <span class="fr-tag">FR.225</span>
+          <span class="fr-tag amber">FR.230 (if NCs)</span>
+          <span class="fr-tag pink">FR.232 / FR.229 / FR.232-1</span>
+        </div>
+        <div class="phase-grid">
+          <div class="action-block role-lead">
+            <div class="ab-label">Uploads FR.225</div>
+            <div class="ab-text">Lead Auditor uploads Opening/Closing Meeting form for the surveillance visit.</div>
+            <span class="ab-who">Lead Auditor</span>
+          </div>
+          <div class="action-block role-team">
+            <div class="ab-label">Signs FR.225</div>
+            <div class="ab-text">All auditors and TEs on the surveillance team sign.</div>
+            <span class="ab-who">All Auditors / TEs</span>
+          </div>
+          <div class="action-block role-client">
+            <div class="ab-label">Signs FR.225</div>
+            <div class="ab-text">Org employees from the client roster sign the meeting record.</div>
+            <span class="ab-who">Org Employees</span>
+          </div>
+          <div class="action-block role-lead">
+            <div class="ab-label">NC Form (if needed)</div>
+            <div class="ab-text">Lead Auditor + Org Rep sign FR.230 if nonconformities are raised during the surveillance visit.</div>
+            <span class="ab-who">Lead Auditor + Org Rep</span>
+          </div>
+          <div class="action-block role-lead">
+            <div class="ab-label">Surveillance Report — Signs</div>
+            <div class="ab-text">Lead Auditor signs the Surveillance Audit Report (FR.232 / FR.229 / FR.232-1 depending on standard).</div>
+            <span class="ab-who">Lead Auditor</span>
+          </div>
+          <div class="action-block role-reviewer">
+            <div class="ab-label">Report — Also signs (FSMS/ISMS)</div>
+            <div class="ab-text">Reviewer co-signs the surveillance report when scope includes FSMS or ISMS.</div>
+            <span class="ab-who">Reviewer ★</span>
+          </div>
+        </div>
+        <div class="note note-pink"><strong>★ Which report form?</strong> QMS/EMS/OHSMS/FSMS/ENMS/ABMS → <strong>FR.232</strong> &nbsp;|&nbsp; ISMS (ISO 27001) → <strong>FR.229</strong> &nbsp;|&nbsp; MDQMS (ISO 13485) → <strong>FR.232-1</strong>.</div>
+      </div>
+    </div>
+
+    <!-- Surv Phase 6 — Committee -->
+    <div class="phase-row">
+      <div class="phase-num"><div class="num">6</div></div>
+      <div class="phase-card">
+        <div class="phase-title">
+          Certification Committee — Surveillance Decision
+          <span class="fr-tag">FR.233</span>
+        </div>
+        <div class="phase-grid">
+          <div class="action-block role-planner">
+            <div class="ab-label">Appoints &amp; Uploads</div>
+            <div class="ab-text">CB Planner appoints independent committee (not from audit team) and uploads FR.233 Review &amp; Decision Form for the surveillance cycle.</div>
+            <span class="ab-who">CB Planner</span>
+          </div>
+          <div class="action-block role-committee">
+            <div class="ab-label">Signs in order</div>
+            <div class="ab-text">Committee members sign individually. Cert Manager signs last to close the review.</div>
+            <span class="ab-who">Committee Members → Cert Manager (last)</span>
+          </div>
+        </div>
+        <div class="note note-amber">Client cannot see FR.233. Decision: continue / conditional continuation / suspension.</div>
+      </div>
+    </div>
+
+    <!-- Surv Phase 7 — Cert continued -->
+    <div class="phase-row">
+      <div class="phase-num"><div class="num">7</div></div>
+      <div class="phase-card">
+        <div class="phase-title">
+          Certificate Continued / Confirmed
+          <span class="fr-tag" style="background:#D1FAE5;color:#065F46">CERTIFICATE</span>
+        </div>
+        <div class="phase-grid">
+          <div class="action-block role-planner">
+            <div class="ab-label">Confirms</div>
+            <div class="ab-text">CB Planner confirms certification continuation in the platform. Surveillance status set to complete.</div>
+            <span class="ab-who">CB Planner</span>
+          </div>
+          <div class="action-block role-system">
+            <div class="ab-label">Visible to all</div>
+            <div class="ab-text">Certification status updated. Client, auditors, and CB can see the surveillance completion record.</div>
+            <span class="ab-who">System</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end surveillance .flow -->
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- SECTION 3 — SPECIAL SITUATIONS                                 -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <div class="section-heading">
+    <div class="icon">⚡</div>
+    <div>
+      <h2>Different Situations — Key Variants</h2>
+      <p>How the process changes depending on standards and audit scope</p>
+    </div>
+  </div>
+
+  <div class="situations">
+    <div class="sit-grid">
+
+      <div class="sit-card isms">
+        <h4>🔐 ISMS (ISO 27001) Scope</h4>
+        <ul>
+          <li>FR.218 Application Review gains a <strong>reviewer co-signature</strong> slot (3 signers total).</li>
+          <li>Stage 1 Report uses <strong>FR.231</strong> from the <code>27001/</code> template folder. Reviewer must also sign.</li>
+          <li>Stage 2 / Surveillance Report uses <strong>FR.229</strong> (ISMS-specific, 24 tables). Reviewer must also sign.</li>
+          <li>ISMS auditors have no per-standard EA code filter — all 27001-qualified auditors appear in the picker.</li>
+          <li>FR.229 header tables 1–4 &amp; 11 have the same fill structure as FR.232. Clause checklists (tables 5–10, 12–24) are filled manually by auditors on-site.</li>
+        </ul>
+      </div>
+
+      <div class="sit-card mdqms">
+        <h4>🏥 MDQMS (ISO 13485) Scope</h4>
+        <ul>
+          <li>Stage 1 Report uses <strong>FR.231-1</strong> (MDQMS variant, from <code>13485/</code> folder).</li>
+          <li>Stage 2 / Surveillance Report uses <strong>FR.232-1</strong> (MDQMS audit report).</li>
+          <li>No additional reviewer signature required (unless combined with FSMS/ISMS).</li>
+          <li>All other steps (FR.223, FR.224, FR.225, FR.233) use MDQMS copies from the <code>13485/</code> template folder.</li>
+        </ul>
+      </div>
+
+      <div class="sit-card integrated">
+        <h4>🔗 Integrated Audit (e.g. ISO 9001 + ISO 27001)</h4>
+        <ul>
+          <li>Stage 2 and Surveillance ZIPs contain <strong>two audit reports</strong>: FR.232 (from base group) AND FR.229 (from isms group).</li>
+          <li>Stage 1 contains only <strong>one FR.231</strong> (base version; deduplication prevents a second copy from the ISMS branch).</li>
+          <li>FR.223, FR.224, FR.225, FR.230, FR.211 appear once each per standard group in the ZIP.</li>
+          <li>FR.233 appears once only (primary group — base if QMS is included).</li>
+          <li>Certification Committee must collectively cover all EA codes for all included standards.</li>
+          <li>Reviewer signature required on both FR.232 and FR.229 for integrated FSMS+ISMS audit.</li>
+        </ul>
+      </div>
+
+      <div class="sit-card signing">
+        <h4>✍️ Signing Rules — All Audits</h4>
+        <ul>
+          <li><strong>All signatures are visual only.</strong> No OTP anywhere on the platform.</li>
+          <li><strong>FR.220 / FR.221:</strong> GM signs first; client is gated until GM signs.</li>
+          <li><strong>FR.224:</strong> Private per person — each team member can only see and sign their own copy.</li>
+          <li><strong>FR.225:</strong> Lead uploads → team signs → org employees sign.</li>
+          <li><strong>FR.231 / FR.232 / FR.229:</strong> Lead Auditor signs. If FSMS or ISMS scope, reviewer co-signs.</li>
+          <li><strong>FR.233:</strong> Committee members sign in order → Cert Manager signs last. Client cannot view this document.</li>
+          <li><strong>Certificate:</strong> Pre-signed before upload. No additional signature step in platform.</li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ───────────── DOCUMENT REFERENCE TABLE ───────────── -->
+  <div class="situations">
+    <h2>📋 Quick Reference — Forms &amp; Who Is Responsible</h2>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:4px">
+      <thead>
+        <tr style="background:#1A4731;color:#fff">
+          <th style="padding:9px 12px;text-align:left;border-radius:6px 0 0 0">Form</th>
+          <th style="padding:9px 12px;text-align:left">Description</th>
+          <th style="padding:9px 12px;text-align:left">Uploads</th>
+          <th style="padding:9px 12px;text-align:left">Signs</th>
+          <th style="padding:9px 12px;text-align:left;border-radius:0 6px 0 0">Visible to Client?</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="background:#F0FAF2">
+          <td style="padding:8px 12px;font-weight:700;font-family:monospace">FR.218</td>
+          <td style="padding:8px 12px">Application Review</td>
+          <td style="padding:8px 12px">CB Planner</td>
+          <td style="padding:8px 12px">CB Planner + Cert Manager (+ Reviewer if FSMS/ISMS)</td>
+          <td style="padding:8px 12px;text-align:center">No</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;font-weight:700;font-family:monospace">FR.220</td>
+          <td style="padding:8px 12px">Quotation</td>
+          <td style="padding:8px 12px">CB Planner</td>
+          <td style="padding:8px 12px">GM → Client</td>
+          <td style="padding:8px 12px;text-align:center">Yes</td>
+        </tr>
+        <tr style="background:#F0FAF2">
+          <td style="padding:8px 12px;font-weight:700;font-family:monospace">FR.221</td>
+          <td style="padding:8px 12px">Agreement</td>
+          <td style="padding:8px 12px">CB Planner</td>
+          <td style="padding:8px 12px">GM → Client</td>
+          <td style="padding:8px 12px;text-align:center">Yes</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;font-weight:700;font-family:monospace">FR.222</td>
+          <td style="padding:8px 12px">Audit Programme</td>
+          <td style="padding:8px 12px">CB Planner</td>
+          <td style="padding:8px 12px">CB Planner + Cert Manager</td>
+          <td style="padding:8px 12px;text-align:center">No</td>
+        </tr>
+        <tr style="background:#F0FAF2">
+          <td style="padding:8px 12px;font-weight:700;font-family:monospace">FR.223</td>
+          <td style="padding:8px 12px">Audit Plan (S1 / S2 / Surv)</td>
+          <td style="padding:8px 12px">Lead Auditor</td>
+          <td style="padding:8px 12px">Org Representative</td>
+          <td style="padding:8px 12px;text-align:center">Yes</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;font-weight:700;font-family:monospace">FR.224</td>
+          <td style="padding:8px 12px">Audit Team Information</td>
+          <td style="padding:8px 12px">CB Planner (one per person)</td>
+          <td style="padding:8px 12px">Each auditor / TE (private)</td>
+          <td style="padding:8px 12px;text-align:center">No</td>
+        </tr>
+        <tr style="background:#F0FAF2">
+          <td style="padding:8px 12px;font-weight:700;font-family:monospace">FR.225</td>
+          <td style="padding:8px 12px">Opening / Closing Meeting</td>
+          <td style="padding:8px 12px">Lead Auditor</td>
+          <td style="padding:8px 12px">All auditors/TEs + Org employees</td>
+          <td style="padding:8px 12px;text-align:center">Yes</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;font-weight:700;font-family:monospace">FR.230</td>
+          <td style="padding:8px 12px">Nonconformity Form</td>
+          <td style="padding:8px 12px">Lead Auditor</td>
+          <td style="padding:8px 12px">Lead Auditor + Org Representative</td>
+          <td style="padding:8px 12px;text-align:center">Yes</td>
+        </tr>
+        <tr style="background:#F0FAF2">
+          <td style="padding:8px 12px;font-weight:700;font-family:monospace">FR.231</td>
+          <td style="padding:8px 12px">Stage 1 Report (QMS/ISMS)</td>
+          <td style="padding:8px 12px">Lead Auditor</td>
+          <td style="padding:8px 12px">Lead Auditor (+ Reviewer if FSMS/ISMS)</td>
+          <td style="padding:8px 12px;text-align:center">No</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;font-weight:700;font-family:monospace">FR.231-1</td>
+          <td style="padding:8px 12px">Stage 1 Report (MDQMS)</td>
+          <td style="padding:8px 12px">Lead Auditor</td>
+          <td style="padding:8px 12px">Lead Auditor</td>
+          <td style="padding:8px 12px;text-align:center">No</td>
+        </tr>
+        <tr style="background:#F0FAF2">
+          <td style="padding:8px 12px;font-weight:700;font-family:monospace">FR.232</td>
+          <td style="padding:8px 12px">S2 / Surveillance Audit Report (QMS/EMS/OHSMS/FSMS/ENMS/ABMS)</td>
+          <td style="padding:8px 12px">Lead Auditor</td>
+          <td style="padding:8px 12px">Lead Auditor (+ Reviewer if FSMS)</td>
+          <td style="padding:8px 12px;text-align:center">No</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;font-weight:700;font-family:monospace">FR.232-1</td>
+          <td style="padding:8px 12px">S2 / Surveillance Audit Report (MDQMS)</td>
+          <td style="padding:8px 12px">Lead Auditor</td>
+          <td style="padding:8px 12px">Lead Auditor</td>
+          <td style="padding:8px 12px;text-align:center">No</td>
+        </tr>
+        <tr style="background:#F0FAF2">
+          <td style="padding:8px 12px;font-weight:700;font-family:monospace">FR.229</td>
+          <td style="padding:8px 12px">S2 / Surveillance ISMS Report (ISO 27001)</td>
+          <td style="padding:8px 12px">Lead Auditor</td>
+          <td style="padding:8px 12px">Lead Auditor + Reviewer</td>
+          <td style="padding:8px 12px;text-align:center">No</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;font-weight:700;font-family:monospace">FR.233</td>
+          <td style="padding:8px 12px">Review &amp; Decision Form</td>
+          <td style="padding:8px 12px">CB Planner</td>
+          <td style="padding:8px 12px">Committee members → Cert Manager (last)</td>
+          <td style="padding:8px 12px;text-align:center">No</td>
+        </tr>
+        <tr style="background:#F0FAF2">
+          <td style="padding:8px 12px;font-weight:700;font-family:monospace">FR.234</td>
+          <td style="padding:8px 12px">Surveillance Notification</td>
+          <td style="padding:8px 12px">CB Planner</td>
+          <td style="padding:8px 12px">Client (acknowledges)</td>
+          <td style="padding:8px 12px;text-align:center">Yes</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;font-weight:700;font-family:monospace">FR.211</td>
+          <td style="padding:8px 12px">Auditor Assessment</td>
+          <td style="padding:8px 12px">CB Planner / Lead Auditor</td>
+          <td style="padding:8px 12px">CB Planner / Cert Manager</td>
+          <td style="padding:8px 12px;text-align:center">No</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="footer">
+    Certiva · IFC Global LLC &nbsp;·&nbsp; All signatures are visual (no OTP) &nbsp;·&nbsp; Generated 2026-06-18
+  </div>
+
+</div>
+</body>
+</html>

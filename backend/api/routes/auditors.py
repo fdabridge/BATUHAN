@@ -578,14 +578,14 @@ def get_available_auditors(
             """
             For each required standard/codes, determine which codes this auditor covers.
             Returns {iso_standard: [covered_codes]}.
+            'UNSCOPED' is a sentinel meaning "qualified for this standard, no sub-code restriction".
             """
             covered: dict = {}
             for iso_std, entry in req.items():
                 scope_type = entry.get("type", "ea")
                 required_codes: list[str] = entry.get("codes", [])
-                if not required_codes:
-                    continue
-                # Find the auditor's qualification for this standard
+
+                # Qualification lookup comes first — before the codes check.
                 std_lower = iso_std.lower().replace("iso ", "").replace(" ", "")
                 qual = next(
                     (q for q in auditor_qualifications
@@ -596,22 +596,30 @@ def get_available_auditors(
                 if not qual:
                     continue
 
+                # No specific sub-codes required (e.g. Turkish scope text, no keyword match).
+                # Auditor is qualified → mark as unscoped so the committee picker can see them.
+                if not required_codes:
+                    covered[iso_std] = ["UNSCOPED"]
+                    continue
+
                 auditor_codes: list[str] = []
                 if scope_type in ("food", "medical", "sector", "energy"):
-                    # scope_category is a comma-separated string like "CI, CIV, E"
+                    # scope_category is a comma-separated string like "A1.1, A1.3"
                     raw = qual.scope_category or ""
                     auditor_codes = [c.strip() for c in raw.split(",") if c.strip()]
                 elif scope_type == "ea":
                     auditor_codes = qual.ea_codes or []
 
-                # If auditor has no recorded EA codes, count them as covering all required codes.
-                if scope_type == "ea" and not auditor_codes:
+                # If auditor has no recorded codes (any scope type), credit all required codes.
+                if not auditor_codes:
                     covered[iso_std] = required_codes
                     continue
+
                 # Intersection of required codes and auditor's codes
                 matched = [c for c in required_codes if c in auditor_codes]
                 if matched:
                     covered[iso_std] = matched
+
             return covered
 
         for auditor in all_auditors:
