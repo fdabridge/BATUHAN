@@ -262,6 +262,9 @@ _SCOPE_TO_EA_KW: dict[str, tuple[str, ...]] = {
 
     # EA 38 – Health and social work (NACE 75, 86, 87, 88)
     "EA 38": ("healthcare", "hospital", "clinic", "medical services", "diagnostic laboratory",
+              "diagnostic", "acupuncture", "physiotherapy", "therapy", "chiropractic",
+              "optometry", "pharmacy", "health centre", "health center", "medical centre",
+              "medical center", "health services", "patient care", "outpatient",
               "veterinary", "social work", "nursing home", "rehabilitation", "dental"),
 
     # EA 39 – Other social services (NACE 37, 38.1/38.2, 39, 59–60, 63.9, 79, 90–96)
