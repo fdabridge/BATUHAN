@@ -19,16 +19,7 @@ interface SharedDoc {
   cb_sig_id: string | null
 }
 
-const DOC_TYPES = [
-  { value: 'quotation',       label: 'Quotation (FR.220)' },
-  { value: 'agreement',       label: 'Agreement (FR.221)' },
-  { value: 'fr218_review',    label: 'Application Review (FR.218)' },
-  { value: 'audit_programme', label: 'Audit Programme (FR.222)' },
-  // Portal 55 — FR.223 is uploaded by the Lead Auditor from their portal,
-  // not released by the Planner. The Planner can still view it once uploaded.
-  { value: 'team_info',       label: 'Audit Team Info (FR.224)' },
-  { value: 'certificate',     label: 'Certificate' },
-]
+// DOC_TYPES is computed inside the component based on auditType — see below.
 
 // Document types tagged to a specific stage when released.
 const STAGE_SCOPED_TYPES = new Set(['team_info'])
@@ -73,15 +64,43 @@ function fmtDate(iso: string | null): string {
 export function SharedDocumentsSection({
   auditSetId,
   stages = [],
+  auditType = null,
 }: {
   auditSetId: string
   stages?: StageResponse[]
+  auditType?: string | null
 }) {
+  // Document types available in the release form, filtered by audit type.
+  const DOC_TYPES = (() => {
+    const isSurveillance = (auditType ?? '').startsWith('surveillance')
+    if (isSurveillance) {
+      return [
+        { value: 'surveillance_notification', label: 'Surveillance Notification (FR.234)' },
+        { value: 'team_info',                 label: 'Audit Team Info (FR.224)' },
+        { value: 'certificate',               label: 'Certificate' },
+      ]
+    }
+    // Initial certification / recertification / unset
+    return [
+      { value: 'quotation',       label: 'Quotation (FR.220)' },
+      { value: 'agreement',       label: 'Agreement (FR.221)' },
+      { value: 'fr218_review',    label: 'Application Review (FR.218)' },
+      { value: 'audit_programme', label: 'Audit Programme (FR.222)' },
+      // Portal 55 — FR.223 is uploaded by the Lead Auditor from their portal,
+      // not released by the Planner. The Planner can still view it once uploaded.
+      { value: 'team_info',       label: 'Audit Team Info (FR.224)' },
+      { value: 'certificate',     label: 'Certificate' },
+    ]
+  })()
+
   const [docs, setDocs]     = useState<SharedDoc[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [label, setLabel]     = useState('')
-  const [docType, setDocType] = useState('quotation')
+  const [docType, setDocType] = useState(() => {
+    const isSurveillance = (auditType ?? '').startsWith('surveillance')
+    return isSurveillance ? 'surveillance_notification' : 'quotation'
+  })
   const [stageType, setStageType] = useState('')
   const [auditorId, setAuditorId] = useState('')
   const [file, setFile]       = useState<File | null>(null)
@@ -125,7 +144,8 @@ export function SharedDocumentsSection({
       await api.post(`/audit-sets/${auditSetId}/documents/release`, fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      setLabel(''); setFile(null); setDocType('quotation')
+      setLabel(''); setFile(null)
+      setDocType((auditType ?? '').startsWith('surveillance') ? 'surveillance_notification' : 'quotation')
       setStageType(''); setAuditorId('')
       setReleaseDate(new Date().toISOString().slice(0, 10))
       if (fileRef.current) fileRef.current.value = ''
