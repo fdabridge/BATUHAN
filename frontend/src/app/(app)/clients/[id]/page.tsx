@@ -130,16 +130,12 @@ function recommendedDays(
   return null
 }
 
-/** Given a start date (YYYY-MM-DD) and a number of working days, return the end date. */
-function suggestEndDate(startISO: string, workDays: number): string {
+/** Given a start date (YYYY-MM-DD) and a number of audit days, return the end date.
+ *  All days of the week are counted — audits may run on any day including weekends. */
+function suggestEndDate(startISO: string, auditDays: number): string {
   const d = new Date(startISO)
-  let remaining = Math.max(1, Math.round(workDays))
-  // day 1 is the start date itself if it's a weekday
-  if (d.getDay() !== 0 && d.getDay() !== 6) remaining--
-  while (remaining > 0) {
-    d.setDate(d.getDate() + 1)
-    if (d.getDay() !== 0 && d.getDay() !== 6) remaining--
-  }
+  // day 1 = the start date itself; add the remaining days
+  d.setDate(d.getDate() + Math.max(0, Math.round(auditDays) - 1))
   return d.toISOString().slice(0, 10)
 }
 
@@ -168,17 +164,11 @@ function validateStageOrder(
   return null
 }
 
-function workingDaysBetween(start: string, end: string): number {
+/** Count all calendar days between two dates (inclusive). Weekends are valid audit days. */
+function calendarDaysBetween(start: string, end: string): number {
   const s = new Date(start)
   const e = new Date(end)
-  let count = 0
-  const d = new Date(s)
-  while (d <= e) {
-    const day = d.getDay()
-    if (day !== 0 && day !== 6) count++
-    d.setDate(d.getDate() + 1)
-  }
-  return count
+  return Math.max(1, Math.round((e.getTime() - s.getTime()) / 86_400_000) + 1)
 }
 
 // ── Coverage check helpers ────────────────────────────────────────────────────
@@ -1424,15 +1414,13 @@ function StageCard({
 
     if (stage.stage_type === 'stage_1') {
       const d = new Date()
-      d.setDate(d.getDate() + 14)   // 2-week lead time
-      while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1)
+      d.setDate(d.getDate() + 14)   // 2-week lead time (any day of week)
       suggestedStart = d.toISOString().slice(0, 10)
     } else if (stage.stage_type === 'stage_2') {
       const stage1 = allStages.find((s) => s.stage_type === 'stage_1')
       if (!stage1?.audit_date_end) return   // need stage 1 end first
       const d = new Date(stage1.audit_date_end)
-      d.setDate(d.getDate() + 7)   // 1-week gap after stage 1
-      while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1)
+      d.setDate(d.getDate() + 7)   // 1-week gap after stage 1 (any day of week)
       suggestedStart = d.toISOString().slice(0, 10)
     }
 
@@ -1444,7 +1432,7 @@ function StageCard({
     }
   }, [])   // eslint-disable-line react-hooks/exhaustive-deps — intentionally on mount only
 
-  const workingDays = datesReady ? workingDaysBetween(edit.audit_date_start, edit.audit_date_end) : null
+  const calendarDays = datesReady ? calendarDaysBetween(edit.audit_date_start, edit.audit_date_end) : null
   // Team size for man-day math: lead + additional auditors ONLY (technical experts observe, not audit — per IAF MD 5 / spec Part 5)
   const teamCount = (edit.lead_auditor_name ? 1 : 0) + edit.auditors.length
 
@@ -1462,11 +1450,11 @@ function StageCard({
     }
   }, [teamCount])   // eslint-disable-line react-hooks/exhaustive-deps — intentionally watches teamCount only
 
-  // Man-days covered = working days in range × number of assigned team members
-  const manDaysCovered = workingDays != null && teamCount > 0 ? workingDays * teamCount : null
+  // Man-days covered = calendar days in range × number of assigned team members (all days of week valid)
+  const manDaysCovered = calendarDays != null && teamCount > 0 ? calendarDays * teamCount : null
   // Shortfall: covered < stage.audit_days (recommended for this stage from calculation)
   const manDayShortfall = stage.audit_days != null && manDaysCovered != null && manDaysCovered < stage.audit_days
-  const dateMismatch = recommended != null && workingDays != null && teamCount === 0 && Math.abs(workingDays - recommended) > 0.5
+  const dateMismatch = recommended != null && calendarDays != null && teamCount === 0 && Math.abs(calendarDays - recommended) > 0.5
   const stageOrderErr = validateStageOrder(stage, allStages, edit.audit_date_start, edit.audit_date_end)
 
   const [coverageError, setCoverageError] = useState<string | null>(null)
@@ -1597,18 +1585,18 @@ function StageCard({
       )}
 
       {/* Man-day coverage warning — team × dates vs required audit days */}
-      {manDayShortfall && workingDays != null && (
+      {manDayShortfall && calendarDays != null && (
         <div className="mb-3 rounded-md px-3 py-2 text-sm" style={{ background: '#FEF3C7', color: '#92400E' }}>
-          ⚠ Your date range covers {workingDays} working day(s) × {teamCount} auditor(s) = {manDaysCovered} man-day(s).
+          ⚠ Your date range covers {calendarDays} calendar day(s) × {teamCount} auditor(s) = {manDaysCovered} man-day(s).
           IAF recommends {stage.audit_days} audit-day(s) for this stage.
           Consider expanding the date range or adding more auditors.
         </div>
       )}
       {/* Fallback: no team assigned yet — show plain date-vs-recommendation mismatch */}
-      {dateMismatch && workingDays != null && (
+      {dateMismatch && calendarDays != null && (
         <div className="mb-3 rounded-md px-3 py-2 text-sm" style={{ background: '#FEF3C7', color: '#92400E' }}>
-          ⚠ Date range covers {workingDays} working day(s), but IAF MD 5 recommends {recommended} for a single auditor.
-          {workingDays > recommended!
+          ⚠ Date range covers {calendarDays} calendar day(s), but IAF MD 5 recommends {recommended} for a single auditor.
+          {calendarDays > recommended!
             ? ' This exceeds the recommended duration.'
             : ' Assign auditors or expand the date range.'}
         </div>
@@ -1688,7 +1676,7 @@ function StageCard({
                 onClick={() => patch({ audit_date_end: suggestEndDate(edit.audit_date_start, calendarDaysNeeded) })}
                 className="text-xs text-certiva-primary underline hover:opacity-70"
               >
-                Suggest end date ({calendarDaysNeeded} working days from start)
+                Suggest end date ({calendarDaysNeeded} audit days from start)
                 {teamCount > 1 && (
                   <span className="ml-1 opacity-70">
                     ({recommended} person-days ÷ {teamCount} auditors)
