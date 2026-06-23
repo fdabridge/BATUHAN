@@ -42,6 +42,9 @@ VALID_TRANSITIONS: dict[tuple[Optional[str], str], set[str]] = {
     (None,                "pending_review"):    {"system"},
     ("pending_review",    "in_planning"):       {"admin", "planner"},
     ("in_planning",       "quotation_sent"):    {"admin", "planner"},
+    # ── Surveillance: notification replaces quotation + agreement ─────────────
+    ("in_planning",          "notification_sent"):  {"admin", "planner"},
+    ("notification_sent",    "audit_scheduled"):    {"admin", "planner"},
     ("quotation_sent",    "agreement_signed"):  {"admin", "planner", "client"},
     # ── Surveillance / Recertification path (single-audit) ───────────────────
     ("agreement_signed",  "audit_scheduled"):   {"admin", "planner"},
@@ -199,6 +202,7 @@ class WorkflowUpdateSchema(BaseModel):
 # The full set of statuses that can be set via the jump endpoint.
 VALID_JUMP_STATUSES = {
     "in_planning",
+    "notification_sent",
     "quotation_sent",
     "agreement_signed",
     "fr218_in_progress",

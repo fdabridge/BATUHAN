@@ -29,9 +29,11 @@ function fmtDate(iso: string | null) {
 export function InternalApprovalsSection({
   auditSetId,
   workflowStatus,
+  auditType,
 }: {
   auditSetId: string
   workflowStatus: string | null
+  auditType?: string | null
 }) {
   const [slots, setSlots]   = useState<SigSlot[]>([])
   const [loading, setLoading] = useState(true)
@@ -49,6 +51,9 @@ export function InternalApprovalsSection({
   }, [auditSetId])
 
   useEffect(() => { load() }, [load])
+
+  // Surveillance audits do not use FR.222 — hide section entirely.
+  if (auditType && auditType.startsWith('surveillance')) return null
 
   const showSection = workflowStatus && workflowStatus !== 'pending_review'
   if (!showSection) return null

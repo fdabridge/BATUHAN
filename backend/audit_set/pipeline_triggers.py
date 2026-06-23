@@ -281,6 +281,11 @@ def fire_phase_triggers(
     elif new_status in ("stage2_scheduled", "stage2_in_progress"):
         _trigger_stage_start(audit_set, stage_number=2, db=db)
 
+    elif new_status in ("audit_scheduled", "audit_in_progress"):
+        # Surveillance / recertification single-stage path.
+        # Seed FR.224 declarations + FR.211 assessments for the surveillance stage.
+        _seed_stage_declarations_and_assessments(audit_set, "surveillance", db)
+
     # stage2_complete → committee_review is NOT auto-fired here: per the gate
     # chain, committee_review starts when the Planner generates FR.233
     # (committee_router.generate handles that transition).

@@ -46,8 +46,24 @@ const STANDARD_STEPS = [
   { key: 'certified',         label: 'Certified'  },
 ]
 
+const SURVEILLANCE_STEPS = [
+  { key: 'pending_review',    label: 'Pending'    },
+  { key: 'in_planning',       label: 'Planning'   },
+  { key: 'notification_sent', label: 'Notified'   },
+  { key: 'audit_scheduled',   label: 'Scheduled'  },
+  { key: 'audit_in_progress', label: 'In Progress'},
+  { key: 'under_review',      label: 'Review'     },
+  { key: 'certified',         label: 'Continued'  },
+]
+
+function isSurveillanceAudit(auditType: string | null): boolean {
+  return auditType != null && auditType.startsWith('surveillance')
+}
+
 function getSteps(auditType: string | null) {
-  return auditType === 'initial' ? INITIAL_STEPS : STANDARD_STEPS
+  if (auditType === 'initial') return INITIAL_STEPS
+  if (isSurveillanceAudit(auditType)) return SURVEILLANCE_STEPS
+  return STANDARD_STEPS
 }
 
 interface ActionPanel {
@@ -157,8 +173,40 @@ const STANDARD_PANELS: Record<string, ActionPanel> = {
   },
 }
 
+const SURVEILLANCE_PANELS: Record<string, ActionPanel> = {
+  in_planning: {
+    heading: 'Prepare surveillance notification',
+    body: 'Download and generate FR.234 (Surveillance Notification Form), fill in audit dates and team, then release it to the client using the Shared Documents section below. Status advances automatically when you release it.',
+  },
+  notification_sent: {
+    heading: 'Client notified — confirm audit dates',
+    body: 'FR.234 has been released to the client. Upload FR.224 (Team Information) and FR.223 (Audit Plan) for the surveillance stage. Once dates are confirmed, mark the audit as scheduled.',
+    cta: { label: 'Mark as Audit Scheduled', nextStatus: 'audit_scheduled', allowedRoles: ['admin', 'planner'] },
+  },
+  audit_scheduled: {
+    heading: 'Surveillance audit is scheduled',
+    body: 'Audit dates are confirmed. Mark as in progress when the surveillance audit begins.',
+    cta: { label: 'Mark as In Progress', nextStatus: 'audit_in_progress' },
+  },
+  audit_in_progress: {
+    heading: 'Surveillance audit in progress',
+    body: 'The audit is underway. The auditor uploads FR.232 (Audit Report), FR.225, and FR.230 via their portal. Status advances to Under Review automatically when documents are uploaded.',
+  },
+  under_review: {
+    heading: 'Under review — committee decision',
+    body: 'Audit documents are complete. Generate FR.233 (Review & Decision Form) in the panel below so the committee can sign. Once the decision is issued, mark certification as continued.',
+    cta: { label: 'Issue Continuation Certificate', nextStatus: 'certified', allowedRoles: ['admin', 'executive'] },
+  },
+  certified: {
+    heading: 'Surveillance completed ✓',
+    body: 'Surveillance audit is closed. The continuation certificate has been issued.',
+  },
+}
+
 function getPanels(auditType: string | null) {
-  return auditType === 'initial' ? INITIAL_PANELS : STANDARD_PANELS
+  if (auditType === 'initial') return INITIAL_PANELS
+  if (isSurveillanceAudit(auditType)) return SURVEILLANCE_PANELS
+  return STANDARD_PANELS
 }
 
 export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, auditType, onAdvanced }: WorkflowStatusBarProps) {
@@ -234,6 +282,7 @@ export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, 
               className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:border-[#1A4731] focus:outline-none"
             >
               <option value="in_planning">In Planning</option>
+              <option value="notification_sent">Notification Sent</option>
               <option value="quotation_sent">Quotation Sent</option>
               <option value="agreement_signed">Agreement Signed</option>
               <option value="fr218_in_progress">FR.218 In Progress</option>

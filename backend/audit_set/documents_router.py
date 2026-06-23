@@ -55,6 +55,7 @@ ALLOWED_DOC_TYPES = {
     "review_decision",  # FR.233 — CB only
     "certificate",
     "audit_upload",     # legacy auditor uploads
+    "surveillance_notification",  # FR.234 — Surveillance Notification Form
 }
 
 # Visibility matrix (Portal 49b "Visibility Enforcement")
@@ -66,6 +67,7 @@ AUDITOR_VISIBLE_TYPES = {
 CLIENT_VISIBLE_TYPES = {
     "quotation", "agreement", "audit_plan", "meeting_form",
     "nc_form", "assessment", "auditor_assessment", "certificate",
+    "surveillance_notification",
 }
 
 # Signature slots seeded per document type, in signing order.
@@ -93,6 +95,7 @@ DOC_SIG_SLOTS: dict[str, list[str]] = {
 STATUS_ORDER = [
     "pending_review",
     "in_planning",
+    "notification_sent",
     "quotation_sent",
     "agreement_signed",
     "fr218_in_progress",
@@ -288,7 +291,8 @@ async def release_document(
 
     # Portal 49b gates: FR.222 and FR.224 require the application review
     # (FR.218) to be complete before they can be uploaded.
-    if document_type in ("audit_programme", "team_info"):
+    is_surveillance = (audit_set.audit_type or "").lower().startswith("surveillance")
+    if document_type in ("audit_programme", "team_info") and not is_surveillance:
         if not _status_at_least(audit_set.workflow_status, "fr218_complete"):
             raise HTTPException(
                 400,
@@ -366,6 +370,16 @@ async def release_document(
     if requires_cb_sig:
         # Workflow advance + client email are deferred to the client signature.
         return {"id": doc.id, "status": "pending_cb_signature", "signature_ids": sig_ids}
+
+    # Surveillance path: releasing FR.234 notification auto-advances to notification_sent.
+    if document_type == "surveillance_notification":
+        _auto_advance_workflow(
+            db, auth_db, audit_set,
+            expected_from="in_planning",
+            to_status="notification_sent",
+            triggered_by=current_user.id,
+            notes="Surveillance Notification (FR.234) released to client",
+        )
 
     # Notify the client only for documents they can actually see.
     if document_type in CLIENT_VISIBLE_TYPES:

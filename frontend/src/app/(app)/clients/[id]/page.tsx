@@ -2309,10 +2309,12 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
       <InternalApprovalsSection
         auditSetId={id}
         workflowStatus={data.workflow_status ?? null}
+        auditType={data.audit_type ?? null}
       />
 
       {/* FR.218 Application Reviewer — Portal 51 (FSMS/ISMS only) */}
-      {needsFr218Reviewer((data.standards ?? []) as string[]) && (
+      {needsFr218Reviewer((data.standards ?? []) as string[]) &&
+       !(data.audit_type ?? '').startsWith('surveillance') && (
         <div className="mt-4 rounded-xl border bg-white p-4">
           <h3 className="mb-1 text-sm font-semibold text-gray-700">
             Application Reviewer (FR.218) — Required for FSMS / ISMS
