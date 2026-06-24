@@ -193,6 +193,37 @@ def _assert_stage1_complete_gate(db: Session, audit_set_id: str) -> None:
         raise HTTPException(409, "Gate not met: " + "; ".join(failures))
 
 
+def _assert_fr233_signed_gate(db: Session, audit_set_id: str) -> None:
+    """
+    Gate for any transition → certified via the manual workflow button.
+    Blocks certification until the FR.233 Review & Decision Form has been
+    fully signed by all committee members and the Certification Manager.
+
+    The FR.233 record is created when the document is generated; its status
+    advances: "pending" → "signing" (first committee member signs) → "complete"
+    (CM signs after all committee members have signed, in viewer_router).
+
+    This gate is intentionally skipped for the jump endpoint (retroactive
+    corrections by admin) — only the normal PATCH transition checks it.
+    """
+    from audit_set.db_models import AuditSetFR233Record
+    record = db.query(AuditSetFR233Record).filter_by(audit_set_id=audit_set_id).first()
+    if not record:
+        raise HTTPException(
+            409,
+            "Gate not met: FR.233 Review & Decision Form has not been generated. "
+            "Generate FR.233 and collect all committee and Certification Manager "
+            "signatures before issuing a certificate.",
+        )
+    if record.status != "complete":
+        raise HTTPException(
+            409,
+            f"Gate not met: FR.233 Review & Decision Form is not fully signed "
+            f"(current status: '{record.status}'). All committee members and the "
+            "Certification Manager must sign FR.233 before certification can be issued.",
+        )
+
+
 class WorkflowUpdateSchema(BaseModel):
     workflow_status: str
     notes: Optional[str] = None
@@ -314,6 +345,8 @@ def update_workflow_status(
         _assert_stage_entry_gate(db, audit_set_id, "stage_1")
     elif to_status == "stage2_in_progress":
         _assert_stage1_complete_gate(db, audit_set_id)
+    elif to_status == "certified":
+        _assert_fr233_signed_gate(db, audit_set_id)
 
     audit_set.workflow_status = to_status
 

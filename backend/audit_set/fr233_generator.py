@@ -15,7 +15,6 @@ from io import BytesIO
 
 from docx import Document
 from docx.oxml.ns import qn
-from docxtpl import DocxTemplate
 from lxml import etree
 from sqlalchemy.orm import Session
 
@@ -96,31 +95,66 @@ def _resolve_fr233_template(audit_set):
     return None
 
 
+def _fill_table3_committee(t3, members_ctx: list[dict]) -> None:
+    """Fill Table 3 committee rows with member names, EA codes, and [SIG:...] markers.
+
+    Table 3 layout (confirmed):
+      Row 0: headers
+      Row 1: Chairperson — col 1 = name (merged 1-2), col 3 = EA codes (merged 3-4), col 5 = sign
+      Row 2: Member 1   — same column layout
+      Row 3: Member 2   — same column layout
+      Row 6: Certification Manager — col 4 = sign (merged 4-5)
+
+    Sig keys assigned positionally:
+      members_ctx[0] (chairperson) → COMMITTEE_CHAIR
+      members_ctx[1]               → COMMITTEE_MEMBER_1
+      members_ctx[2]               → COMMITTEE_MEMBER_2
+    """
+    _SIG_KEYS = ["COMMITTEE_CHAIR", "COMMITTEE_MEMBER_1", "COMMITTEE_MEMBER_2"]
+    _COMMITTEE_ROWS = [1, 2, 3]  # row indices in Table 3
+
+    for slot_idx, member in enumerate(members_ctx[:3]):
+        row_idx = _COMMITTEE_ROWS[slot_idx]
+        if row_idx >= len(t3.rows):
+            break
+        row = t3.rows[row_idx]
+        cells = row.cells
+        if len(cells) < 6:
+            continue
+
+        name = member.get("name") or ""
+        ea_codes = member.get("ea_codes_str") or ""
+        sig_key = _SIG_KEYS[slot_idx]
+
+        # col 1 — name (merged with col 2; writing col 1 _tc is sufficient)
+        _set_cell_text(cells[1]._tc, name)
+        # col 3 — EA codes (merged with col 4; writing col 3 _tc is sufficient)
+        _set_cell_text(cells[3]._tc, ea_codes)
+        # col 5 — signature marker
+        _set_cell_text(cells[5]._tc, f"[SIG:{sig_key}]")
+
+    # Row 6 — Certification Manager sign cell (col 4, merged with col 5)
+    if len(t3.rows) > 6:
+        cm_row = t3.rows[6]
+        if len(cm_row.cells) > 4:
+            _set_cell_text(cm_row.cells[4]._tc, "[SIG:CERT_MANAGER_FR233]")
+
+
 def render_fr233_bytes(audit_set, db: Session) -> bytes:
     """Render FR.233 bytes.
 
-    Portal 62 — two-pass render:
-      1. docxtpl pass expands the committee-rows ``{%tr for member ... %}``
-         loop in the patched template using ``committee_members`` context.
-      2. python-docx pass fills Table 0 metadata (project number, dates, etc.)
-         on the docxtpl output.
+    Single-pass python-docx render:
+      - Table 0: project metadata (plan number, company, dates, audit team).
+      - Table 3: committee member names, EA codes, and [SIG:...] markers so the
+        viewer's lazy field-extraction pipeline can place signatures.
 
-    The legacy static committee-row fill (`_fill_committee_table`) is gone:
-    committee rows are now generated dynamically by docxtpl.
+    The docxtpl pass has been removed: the template has no Jinja2 tags.
     """
     template_path = _resolve_fr233_template(audit_set)
     if template_path is None:
         raise RuntimeError("FR.233 template not found for this audit set")
 
-    # Pass 1 — docxtpl committee loop expansion.
-    tpl = DocxTemplate(str(template_path))
-    tpl.render({"committee_members": _build_committee_context(audit_set)})
-    buf1 = BytesIO()
-    tpl.save(buf1)
-    buf1.seek(0)
-
-    # Pass 2 — python-docx Table 0 metadata fill on the docxtpl output.
-    doc = Document(buf1)
+    doc = Document(str(template_path))
 
     stages = {s.stage_type: s for s in (audit_set.stages or [])}
     stage1 = stages.get("stage_1")
@@ -134,9 +168,13 @@ def render_fr233_bytes(audit_set, db: Session) -> bytes:
     if len(doc.tables) >= 1:
         _safe_fill_table0(doc.tables[0], audit_set, team_str, stage1, stage2)
 
-    buf2 = BytesIO()
-    doc.save(buf2)
-    return buf2.getvalue()
+    if len(doc.tables) >= 4:
+        members_ctx = _build_committee_context(audit_set)
+        _fill_table3_committee(doc.tables[3], members_ctx)
+
+    buf = BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
 
 
 def _safe_fill_table0(t0, audit_set, team_str: str, stage1, stage2) -> None:
