@@ -270,6 +270,17 @@ def render_single_document(audit_set, db, fr_number: str, stage_type: str) -> tu
     ctx.update(build_auditor_scope_strings(stage, auditor_lookup, required_scope))
     if not ctx.get("lead_auditor_codes"):
         ctx["lead_auditor_codes"] = audit_set.ea_code or ""
+    # FSMS fallback: ea_code and ea_category are not stored on AuditSet for
+    # ISO 22000 (required_scope uses type="food" which _first_ea_code_from_scope
+    # ignores; the frontend sends no ea_category field). Derive both from the
+    # food-chain codes already stored in required_scope.
+    if "FSMS" in standards_codes:
+        _fsms_entry = required_scope.get("ISO 22000:2018") or required_scope.get("FSMS") or {}
+        _fsms_codes = _fsms_entry.get("codes") or []
+        if not ctx.get("ea_code") and _fsms_codes:
+            ctx["ea_code"] = ", ".join(_fsms_codes)
+        if not ctx.get("ea_category") and _fsms_codes:
+            ctx["ea_category"] = ", ".join(_fsms_codes)
 
     if fr_number == "FR.211":
         ctx["assessed_person_name"] = ctx.get("lead_auditor_name", "") or ""
@@ -309,6 +320,17 @@ def build_audit_set_zip(audit_set, db) -> bytes:
             # EA-code fallback for FR.224 display when the auditor profile is incomplete.
             if not ctx.get("lead_auditor_codes"):
                 ctx["lead_auditor_codes"] = audit_set.ea_code or ""
+            # FSMS fallback: ea_code and ea_category are not stored on AuditSet for
+            # ISO 22000 (required_scope uses type="food" which _first_ea_code_from_scope
+            # ignores; the frontend sends no ea_category field). Derive both from the
+            # food-chain codes already stored in required_scope.
+            if "FSMS" in standards_codes:
+                _fsms_entry = required_scope.get("ISO 22000:2018") or required_scope.get("FSMS") or {}
+                _fsms_codes = _fsms_entry.get("codes") or []
+                if not ctx.get("ea_code") and _fsms_codes:
+                    ctx["ea_code"] = ", ".join(_fsms_codes)
+                if not ctx.get("ea_category") and _fsms_codes:
+                    ctx["ea_category"] = ", ".join(_fsms_codes)
             team = build_team_members(stage, auditor_lookup, standards_codes)
 
             for doc in doc_specs:
