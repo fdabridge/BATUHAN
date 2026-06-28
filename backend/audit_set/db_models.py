@@ -90,6 +90,8 @@ def create_tables():
     # Portal 76 — assigned reviewer auditor on audit reports
     _safe_add_column("audit_set_audit_reports", "reviewer_auditor_id VARCHAR")
     _safe_add_column("audit_set_audit_reports", "reviewer_auditor_name VARCHAR")
+    # Portal 89 — currency selection per audit set
+    _safe_add_column("audit_sets", "currency VARCHAR DEFAULT 'USD'")
 
 
 # ---------------------------------------------------------------------------
@@ -151,6 +153,7 @@ class AuditSet(Base):
     # ── Fees ──────────────────────────────────────────────────────────────────
     certification_fee  = Column(Float, nullable=True)
     surveillance_fee   = Column(Float, nullable=True)
+    currency           = Column(String, nullable=True, default="USD")  # "USD" | "EUR" | "TRY"
 
     # ── Derived required scope (from derive-scope endpoint) ──────────────────
     # JSON dict: {"ISO 22000": {"type": "food", "codes": ["CI", "CIV"]}, ...}

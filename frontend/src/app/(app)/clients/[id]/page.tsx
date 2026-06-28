@@ -336,14 +336,17 @@ function PlanOverview({
   data,
   auditSetId,
   onInvalidate,
+  userRole = '',
 }: {
   data: AuditSetResponse
   auditSetId: string
   onInvalidate: () => void
+  userRole?: string
 }) {
   const [integLevel, setIntegLevel] = useState<string>(data.scope_integration_level ?? 'Medium')
   const [certFee, setCertFee] = useState(data.certification_fee != null ? String(data.certification_fee) : '')
   const [survFee, setSurvFee] = useState(data.surveillance_fee != null ? String(data.surveillance_fee) : '')
+  const [currency, setCurrency] = useState(data.currency ?? 'USD')
   const [feeSaved, setFeeSaved] = useState(false)
   const [nacText, setNacText] = useState<string>(data.non_applicable_clauses ?? '')
   const [nacSuggestions, setNacSuggestions] = useState<NACSuggestion[]>([])
@@ -414,6 +417,7 @@ function PlanOverview({
       api.put<AuditSetResponse>(`/audit-sets/${auditSetId}/planning`, {
         certification_fee: certFee.trim() === '' ? null : parseFloat(certFee),
         surveillance_fee:  survFee.trim() === '' ? null : parseFloat(survFee),
+        currency,
       }),
     onSuccess: () => {
       onInvalidate()
@@ -778,6 +782,24 @@ function PlanOverview({
             <div className="w-44">
               <label className={lblCls}>Surveillance Fee</label>
               <input type="number" step="0.01" min="0" className={inputCls} value={survFee} onChange={(e) => setSurvFee(e.target.value)} placeholder="0.00" />
+            </div>
+            <div className="w-28">
+              <label className={lblCls}>Currency</label>
+              {(userRole === 'planner' || userRole === 'admin') ? (
+                <select
+                  className={inputCls}
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value)}
+                >
+                  <option value="USD">USD ($)</option>
+                  <option value="EUR">EUR (€)</option>
+                  <option value="TRY">TRY (₺)</option>
+                </select>
+              ) : (
+                <div className={inputCls + ' bg-gray-50 text-gray-500 cursor-not-allowed'}>
+                  {currency}
+                </div>
+              )}
             </div>
             <button
               type="button"
@@ -2219,7 +2241,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
         />
       )}
 
-      <PlanOverview data={data} auditSetId={id} onInvalidate={invalidate} />
+      <PlanOverview data={data} auditSetId={id} onInvalidate={invalidate} userRole={currentUser?.role ?? ''} />
       <CertSection data={data} id={id} onInvalidate={invalidate} />
 
       {/* Audit stages */}

@@ -238,13 +238,16 @@ def submit_application(
     audit_db.refresh(audit_set)
     auth_db.commit()
 
-    # Send welcome email (non-blocking — failure doesn't roll back)
-    send_client_welcome(
-        to=payload.representative_email,
-        full_name=payload.representative_name,
-        temp_password=temp_password,
-        audit_set_id=audit_set.id,
-    )
+    # Send welcome email — best-effort; a Resend outage must not fail the submission.
+    try:
+        send_client_welcome(
+            to=payload.representative_email,
+            full_name=payload.representative_name,
+            temp_password=temp_password,
+            audit_set_id=audit_set.id,
+        )
+    except Exception:
+        pass
 
     return {
         "success":      True,

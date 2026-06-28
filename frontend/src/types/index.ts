@@ -143,6 +143,7 @@ export interface AuditSetResponse {
   non_applicable_clauses: string | null
   certification_fee: number | null
   surveillance_fee: number | null
+  currency?: string | null          // "USD" | "EUR" | "TRY" — null for legacy sets
   required_scope: RequiredScope | null
   scope_integration_level: string | null     // "Low" | "Medium" | "High"
   audit_language: string | null

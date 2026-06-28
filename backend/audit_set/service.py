@@ -680,6 +680,7 @@ def create_audit_set(db: Session, data: AuditSetCreateSchema) -> AuditSet:
         integration_level=data.integration_level.model_dump(),
         certification_fee=data.certification_fee,
         surveillance_fee=data.surveillance_fee,
+        currency=data.currency or "USD",
         ea_code=data.ea_code,
         ea_category=data.ea_category,
         ea_technical_area=data.ea_technical_area,
@@ -861,6 +862,11 @@ def update_planning(
         audit_set.certification_fee = data.certification_fee
     if data.surveillance_fee is not None:
         audit_set.surveillance_fee = data.surveillance_fee
+    if data.currency is not None:
+        if data.currency not in ("USD", "EUR", "TRY"):
+            from fastapi import HTTPException as _HTTPException
+            raise _HTTPException(400, "currency must be one of: USD, EUR, TRY")
+        audit_set.currency = data.currency
     # Persist optional company fields only when provided (don't wipe on stage-only saves)
     if data.representative is not None:
         audit_set.representative = data.representative

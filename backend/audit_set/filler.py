@@ -129,12 +129,25 @@ def add_years_minus_one_day(d: date, years: int = 1) -> date:
     return result - timedelta(days=1)
 
 
-def _fmt_fee(val) -> str:
-    """Format a fee as '$X,XXX' or '' if unset."""
+_CURRENCY_SYMBOLS: dict[str, str] = {
+    "USD": "$",
+    "EUR": "€",
+    "TRY": "₺",
+}
+
+
+def _fmt_fee(val, currency: str = "USD") -> str:
+    """Format a fee value with the correct currency symbol.
+
+    Formats as '<symbol>X,XXX' (no decimal places — fees are always whole units).
+    Falls back to '$' if an unrecognised currency code is passed.
+    Returns '' when val is None or empty.
+    """
     if val is None or val == "":
         return ""
     try:
-        return f"${float(val):,.0f}"
+        symbol = _CURRENCY_SYMBOLS.get(currency or "USD", "$")
+        return f"{symbol}{float(val):,.0f}"
     except (TypeError, ValueError):
         return str(val)
 
@@ -359,9 +372,12 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
         "plan_number_internal": audit_set.plan_number,
         "agreement_number": getattr(audit_set, "client_reference", None) or str(audit_set.plan_number),
         "client_reference": getattr(audit_set, "client_reference", None) or "",
-        "certification_fee": _fmt_fee(audit_set.certification_fee),
-        "initial_fee":       _fmt_fee(audit_set.certification_fee),
-        "surveillance_fee":  _fmt_fee(audit_set.surveillance_fee),
+        "certification_fee": _fmt_fee(audit_set.certification_fee, getattr(audit_set, "currency", None) or "USD"),
+        "initial_fee":       _fmt_fee(audit_set.certification_fee, getattr(audit_set, "currency", None) or "USD"),
+        "surveillance_fee":  _fmt_fee(audit_set.surveillance_fee, getattr(audit_set, "currency", None) or "USD"),
+        "currency":          getattr(audit_set, "currency", None) or "USD",
+        "currency_symbol":   _CURRENCY_SYMBOLS.get(getattr(audit_set, "currency", None) or "USD", "$"),
+        "currency_code":     getattr(audit_set, "currency", None) or "USD",
         "scope_integration_level": audit_set.scope_integration_level,
         "risk_category": audit_set.risk_category,
         "audit_language": audit_set.audit_language,

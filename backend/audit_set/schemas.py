@@ -130,6 +130,7 @@ class AuditSetCreateSchema(BaseModel):
     integration_level: IntegrationLevel = IntegrationLevel()
     certification_fee: Optional[float] = None
     surveillance_fee: Optional[float] = None
+    currency: Optional[str] = None                 # "USD" | "EUR" | "TRY"
     ea_code: Optional[str] = None
     ea_category: Optional[str] = None
     ea_technical_area: Optional[str] = None
@@ -147,6 +148,7 @@ class AuditSetUpdatePlanningSchema(BaseModel):
     client_reference: Optional[str] = None
     certification_fee: Optional[float] = None
     surveillance_fee: Optional[float] = None
+    currency: Optional[str] = None                 # "USD" | "EUR" | "TRY"
     required_scope: Optional[dict] = None           # persisted from derive-scope
     scope_integration_level: Optional[str] = None  # "Low" | "Medium" | "High"
     audit_language: Optional[str] = None
@@ -215,6 +217,7 @@ class AuditSetResponse(BaseModel):
     non_applicable_clauses: Optional[str] = None
     certification_fee: Optional[float]
     surveillance_fee: Optional[float]
+    currency: str = "USD"                           # "USD" | "EUR" | "TRY" — default for legacy sets
     required_scope: Optional[dict] = None            # per-standard derived scope codes
     scope_integration_level: Optional[str] = None   # "Low" | "Medium" | "High"
     personnel: Optional[dict] = None                # {full_time, part_time, subcontractors, seasonal, unskilled}

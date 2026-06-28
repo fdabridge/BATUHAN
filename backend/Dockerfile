@@ -51,16 +51,18 @@ COPY . .
 # -----------------------------------------------------------------------
 # Runtime configuration
 # -----------------------------------------------------------------------
-# Unprivileged user for security
-RUN useradd --no-create-home --shell /bin/false batuhan \
-    && mkdir -p /app/storage /app/prompts \
-    && chown -R batuhan:batuhan /app
-USER batuhan
+# NOTE: we do NOT create a non-root user here.
+# Railway Volumes are mounted root:root at container start; a non-root user
+# cannot write to them.  Railway containers are already isolated so running
+# as root inside the container is standard practice on that platform.
+RUN mkdir -p /app/prompts
 
 # API port
 EXPOSE 8000
 
 # Default command: start the FastAPI API server.
 # Override in docker-compose for the Celery worker.
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# mkdir -p ensures the root storage directory exists under the Volume mount
+# (STORAGE_BASE_PATH=/data/storage in production; ./storage locally).
+CMD ["sh", "-c", "mkdir -p ${STORAGE_BASE_PATH:-/app/storage} && uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
 

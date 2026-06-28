@@ -7,10 +7,13 @@ has been removed. Auditors upload completed audit deliverables back to CB
 (direction='client_to_cb').
 """
 from __future__ import annotations
+import logging
 import os
 import secrets
 from datetime import date, datetime
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
@@ -265,141 +268,151 @@ async def release_document(
     if not audit_set:
         raise HTTPException(404, "Audit set not found")
 
-    # Portal 49b gate: cannot release the agreement (FR.221) until the
-    # quotation (FR.220) has been fully signed by GM AND client.
-    if document_type == "agreement":
-        quotation = (
-            db.query(AuditSetSharedDocument)
-            .filter_by(audit_set_id=audit_set_id, document_type="quotation")
-            .order_by(AuditSetSharedDocument.released_at.desc())
-            .first()
-        )
-        if not quotation:
-            raise HTTPException(
-                400,
-                "Cannot release the agreement before a quotation (FR.220) has been issued.",
+    try:
+        # Portal 49b gate: cannot release the agreement (FR.221) until the
+        # quotation (FR.220) has been fully signed by GM AND client.
+        if document_type == "agreement":
+            quotation = (
+                db.query(AuditSetSharedDocument)
+                .filter_by(audit_set_id=audit_set_id, document_type="quotation")
+                .order_by(AuditSetSharedDocument.released_at.desc())
+                .first()
             )
-        quotation_unsigned = (
-            db.query(AuditDocumentSignature)
-            .filter_by(document_id=quotation.id, required=True)
-            .filter(AuditDocumentSignature.signed_at.is_(None))
-            .count()
-        )
-        if quotation_unsigned > 0:
-            raise HTTPException(
-                400,
-                "Cannot release the agreement: the quotation (FR.220) has not been "
-                "fully signed by both GM and client yet.",
-            )
-
-    # Portal 49b gates: FR.222 and FR.224 require the application review
-    # (FR.218) to be complete before they can be uploaded.
-    is_surveillance = (audit_set.audit_type or "").lower().startswith("surveillance")
-    if document_type in ("audit_programme", "team_info") and not is_surveillance:
-        if not _status_at_least(audit_set.workflow_status, "fr218_complete"):
-            raise HTTPException(
-                400,
-                f"Cannot upload {document_type} before the application review "
-                f"(FR.218) is complete.",
-            )
-    if document_type == "team_info" and not assigned_auditor_id:
-        raise HTTPException(400, "team_info (FR.224) requires assigned_auditor_id")
-
-    # Persist the uploaded file alongside auditor uploads, under a sibling folder
-    settings = get_settings()
-    upload_dir = os.path.join(settings.storage_base_path, "shared_docs", audit_set_id)
-    os.makedirs(upload_dir, exist_ok=True)
-    safe_name = f"{secrets.token_hex(6)}_{file.filename}"
-    file_path = os.path.join(upload_dir, safe_name)
-    content = await file.read()
-    with open(file_path, "wb") as f:
-        f.write(content)
-
-    # Determine signature slots for this document type. FR.218 gains a
-    # cb_reviewer slot between cb_planner and cb_cert_manager for FSMS/ISMS
-    # audits. Stage reports already include appointed_reviewer in
-    # DOC_SIG_SLOTS — viewer_router downgrades it to not_applicable when no
-    # committee reviewer is appointed yet (Portal 55).
-    slot_labels = list(DOC_SIG_SLOTS.get(document_type, []))
-    if document_type == "fr218_review" and _needs_reviewer(audit_set):
-        # Insert cb_reviewer between cb_planner (idx 0) and cb_cert_manager (idx 1)
-        slot_labels = ["cb_planner", "cb_reviewer", "cb_cert_manager"]
-
-    # Quotation and Agreement stay hidden from the client until the GM has
-    # signed (status flips to "released" on GM sign in the viewer). All other
-    # documents are visible to their audience immediately.
-    requires_cb_sig = document_type in ("quotation", "agreement")
-    initial_status  = "pending_cb_signature" if requires_cb_sig else "released"
-
-    released_dt = (
-        datetime.combine(release_date, datetime.min.time())
-        if release_date else datetime.utcnow()
-    )
-    doc = AuditSetSharedDocument(
-        audit_set_id=audit_set_id,
-        label=label,
-        document_type=document_type,
-        file_path=file_path,
-        direction="cb_to_client",
-        status=initial_status,
-        stage_type=stage_type,
-        assigned_auditor_id=assigned_auditor_id,
-        released_by=current_user.id,
-        released_at=released_dt,
-    )
-    db.add(doc)
-    db.flush()  # populate doc.id before linking signatures
-
-    sig_ids = []
-    for idx, role_label in enumerate(slot_labels):
-        sig = AuditDocumentSignature(
-            audit_set_id=audit_set_id,
-            document_id=doc.id,
-            document_type=document_type,
-            signer_role_label=role_label,
-            signer_user_id=None,   # resolved at signing time in viewer_router
-            signer_name=None,
-            signer_email=None,
-            required=True,
-            order_index=idx,
-        )
-        db.add(sig)
-        db.flush()
-        sig_ids.append(sig.id)
-
-    db.commit()
-    db.refresh(doc)
-
-    if requires_cb_sig:
-        # Workflow advance + client email are deferred to the client signature.
-        return {"id": doc.id, "status": "pending_cb_signature", "signature_ids": sig_ids}
-
-    # Surveillance path: releasing FR.234 notification auto-advances to notification_sent.
-    if document_type == "surveillance_notification":
-        _auto_advance_workflow(
-            db, auth_db, audit_set,
-            expected_from="in_planning",
-            to_status="notification_sent",
-            triggered_by=current_user.id,
-            notes="Surveillance Notification (FR.234) released to client",
-        )
-
-    # Notify the client only for documents they can actually see.
-    if document_type in CLIENT_VISIBLE_TYPES:
-        client_user = auth_db.query(PlatformUser).filter_by(
-            audit_set_id=audit_set_id, role="client"
-        ).first()
-        if client_user:
-            try:
-                send_document_released(
-                    to=client_user.email,
-                    full_name=client_user.full_name,
-                    document_label=label,
+            if not quotation:
+                raise HTTPException(
+                    400,
+                    "Cannot release the agreement before a quotation (FR.220) has been issued.",
                 )
-            except Exception:
-                pass
+            quotation_unsigned = (
+                db.query(AuditDocumentSignature)
+                .filter_by(document_id=quotation.id, required=True)
+                .filter(AuditDocumentSignature.signed_at.is_(None))
+                .count()
+            )
+            if quotation_unsigned > 0:
+                raise HTTPException(
+                    400,
+                    "Cannot release the agreement: the quotation (FR.220) has not been "
+                    "fully signed by both GM and client yet.",
+                )
 
-    return {"id": doc.id, "status": "released", "signature_ids": sig_ids}
+        # Portal 49b gates: FR.222 and FR.224 require the application review
+        # (FR.218) to be complete before they can be uploaded.
+        is_surveillance = (audit_set.audit_type or "").lower().startswith("surveillance")
+        if document_type in ("audit_programme", "team_info") and not is_surveillance:
+            if not _status_at_least(audit_set.workflow_status, "fr218_complete"):
+                raise HTTPException(
+                    400,
+                    f"Cannot upload {document_type} before the application review "
+                    f"(FR.218) is complete.",
+                )
+        if document_type == "team_info" and not assigned_auditor_id:
+            raise HTTPException(400, "team_info (FR.224) requires assigned_auditor_id")
+
+        # Persist the uploaded file alongside auditor uploads, under a sibling folder
+        settings = get_settings()
+        upload_dir = os.path.join(settings.storage_base_path, "shared_docs", audit_set_id)
+        os.makedirs(upload_dir, exist_ok=True)
+        safe_name = f"{secrets.token_hex(6)}_{file.filename}"
+        file_path = os.path.join(upload_dir, safe_name)
+        content = await file.read()
+        with open(file_path, "wb") as f:
+            f.write(content)
+
+        # Determine signature slots for this document type. FR.218 gains a
+        # cb_reviewer slot between cb_planner and cb_cert_manager for FSMS/ISMS
+        # audits. Stage reports already include appointed_reviewer in
+        # DOC_SIG_SLOTS — viewer_router downgrades it to not_applicable when no
+        # committee reviewer is appointed yet (Portal 55).
+        slot_labels = list(DOC_SIG_SLOTS.get(document_type, []))
+        if document_type == "fr218_review" and _needs_reviewer(audit_set):
+            # Insert cb_reviewer between cb_planner (idx 0) and cb_cert_manager (idx 1)
+            slot_labels = ["cb_planner", "cb_reviewer", "cb_cert_manager"]
+
+        # Quotation and Agreement stay hidden from the client until the GM has
+        # signed (status flips to "released" on GM sign in the viewer). All other
+        # documents are visible to their audience immediately.
+        requires_cb_sig = document_type in ("quotation", "agreement")
+        initial_status  = "pending_cb_signature" if requires_cb_sig else "released"
+
+        released_dt = (
+            datetime.combine(release_date, datetime.min.time())
+            if release_date else datetime.utcnow()
+        )
+        doc = AuditSetSharedDocument(
+            audit_set_id=audit_set_id,
+            label=label,
+            document_type=document_type,
+            file_path=file_path,
+            direction="cb_to_client",
+            status=initial_status,
+            stage_type=stage_type,
+            assigned_auditor_id=assigned_auditor_id,
+            released_by=current_user.id,
+            released_at=released_dt,
+        )
+        db.add(doc)
+        db.flush()  # populate doc.id before linking signatures
+
+        sig_ids = []
+        for idx, role_label in enumerate(slot_labels):
+            sig = AuditDocumentSignature(
+                audit_set_id=audit_set_id,
+                document_id=doc.id,
+                document_type=document_type,
+                signer_role_label=role_label,
+                signer_user_id=None,   # resolved at signing time in viewer_router
+                signer_name=None,
+                signer_email=None,
+                required=True,
+                order_index=idx,
+            )
+            db.add(sig)
+            db.flush()
+            sig_ids.append(sig.id)
+
+        db.commit()
+        db.refresh(doc)
+
+        if requires_cb_sig:
+            # Workflow advance + client email are deferred to the client signature.
+            return {"id": doc.id, "status": "pending_cb_signature", "signature_ids": sig_ids}
+
+        # Surveillance path: releasing FR.234 notification auto-advances to notification_sent.
+        if document_type == "surveillance_notification":
+            _auto_advance_workflow(
+                db, auth_db, audit_set,
+                expected_from="in_planning",
+                to_status="notification_sent",
+                triggered_by=current_user.id,
+                notes="Surveillance Notification (FR.234) released to client",
+            )
+
+        # Notify the client only for documents they can actually see.
+        if document_type in CLIENT_VISIBLE_TYPES:
+            client_user = auth_db.query(PlatformUser).filter_by(
+                audit_set_id=audit_set_id, role="client"
+            ).first()
+            if client_user:
+                try:
+                    send_document_released(
+                        to=client_user.email,
+                        full_name=client_user.full_name,
+                        document_label=label,
+                    )
+                except Exception:
+                    pass
+
+        return {"id": doc.id, "status": "released", "signature_ids": sig_ids}
+
+    except HTTPException:
+        raise  # let FastAPI handle expected 4xx
+    except Exception as exc:
+        logger.exception(
+            "[release_document] Unexpected error for audit_set_id=%s document_type=%s: %s",
+            audit_set_id, document_type, exc,
+        )
+        raise
 
 
 def _auditor_is_assigned(audit_set_id: str, auditor_id: Optional[str], db: Session) -> bool:

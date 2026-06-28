@@ -398,12 +398,17 @@ def update_workflow_status(
         audit_set_id=audit_set_id, role="client",
     ).first()
     if client_user:
-        send_client_status_update(
-            to=client_user.email,
-            full_name=client_user.full_name,
-            new_status=to_status,
-            notes=payload.notes or "",
-        )
+        try:
+            send_client_status_update(
+                to=client_user.email,
+                full_name=client_user.full_name,
+                new_status=to_status,
+                notes=payload.notes or "",
+            )
+        except Exception:
+            # Email is best-effort — a Resend outage or invalid address must not
+            # roll back a committed status transition.
+            pass
 
     return {"workflow_status": to_status, "updated": True}
 
