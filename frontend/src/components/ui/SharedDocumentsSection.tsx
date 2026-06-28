@@ -117,6 +117,9 @@ export function SharedDocumentsSection({
     try {
       const r = await api.get<SharedDoc[]>(`/audit-sets/${auditSetId}/documents`)
       setDocs(r.data)
+    } catch {
+      // A GET failure after a successful release must not surface as
+      // "Failed to release document." — keep errors isolated.
     } finally {
       setLoading(false)
     }
