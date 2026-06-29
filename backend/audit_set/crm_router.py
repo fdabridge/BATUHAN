@@ -17,9 +17,10 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from audit_set.db_models import AuditSet, get_db
+from audit_set.db_models import AuditSet, AuditSetStage, get_db
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
+from auditors.models import Auditor, get_db as get_auditors_db
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["crm"])
@@ -288,3 +289,104 @@ def crm_client_detail(
         raise HTTPException(404, "Audit set not found")
 
     return CRMClientRow(**_serialise(a, auth_db))
+
+
+# ── Portal 92 — Auditor Calendar ──────────────────────────────────────────────
+
+class CRMAuditorRow(BaseModel):
+    id:    str
+    name:  str
+    email: Optional[str]
+    role:  Optional[str]
+
+
+class CRMCalendarEntry(BaseModel):
+    audit_set_id:  str
+    plan_number:   int
+    company_name:  str
+    stage_type:    str
+    date_start:    str
+    date_end:      str
+    auditor_role:  str
+
+
+@router.get("/crm/auditors", response_model=list[CRMAuditorRow])
+def crm_auditors(
+    auditors_db: Session = Depends(get_auditors_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    if current_user.role not in CRM_ROLES:
+        from fastapi import HTTPException
+        raise HTTPException(403, "Not authorized")
+    try:
+        rows = (
+            auditors_db.query(Auditor)
+            .filter(Auditor.is_active == True)
+            .order_by(Auditor.name)
+            .all()
+        )
+        return [CRMAuditorRow(id=r.id, name=r.name, email=r.email, role=r.role) for r in rows]
+    except Exception as exc:
+        logger.error("[CRM] auditors DB error: %s", exc)
+        return []
+
+
+@router.get("/crm/auditors/{auditor_id}/calendar", response_model=list[CRMCalendarEntry])
+def crm_auditor_calendar(
+    auditor_id: str,
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    if current_user.role not in CRM_ROLES:
+        from fastapi import HTTPException
+        raise HTTPException(403, "Not authorized")
+    try:
+        stages = (
+            db.query(AuditSetStage)
+            .join(AuditSet, AuditSetStage.audit_set_id == AuditSet.id)
+            .filter(AuditSetStage.audit_date_start.isnot(None))
+            .all()
+        )
+    except Exception as exc:
+        logger.error("[CRM] calendar DB error: %s", exc)
+        return []
+
+    result: list[CRMCalendarEntry] = []
+    for stage in stages:
+        is_lead = stage.lead_auditor_id == auditor_id
+        team: list[dict] = stage.auditors or []
+        is_team = any(str(m.get("id", "")) == auditor_id for m in team if isinstance(m, dict))
+        if not (is_lead or is_team):
+            continue
+
+        audit_set = stage.audit_set
+        if not audit_set:
+            continue
+
+        date_start = stage.audit_date_start
+        date_end   = stage.audit_date_end or date_start
+
+        stype = (stage.stage_type or "").lower()
+        if "stage_1" in stype or stype in ("stage1", "1"):
+            label = "Stage 1"
+        elif "stage_2" in stype or stype in ("stage2", "2"):
+            label = "Stage 2"
+        elif "surveillance" in stype:
+            label = "Surveillance"
+        elif "recert" in stype:
+            label = "Recertification"
+        else:
+            label = stage.stage_type or "Audit"
+
+        result.append(CRMCalendarEntry(
+            audit_set_id = audit_set.id,
+            plan_number  = audit_set.plan_number,
+            company_name = audit_set.company_name or "",
+            stage_type   = label,
+            date_start   = date_start.isoformat(),
+            date_end     = date_end.isoformat(),
+            auditor_role = "Lead Auditor" if is_lead else "Team Auditor",
+        ))
+
+    result.sort(key=lambda r: r.date_start)
+    return result

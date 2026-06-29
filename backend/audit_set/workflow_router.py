@@ -24,6 +24,7 @@ from audit_set.db_models import (
     AuditDocumentSignature,
     AuditSet,
     AuditSetAuditReport,
+    AuditSetFR233Record,
     AuditSetSharedDocument,
     AuditSetStage,
     AuditSetStatusEvent,
@@ -492,6 +493,14 @@ def delete_audit_set(
     if client_user:
         auth_db.delete(client_user)
         auth_db.commit()
+
+    # Explicitly delete FR.233 record — its FK lacks CASCADE on the live DB
+    # (model now has ondelete="CASCADE" for new deployments, but existing prod
+    # constraints were created without it and will block the delete otherwise).
+    fr233 = db.query(AuditSetFR233Record).filter_by(audit_set_id=audit_set_id).first()
+    if fr233:
+        db.delete(fr233)
+        db.flush()
 
     db.delete(audit_set)
     db.commit()

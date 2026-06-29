@@ -15,6 +15,7 @@ import {
   Settings,
   BarChart3,
   RefreshCw,
+  CalendarDays,
   type LucideIcon,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
@@ -118,8 +119,9 @@ const NAV_TOP: NavItemProps[] = [
 const CB_REVIEW_ROLES = new Set(['admin', 'planner', 'officer', 'executive'])
 
 const CRM_NAV: NavItemProps[] = [
-  { icon: BarChart3, label: 'CRM Dashboard', href: '/crm',         active: false },
-  { icon: RefreshCw, label: 'Clients',        href: '/crm/clients', active: false },
+  { icon: BarChart3,    label: 'CRM Dashboard',   href: '/crm',          active: false },
+  { icon: RefreshCw,    label: 'Clients',          href: '/crm/clients',  active: false },
+  { icon: CalendarDays, label: 'Auditor Calendar', href: '/crm/calendar', active: false },
 ]
 
 const NAV_BOTTOM: NavItemProps[] = [

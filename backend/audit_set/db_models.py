@@ -678,7 +678,7 @@ class AuditSetFR233Record(Base):
     __tablename__ = "audit_set_fr233_records"
 
     id            = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    audit_set_id  = Column(String, ForeignKey("audit_sets.id"), nullable=False, unique=True)
+    audit_set_id  = Column(String, ForeignKey("audit_sets.id", ondelete="CASCADE"), nullable=False, unique=True)
     # FK → audit_set_shared_documents.id once the FR.233 has been generated
     document_id   = Column(String, nullable=True)
     # "pending" → "signing" → "complete"
