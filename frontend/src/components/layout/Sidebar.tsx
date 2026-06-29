@@ -13,6 +13,8 @@ import {
   PenLine,
   UserCog,
   Settings,
+  BarChart3,
+  RefreshCw,
   type LucideIcon,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
@@ -115,6 +117,16 @@ const NAV_TOP: NavItemProps[] = [
 
 const CB_REVIEW_ROLES = new Set(['admin', 'planner', 'officer', 'executive'])
 
+const CRM_NAV: NavItemProps[] = [
+  { icon: BarChart3, label: 'CRM Dashboard', href: '/crm',         active: false },
+  { icon: RefreshCw, label: 'Clients',        href: '/crm/clients', active: false },
+]
+
+const CRM_NAV: NavItemProps[] = [
+  { icon: BarChart3, label: 'CRM Dashboard', href: '/crm',         active: false },
+  { icon: RefreshCw, label: 'Clients',        href: '/crm/clients', active: false },
+]
+
 const NAV_BOTTOM: NavItemProps[] = [
   { icon: UserCog,  label: 'Users',        href: '/admin/users',        active: false },
   { icon: PenLine,  label: 'My Signature', href: '/settings/signature', active: false },
@@ -158,15 +170,21 @@ export function Sidebar() {
         <CertivaIcon />
       </div>
 
-      {/* Primary nav */}
-      {NAV_TOP.map((item) => (
-        <NavItem
-          key={item.href}
-          {...item}
-          active={isActive(item.href)}
-          badgeCount={item.href === '/applications' ? pendingCount : undefined}
-        />
-      ))}
+      {/* Primary nav — CRM role sees only CRM items */}
+      {user?.role === 'crm' ? (
+        CRM_NAV.map((item) => (
+          <NavItem key={item.href} {...item} active={isActive(item.href)} />
+        ))
+      ) : (
+        NAV_TOP.map((item) => (
+          <NavItem
+            key={item.href}
+            {...item}
+            active={isActive(item.href)}
+            badgeCount={item.href === '/applications' ? pendingCount : undefined}
+          />
+        ))
+      )}
 
       {/* Divider */}
       <div className="my-2 w-8 border-t border-white/15" />

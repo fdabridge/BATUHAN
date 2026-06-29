@@ -6,7 +6,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-VALID_ROLES = {"admin", "planner", "auditor", "officer", "executive", "client", "gm", "certification_manager"}
+VALID_ROLES = {"admin", "planner", "auditor", "officer", "executive", "client", "gm", "certification_manager", "crm"}
 
 
 class LoginRequest(BaseModel):

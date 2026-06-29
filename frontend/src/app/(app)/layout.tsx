@@ -24,6 +24,14 @@ export default function AppLayout({
     if (user?.role === 'client') {
       router.replace('/client/overview')
     }
+    // CRM-role users go to the CRM section.
+    if (user?.role === 'crm') {
+      router.replace('/crm')
+    }
+    // CRM-role users go to the CRM section.
+    if (user?.role === 'crm') {
+      router.replace('/crm')
+    }
   }, [isLoading, token, user, router])
 
   // While hydrating auth state, show a minimal spinner
@@ -38,6 +46,8 @@ export default function AppLayout({
   // Render nothing while redirect is in progress (avoids flash)
   if (!token) return null
   if (user?.role === 'client') return null
+  if (user?.role === 'crm' && typeof window !== 'undefined' && !window.location.pathname.startsWith('/crm')) return null
+  if (user?.role === 'crm' && typeof window !== 'undefined' && !window.location.pathname.startsWith('/crm')) return null
 
   return (
     <div className="flex h-screen">
