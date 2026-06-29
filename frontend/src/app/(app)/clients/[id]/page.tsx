@@ -376,6 +376,13 @@ function PlanOverview({
     onSuccess: () => { onInvalidate(); setSitesEditing(false) },
   })
 
+  // Plan reference number (client_reference)
+  const [refNum, setRefNum]           = useState<string>(data.client_reference ?? '')
+  const [refNumSaved, setRefNumSaved] = useState(false)
+  useEffect(() => {
+    setRefNum(data.client_reference ?? '')
+  }, [data.client_reference])
+
   // Application date — retroactive override
   const [appDate, setAppDate] = useState<string>(
     data.application_date ? String(data.application_date) : ''
@@ -384,6 +391,18 @@ function PlanOverview({
   useEffect(() => {
     setAppDate(data.application_date ? String(data.application_date) : '')
   }, [data.application_date])
+
+  const { mutate: saveRefNum, isPending: savingRefNum } = useMutation({
+    mutationFn: () =>
+      api.put(`/audit-sets/${auditSetId}/planning`, {
+        client_reference: refNum.trim() || null,
+      }),
+    onSuccess: () => {
+      onInvalidate()
+      setRefNumSaved(true)
+      setTimeout(() => setRefNumSaved(false), 2000)
+    },
+  })
 
   const { mutate: saveAppDate, isPending: savingAppDate } = useMutation({
     mutationFn: () =>
@@ -499,6 +518,29 @@ function PlanOverview({
             </div>
           )}
         </div>
+      </div>
+
+      {/* Plan reference number — planner-assigned */}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <label className="text-xs font-medium text-gray-600">Plan / Set No.</label>
+        <input
+          type="text"
+          value={refNum}
+          onChange={e => { setRefNum(e.target.value); setRefNumSaved(false) }}
+          placeholder={`#${data.plan_number}`}
+          className="rounded border border-gray-200 px-2 py-1 text-sm focus:border-[#1A4731] focus:outline-none"
+        />
+        <button
+          type="button"
+          onClick={() => saveRefNum()}
+          disabled={savingRefNum}
+          className="rounded-lg bg-[#1A4731] px-3 py-1 text-xs font-medium text-white hover:bg-[#143828] disabled:opacity-50"
+        >
+          {refNumSaved ? 'Saved ✓' : savingRefNum ? 'Saving…' : 'Save'}
+        </button>
+        {data.client_reference && (
+          <span className="text-xs text-gray-400">Currently: {data.client_reference}</span>
+        )}
       </div>
 
       {/* Application date — retroactive override */}
