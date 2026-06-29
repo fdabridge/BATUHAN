@@ -22,6 +22,7 @@ const ROLES: { value: UserRole; label: string }[] = [
   { value: 'officer',               label: 'Officer' },
   { value: 'executive',             label: 'Executive' },
   { value: 'client',                label: 'Client' },
+  { value: 'crm',                   label: 'CRM / Finance' },
 ]
 
 const ROLE_PILL: Record<UserRole, string> = {
@@ -33,6 +34,7 @@ const ROLE_PILL: Record<UserRole, string> = {
   gm:                    'bg-rose-50 text-rose-700',
   certification_manager: 'bg-emerald-50 text-emerald-700',
   client:                'bg-sky-50 text-sky-700',
+  crm:                   'bg-teal-50 text-teal-700',
 }
 
 const inputCls = 'w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 placeholder-gray-400 outline-none focus:border-certiva-primary focus:ring-2 focus:ring-certiva-primary/20'

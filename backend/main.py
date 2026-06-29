@@ -46,13 +46,6 @@ except Exception as _crm_exc:
     import logging as _log
     _log.getLogger("batuhan").error("[Portal 91] crm_router failed to import: %s", _crm_exc)
     _crm_router_ok = False
-try:
-    from audit_set.crm_router import router as crm_router
-    _crm_router_ok = True
-except Exception as _crm_exc:
-    import logging as _log
-    _log.getLogger("batuhan").error("[Portal 91] crm_router failed to import: %s", _crm_exc)
-    _crm_router_ok = False
 
 settings = get_settings()
 
@@ -123,9 +116,6 @@ app.include_router(user_signature_router)
 app.include_router(employee_router)
 # Full system health check — calculator smoke tests + DB connectivity (Prompt 36).
 app.include_router(health_full_router)
-# CRM portal — finance / operations staff. Read-only. Portal 91.
-if _crm_router_ok:
-    app.include_router(crm_router)
 # CRM portal — finance / operations staff. Read-only. Portal 91.
 if _crm_router_ok:
     app.include_router(crm_router)

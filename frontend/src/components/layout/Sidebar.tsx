@@ -122,11 +122,6 @@ const CRM_NAV: NavItemProps[] = [
   { icon: RefreshCw, label: 'Clients',        href: '/crm/clients', active: false },
 ]
 
-const CRM_NAV: NavItemProps[] = [
-  { icon: BarChart3, label: 'CRM Dashboard', href: '/crm',         active: false },
-  { icon: RefreshCw, label: 'Clients',        href: '/crm/clients', active: false },
-]
-
 const NAV_BOTTOM: NavItemProps[] = [
   { icon: UserCog,  label: 'Users',        href: '/admin/users',        active: false },
   { icon: PenLine,  label: 'My Signature', href: '/settings/signature', active: false },
