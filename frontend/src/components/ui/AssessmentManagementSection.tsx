@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 
 interface Assessment {
@@ -35,12 +36,27 @@ export function AssessmentManagementSection({
   auditSetId: string
   workflowStatus: string | null
 }) {
+  const queryClient = useQueryClient()
   const [assessments, setAssessments] = useState<Assessment[]>([])
   const [loading, setLoading]         = useState(true)
   const [creating, setCreating]       = useState(false)
   const [stageToCreate, setStageToCreate] = useState('stage_1')
   const [createMsg, setCreateMsg]     = useState('')
   const [busy, setBusy]               = useState(false)
+
+  const { mutate: generateFr211, isPending: generatingFr211, variables: generatingStage } = useMutation({
+    mutationFn: (stageType: string) =>
+      api.post(`/audit-sets/${auditSetId}/assessments/generate-fr211?stage_type=${stageType}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['audit-set', auditSetId] })
+      queryClient.invalidateQueries({ queryKey: ['shared-documents', auditSetId] })
+      load()
+    },
+    onError: (e: unknown) => {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      alert(detail ?? 'Failed to generate FR.211 forms')
+    },
+  })
 
   const load = useCallback(async () => {
     try {
@@ -137,31 +153,60 @@ export function AssessmentManagementSection({
           No assessments yet. Click &quot;+ Create Assessments&quot; after an audit stage completes.
         </div>
       ) : (
-        <AssessmentList grouped={grouped} />
+        <AssessmentList
+          grouped={grouped}
+          onGenerateFr211={generateFr211}
+          generatingFr211={generatingFr211}
+          generatingStage={generatingStage ?? null}
+        />
       )}
     </div>
   )
 }
 
-function AssessmentList({ grouped }: { grouped: Record<string, Assessment[]> }) {
+function AssessmentList({
+  grouped,
+  onGenerateFr211,
+  generatingFr211,
+  generatingStage,
+}: {
+  grouped: Record<string, Assessment[]>
+  onGenerateFr211: (stageType: string) => void
+  generatingFr211: boolean
+  generatingStage: string | null
+}) {
   return (
     <div className="space-y-3">
       {Object.entries(grouped).map(([key, list]) => {
-        const stageLabel = STAGE_TYPES.find(s => list[0].stage_type.startsWith(s.value))?.label
-          ?? list[0].stage_type
-        const allSigned = list.every(a => a.is_signed)
+        const stageType  = list[0].stage_type
+        const stageLabel = STAGE_TYPES.find(s => stageType.startsWith(s.value))?.label ?? stageType
+        const allSigned  = list.every(a => a.is_signed)
+        const isGeneratingThis = generatingFr211 && generatingStage === stageType
         return (
           <div key={key} className="rounded-xl border bg-white">
             <div className="flex items-center justify-between border-b px-4 py-2.5">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                 {stageLabel}
               </p>
-              {allSigned && (
-                <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
-                  All Signed ✓
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {allSigned && (
+                  <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
+                    All Signed ✓
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => onGenerateFr211(stageType)}
+                  disabled={generatingFr211}
+                  className="rounded-lg border border-[#1A4731] px-3 py-1.5 text-xs font-medium text-[#1A4731] hover:bg-[#1A4731]/5 disabled:opacity-50"
+                >
+                  {isGeneratingThis ? 'Generating…' : 'Generate FR.211 Forms'}
+                </button>
+              </div>
             </div>
+            <p className="px-4 pt-1 pb-0 text-xs text-gray-400">
+              Generates one FR.211 per team member · Client signs in their portal
+            </p>
             <div className="divide-y divide-gray-50">
               {list.map(a => (
                 <div key={a.id} className="flex items-center justify-between px-4 py-3">

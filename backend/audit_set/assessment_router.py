@@ -14,19 +14,22 @@ Endpoints:
 """
 from __future__ import annotations
 import hashlib
+import os
 import secrets
 from datetime import date, datetime, timedelta
 from typing import Optional
 
+from docxtpl import DocxTemplate
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from audit_set.db_models import (
-    AuditSet, AuditSetAuditorAssessment, AuditSetStage, get_db,
+    AuditSet, AuditSetAuditorAssessment, AuditSetSharedDocument, AuditSetStage, get_db,
 )
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
+from config.settings import get_settings
 from email_service import send_otp_code
 
 router = APIRouter(tags=["assessments"])
@@ -290,6 +293,130 @@ def verify_assessment_signature(
 
 class SignAssessmentDirectBody(BaseModel):
     signed_date: Optional[date] = None
+
+
+# ── CB: generate FR.211 DOCX per team member ─────────────────────────────────
+
+@router.post("/audit-sets/{audit_set_id}/assessments/generate-fr211")
+def generate_fr211_forms(
+    audit_set_id: str,
+    stage_type:   str = Query(...),   # "stage_1" | "stage_2" | "surveillance"
+    db:           Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """
+    Generate one FR.211 DOCX per team member (lead + auditors + TEs) for
+    the given stage and store each as an AuditSetSharedDocument
+    (document_type "assessment") available for the client to sign.
+    Idempotent: skips members who already have an FR.211 doc for this stage.
+    """
+    if current_user.role not in CB_ROLES:
+        raise HTTPException(403, "Not authorized")
+
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    if not audit_set:
+        raise HTTPException(404, "Audit set not found")
+
+    stage = (
+        db.query(AuditSetStage)
+        .filter_by(audit_set_id=audit_set_id, stage_type=stage_type)
+        .order_by(AuditSetStage.stage_order.desc())
+        .first()
+    )
+    if not stage:
+        raise HTTPException(404, f"No stage found for stage_type={stage_type}")
+
+    # Collect team members (lead + auditors + TEs, not observers)
+    members: list[dict] = []
+    if stage.lead_auditor_name:
+        members.append({
+            "id":   stage.lead_auditor_id,
+            "name": stage.lead_auditor_name,
+            "role": "Lead Auditor",
+        })
+    for a in (stage.auditors or []):
+        if isinstance(a, dict):
+            members.append({"id": a.get("id"), "name": a.get("name", ""), "role": "Auditor"})
+    for te in (stage.technical_experts or []):
+        if isinstance(te, dict):
+            members.append({"id": te.get("id"), "name": te.get("name", ""), "role": "Technical Expert"})
+
+    if not members:
+        raise HTTPException(409, "No team members assigned to this stage yet.")
+
+    # Locate FR.211 DOCX template
+    settings = get_settings()
+    sub = (audit_set.accreditation_body or "base").lower()
+    template_path = os.path.join(settings.blank_set_path, sub, "FR.211.docx")
+    if not os.path.exists(template_path):
+        template_path = os.path.join(settings.blank_set_path, "base", "FR.211.docx")
+    if not os.path.exists(template_path):
+        template_path = os.path.join(settings.blank_set_path, "FR.211.docx")
+    if not os.path.exists(template_path):
+        raise HTTPException(500, "FR.211 template not found on server.")
+
+    # Build shared date string for the stage
+    from audit_set.filler import format_date_range
+    audit_dates = format_date_range(stage.audit_date_start, stage.audit_date_end)
+    standards_str = ", ".join(audit_set.standards or [])
+
+    # Output directory
+    upload_dir = os.path.join(settings.storage_base_path, "shared_docs", audit_set_id)
+    os.makedirs(upload_dir, exist_ok=True)
+
+    created = []
+    for member in members:
+        auditor_key = member["id"] or member["name"]
+        # Idempotency: skip if already generated for this auditor + stage
+        existing = db.query(AuditSetSharedDocument).filter_by(
+            audit_set_id=audit_set_id,
+            document_type="assessment",
+            stage_type=stage_type,
+            assigned_auditor_id=auditor_key,
+        ).first()
+        if existing:
+            created.append({"id": existing.id, "skipped": True})
+            continue
+
+        # Fill FR.211 template
+        tpl = DocxTemplate(template_path)
+        context = {
+            "lead_auditor_name": member["name"],
+            "audit_dates":       audit_dates,
+            "company_name":      audit_set.company_name or "",
+            "standards_str":     standards_str,
+        }
+        tpl.render(context)
+
+        # Save DOCX
+        safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in member["name"])
+        file_name = f"FR.211_{stage_type}_{safe_name}.docx"
+        file_path = os.path.join(upload_dir, file_name)
+        tpl.save(file_path)
+
+        # Create shared document record
+        doc = AuditSetSharedDocument(
+            audit_set_id        = audit_set_id,
+            label               = f"Auditor Assessment — {member['name']} ({stage_type.replace('_', ' ').title()}) (FR.211)",
+            document_type       = "assessment",
+            stage_type          = stage_type,
+            assigned_auditor_id = auditor_key,
+            file_path           = file_path,
+            direction           = "cb_to_client",
+            status              = "released",
+            released_by         = current_user.id,
+            released_at         = datetime.utcnow(),
+        )
+        db.add(doc)
+        db.flush()
+        created.append({"id": doc.id, "auditor": member["name"], "skipped": False})
+
+    db.commit()
+    return {
+        "generated": len([c for c in created if not c.get("skipped")]),
+        "skipped":   len([c for c in created if c.get("skipped")]),
+        "documents": created,
+    }
 
 
 # ── Client: direct-sign (no OTP) ─────────────────────────────────────────────

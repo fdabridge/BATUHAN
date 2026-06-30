@@ -451,8 +451,10 @@ def _visible_docs_for_user(
         ).all()
         return [
             d for d in docs
-            if d.document_type != "team_info"
-            or (current_user.auditor_id and d.assigned_auditor_id == current_user.auditor_id)
+            if d.document_type not in ("team_info", "assessment")
+            or (d.document_type == "team_info"
+                and current_user.auditor_id
+                and d.assigned_auditor_id == current_user.auditor_id)
         ]
 
     if current_user.role == "client":

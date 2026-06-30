@@ -190,6 +190,19 @@ def _assert_stage1_complete_gate(db: Session, audit_set_id: str) -> None:
     ):
         failures.append("Stage 1 FR.231 Stage Report is not fully signed")
 
+    # FR.211 gate: if documents were generated, all must be signed before Stage 2 opens.
+    total_assessments_s1 = db.query(AuditSetSharedDocument).filter_by(
+        audit_set_id=audit_set_id, document_type="assessment", stage_type="stage_1",
+    ).count()
+    if total_assessments_s1 > 0:
+        unsigned_assessments_s1 = db.query(AuditSetSharedDocument).filter_by(
+            audit_set_id=audit_set_id, document_type="assessment", stage_type="stage_1",
+        ).filter(AuditSetSharedDocument.signed_at.is_(None)).count()
+        if unsigned_assessments_s1:
+            failures.append(
+                f"{unsigned_assessments_s1} Stage 1 FR.211 (Auditor Assessment) form(s) not yet signed by the client"
+            )
+
     if failures:
         raise HTTPException(409, "Gate not met: " + "; ".join(failures))
 
@@ -223,6 +236,22 @@ def _assert_fr233_signed_gate(db: Session, audit_set_id: str) -> None:
             f"(current status: '{record.status}'). All committee members and the "
             "Certification Manager must sign FR.233 before certification can be issued.",
         )
+
+    # FR.211 gate: if Stage 2 assessment docs were generated, all must be signed.
+    failures: list[str] = []
+    total_assessments_s2 = db.query(AuditSetSharedDocument).filter_by(
+        audit_set_id=audit_set_id, document_type="assessment", stage_type="stage_2",
+    ).count()
+    if total_assessments_s2 > 0:
+        unsigned_assessments_s2 = db.query(AuditSetSharedDocument).filter_by(
+            audit_set_id=audit_set_id, document_type="assessment", stage_type="stage_2",
+        ).filter(AuditSetSharedDocument.signed_at.is_(None)).count()
+        if unsigned_assessments_s2:
+            failures.append(
+                f"{unsigned_assessments_s2} Stage 2 FR.211 (Auditor Assessment) form(s) not yet signed by the client"
+            )
+    if failures:
+        raise HTTPException(409, "Gate not met: " + "; ".join(failures))
 
 
 class WorkflowUpdateSchema(BaseModel):
