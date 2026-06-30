@@ -467,10 +467,26 @@ function PlanOverview({
     },
   })
 
+  /** Merge any still-typed (un-Enter'd) codes into a given scope draft. */
+  function flushNewCodes(draft: RequiredScope): RequiredScope {
+    const result: RequiredScope = {}
+    for (const [std, entry] of Object.entries(draft)) {
+      const raw = newCodeInput[std] ?? ''
+      const extras = raw
+        .split(',')
+        .map((t) => t.trim().toUpperCase())
+        .filter((t) => t.length > 0 && !entry.codes.includes(t))
+      result[std] = extras.length > 0
+        ? { ...entry, codes: [...entry.codes, ...extras] }
+        : entry
+    }
+    return result
+  }
+
   const { mutate: saveScope, isPending: savingScope } = useMutation({
-    mutationFn: () =>
+    mutationFn: (draft: RequiredScope) =>
       api.put<AuditSetResponse>(`/audit-sets/${auditSetId}/planning`, {
-        required_scope: scopeDraft,
+        required_scope: draft,
       }),
     onSuccess: () => {
       onInvalidate()
@@ -772,11 +788,14 @@ function PlanOverview({
                         onKeyDown={(e) => {
                           if (e.key !== 'Enter') return
                           e.preventDefault()
-                          const val = (newCodeInput[std] ?? '').trim().toUpperCase()
-                          if (val && !entry.codes.includes(val)) {
+                          const tokens = (newCodeInput[std] ?? '')
+                            .split(',')
+                            .map((t) => t.trim().toUpperCase())
+                            .filter((t) => t.length > 0 && !entry.codes.includes(t))
+                          if (tokens.length > 0) {
                             setScopeDraft((prev) => ({
                               ...prev,
-                              [std]: { ...entry, codes: [...entry.codes, val] },
+                              [std]: { ...entry, codes: [...entry.codes, ...tokens] },
                             }))
                           }
                           setNewCodeInput((p) => ({ ...p, [std]: '' }))
@@ -790,7 +809,12 @@ function PlanOverview({
                   <button
                     type="button"
                     disabled={savingScope}
-                    onClick={() => saveScope()}
+                    onClick={() => {
+                      const flushed = flushNewCodes(scopeDraft)
+                      setScopeDraft(flushed)
+                      setNewCodeInput({})
+                      saveScope(flushed)
+                    }}
                     className="flex items-center gap-1 rounded-lg bg-certiva-primary px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
                   >
                     {savingScope ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
