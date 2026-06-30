@@ -44,6 +44,27 @@ from auth.service import create_user
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# Standard abbreviation → numeric fragment for cross-matching required_scope keys
+# (full ISO names) against stored qualification standard_codes (CB abbreviations).
+_STD_ABBR_NORM: dict[str, str] = {
+    "isms":  "27001",
+    "enms":  "50001",
+    "abms":  "37001",
+    "cms":   "37301",
+    "mdqms": "13485",
+    "mdms":  "13485",
+}
+
+
+def _std_norm(s: str) -> str:
+    """Normalise a standard code for cross-matching.
+
+    Strips 'ISO ', 'IEC ', slashes and spaces, then maps known CB abbreviations
+    to their numeric fragment so that 'ISMS' == 'ISO 27001' == '27001'.
+    """
+    base = (s or '').lower().replace('iso ', '').replace('iec ', '').replace('/', '').replace(' ', '')
+    return _STD_ABBR_NORM.get(base, base)
+
 
 # ── Bulk import helpers ───────────────────────────────────────────────────────
 
@@ -486,8 +507,7 @@ def get_available_auditors(
     # cover everything.  The single ea_code / standard_code params are legacy fallbacks
     # used when required_scope is absent.
     if req_cat:
-        def _q_std_norm(s: str) -> str:
-            return (s or '').lower().replace('iso ', '').replace(' ', '')
+        _q_std_norm = _std_norm   # use module-level normaliser (maps ISMS→27001 etc.)
 
         def _auditor_covers_any_required(auditor, req: dict) -> bool:
             for iso_std, entry in req.items():
@@ -586,11 +606,11 @@ def get_available_auditors(
                 required_codes: list[str] = entry.get("codes", [])
 
                 # Qualification lookup comes first — before the codes check.
-                std_lower = iso_std.lower().replace("iso ", "").replace(" ", "")
+                std_lower = _std_norm(iso_std)
                 qual = next(
                     (q for q in auditor_qualifications
                      if q.is_qualified is not False and std_lower in
-                     (q.standard_code or "").lower().replace("iso ", "").replace(" ", "")),
+                     _std_norm(q.standard_code or "")),
                     None,
                 )
                 if not qual:

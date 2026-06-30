@@ -742,7 +742,11 @@ function PlanOverview({
                   <div key={std} className="flex flex-wrap items-center gap-1.5">
                     <span className="text-xs font-medium text-gray-600 w-24 shrink-0">{std}</span>
                     {entry.codes.length === 0 ? (
-                      <span className="text-xs text-gray-400 italic">no codes derived</span>
+                      <span className="text-xs text-gray-400 italic">
+                        {entry.type === 'ea'
+                          ? 'EA-based (CB accreditation scope — add manually if needed)'
+                          : 'no codes derived'}
+                      </span>
                     ) : entry.codes.map((code) => (
                       <span key={code} className="rounded px-2 py-0.5 text-xs font-medium" style={scopeBadgeStyle(entry.type, code)}>
                         {code}
