@@ -298,6 +298,22 @@ function LabeledField({ label, children }: { label: string; children: React.Reac
 
 // ── Scope type badge colors ───────────────────────────────────────────────────
 
+/** Returns allowed risk/complexity options for an EA-type standard. */
+function riskOptions(stdName: string): string[] {
+  if (stdName.includes('14001')) return ['High', 'Medium', 'Low', 'Limited']
+  if (stdName.includes('9001') || stdName.includes('45001')) return ['High', 'Medium', 'Low']
+  return []  // non-EA standards have no risk level
+}
+
+/** Badge style for a risk/complexity value. */
+function riskBadgeStyle(risk: string): React.CSSProperties {
+  if (risk === 'High')    return { background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5' }
+  if (risk === 'Medium')  return { background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D' }
+  if (risk === 'Low')     return { background: '#DCFCE7', color: '#166534', border: '1px solid #86EFAC' }
+  if (risk === 'Limited') return { background: '#EFF6FF', color: '#1E40AF', border: '1px solid #93C5FD' }
+  return {}
+}
+
 function scopeBadgeStyle(type: string, code: string): React.CSSProperties {
   if (type === 'food')    return { background: '#FEF3C7', color: '#92400E' }
   if (type === 'medical') return { background: '#EDE9FE', color: '#5B21B6' }
@@ -756,6 +772,15 @@ function PlanOverview({
                         {code}
                       </span>
                     ))}
+                    {entry.type === 'ea' && entry.risk && (
+                      <span
+                        className="rounded px-2 py-0.5 text-xs font-medium"
+                        style={riskBadgeStyle(entry.risk)}
+                        title="Risk/complexity category per IAF MD 5:2023 — click Edit to override"
+                      >
+                        {entry.risk}
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -810,6 +835,25 @@ function PlanOverview({
                         }}
                         className="h-6 w-24 rounded border border-gray-200 px-1.5 text-xs focus:border-certiva-primary focus:outline-none"
                       />
+                      {/* Risk/complexity override — EA-type standards only */}
+                      {entry.type === 'ea' && riskOptions(std).length > 0 && (
+                        <select
+                          className="h-6 rounded border border-gray-200 px-1 text-xs focus:border-certiva-primary focus:outline-none"
+                          style={entry.risk ? riskBadgeStyle(entry.risk) : {}}
+                          value={entry.risk ?? 'Medium'}
+                          title="Risk/complexity per IAF MD 5:2023 — override if needed"
+                          onChange={(e) =>
+                            setScopeDraft((prev) => ({
+                              ...prev,
+                              [std]: { ...entry, risk: e.target.value },
+                            }))
+                          }
+                        >
+                          {riskOptions(std).map((opt) => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                   </div>
                 ))}

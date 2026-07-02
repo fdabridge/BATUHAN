@@ -118,6 +118,8 @@ export interface ManDayResult {
 export interface RequiredScopeEntry {
   type: 'food' | 'medical' | 'sector' | 'energy' | 'ea'
   codes: string[]
+  /** Risk/complexity category — only present for EA-type standards (ISO 9001/14001/45001) */
+  risk?: string
 }
 
 /** Full derived scope — keyed by ISO standard name, e.g. "ISO 22000" */

@@ -328,68 +328,161 @@ _SCOPE_TO_EA_KW: dict[str, tuple[str, ...]] = {
               "travel agency", "cultural activities", "entertainment"),
 }
 
-# Risk level keywords for ISO 9001 / 45001 (affects table lookup in the engine)
+# Keywords for ISO 9001 HIGH risk per IAF MD 5:2023 Table QMS 2.
+# Used as fallback when no EA code is set.
 _RISK_HIGH_KW: tuple[str, ...] = (
     "food", "pharmaceutical", "medical", "aerospace", "nuclear", "defence",
     "chemical", "petrochemical", "construction", "mining", "oil", "gas",
     "cake", "tortilla", "snack", "sandwich", "dairy", "meat", "bakery",
-    "implant", "surgical", "explosive",
-    # Textile / apparel / leather (EA 4) — high environmental impact: dyes, effluents
-    "textile", "textil", "fabric", "garment", "clothing", "apparel", "fashion",
-    "leather", "tanning", "dyeing", "yarn", "weaving", "knitting", "spinning",
-    # Metals / surface treatment (EA 6/7) — heavy metals, solvents
-    "galvaniz", "electroplat", "metal treatment", "surface treatment",
-    "steel production", "aluminum production", "aluminium production",
-    # Rubber / plastics (EA 14)
-    "rubber", "plastic compounding",
-    # Quarrying / minerals (EA 15)
-    "quarry", "cement production", "glass production",
-    # Tannery explicitly (common Turkish industry)
-    "tannery", "tabakhane",
+    "implant", "surgical", "explosive", "shipbuilding",
 )
+# Keywords for ISO 9001 LOW risk per IAF MD 5:2023 Table QMS 2.
 _RISK_LOW_KW: tuple[str, ...] = (
     "software development", "it consulting", "consultancy", "training",
     "education", "media", "publishing", "financial services", "insurance",
+    # Textile/clothing = LOW for ISO 9001 per Table QMS 2
+    "textile", "textil", "fabric", "garment", "clothing", "apparel", "fashion",
+    "yarn", "weaving", "knitting", "spinning",
+    # Hotels/Restaurants = LOW for ISO 9001
+    "hotel", "restaurant", "hospitality",
 )
 
-# EA-code override for ISO 14001 risk level.
-# When ea_code is already set by the planner, use it directly
-# instead of relying on keyword matching from scope text.
-# Keys are normalised EA code integers (e.g. 4 for "EA 4").
-_ISO14001_EA_RISK: dict[int, str] = {
-    # High environmental impact
-    4:  "High",   # Textile and Leather Products
-    5:  "High",   # Wood and Wood Products
-    6:  "High",   # Basic Metals
-    7:  "High",   # Fabricated Metal Products, machinery
-    8:  "High",   # Machinery and Equipment
-    9:  "High",   # Electrical and Optical Equipment
+# ── Per-standard EA-code → risk/complexity tables ─────────────────────────────
+# Based on IAF MD 5:2023 Tables QMS 2, EMS 2, and OH&SMS 2.
+# Key: integer EA code. Value: category string used by the calculator engine.
+# Missing key → "Medium" (safe default per IAF guidance).
+
+# ISO 9001 — Risk category (Table QMS 2)
+_QMS_EA_RISK: dict[int, str] = {
+    # HIGH risk sectors
+    1:  "High",   # Agriculture, Forestry, Fishing (food chain primary production)
+    3:  "High",   # Food products, Beverages, Tobacco
     10: "High",   # Shipbuilding
     11: "High",   # Aerospace
-    14: "High",   # Rubber and Plastics
-    15: "High",   # Non-metallic mineral products (cement, glass, ceramics)
-    16: "High",   # Concrete, cement, lime, plaster
-    17: "High",   # Electricity supply (generation & distribution)
-    19: "High",   # Other transport (road freight, logistics)
-    # Medium — manufacturing sectors with moderate impact
-    1:  "Medium", # Agriculture, Forestry, Fishing
-    2:  "Medium", # Mining and Quarrying (medium only; add keywords for high cases)
-    3:  "Medium", # Food products, Beverages, Tobacco
-    12: "Medium", # Surface transport
-    13: "Medium", # Water transport
-    20: "Medium", # Waste treatment
-    # Low — service-dominant sectors
+    12: "High",   # Chemical products
+    13: "High",   # Pharmaceutical
+    14: "High",   # Rubber and Plastics (medical/automotive grade)
+    16: "High",   # Concrete, cement (complex construction materials)
+    18: "High",   # Medical devices
+    28: "High",   # Complex construction (bridges, hospitals) — medium for simple builds
+    # LOW risk sectors (explicitly listed in Table QMS 2)
+    4:  "Low",    # Textile and Leather Products
+    5:  "Low",    # Wood and Wood Products (simple/furniture)
     22: "Low",    # Wholesale and Retail trade
     23: "Low",    # Hotels and Restaurants
-    28: "Low",    # Real estate
-    29: "Low",    # Computer and related activities
+    29: "Low",    # Computer and related activities / IT services
     31: "Low",    # Education
-    32: "Low",    # Health and social work
-    33: "Low",    # Social services
-    35: "Low",    # Financial intermediation, Insurance
-    36: "Low",    # Public administration
+    32: "Low",    # Health and social work (admin/management; clinical = High)
+    33: "Low",    # Other social services
+    35: "Low",    # Financial intermediation
+    36: "Low",    # Insurance
     37: "Low",    # Postal services
     39: "Low",    # Other social / personal services
+    # Medium (not listed — fall through to default)
+    # EA 6 Metals, EA 7 Fabricated metals, EA 8 Machinery, EA 9 Electrical, etc.
+}
+
+# ISO 14001 — Complexity category (Table EMS 2)
+# Note: ISO 14001 uses 4 levels: High / Medium / Low / Limited
+_EMS_EA_RISK: dict[int, str] = {
+    # HIGH environmental complexity
+    2:  "High",   # Mining and Quarrying
+    6:  "High",   # Basic Metals (iron, steel, aluminium production)
+    7:  "High",   # Fabricated Metal Products (surface treatment, plating)
+    8:  "High",   # Machinery and Equipment (heavy manufacturing)
+    9:  "High",   # Electrical and Optical Equipment (soldering, chemicals)
+    10: "High",   # Shipbuilding
+    11: "High",   # Aerospace
+    12: "High",   # Chemical products
+    13: "High",   # Pharmaceutical (active substances, solvents)
+    17: "High",   # Electricity supply / generation
+    20: "High",   # Waste water treatment
+    21: "High",   # Waste collection and recycling
+    # MEDIUM — manufacturing with moderate environmental impact
+    1:  "Medium", # Agriculture, Forestry, Fishing
+    3:  "Medium", # Food products, Beverages, Tobacco
+    4:  "Medium", # Textile and Leather Products (EXCEPT tanning — see keyword override)
+    5:  "Medium", # Wood and Wood Products
+    14: "Medium", # Rubber and Plastics
+    15: "Medium", # Non-metallic mineral products (ceramics, glass)
+    16: "Medium", # Concrete, cement, lime
+    18: "Medium", # Medical devices
+    19: "Medium", # Other transport
+    22: "Medium", # Wholesale and Retail trade (large distribution centres)
+    24: "Medium", # Construction
+    28: "Medium", # Construction (complex civil)
+    # LOW — service-dominant sectors
+    23: "Low",    # Hotels and Restaurants
+    29: "Low",    # Computer and related activities
+    30: "Low",    # Research and development
+    31: "Low",    # Education
+    32: "Low",    # Health and social work (clinics, hospitals)
+    33: "Low",    # Other social services
+    38: "Low",    # Other social / personal services
+    # LIMITED — administrative/holding organisations
+    35: "Limited", # Financial intermediation
+    36: "Limited", # Insurance
+    37: "Limited", # Postal services
+    39: "Limited", # Other social services (admin only)
+    40: "Limited", # Public administration
+}
+
+# ISO 45001 — Risk category (Table OH&SMS 2)
+_OHSMS_EA_RISK: dict[int, str] = {
+    # HIGH OHS risk sectors
+    1:  "High",   # Agriculture, Forestry (chainsaw, tractor, pesticide exposure)
+    2:  "High",   # Mining and Quarrying
+    10: "High",   # Shipbuilding
+    11: "High",   # Aerospace (high-risk assembly)
+    12: "High",   # Chemical products
+    13: "High",   # Pharmaceutical
+    17: "High",   # Electricity supply (electrocution risk)
+    20: "High",   # Waste water / sewage treatment
+    21: "High",   # Waste collection / recycling
+    28: "High",   # Complex construction
+    # MEDIUM — manufacturing with moderate OHS risk
+    3:  "Medium", # Food products, Beverages, Tobacco
+    4:  "Medium", # Textile and Leather Products (EXCEPT dyeing/tanning — see keyword override)
+    5:  "Medium", # Wood and Wood Products
+    6:  "Medium", # Basic Metals
+    7:  "Medium", # Fabricated Metal Products
+    8:  "Medium", # Machinery and Equipment
+    9:  "Medium", # Electrical and Optical Equipment
+    14: "Medium", # Rubber and Plastics
+    15: "Medium", # Non-metallic mineral products
+    16: "Medium", # Concrete, cement
+    18: "Medium", # Medical devices
+    19: "Medium", # Other transport and logistics
+    22: "Medium", # Wholesale and Retail (warehouse operations)
+    24: "Medium", # Construction (simple builds)
+    32: "Medium", # Health and social work (needle/pathogen exposure)
+    # LOW — office/service dominant
+    23: "Low",    # Hotels and Restaurants
+    29: "Low",    # Computer and related activities
+    30: "Low",    # Research and development
+    31: "Low",    # Education
+    33: "Low",    # Other social services
+    35: "Low",    # Financial intermediation
+    36: "Low",    # Insurance
+    37: "Low",    # Postal services
+    39: "Low",    # Other social / personal services
+    40: "Low",    # Public administration
+}
+
+# Keyword overrides for sub-sector High risk WITHIN a normally-Medium EA code.
+# These override the EA-code table result for specific processes.
+# Keys: standard norm strings.  Values: list of (keywords, override_risk) tuples.
+_EA_SUBSECTOR_HIGH_KW: dict[str, list[tuple[tuple[str, ...], str]]] = {
+    "14001": [
+        # Tanning of leather/textiles = High for EMS (Table EMS 2 footnote)
+        (("tanning", "tannery", "tabakhane", "deri işleme"), "High"),
+    ],
+    "45001": [
+        # Dyeing of textiles = High for OH&SMS (Table OH&SMS 2 footnote)
+        (("dyeing", "boyama", "dye house"), "High"),
+        # Tanning = High for OH&SMS too
+        (("tanning", "tannery", "tabakhane", "deri işleme"), "High"),
+    ],
 }
 
 
@@ -482,23 +575,54 @@ def derive_required_scope(
                     if any(kw in haystack for kw in kws)
                 ]
 
-            # For ISO 14001: first try EA-code-based risk override (more reliable
-            # than keywords since planners set the EA code explicitly).
-            # For ISO 9001 / 45001 / 27001: use keyword-based risk only.
-            risk = "Medium"   # safe default
-            if "14001" in norm and ea_code:
-                # Extract numeric part from ea_code string ("EA 4" → 4)
+            # ── Select the correct per-standard EA risk table ──────────────────
+            if "9001" in norm:
+                ea_table = _QMS_EA_RISK
+            elif "14001" in norm:
+                ea_table = _EMS_EA_RISK
+            elif "45001" in norm:
+                ea_table = _OHSMS_EA_RISK
+            else:
+                ea_table = {}   # ISO 27001 — no EA-table; fall through to keywords
+
+            risk = "Medium"  # IAF-recommended default when sector is unclassified
+
+            # Step 1: EA-code lookup (most reliable — planner-set code)
+            if ea_code and ea_table:
                 try:
                     ea_int = int(ea_code.strip().upper().replace("EA", "").replace(" ", ""))
-                    risk = _ISO14001_EA_RISK.get(ea_int, "Medium")
+                    risk = ea_table.get(ea_int, "Medium")
                 except (ValueError, AttributeError):
-                    pass  # malformed ea_code — fall through to keywords
-            # If EA-code lookup didn't resolve (or not 14001), fall back to keywords
-            if risk == "Medium":
-                if any(kw in haystack for kw in _RISK_HIGH_KW):
-                    risk = "High"
-                elif any(kw in haystack for kw in _RISK_LOW_KW):
-                    risk = "Low"
+                    pass  # malformed ea_code — fall through
+
+            # Step 2: Sub-sector keyword override (e.g. tanning within EA 4)
+            # Can upgrade a Medium EA code to High based on specific process keywords
+            std_key = norm.replace("iso", "").replace(" ", "")
+            for (kws, override) in _EA_SUBSECTOR_HIGH_KW.get(std_key, []):
+                if any(kw in haystack for kw in kws):
+                    risk = override
+                    break
+
+            # Step 3: Keyword fallback when no EA code was set
+            if not ea_code:
+                if "9001" in norm or "27001" in norm:
+                    # For QMS/ISMS use the QMS keyword lists
+                    if any(kw in haystack for kw in _RISK_HIGH_KW):
+                        risk = "High"
+                    elif any(kw in haystack for kw in _RISK_LOW_KW):
+                        risk = "Low"
+                else:
+                    # For EMS/OH&SMS without EA code, use conservative keyword scan
+                    # Tanning/dyeing → High; everything else stays Medium
+                    high_process_kw = ("tanning", "tannery", "tabakhane", "deri işleme",
+                                       "dyeing", "boyama", "chemical production",
+                                       "kimyasal üretim", "mining", "maden")
+                    low_service_kw = ("education", "finance", "insurance", "software",
+                                      "hotel", "restaurant")
+                    if any(kw in haystack for kw in high_process_kw):
+                        risk = "High"
+                    elif any(kw in haystack for kw in low_service_kw):
+                        risk = "Low"
 
             result[iso] = {"type": "ea", "codes": codes, "risk": risk}
 
