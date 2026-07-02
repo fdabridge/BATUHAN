@@ -334,11 +334,63 @@ _RISK_HIGH_KW: tuple[str, ...] = (
     "chemical", "petrochemical", "construction", "mining", "oil", "gas",
     "cake", "tortilla", "snack", "sandwich", "dairy", "meat", "bakery",
     "implant", "surgical", "explosive",
+    # Textile / apparel / leather (EA 4) — high environmental impact: dyes, effluents
+    "textile", "textil", "fabric", "garment", "clothing", "apparel", "fashion",
+    "leather", "tanning", "dyeing", "yarn", "weaving", "knitting", "spinning",
+    # Metals / surface treatment (EA 6/7) — heavy metals, solvents
+    "galvaniz", "electroplat", "metal treatment", "surface treatment",
+    "steel production", "aluminum production", "aluminium production",
+    # Rubber / plastics (EA 14)
+    "rubber", "plastic compounding",
+    # Quarrying / minerals (EA 15)
+    "quarry", "cement production", "glass production",
+    # Tannery explicitly (common Turkish industry)
+    "tannery", "tabakhane",
 )
 _RISK_LOW_KW: tuple[str, ...] = (
     "software development", "it consulting", "consultancy", "training",
     "education", "media", "publishing", "financial services", "insurance",
 )
+
+# EA-code override for ISO 14001 risk level.
+# When ea_code is already set by the planner, use it directly
+# instead of relying on keyword matching from scope text.
+# Keys are normalised EA code integers (e.g. 4 for "EA 4").
+_ISO14001_EA_RISK: dict[int, str] = {
+    # High environmental impact
+    4:  "High",   # Textile and Leather Products
+    5:  "High",   # Wood and Wood Products
+    6:  "High",   # Basic Metals
+    7:  "High",   # Fabricated Metal Products, machinery
+    8:  "High",   # Machinery and Equipment
+    9:  "High",   # Electrical and Optical Equipment
+    10: "High",   # Shipbuilding
+    11: "High",   # Aerospace
+    14: "High",   # Rubber and Plastics
+    15: "High",   # Non-metallic mineral products (cement, glass, ceramics)
+    16: "High",   # Concrete, cement, lime, plaster
+    17: "High",   # Electricity supply (generation & distribution)
+    19: "High",   # Other transport (road freight, logistics)
+    # Medium — manufacturing sectors with moderate impact
+    1:  "Medium", # Agriculture, Forestry, Fishing
+    2:  "Medium", # Mining and Quarrying (medium only; add keywords for high cases)
+    3:  "Medium", # Food products, Beverages, Tobacco
+    12: "Medium", # Surface transport
+    13: "Medium", # Water transport
+    20: "Medium", # Waste treatment
+    # Low — service-dominant sectors
+    22: "Low",    # Wholesale and Retail trade
+    23: "Low",    # Hotels and Restaurants
+    28: "Low",    # Real estate
+    29: "Low",    # Computer and related activities
+    31: "Low",    # Education
+    32: "Low",    # Health and social work
+    33: "Low",    # Social services
+    35: "Low",    # Financial intermediation, Insurance
+    36: "Low",    # Public administration
+    37: "Low",    # Postal services
+    39: "Low",    # Other social / personal services
+}
 
 
 def _first_ea_code_from_scope(required_scope: dict | None) -> str | None:
@@ -429,13 +481,25 @@ def derive_required_scope(
                     ea for ea, kws in _SCOPE_TO_EA_KW.items()
                     if any(kw in haystack for kw in kws)
                 ]
-            # Derive risk level for ISO 9001 and 45001
-            if any(kw in haystack for kw in _RISK_HIGH_KW):
-                risk = "High"
-            elif any(kw in haystack for kw in _RISK_LOW_KW):
-                risk = "Low"
-            else:
-                risk = "Medium"
+
+            # For ISO 14001: first try EA-code-based risk override (more reliable
+            # than keywords since planners set the EA code explicitly).
+            # For ISO 9001 / 45001 / 27001: use keyword-based risk only.
+            risk = "Medium"   # safe default
+            if "14001" in norm and ea_code:
+                # Extract numeric part from ea_code string ("EA 4" → 4)
+                try:
+                    ea_int = int(ea_code.strip().upper().replace("EA", "").replace(" ", ""))
+                    risk = _ISO14001_EA_RISK.get(ea_int, "Medium")
+                except (ValueError, AttributeError):
+                    pass  # malformed ea_code — fall through to keywords
+            # If EA-code lookup didn't resolve (or not 14001), fall back to keywords
+            if risk == "Medium":
+                if any(kw in haystack for kw in _RISK_HIGH_KW):
+                    risk = "High"
+                elif any(kw in haystack for kw in _RISK_LOW_KW):
+                    risk = "Low"
+
             result[iso] = {"type": "ea", "codes": codes, "risk": risk}
 
     logger.info("[AuditSet] derive_required_scope → %s", result)
@@ -906,6 +970,7 @@ def update_planning(
             auditors=[a.model_dump() for a in stage_input.auditors],
             technical_experts=[a.model_dump() for a in stage_input.technical_experts],
             observers=[a.model_dump() for a in stage_input.observers],
+            trainees= [a.model_dump() for a in stage_input.trainees],
             ik_experts=[a.model_dump() for a in stage_input.ik_experts],
             evaluators=[a.model_dump() for a in stage_input.evaluators],
             audit_days=stage_input.audit_days,

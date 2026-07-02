@@ -367,6 +367,9 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['auditor', id] })
       queryClient.invalidateQueries({ queryKey: ['auditors-dashboard'] })
+      // Invalidate the planning-page auditor lists so they see updated EA codes
+      queryClient.invalidateQueries({ queryKey: ['auditors-active'] })
+      queryClient.invalidateQueries({ queryKey: ['auditor-availability'] })
       setEditing(false)
     },
     onError: (err: unknown) => {

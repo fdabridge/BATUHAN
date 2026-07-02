@@ -68,6 +68,7 @@ class StageInput(BaseModel):
     auditors: list[AuditorAssignment] = []
     technical_experts: list[AuditorAssignment] = []
     observers: list[AuditorAssignment] = []
+    trainees:  list[AuditorAssignment] = []
     ik_experts: list[AuditorAssignment] = []
     evaluators: list[AuditorAssignment] = []
     audit_days: Optional[float] = None
@@ -188,6 +189,7 @@ class StageResponse(BaseModel):
     auditors: Optional[list]
     technical_experts: Optional[list]
     observers: Optional[list]
+    trainees:  Optional[list] = None
     ik_experts: Optional[list] = None
     evaluators: Optional[list] = None
     audit_days: Optional[float]

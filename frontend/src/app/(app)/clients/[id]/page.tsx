@@ -81,6 +81,8 @@ interface StageEdit {
   audit_date_end:    string
   auditors:          TeamMember[]
   technical_experts: TeamMember[]
+  observers:         TeamMember[]
+  trainees:          TeamMember[]
 }
 
 function parseTeamMembers(arr: unknown[] | null | undefined): TeamMember[] {
@@ -98,6 +100,8 @@ function buildStageEdit(s: StageResponse): StageEdit {
     audit_date_end:    s.audit_date_end    ?? '',
     auditors:          parseTeamMembers(s.auditors as unknown[]),
     technical_experts: parseTeamMembers(s.technical_experts as unknown[]),
+    observers:         parseTeamMembers(s.observers as unknown[]),
+    trainees:          parseTeamMembers((s as StageResponse & { trainees?: unknown[] }).trainees as unknown[]),
   }
 }
 
@@ -1599,7 +1603,8 @@ function StageCard({
           audit_date_end:    isThis ? (edit.audit_date_end    || null) : s.audit_date_end,
           auditors:          isThis ? edit.auditors          : ((s.auditors as TeamMember[]) ?? []),
           technical_experts: isThis ? edit.technical_experts : ((s.technical_experts as TeamMember[]) ?? []),
-          observers:         (s.observers as { name: string }[]) ?? [],
+          observers:         isThis ? edit.observers.map((x) => ({ id: x.id, name: x.name })) : ((s.observers as TeamMember[]) ?? []),
+          trainees:          isThis ? edit.trainees.map((x) => ({ id: x.id, name: x.name })) : ((s as StageResponse & { trainees?: TeamMember[] }).trainees ?? []),
           ik_experts:        [],
           evaluators:        [],
         }
@@ -1896,6 +1901,85 @@ function StageCard({
               })}
           </select>
         </div>
+      </div>
+
+      {/* Observers and Trainees row */}
+      <div className="mt-3 grid grid-cols-2 gap-4">
+
+        {/* Observers */}
+        <div>
+          <label className={lblCls}>Observers</label>
+          <div className="flex flex-wrap gap-1 mb-1 min-h-[24px]">
+            {edit.observers.map((a) => (
+              <span key={a.id || a.name}
+                className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
+                style={{ background: '#F5F5F5', color: '#555', border: '1px solid #DDD' }}>
+                {a.name}
+                <button type="button"
+                  className="ml-1 text-gray-400 hover:text-red-500"
+                  onClick={() => patch({ observers: edit.observers.filter((x) => (x.id || x.name) !== (a.id || a.name)) })}>
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+          <select className={inputCls} value=""
+            onChange={(e) => {
+              const found = dropdownList.find((a) => (a.id ?? a.name) === e.target.value)
+              if (found && !edit.observers.find((x) => (x.id || x.name) === (found.id || found.name))) {
+                patch({ observers: [...edit.observers, { id: found.id ?? '', name: found.name }] })
+              }
+            }}>
+            <option value="">+ Add observer…</option>
+            {auditors
+              .filter((a) => !edit.observers.find((x) => (x.id || x.name) === (a.id || a.name)))
+              .filter((a) => a.name !== edit.lead_auditor_name)
+              .map((a) => (
+                <option key={a.id ?? a.name} value={a.id ?? a.name}>
+                  {a.name}
+                </option>
+              ))}
+          </select>
+          <p className="text-[11px] text-gray-400 mt-0.5">Observers — no audit days, not assessed</p>
+        </div>
+
+        {/* Trainee Auditors */}
+        <div>
+          <label className={lblCls}>Trainee Auditors</label>
+          <div className="flex flex-wrap gap-1 mb-1 min-h-[24px]">
+            {edit.trainees.map((a) => (
+              <span key={a.id || a.name}
+                className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
+                style={{ background: '#FFF7ED', color: '#92400E', border: '1px solid #FDE68A' }}>
+                {a.name}
+                <button type="button"
+                  className="ml-1 text-gray-400 hover:text-red-500"
+                  onClick={() => patch({ trainees: edit.trainees.filter((x) => (x.id || x.name) !== (a.id || a.name)) })}>
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+          <select className={inputCls} value=""
+            onChange={(e) => {
+              const found = dropdownList.find((a) => (a.id ?? a.name) === e.target.value)
+              if (found && !edit.trainees.find((x) => (x.id || x.name) === (found.id || found.name))) {
+                patch({ trainees: [...edit.trainees, { id: found.id ?? '', name: found.name }] })
+              }
+            }}>
+            <option value="">+ Add trainee…</option>
+            {auditors
+              .filter((a) => !edit.trainees.find((x) => (x.id || x.name) === (a.id || a.name)))
+              .filter((a) => a.name !== edit.lead_auditor_name)
+              .map((a) => (
+                <option key={a.id ?? a.name} value={a.id ?? a.name}>
+                  {a.name}
+                </option>
+              ))}
+          </select>
+          <p className="text-[11px] text-gray-400 mt-0.5">Trainees — no audit days, not counted in team coverage</p>
+        </div>
+
       </div>
 
       {/* Coverage summary */}

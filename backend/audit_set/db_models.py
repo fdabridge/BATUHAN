@@ -92,6 +92,8 @@ def create_tables():
     _safe_add_column("audit_set_audit_reports", "reviewer_auditor_name VARCHAR")
     # Portal 89 — currency selection per audit set
     _safe_add_column("audit_sets", "currency VARCHAR DEFAULT 'USD'")
+    # Portal 97 — trainee auditor assignments in stage planning
+    _safe_add_column("audit_set_stages", "trainees JSON")
 
 
 # ---------------------------------------------------------------------------
@@ -276,6 +278,7 @@ class AuditSetStage(Base):
     auditors         = Column(JSON, nullable=True)
     technical_experts= Column(JSON, nullable=True)
     observers        = Column(JSON, nullable=True)
+    trainees         = Column(JSON, nullable=True)   # Portal 97 — trainee auditors
     ik_experts       = Column(JSON, nullable=True)
     evaluators       = Column(JSON, nullable=True)
 
