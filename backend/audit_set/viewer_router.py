@@ -386,7 +386,17 @@ def _check_committee_sig(
 def _find_stage(db: Session, audit_set_id: str, stage_type: str | None) -> AuditSetStage | None:
     q = db.query(AuditSetStage).filter_by(audit_set_id=audit_set_id)
     if stage_type:
-        q = q.filter_by(stage_type=stage_type)
+        result = q.filter_by(stage_type=stage_type).order_by(AuditSetStage.stage_order).first()
+        if result:
+            return result
+        # stage_type was provided but nothing matched — doc may have been
+        # uploaded with a mismatched stage_type. Fall back to the first stage
+        # for this audit set so signing is never permanently blocked.
+        logger.warning(
+            "[_find_stage] stage_type=%r not found for audit_set=%s; "
+            "falling back to first stage",
+            stage_type, audit_set_id,
+        )
     return q.order_by(AuditSetStage.stage_order).first()
 
 
@@ -459,12 +469,40 @@ def _prior_slots_unsigned(doc_id: str, order_index: int | None, db: Session) -> 
 
 # ── Helpers: FR.225 audit-team slot resolution (Portal 59) ────────────────────
 
+def _lookup_auditor_id_by_name(name: str, db: Session) -> str | None:
+    """
+    Resolve an auditor's UUID by their display name.
+
+    Fallback for stages where lead_auditor_id / auditor[N].id was not saved
+    (pre-Portal 53 data). Mirrors the logic in repair_lead_auditor_ids.py.
+    Safe: returns None if no exact-name match is found.
+    """
+    try:
+        from auditors.db_models import Auditor
+        auditor = db.query(Auditor).filter_by(name=name).first()
+        if auditor:
+            logger.debug(
+                "[_lookup_auditor_id_by_name] resolved '%s' → %s", name, auditor.id,
+            )
+            return auditor.id
+    except Exception as exc:
+        logger.warning("[_lookup_auditor_id_by_name] lookup failed for '%s': %s", name, exc)
+    return None
+
+
 def _resolve_org_team_member(
     sig_key: str,
     doc: AuditSetSharedDocument,
     db: Session,
 ) -> tuple[Optional[str], Optional[str]]:
-    """Return (auditor_id, display_name) for an ORG_TEAM_RE sig_key, or (None, None)."""
+    """Return (auditor_id, display_name) for an ORG_TEAM_RE sig_key, or (None, None).
+
+    When auditor_id is missing from the stage row (pre-Portal 53 data where
+    lead_auditor_id / auditor[N].id was never saved), this function resolves
+    the ID by exact-name lookup in the Auditor table so that signing is not
+    permanently blocked. This mirrors what repair_lead_auditor_ids.py does at
+    the DB level, but applies at read-time so no migration is needed.
+    """
     m = ORG_TEAM_RE.match(sig_key)
     if not m:
         return None, None
@@ -472,22 +510,38 @@ def _resolve_org_team_member(
     stage = _find_stage(db, doc.audit_set_id, doc.stage_type)
     if not stage:
         return None, None
+
     if role_part == "LEAD_AUDITOR":
-        return stage.lead_auditor_id, stage.lead_auditor_name or "Lead Auditor"
+        auditor_id   = stage.lead_auditor_id
+        auditor_name = stage.lead_auditor_name or "Lead Auditor"
+        if not auditor_id and stage.lead_auditor_name:
+            auditor_id = _lookup_auditor_id_by_name(stage.lead_auditor_name, db)
+        return auditor_id, auditor_name
+
     if role_part.startswith("AUDITOR_"):
         idx = int(role_part.split("_")[1])
         auditors = stage.auditors or []
         if idx >= len(auditors):
             return None, None
         a = auditors[idx]
-        return a.get("id"), a.get("name") or f"Auditor {idx}"
+        auditor_id   = a.get("id")
+        auditor_name = a.get("name") or f"Auditor {idx}"
+        if not auditor_id and a.get("name"):
+            auditor_id = _lookup_auditor_id_by_name(a["name"], db)
+        return auditor_id, auditor_name
+
     if role_part.startswith("TE_"):
         idx = int(role_part.split("_")[1])
         tes = stage.technical_experts or []
         if idx >= len(tes):
             return None, None
         t = tes[idx]
-        return t.get("id"), t.get("name") or f"Technical Expert {idx}"
+        auditor_id   = t.get("id")
+        auditor_name = t.get("name") or f"Technical Expert {idx}"
+        if not auditor_id and t.get("name"):
+            auditor_id = _lookup_auditor_id_by_name(t["name"], db)
+        return auditor_id, auditor_name
+
     return None, None
 
 
