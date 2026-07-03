@@ -95,7 +95,17 @@ def flatten_document(
     field_map = {f.sig_key: f for f in fields}
 
     # ── Open PDF and embed signatures ─────────────────────────────────────────
-    doc = fitz.open(pdf_path)
+    try:
+        doc = fitz.open(pdf_path)
+    except Exception as exc:
+        # Corrupted or unreadable PDF — fall back to the raw file bytes.
+        import logging
+        logging.getLogger(__name__).warning(
+            "[flatten_document] fitz.open() failed for %s/%s: %s — returning raw PDF",
+            document_type, doc_id, exc,
+        )
+        with open(pdf_path, "rb") as f:
+            return f.read()
 
     for sig_key, placement in placement_map.items():
         field = field_map.get(sig_key)
@@ -152,15 +162,30 @@ def flatten_document(
             page.insert_image(overlay_rect, stream=img_bytes)
         except Exception:
             # Fallback: print signer's name as text if image fails
-            page.insert_text(
-                (overlay_rect.x0 + 4, overlay_rect.y0 + overlay_rect.height / 2 + 4),
-                "[Signed]",
-                fontsize=9,
-                color=(0.1, 0.27, 0.19),
-            )
+            try:
+                page.insert_text(
+                    (overlay_rect.x0 + 4, overlay_rect.y0 + overlay_rect.height / 2 + 4),
+                    "[Signed]",
+                    fontsize=9,
+                    color=(0.1, 0.27, 0.19),
+                )
+            except Exception:
+                pass  # don't let a single failed signature abort the whole document
 
     # ── Serialize ─────────────────────────────────────────────────────────────
-    result = doc.tobytes(garbage=4, deflate=True)
+    try:
+        result = doc.tobytes(garbage=4, deflate=True)
+    except Exception as exc:
+        # If fitz can't serialise the modified document, return the original PDF.
+        import logging
+        logging.getLogger(__name__).warning(
+            "[flatten_document] tobytes() failed for %s/%s: %s — returning raw PDF",
+            document_type, doc_id, exc,
+        )
+        doc.close()
+        with open(pdf_path, "rb") as f:
+            return f.read()
+
     doc.close()
     return result
 

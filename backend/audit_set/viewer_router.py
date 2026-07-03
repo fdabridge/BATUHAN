@@ -250,17 +250,39 @@ def download_signed_pdf(
     Returns a flattened PDF with all completed VisualSignaturePlacements burned in.
     Falls back to the raw converted PDF if no visual placements exist.
 
-    Requires the document to have been prepared first (/viewer/prepare).
+    Self-healing: if the PDF cache is missing (e.g. after a Railway restart that
+    wiped the ephemeral filesystem), the endpoint re-runs prepare_document() to
+    regenerate it from the stored DOCX before flattening.
+
     Accessible by any authenticated user (CB, auditor, client).
     """
+    from audit_set.doc_converter import prepare_document
+    from audit_set.pdf_flattener import _resolve_docx_path
+
     try:
         pdf_bytes = flatten_document(document_type, doc_id, db)
-    except FileNotFoundError as exc:
-        raise HTTPException(
-            404,
-            "PDF not ready. Open the document in the viewer first.",
-        ) from exc
+
+    except FileNotFoundError:
+        # PDF cache is gone — try to regenerate it from the DOCX on disk.
+        # This handles Railway restarts that wipe /app/storage if no volume is mounted.
+        try:
+            docx_path = _resolve_docx_path(document_type, doc_id, db)
+            prepare_document(docx_path, db)
+            pdf_bytes = flatten_document(document_type, doc_id, db)
+        except FileNotFoundError:
+            # DOCX itself is also gone — storage is wiped; can't recover.
+            raise HTTPException(
+                503,
+                "The document file is no longer available on this server. "
+                "This can happen after a server restart. Please ask the CB to "
+                "re-upload or regenerate the document, then try again.",
+            )
+        except Exception as exc:
+            logger.exception("[download-signed] re-prepare failed: %s", exc)
+            raise HTTPException(500, f"Failed to regenerate PDF: {exc}") from exc
+
     except Exception as exc:
+        logger.exception("[download-signed] flatten failed: %s", exc)
         raise HTTPException(500, f"Failed to generate signed PDF: {exc}") from exc
 
     doc_label = _get_doc_label(document_type, doc_id, db)
