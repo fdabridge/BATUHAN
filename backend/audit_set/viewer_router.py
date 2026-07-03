@@ -267,6 +267,11 @@ def download_signed_pdf(
         # This handles Railway restarts that wipe /app/storage if no volume is mounted.
         try:
             docx_path = _resolve_docx_path(document_type, doc_id, db)
+            # If the DOCX is also missing (full storage wipe), raise immediately
+            # so the inner FileNotFoundError handler returns 503 cleanly instead
+            # of letting LibreOffice fail with a RuntimeError → HTTP 500.
+            if not os.path.exists(docx_path):
+                raise FileNotFoundError(f"DOCX not on disk: {docx_path}")
             prepare_document(docx_path, db)
             pdf_bytes = flatten_document(document_type, doc_id, db)
         except FileNotFoundError:
