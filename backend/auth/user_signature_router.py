@@ -21,8 +21,8 @@ from auth.dependencies import get_current_user
 
 router = APIRouter(prefix="/me", tags=["user_signature"])
 
-# Max allowed base64 size ≈ 500 KB — generous for a signature PNG
-_MAX_DATA_LEN = 700_000
+# Max allowed base64 size ≈ 1.5 MB — handles high-res scanned signatures
+_MAX_DATA_LEN = 2_000_000
 
 
 class SignatureIn(BaseModel):
@@ -60,7 +60,7 @@ def save_my_signature(
     if not body.image_data.startswith("data:image/png;base64,"):
         raise HTTPException(400, "image_data must be a PNG data URL (data:image/png;base64,...)")
     if len(body.image_data) > _MAX_DATA_LEN:
-        raise HTTPException(400, "Signature image is too large. Maximum is ~500 KB.")
+        raise HTTPException(400, "Signature image is too large. Maximum is ~1.5 MB.")
     if body.source not in ("drawn", "uploaded"):
         raise HTTPException(400, "source must be 'drawn' or 'uploaded'")
 

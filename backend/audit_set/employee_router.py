@@ -18,7 +18,7 @@ from auth.dependencies import get_current_user
 
 router = APIRouter(prefix="/org/employees", tags=["client-employees"])
 
-_MAX_DATA_LEN = 700_000   # ~500 KB base64 PNG, same ceiling as UserSignature
+_MAX_DATA_LEN = 2_000_000   # ~1.5 MB base64 PNG, same ceiling as UserSignature
 
 
 def _require_client(current_user: PlatformUser) -> None:
@@ -154,7 +154,7 @@ def save_employee_signature(
     if not body.image_data.startswith("data:image/png;base64,"):
         raise HTTPException(400, "image_data must be a PNG data URL (data:image/png;base64,...)")
     if len(body.image_data) > _MAX_DATA_LEN:
-        raise HTTPException(400, "Signature image is too large. Maximum is ~500 KB.")
+        raise HTTPException(400, "Signature image is too large. Maximum is ~1.5 MB.")
     if body.source not in ("drawn", "uploaded"):
         raise HTTPException(400, "source must be 'drawn' or 'uploaded'")
     emp.signature_data   = body.image_data

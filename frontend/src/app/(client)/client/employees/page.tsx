@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Loader2, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
 import api from '@/lib/api'
+import { removeWhiteBackground, MAX_SIGNATURE_FILE_BYTES } from '@/lib/signatureUtils'
 
 interface OrgEmployee {
   id: string
@@ -279,22 +280,36 @@ function SignatureModal({ target, onClose, onSuccess }: {
   target: OrgEmployee | null; onClose: () => void; onSuccess: () => void
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
-  const [preview, setPreview] = useState<string | null>(null)
-  const [busy,    setBusy]    = useState(false)
-  const [err,     setErr]     = useState<string | null>(null)
+  const [preview,    setPreview]    = useState<string | null>(null)
+  const [processing, setProcessing] = useState(false)
+  const [busy,       setBusy]       = useState(false)
+  const [err,        setErr]        = useState<string | null>(null)
 
   useEffect(() => {
     if (!target) { setPreview(null); setErr(null) }
   }, [target])
 
-  function onFile(ev: React.ChangeEvent<HTMLInputElement>) {
+  async function onFile(ev: React.ChangeEvent<HTMLInputElement>) {
     const f = ev.target.files?.[0]
     if (!f) return
-    if (f.type !== 'image/png') { setErr('Signature must be a PNG image.'); return }
-    if (f.size > 500_000)      { setErr('Image must be under 500 KB.'); return }
-    const reader = new FileReader()
-    reader.onload = () => { setPreview(reader.result as string); setErr(null) }
-    reader.readAsDataURL(f)
+    if (!['image/png', 'image/jpeg'].includes(f.type)) {
+      setErr('Please upload a JPG or PNG image.')
+      return
+    }
+    if (f.size > MAX_SIGNATURE_FILE_BYTES) {
+      setErr('Image is too large. Please use an image under 10 MB.')
+      return
+    }
+    setProcessing(true)
+    setErr(null)
+    try {
+      const processed = await removeWhiteBackground(f)
+      setPreview(processed)
+    } catch {
+      setErr('Could not process the image. Please try a different file.')
+    } finally {
+      setProcessing(false)
+    }
   }
 
   async function submit() {
@@ -314,20 +329,28 @@ function SignatureModal({ target, onClose, onSuccess }: {
     <Modal open={!!target} title={target ? `Signature — ${target.full_name}` : 'Signature'} onClose={onClose}>
       <div className="space-y-3">
         <p className="text-xs text-gray-500">
-          Upload a transparent PNG of this person&apos;s signature. It will be used to populate audit meeting forms.
+          Upload a photo or scan of this person&apos;s handwritten signature. The white
+          background will be removed automatically. JPG or PNG accepted.
         </p>
-        <input ref={fileRef} type="file" accept="image/png" onChange={onFile} className="hidden" />
+        <input ref={fileRef} type="file" accept="image/jpeg,image/png" onChange={onFile} className="hidden" />
         <button type="button" onClick={() => fileRef.current?.click()}
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-600 hover:border-[#1A4731] hover:text-[#1A4731]">
-          <Upload size={16} /> {preview ? 'Choose a different file' : 'Choose PNG file'}
+          <Upload size={16} />
+          {processing ? 'Processing…' : preview ? 'Choose a different file' : 'Choose JPG or PNG file'}
         </button>
-        {preview && (
+        {preview && !processing && (
           <div className="rounded border border-gray-100 bg-gray-50 p-3">
-            <img src={preview} alt="Signature preview" className="mx-auto max-h-32" />
+            <p className="mb-1 text-xs text-gray-400">Preview (background removed)</p>
+            <img
+              src={preview}
+              alt="Signature preview"
+              className="mx-auto max-h-24 object-contain"
+              style={{ background: 'repeating-conic-gradient(#f0f0f0 0% 25%, #fff 0% 50%) 0 0 / 12px 12px' }}
+            />
           </div>
         )}
         {err && <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{err}</div>}
-        <button type="button" onClick={submit} disabled={busy || !preview}
+        <button type="button" onClick={submit} disabled={busy || !preview || processing}
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#1A4731] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60">
           {busy && <Loader2 size={14} className="animate-spin" />}
           {busy ? 'Saving…' : 'Save signature'}

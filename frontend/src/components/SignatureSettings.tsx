@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { PenLine, Upload, Trash2, Save, RotateCcw, CheckCircle } from 'lucide-react'
 import api from '@/lib/api'
+import { removeWhiteBackground, MAX_SIGNATURE_FILE_BYTES } from '@/lib/signatureUtils'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -13,51 +14,6 @@ interface ExistingSig {
 }
 
 type Tab = 'draw' | 'upload'
-
-// ── White background removal ──────────────────────────────────────────────────
-
-function removeWhiteBackground(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onerror = reject
-    reader.onload = (e) => {
-      const src = e.target?.result as string
-      const img = new Image()
-      img.onerror = reject
-      img.onload = () => {
-        const MAX_W = 600
-        const MAX_H = 200
-        let w = img.naturalWidth
-        let h = img.naturalHeight
-        if (w > MAX_W) { h = Math.round(h * MAX_W / w); w = MAX_W }
-        if (h > MAX_H) { w = Math.round(w * MAX_H / h); h = MAX_H }
-
-        const canvas = document.createElement('canvas')
-        canvas.width  = w
-        canvas.height = h
-        const ctx = canvas.getContext('2d')!
-
-        ctx.fillStyle = '#ffffff'
-        ctx.fillRect(0, 0, w, h)
-        ctx.drawImage(img, 0, 0, w, h)
-
-        const imageData = ctx.getImageData(0, 0, w, h)
-        const d = imageData.data
-        for (let i = 0; i < d.length; i += 4) {
-          if (d[i] > 220 && d[i + 1] > 220 && d[i + 2] > 220) {
-            d[i + 3] = 0
-          }
-        }
-        ctx.clearRect(0, 0, w, h)
-        ctx.putImageData(imageData, 0, 0)
-
-        resolve(canvas.toDataURL('image/png'))
-      }
-      img.src = src
-    }
-    reader.readAsDataURL(file)
-  })
-}
 
 // ── Draw pad ──────────────────────────────────────────────────────────────────
 
@@ -197,8 +153,8 @@ export function SignatureSettings() {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    if (file.size > 8 * 1024 * 1024) {
-      setStatusMsg({ type: 'err', text: 'File too large. Maximum 8 MB.' })
+    if (file.size > MAX_SIGNATURE_FILE_BYTES) {
+      setStatusMsg({ type: 'err', text: 'File too large. Please use an image under 10 MB.' })
       return
     }
     try {
@@ -341,7 +297,7 @@ export function SignatureSettings() {
                 border-2 border-dashed border-gray-300 bg-gray-50 p-6 transition-colors hover:border-gray-400">
                 <Upload size={24} className="mb-2 text-gray-400" />
                 <span className="text-sm text-gray-500">Click to select an image</span>
-                <span className="mt-1 text-xs text-gray-400">JPG, PNG — max 8 MB</span>
+                <span className="mt-1 text-xs text-gray-400">JPG, PNG — max 10 MB</span>
                 <input
                   type="file"
                   accept="image/jpeg,image/png"
