@@ -207,6 +207,41 @@ def _assert_stage1_complete_gate(db: Session, audit_set_id: str) -> None:
         raise HTTPException(409, "Gate not met: " + "; ".join(failures))
 
 
+def _assert_nc_complete_gate(db: Session, audit_set_id: str) -> None:
+    """
+    Portal 103 — Gate for any transition → certified.
+    Blocks certification until:
+    1. The lead auditor has submitted an NC decision (AuditSetNCDecision exists).
+    2. Either no_nc=True OR every NC item has status='closed'.
+    """
+    from audit_set.db_models import AuditSetNCDecision, AuditSetNCItem
+    decision = db.query(AuditSetNCDecision).filter_by(audit_set_id=audit_set_id).first()
+    if not decision:
+        raise HTTPException(
+            409,
+            "Gate not met: The lead auditor has not submitted an NC decision. "
+            "After Stage 2, the auditor must either confirm 'No NC' or submit "
+            "nonconformity items before certification can be issued.",
+        )
+    if decision.no_nc:
+        return   # No NCs declared — gate passes immediately
+
+    open_ncs = (
+        db.query(AuditSetNCItem)
+        .filter_by(audit_set_id=audit_set_id)
+        .filter(AuditSetNCItem.status != "closed")
+        .count()
+    )
+    if open_ncs:
+        noun = "nonconformity" if open_ncs == 1 else "nonconformities"
+        raise HTTPException(
+            409,
+            f"Gate not met: {open_ncs} {noun} remain open. "
+            "All nonconformities must be closed (auditor approved) "
+            "before certification can be issued.",
+        )
+
+
 def _assert_fr233_signed_gate(db: Session, audit_set_id: str) -> None:
     """
     Gate for any transition → certified via the manual workflow button.
@@ -377,6 +412,7 @@ def update_workflow_status(
         _assert_stage1_complete_gate(db, audit_set_id)
     elif to_status == "certified":
         _assert_fr233_signed_gate(db, audit_set_id)
+        _assert_nc_complete_gate(db, audit_set_id)
 
     audit_set.workflow_status = to_status
 

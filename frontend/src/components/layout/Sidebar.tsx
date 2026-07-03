@@ -9,6 +9,7 @@ import {
   Sparkles,
   Users,
   Calculator,
+  ClipboardList,
   Inbox,
   PenLine,
   UserCog,
@@ -114,6 +115,7 @@ const NAV_TOP: NavItemProps[] = [
   { icon: Sparkles,        label: 'AI Reports',   href: '/reports',      active: false },
   { icon: Users,           label: 'Auditors',     href: '/auditors',     active: false },
   { icon: Calculator,      label: 'Calculator',   href: '/calculator',   active: false },
+  { icon: ClipboardList,   label: 'NC Management',  href: '/nc-management',   active: false },
 ]
 
 const CB_REVIEW_ROLES = new Set(['admin', 'planner', 'officer', 'executive'])

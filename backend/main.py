@@ -32,6 +32,7 @@ from audit_set.meeting_router import protected_router as meeting_protected_route
 from audit_set.meeting_router import public_router as meeting_public_router
 from audit_set.assessment_router import router as assessment_router
 from audit_set.nc_router import router as nc_router
+from audit_set.nc_management_router import router as nc_management_router
 from audit_set.declaration_router import router as declaration_router
 from audit_set.report_router import router as report_router
 from audit_set.viewer_router import router as viewer_router
@@ -96,6 +97,7 @@ app.include_router(meeting_protected_router)
 app.include_router(meeting_public_router)
 app.include_router(assessment_router)
 app.include_router(nc_router)
+app.include_router(nc_management_router)
 app.include_router(declaration_router)
 app.include_router(report_router)
 app.include_router(viewer_router)

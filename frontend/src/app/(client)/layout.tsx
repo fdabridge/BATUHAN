@@ -45,6 +45,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
     { href: '/client/overview',    label: 'Overview',      badge: 0 },
     { href: '/client/documents',   label: 'Documents',     badge: pendingDocCount },
     { href: '/client/assessments', label: 'Assessments',   badge: 0 },
+    { href: '/client/ncs',         label: 'Nonconformities',  badge: 0 },
     { href: '/client/messages',    label: 'Messages',      badge: 0 },
     { href: '/client/employees',   label: 'Employees',     badge: 0 },
     { href: '/client/signature',   label: 'My Signature',  badge: 0 },

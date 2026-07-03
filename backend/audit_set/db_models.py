@@ -688,3 +688,80 @@ class AuditSetFR233Record(Base):
     status        = Column(String, default="pending", nullable=False)
     created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at    = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Portal 103 — NC Management: four new tables
+# ---------------------------------------------------------------------------
+
+NC_DUE_DAYS: dict[str, int] = {"critical": 14, "major": 90, "minor": 30}
+
+
+class AuditSetNCDecision(Base):
+    """
+    One row per audit set. Created when the lead auditor finalises their NC
+    decision after Stage 2: either 'No NC' or at least one NC item exists.
+    """
+    __tablename__ = "audit_set_nc_decisions"
+
+    id           = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    audit_set_id = Column(String, ForeignKey("audit_sets.id", ondelete="CASCADE"), nullable=False, unique=True)
+    no_nc        = Column(Boolean, default=False, nullable=False)  # True = auditor confirmed no NCs
+    notes        = Column(Text, nullable=True)    # optional note for "no NC" declaration
+    decided_by   = Column(String, nullable=True)  # PlatformUser.id who submitted
+    decided_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AuditSetNCItem(Base):
+    """
+    One row per individual nonconformity within an audit set.
+    Status lifecycle:  open → client_responded → closed
+                                             ↘ rejected → (client resubmits) → client_responded → ...
+    """
+    __tablename__ = "audit_set_nc_items"
+
+    id           = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    audit_set_id = Column(String, ForeignKey("audit_sets.id", ondelete="CASCADE"), nullable=False)
+    nc_index     = Column(Integer, nullable=False)  # 1-based sequential, displayed as NC-1, NC-2…
+    category     = Column(String, nullable=False)   # "minor" | "major" | "critical"
+    description  = Column(Text, nullable=False)     # auditor's written NC text
+    # open → client uploads evidence → client_responded
+    # auditor reviews → closed | rejected
+    status       = Column(String, default="open", nullable=False)
+    due_date     = Column(Date, nullable=True)      # decided_at + NC_DUE_DAYS[category]
+    created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AuditSetNCEvidence(Base):
+    """
+    Evidence uploaded by the client for a specific NC item.
+    Multiple files can be uploaded per round; round_number increments on each
+    new client submission cycle after a 'rejected' decision.
+    """
+    __tablename__ = "audit_set_nc_evidence"
+
+    id           = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    nc_item_id   = Column(String, ForeignKey("audit_set_nc_items.id", ondelete="CASCADE"), nullable=False)
+    file_path    = Column(String, nullable=False)
+    file_name    = Column(String, nullable=True)
+    # "root_cause" or "corrective_action"
+    upload_type  = Column(String, nullable=False)
+    uploaded_by  = Column(String, nullable=True)   # PlatformUser.id of client
+    uploaded_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+    round_number = Column(Integer, default=1, nullable=False)
+
+
+class AuditSetNCReview(Base):
+    """
+    Auditor review record for a client's evidence submission.
+    Created each time the auditor approves or rejects an NC item.
+    """
+    __tablename__ = "audit_set_nc_reviews"
+
+    id           = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    nc_item_id   = Column(String, ForeignKey("audit_set_nc_items.id", ondelete="CASCADE"), nullable=False)
+    decision     = Column(String, nullable=False)  # "approved" | "rejected"
+    notes        = Column(Text, nullable=True)
+    reviewed_by  = Column(String, nullable=True)   # PlatformUser.id of auditor/admin
+    reviewed_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+    round_number = Column(Integer, default=1, nullable=False)

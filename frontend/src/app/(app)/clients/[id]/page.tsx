@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, ChevronDown, ChevronRight, Download, Loader2, Pencil, Check, Sparkles, Trash2 } from 'lucide-react'
@@ -60,6 +60,49 @@ function resolveStandards(raw: string[]): string[] {
 // ── Local stage-edit state ────────────────────────────────────────────────────
 
 interface TeamMember { id: string; name: string; ea_code?: string }
+
+// ── NC Management types (Portal 103) ─────────────────────────────────────────
+
+interface NCEvidence {
+  id:          string
+  file_name:   string | null
+  upload_type: string
+  uploaded_at: string
+  round_number: number
+}
+
+interface NCReview {
+  id:          string
+  decision:    string
+  notes:       string | null
+  reviewed_at: string
+  round_number: number
+}
+
+interface NCItem {
+  id:          string
+  nc_index:    number
+  category:    string
+  description: string
+  status:      string
+  due_date:    string | null
+  evidence:    NCEvidence[]
+  reviews:     NCReview[]
+}
+
+interface NCDecision {
+  id:          string
+  audit_set_id: string
+  no_nc:       boolean
+  notes:       string | null
+  decided_at:  string
+  items:       NCItem[]
+}
+
+interface NCItemDraft {
+  category:    string
+  description: string
+}
 
 interface NACSuggestion {
   clause: string
@@ -2235,6 +2278,17 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
   const [downloading, setDownloading] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
+  // NC Management state (Portal 103)
+  const [ncDecision, setNcDecision] = useState<NCDecision | null | undefined>(undefined)
+  const [ncLoading, setNcLoading]   = useState(false)
+  const [ncSubmitting, setNcSubmitting] = useState(false)
+  const [ncError, setNcError]       = useState<string | null>(null)
+  const [ncItems, setNcItems]       = useState<NCItemDraft[]>([{ category: 'minor', description: '' }])
+  const [ncNoNC, setNcNoNC]         = useState(false)
+  const [ncNotes, setNcNotes]       = useState('')
+  const [reviewingId, setReviewingId]   = useState<string | null>(null)
+  const [reviewNotes, setReviewNotes]   = useState('')
+
   const { data, isLoading, isError } = useQuery<AuditSetResponse>({
     queryKey: ['client', id],
     queryFn: () => api.get<AuditSetResponse>(`/audit-sets/${id}`).then((r) => r.data),
@@ -2264,6 +2318,54 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
       scope_integration_level: data.scope_integration_level ?? 'Medium',
     }).then(() => queryClient.invalidateQueries({ queryKey: ['client', id] })).catch(() => {})
   }, [data?.id, data?.man_day_result])   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // NC Management — load decision (Portal 103)
+  const loadNCDecision = useCallback(() => {
+    if (!id) return
+    setNcLoading(true)
+    api.get<NCDecision | null>(`/audit-sets/${id}/nc-decision`)
+      .then((r) => setNcDecision(r.data))
+      .catch(() => setNcDecision(null))
+      .finally(() => setNcLoading(false))
+  }, [id])
+
+  useEffect(() => {
+    if (data?.id) loadNCDecision()
+  }, [data?.id, loadNCDecision])
+
+  const handleSubmitNCDecision = async () => {
+    if (!id) return
+    setNcSubmitting(true)
+    setNcError(null)
+    try {
+      const payload = ncNoNC
+        ? { no_nc: true, notes: ncNotes, items: [] }
+        : { no_nc: false, notes: ncNotes, items: ncItems.filter((i) => i.description.trim()) }
+      const r = await api.post<NCDecision>(`/audit-sets/${id}/nc-decision`, payload)
+      setNcDecision(r.data)
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } } }
+      setNcError(err.response?.data?.detail || 'Submission failed')
+    } finally {
+      setNcSubmitting(false)
+    }
+  }
+
+  const handleReviewNC = async (ncId: string, decision: 'approved' | 'rejected') => {
+    if (!id) return
+    try {
+      await api.post(`/audit-sets/${id}/nc-items/${ncId}/review`, {
+        decision,
+        notes: reviewNotes,
+      })
+      setReviewingId(null)
+      setReviewNotes('')
+      loadNCDecision()
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } } }
+      alert(err.response?.data?.detail || 'Review failed')
+    }
+  }
 
   async function handleDownload() {
     if (!data) return
@@ -2588,6 +2690,245 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
         workflowStatus={data.workflow_status ?? null}
         userRole={currentUser?.role}
       />
+
+      {/* ── NC Management (Portal 103) ──────────────────────────────────────── */}
+      {ncDecision === undefined ? (
+        ncLoading ? (
+          <div className="rounded-lg border bg-white p-6 text-sm text-gray-400">Loading NC data…</div>
+        ) : null
+      ) : ncDecision === null ? (
+        /* No decision yet — show submission form for auditor/admin/planner */
+        currentUser && ['admin', 'planner', 'auditor'].includes(currentUser.role) ? (
+          <div className="rounded-lg border bg-white p-6 space-y-4">
+            <h2 className="text-base font-semibold text-gray-900">Nonconformities (NC)</h2>
+            <p className="text-sm text-gray-500">
+              After Stage 2 is complete, the lead auditor submits the NC decision. IFC Global
+              timelines: Critical = 14 days, Major = 90 days, Minor = 30 days.
+            </p>
+
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={ncNoNC}
+                onChange={(e) => setNcNoNC(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-green-700"
+              />
+              <span className="text-sm font-medium text-gray-700">No nonconformities were identified</span>
+            </label>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Notes (optional)</label>
+              <textarea
+                value={ncNotes}
+                onChange={(e) => setNcNotes(e.target.value)}
+                rows={2}
+                className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-green-700"
+                placeholder="Any additional context for this NC decision..."
+              />
+            </div>
+
+            {!ncNoNC && (
+              <div className="space-y-3">
+                <p className="text-xs font-medium text-gray-500">Nonconformities</p>
+                {ncItems.map((item, idx) => (
+                  <div key={idx} className="rounded border border-gray-200 p-3 space-y-2 bg-gray-50">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-gray-500">NC-{idx + 1}</span>
+                      <select
+                        value={item.category}
+                        onChange={(e) => {
+                          const updated = [...ncItems]
+                          updated[idx] = { ...updated[idx], category: e.target.value }
+                          setNcItems(updated)
+                        }}
+                        className="rounded border border-gray-300 px-2 py-1 text-xs"
+                      >
+                        <option value="minor">Minor</option>
+                        <option value="major">Major</option>
+                        <option value="critical">Critical</option>
+                      </select>
+                      {ncItems.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setNcItems(ncItems.filter((_, i) => i !== idx))}
+                          className="ml-auto text-xs text-red-500 hover:text-red-700"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    <textarea
+                      value={item.description}
+                      onChange={(e) => {
+                        const updated = [...ncItems]
+                        updated[idx] = { ...updated[idx], description: e.target.value }
+                        setNcItems(updated)
+                      }}
+                      rows={3}
+                      className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-green-700"
+                      placeholder="Describe the nonconformity in detail (reference clause number, evidence, observation)..."
+                    />
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setNcItems([...ncItems, { category: 'minor', description: '' }])}
+                  className="text-xs text-green-700 hover:underline"
+                >
+                  + Add another NC
+                </button>
+              </div>
+            )}
+
+            {ncError && <p className="text-sm text-red-500">{ncError}</p>}
+
+            <button
+              type="button"
+              onClick={handleSubmitNCDecision}
+              disabled={ncSubmitting}
+              className="rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              style={{ background: '#1A4731' }}
+            >
+              {ncSubmitting ? 'Submitting…' : ncNoNC ? 'Confirm — No NC' : 'Submit NC Decision'}
+            </button>
+          </div>
+        ) : null
+      ) : (
+        /* Existing decision — show items list with review controls */
+        <div className="rounded-lg border bg-white p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-gray-900">Nonconformities</h2>
+            <span className="text-xs text-gray-400">
+              Decided {ncDecision.decided_at ? new Date(ncDecision.decided_at).toLocaleDateString() : '—'}
+            </span>
+          </div>
+
+          {ncDecision.no_nc ? (
+            <div className="flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 p-3">
+              <span className="text-green-700 font-medium text-sm">✓ No nonconformities were identified</span>
+              {ncDecision.notes && <span className="text-xs text-gray-500 ml-2">{ncDecision.notes}</span>}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {ncDecision.items.map((item) => {
+                const isOverdue = item.due_date && new Date(item.due_date) < new Date() && item.status !== 'closed'
+                return (
+                  <div key={item.id} className="rounded-lg border border-gray-200 p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold text-gray-700">NC-{item.nc_index}</span>
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase ${
+                            item.category === 'critical' ? 'bg-red-50 text-red-700' :
+                            item.category === 'major' ? 'bg-orange-50 text-orange-700' :
+                            'bg-blue-50 text-blue-700'
+                          }`}>
+                            {item.category}
+                          </span>
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                            item.status === 'closed' ? 'bg-green-50 text-green-700' :
+                            item.status === 'rejected' ? 'bg-red-50 text-red-600' :
+                            item.status === 'client_responded' ? 'bg-blue-50 text-blue-700' :
+                            'bg-gray-100 text-gray-600'
+                          }`}>
+                            {item.status.replace(/_/g, ' ')}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-700">{item.description}</p>
+                      </div>
+                      {item.due_date && (
+                        <span className={`shrink-0 text-xs ${isOverdue ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>
+                          Due {new Date(item.due_date).toLocaleDateString()}{isOverdue ? ' ⚠' : ''}
+                        </span>
+                      )}
+                    </div>
+
+                    {item.evidence.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-gray-500">Evidence uploaded by client</p>
+                        {item.evidence.map((ev) => (
+                          <div key={ev.id} className="flex items-center gap-2">
+                            <a
+                              href={`${process.env.NEXT_PUBLIC_API_URL}/audit-sets/${id}/nc-items/${item.id}/evidence/${ev.id}/download`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-green-700 hover:underline"
+                            >
+                              {ev.file_name || 'File'} ({ev.upload_type.replace(/_/g, ' ')}, round {ev.round_number})
+                            </a>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {item.reviews.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-gray-500">Review history</p>
+                        {item.reviews.map((rev) => (
+                          <div key={rev.id} className="text-xs text-gray-500 flex items-center gap-2">
+                            <span className={rev.decision === 'approved' ? 'text-green-600' : 'text-red-500'}>
+                              {rev.decision === 'approved' ? '✓ Approved' : '✗ Rejected'}
+                            </span>
+                            {rev.notes && <span>— {rev.notes}</span>}
+                            <span className="text-gray-400">{new Date(rev.reviewed_at).toLocaleDateString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {item.status === 'client_responded' && (
+                      <div className="border-t pt-3 space-y-2">
+                        {reviewingId === item.id ? (
+                          <div className="space-y-2">
+                            <textarea
+                              value={reviewNotes}
+                              onChange={(e) => setReviewNotes(e.target.value)}
+                              rows={2}
+                              placeholder="Review notes (required for rejection, optional for approval)"
+                              className="w-full rounded border border-gray-300 px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-green-700"
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleReviewNC(item.id, 'approved')}
+                                className="rounded px-3 py-1.5 text-xs font-medium text-white bg-green-700 hover:bg-green-800"
+                              >
+                                Approve & Close NC
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleReviewNC(item.id, 'rejected')}
+                                className="rounded px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700"
+                              >
+                                Reject — Request Resubmission
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => { setReviewingId(null); setReviewNotes('') }}
+                                className="rounded px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setReviewingId(item.id)}
+                            className="text-xs text-green-700 hover:underline"
+                          >
+                            Review client evidence →
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
