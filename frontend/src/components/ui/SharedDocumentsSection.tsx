@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import api from '@/lib/api'
+import { useAuth } from '@/lib/auth'
 import type { StageResponse } from '@/types'
 
 interface SharedDoc {
@@ -108,6 +109,29 @@ export function SharedDocumentsSection({
   const [error, setError]     = useState('')
   const [releaseDate, setReleaseDate] = useState(() => new Date().toISOString().slice(0, 10))
   const fileRef = useRef<HTMLInputElement>(null)
+
+  const { user }                           = useAuth()
+  const [deletingId, setDeletingId]        = useState<string | null>(null)  // doc id pending confirm
+  const [deleteError, setDeleteError]      = useState<string>('')
+  const [deleteLoading, setDeleteLoading]  = useState(false)
+
+  const canDelete = user?.role === 'admin' || user?.role === 'planner'
+
+  async function deleteDoc(docId: string) {
+    setDeleteError('')
+    setDeleteLoading(true)
+    try {
+      await api.delete(`/audit-sets/${auditSetId}/documents/${docId}`)
+      setDeletingId(null)
+      await load()
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })
+        ?.response?.data?.detail
+      setDeleteError(detail || 'Failed to delete document.')
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
 
   const stageScoped   = STAGE_SCOPED_TYPES.has(docType)
   const selectedStage = stages.find((s) => s.stage_type === stageType)
@@ -301,6 +325,7 @@ export function SharedDocumentsSection({
         ) : docs.length === 0 ? (
           <p className="p-6 text-sm text-gray-400">No documents released yet.</p>
         ) : (
+          <>
           <ul className="divide-y">
             {docs.map((d) => (
               <li key={d.id} className="flex items-center justify-between px-4 py-3">
@@ -355,10 +380,47 @@ export function SharedDocumentsSection({
                   >
                     Download
                   </button>
+                  {canDelete && (
+                    deletingId === d.id ? (
+                      <span className="flex items-center gap-1">
+                        <span className="text-xs text-gray-500">Delete?</span>
+                        <button
+                          type="button"
+                          disabled={deleteLoading}
+                          onClick={() => deleteDoc(d.id)}
+                          className="rounded px-2 py-0.5 text-xs font-medium text-white disabled:opacity-50"
+                          style={{ background: '#DC2626' }}
+                        >
+                          {deleteLoading ? '…' : 'Yes'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setDeletingId(null); setDeleteError('') }}
+                          className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-50"
+                        >
+                          No
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => { setDeletingId(d.id); setDeleteError('') }}
+                        className="rounded-lg border border-red-200 px-2.5 py-1 text-xs text-red-600 hover:bg-red-50"
+                      >
+                        Delete
+                      </button>
+                    )
+                  )}
                 </div>
               </li>
             ))}
           </ul>
+            {deleteError && (
+              <p className="px-4 py-2 text-xs text-red-600 border-t border-red-100 bg-red-50">
+                {deleteError}
+              </p>
+            )}
+          </>
         )}
       </div>
     </div>

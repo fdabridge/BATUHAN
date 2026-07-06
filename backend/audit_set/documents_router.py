@@ -802,3 +802,78 @@ def regenerate_meeting_form(
         "stage_type": stage_type,
         "message": "FR.225 regenerated with the current organisation roster.",
     }
+
+
+# ── Portal 105 — Delete a released document (planner / admin only) ────────────
+
+DELETE_ROLES = {"admin", "planner"}
+
+@router.delete("/{audit_set_id}/documents/{doc_id}", status_code=200)
+def delete_document(
+    audit_set_id: str,
+    doc_id: str,
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """
+    Delete a shared document from an audit set.
+    Restricted to planner and admin.
+    Blocked if any signature slot on the document has already been signed.
+    Cleans up: physical file, AuditDocumentSignature rows,
+    DocumentSignatureField rows, VisualSignaturePlacement rows.
+    """
+    if current_user.role not in DELETE_ROLES:
+        raise HTTPException(403, "Only planners and admins may delete documents.")
+
+    doc = db.query(AuditSetSharedDocument).filter_by(
+        id=doc_id, audit_set_id=audit_set_id
+    ).first()
+    if not doc:
+        raise HTTPException(404, "Document not found.")
+
+    # Hard guard: block if any signature slot has been signed
+    signed_count = (
+        db.query(AuditDocumentSignature)
+        .filter(
+            AuditDocumentSignature.document_id == doc_id,
+            AuditDocumentSignature.signed_at.isnot(None),
+        )
+        .count()
+    )
+    if signed_count > 0:
+        raise HTTPException(
+            409,
+            "This document has already been signed and cannot be deleted. "
+            "Signed documents are legal records.",
+        )
+
+    # Clean up visual signature placements and scanned field cache
+    db.query(VisualSignaturePlacement).filter_by(
+        document_type="shared_doc", doc_id=doc_id,
+    ).delete()
+    if doc.file_path:
+        db.query(DocumentSignatureField).filter_by(
+            docx_path=os.path.abspath(doc.file_path)
+        ).delete()
+
+    # Clean up all signature slots (unsigned ones)
+    db.query(AuditDocumentSignature).filter_by(document_id=doc_id).delete()
+
+    # Delete the physical file from disk (best-effort — don't fail if already gone)
+    if doc.file_path and os.path.exists(doc.file_path):
+        try:
+            os.remove(doc.file_path)
+        except OSError as exc:
+            logger.warning(
+                "[delete_document] Could not remove file %s: %s", doc.file_path, exc
+            )
+
+    # Delete the document row
+    db.delete(doc)
+    db.commit()
+
+    logger.info(
+        "[delete_document] Deleted document id=%s label='%s' audit_set_id=%s by user=%s",
+        doc_id, doc.label, audit_set_id, current_user.id,
+    )
+    return {"deleted": True, "id": doc_id}
