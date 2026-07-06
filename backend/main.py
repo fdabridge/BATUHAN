@@ -283,6 +283,27 @@ def on_startup():
 
     logger.info("All DB tables initialised.")
 
+    # ── Storage diagnostic ──────────────────────────────────────────────────
+    # This block runs on EVERY startup and prints to Railway logs so we can
+    # confirm exactly where files are going and whether the volume is mounted.
+    import os as _os
+    _sp = settings.storage_base_path
+    try:
+        _os.makedirs(_sp, exist_ok=True)
+        _test = _os.path.join(_sp, ".storage_probe")
+        with open(_test, "w") as _f:
+            _f.write("ok")
+        _os.remove(_test)
+        logger.info(
+            "[STORAGE PROBE] ✓ STORAGE_BASE_PATH=%s  write OK  abspath=%s",
+            _sp, _os.path.abspath(_sp),
+        )
+    except Exception as _exc:
+        logger.error(
+            "[STORAGE PROBE] ✗ STORAGE_BASE_PATH=%s  WRITE FAILED: %s",
+            _sp, _exc,
+        )
+
 
 # --- Global error handler ---
 @app.exception_handler(Exception)
@@ -307,6 +328,35 @@ def root():
 @app.get("/health", tags=["health"])
 def health():
     return {"status": "ok", "version": settings.app_version}
+
+
+@app.get("/health/storage", tags=["health"])
+def health_storage():
+    """Confirms where files are actually going and whether the volume is writable."""
+    import os as _os, time as _time
+    sp = settings.storage_base_path
+    abs_sp = _os.path.abspath(sp)
+    exists = _os.path.exists(abs_sp)
+    writable = False
+    error = None
+    listing = []
+    try:
+        _os.makedirs(abs_sp, exist_ok=True)
+        probe = _os.path.join(abs_sp, f".probe_{int(_time.time())}")
+        with open(probe, "w") as f:
+            f.write("probe")
+        _os.remove(probe)
+        writable = True
+        listing = _os.listdir(abs_sp)[:20]
+    except Exception as exc:
+        error = str(exc)
+    return {
+        "STORAGE_BASE_PATH_env":   sp,
+        "STORAGE_BASE_PATH_abs":   abs_sp,
+        "directory_exists":        exists,
+        "write_test":              "OK" if writable else f"FAILED: {error}",
+        "top_level_contents":      listing,
+    }
 
 
 @app.get("/health/detailed", tags=["health"])
