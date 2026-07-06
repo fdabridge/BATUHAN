@@ -134,6 +134,7 @@ export default function ApplyPage() {
   const [success, setSuccess]         = useState(false)
   const [credentials, setCredentials] = useState<{ username: string; password: string } | null>(null)
   const [error, setError]             = useState('')
+  const [consultantCode, setConsultantCode] = useState('')
 
   const sel = (patch: Partial<FormState>) => setForm(f => ({ ...f, ...patch }))
   const hasStd = (code: string) => form.standards.includes(code)
@@ -203,6 +204,8 @@ export default function ApplyPage() {
           mdqms_device_classes:           form.mdqms_device_classes,
           mdqms_regulatory_territories:   form.mdqms_regulatory_territories,
         }),
+        // Consultant referral
+        consultant_code: consultantCode || undefined,
       })
       setCredentials({
         username: res.data.username      || form.representative_email,
@@ -669,6 +672,26 @@ export default function ApplyPage() {
               </div>
             </SectionPanel>
           )}
+
+          {/* ── Consultant Referral ─────────────────────────────────────── */}
+          <div className="bg-white rounded-xl shadow-sm border p-6 space-y-4">
+            <h2 className={sectionHdCls}>Consultant Referral</h2>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Consultant Code <span className="font-normal text-gray-400">(optional)</span>
+              </label>
+              <input
+                type="text"
+                value={consultantCode}
+                onChange={(e) => setConsultantCode(e.target.value)}
+                placeholder="e.g. ali.yilmaz"
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <p className="mt-1 text-xs text-gray-400">
+                If a consultant referred you to IFC Global, enter their referral code here.
+              </p>
+            </div>
+          </div>
 
           {/* ── 8. Error + Submit ──────────────────────────────────────── */}
           <div className="bg-white rounded-xl shadow-sm border p-6 space-y-4">

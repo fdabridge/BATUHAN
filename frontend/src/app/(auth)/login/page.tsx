@@ -19,8 +19,10 @@ interface LoginResponse {
 
 // Role-based landing page after login or auto-rehydrate.
 function roleHome(role: string | undefined): string {
-  if (role === 'client')  return '/client/overview'
-  if (role === 'auditor') return '/auditor/dashboard'
+  if (role === 'client')     return '/client/overview'
+  if (role === 'auditor')    return '/auditor/dashboard'
+  if (role === 'consultant') return '/consultant/clients'
+  if (role === 'crm')        return '/crm'
   return '/dashboard'
 }
 

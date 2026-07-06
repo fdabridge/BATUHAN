@@ -106,6 +106,17 @@ def _serialise(audit_set: AuditSet, auth_db: Session) -> dict:
     if issued:
         surv1_due, surv2_due, recert_due = _cycle_dates(issued)
     contact = _get_contact(audit_set.id, audit_set, auth_db)
+
+    # Consultant lookup
+    consultant_name: str | None = None
+    if audit_set.consultant_id:
+        try:
+            c = auth_db.query(PlatformUser).filter_by(id=audit_set.consultant_id).first()
+            if c:
+                consultant_name = c.full_name
+        except Exception:
+            pass
+
     return {
         "id":                audit_set.id,
         "company_name":      audit_set.company_name or "",
@@ -123,6 +134,8 @@ def _serialise(audit_set: AuditSet, auth_db: Session) -> dict:
         "certification_fee": audit_set.certification_fee,
         "surveillance_fee":  audit_set.surveillance_fee,
         "currency":          audit_set.currency or "USD",
+        "consultant_id":     audit_set.consultant_id,
+        "consultant_name":   consultant_name or ("IFC Global" if not audit_set.consultant_id else None),
         **contact,
     }
 
@@ -149,6 +162,8 @@ class CRMClientRow(BaseModel):
     contact_name: str
     contact_email: str
     contact_phone: str
+    consultant_id:   Optional[str]
+    consultant_name: Optional[str]
 
     class Config:
         from_attributes = True
@@ -243,6 +258,7 @@ def crm_dashboard(
 
 @router.get("/crm/clients", response_model=list[CRMClientRow])
 def crm_clients(
+    consultant_id: Optional[str] = None,   # filter by consultant; "none" = IFC Global direct
     db:      Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
@@ -252,7 +268,12 @@ def crm_clients(
         raise HTTPException(403, "Not authorized")
 
     try:
-        all_sets = db.query(AuditSet).order_by(AuditSet.company_name).all()
+        q = db.query(AuditSet).order_by(AuditSet.company_name)
+        if consultant_id == "none":
+            q = q.filter(AuditSet.consultant_id.is_(None))
+        elif consultant_id:
+            q = q.filter(AuditSet.consultant_id == consultant_id)
+        all_sets = q.all()
     except Exception as exc:
         logger.error("[CRM] clients DB error: %s", exc)
         return []
@@ -389,4 +410,73 @@ def crm_auditor_calendar(
         ))
 
     result.sort(key=lambda r: r.date_start)
+    return result
+
+
+# ── Portal 106 — Consultant revenue summary ─────────────────────────────────
+
+class ConsultantSummary(BaseModel):
+    id:               str
+    full_name:        str
+    username:         Optional[str]
+    email:            str
+    client_count:     int
+    certified_count:  int
+    total_revenue:    float          # sum of certification_fee + surveillance_fee
+    renewals_90_days: int            # clients with any milestone due in next 90 days
+
+
+@router.get("/crm/consultants", response_model=list[ConsultantSummary])
+def crm_consultants(
+    db:      Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """Revenue and client summary per consultant. CRM / admin only."""
+    if current_user.role not in CRM_ROLES:
+        from fastapi import HTTPException
+        raise HTTPException(403, "Not authorized")
+
+    today = date.today()
+    in_90 = today + timedelta(days=90)
+
+    try:
+        consultants = (
+            auth_db.query(PlatformUser)
+            .filter_by(role="consultant", is_active=True)
+            .order_by(PlatformUser.full_name)
+            .all()
+        )
+    except Exception as exc:
+        logger.error("[CRM] consultants DB error: %s", exc)
+        return []
+
+    result: list[ConsultantSummary] = []
+    for c in consultants:
+        try:
+            audit_sets = db.query(AuditSet).filter_by(consultant_id=c.id).all()
+            certified  = [a for a in audit_sets if a.workflow_status == "certified"]
+            revenue    = sum(
+                (a.certification_fee or 0) + (a.surveillance_fee or 0)
+                for a in audit_sets
+            )
+            renewals = 0
+            for a in audit_sets:
+                if not a.cert_issued_date:
+                    continue
+                s1, s2, rc = _cycle_dates(a.cert_issued_date)
+                if any(today <= d <= in_90 for d in [s1, s2, rc]):
+                    renewals += 1
+            result.append(ConsultantSummary(
+                id=c.id,
+                full_name=c.full_name,
+                username=c.username,
+                email=c.email,
+                client_count=len(audit_sets),
+                certified_count=len(certified),
+                total_revenue=revenue,
+                renewals_90_days=renewals,
+            ))
+        except Exception as exc:
+            logger.warning("[CRM] consultant %s summary error: %s", c.id, exc)
     return result

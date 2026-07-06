@@ -88,6 +88,9 @@ class ClientApplicationSchema(BaseModel):
     # ── ISO 13485 — MDQMS ────────────────────────────────────────────────
     mdqms_device_classes: list[str] = []
 
+    # ── Consultant referral ───────────────────────────────────────────────────
+    consultant_code: Optional[str] = None   # consultant's username; looked up on submit
+
 
 def _generate_password(length: int = 12) -> str:
     alphabet = string.ascii_letters + string.digits
@@ -127,6 +130,22 @@ def submit_application(
         # Stale user with no valid audit set — clean it up and proceed
         auth_db.delete(existing)
         auth_db.commit()
+
+    # Resolve consultant by username (case-insensitive) if a code was supplied
+    consultant_id: str | None = None
+    if payload.consultant_code:
+        consultant_user = (
+            auth_db.query(PlatformUser)
+            .filter(
+                PlatformUser.role == "consultant",
+                PlatformUser.is_active == True,
+                PlatformUser.username == payload.consultant_code.strip(),
+            )
+            .first()
+        )
+        if not consultant_user:
+            raise HTTPException(400, f"Consultant code '{payload.consultant_code}' not recognised.")
+        consultant_id = consultant_user.id
 
     # Compute next plan_number (matches service-layer convention: COALESCE(MAX, 1599) + 1)
     max_plan = audit_db.query(func.max(AuditSet.plan_number)).scalar() or 1599
@@ -176,6 +195,7 @@ def submit_application(
         status="draft",
         workflow_status="pending_review",
         submitted_via_portal=True,
+        consultant_id=consultant_id,
         personnel={
             "full_time":      ft,
             "part_time":      pt,
@@ -256,3 +276,22 @@ def submit_application(
         "username":     payload.representative_email,
         "temp_password": temp_password,
     }
+
+
+@router.get("/consultants")
+def list_consultants(auth_db: Session = Depends(get_auth_db)):
+    """
+    Public endpoint — returns active consultants so the apply form
+    can populate a dropdown. Returns only id, full_name, username.
+    No authentication required (apply form is public).
+    """
+    consultants = (
+        auth_db.query(PlatformUser)
+        .filter(PlatformUser.role == "consultant", PlatformUser.is_active == True)
+        .order_by(PlatformUser.full_name)
+        .all()
+    )
+    return [
+        {"id": c.id, "full_name": c.full_name, "username": c.username}
+        for c in consultants
+    ]

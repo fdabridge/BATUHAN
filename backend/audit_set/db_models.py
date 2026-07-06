@@ -92,6 +92,8 @@ def create_tables():
     _safe_add_column("audit_set_audit_reports", "reviewer_auditor_name VARCHAR")
     # Portal 89 — currency selection per audit set
     _safe_add_column("audit_sets", "currency VARCHAR DEFAULT 'USD'")
+    # Portal 106 — consultant referral tracking
+    _safe_add_column("audit_sets", "consultant_id VARCHAR")
     # Portal 97 — trainee auditor assignments in stage planning
     _safe_add_column("audit_set_stages", "trainees JSON")
 
@@ -106,6 +108,7 @@ class AuditSet(Base):
     id           = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     plan_number  = Column(Integer, unique=True, nullable=False)   # app-managed, starts at 1600
     client_reference = Column(String, nullable=True, index=True)   # user-supplied client/agreement code
+    consultant_id    = Column(String, nullable=True)   # soft FK → platform_users.id (role=consultant)
     status       = Column(String, default="draft", nullable=False)  # "draft"|"planning"|"complete"
 
     # ── Company info ──────────────────────────────────────────────────────────

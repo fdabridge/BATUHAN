@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import api from '@/lib/api'
+import { useAuth } from '@/lib/auth'
 
 interface CRMClient {
   id: string
@@ -21,6 +22,8 @@ interface CRMClient {
   contact_name: string
   contact_email: string
   contact_phone: string
+  consultant_id:   string | null
+  consultant_name: string | null
 }
 
 function fmtDate(iso: string | null | undefined) {
@@ -53,6 +56,8 @@ export default function CRMClients() {
   const [clients, setClients] = useState<CRMClient[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch]   = useState('')
+  const [consultantFilter, setConsultantFilter] = useState<string>('all')
+  const [consultantOptions, setConsultantOptions] = useState<{ id: string; full_name: string }[]>([])
 
   useEffect(() => {
     api.get<CRMClient[]>('/crm/clients')
@@ -61,10 +66,22 @@ export default function CRMClients() {
       .finally(() => setLoading(false))
   }, [])
 
-  const filtered = clients.filter((c) =>
-    c.company_name.toLowerCase().includes(search.toLowerCase()) ||
-    c.contact_name.toLowerCase().includes(search.toLowerCase()),
-  )
+  useEffect(() => {
+    api.get<{ id: string; full_name: string; username: string }[]>('/apply/consultants')
+      .then((r) => setConsultantOptions(r.data))
+      .catch(() => {})
+  }, [])
+
+  const filtered = clients.filter((c) => {
+    const matchSearch =
+      c.company_name.toLowerCase().includes(search.toLowerCase()) ||
+      (c.contact_name || '').toLowerCase().includes(search.toLowerCase())
+    const matchConsultant =
+      consultantFilter === 'all' ||
+      (consultantFilter === 'none' && !c.consultant_id) ||
+      c.consultant_id === consultantFilter
+    return matchSearch && matchConsultant
+  })
 
   return (
     <div className="space-y-6">
@@ -72,10 +89,21 @@ export default function CRMClients() {
         <h1 className="text-xl font-semibold text-gray-900">All Clients</h1>
         <input
           className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          placeholder="Search by company or contact…"
+          placeholder="Search by company or contact..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        <select
+          className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          value={consultantFilter}
+          onChange={(e) => setConsultantFilter(e.target.value)}
+        >
+          <option value="all">All consultants</option>
+          <option value="none">IFC Global (direct)</option>
+          {consultantOptions.map((c) => (
+            <option key={c.id} value={c.id}>{c.full_name}</option>
+          ))}
+        </select>
       </div>
 
       {loading ? (
@@ -94,13 +122,14 @@ export default function CRMClients() {
                 <th className="px-4 py-3">Surv 2</th>
                 <th className="px-4 py-3">Recert</th>
                 <th className="px-4 py-3">Contact</th>
+                <th className="px-4 py-3">Consultant</th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-400">No clients found.</td>
+                  <td colSpan={11} className="px-4 py-8 text-center text-sm text-gray-400">No clients found.</td>
                 </tr>
               ) : filtered.map((c, i) => (
                 <tr key={c.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
@@ -123,6 +152,15 @@ export default function CRMClients() {
                     <div className="text-xs text-gray-700">{c.contact_name}</div>
                     <div className="text-xs text-gray-400">{c.contact_email}</div>
                     {c.contact_phone && <div className="text-xs text-gray-400">{c.contact_phone}</div>}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                      c.consultant_name === 'IFC Global' || !c.consultant_id
+                        ? 'bg-gray-100 text-gray-500'
+                        : 'bg-emerald-100 text-emerald-700'
+                    }`}>
+                      {c.consultant_name || 'IFC Global'}
+                    </span>
                   </td>
                   <td className="px-4 py-3">
                     <Link href={`/crm/clients/${c.id}`} className="text-xs text-emerald-700 hover:underline">View →</Link>

@@ -40,6 +40,7 @@ from audit_set.auditor_router import router as auditor_router
 from auth.user_signature_router import router as user_signature_router
 from audit_set.employee_router import router as employee_router
 from health_router import router as health_full_router
+from audit_set.consultant_router import router as consultant_router
 try:
     from audit_set.crm_router import router as crm_router
     _crm_router_ok = True
@@ -121,6 +122,8 @@ app.include_router(health_full_router)
 # CRM portal — finance / operations staff. Read-only. Portal 91.
 if _crm_router_ok:
     app.include_router(crm_router)
+# Consultant portal — read-only view of referred clients. Portal 106.
+app.include_router(consultant_router)
 
 
 # --- Startup: create DB tables + first-admin bootstrap ---
