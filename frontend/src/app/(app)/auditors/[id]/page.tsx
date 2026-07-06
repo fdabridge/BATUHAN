@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useAuth } from '@/lib/auth'
 import Link from 'next/link'
 import { ArrowLeft, AlertTriangle, CheckCircle2, Loader2, Plus, Trash2, XCircle } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -139,6 +140,14 @@ const TECH_DEPTH_OPTIONS = ['Lead Auditor', 'Team Auditor', 'Technical Expert'] 
 const FOOD_CHAIN_CATEGORIES = ['BIII','C0','CI','CII','CIII','CIV','D','E','FI','FII','G','I','K']
 const MEDICAL_DEVICE_TAS    = ['A1.1','A1.2','A1.3','A1.4','A1.5','A1.6','A1.7','A2.1','A2.2','A2.3','A2.4']
 
+const EA_CODES: string[] = [
+  'EA 1','EA 2','EA 3','EA 4','EA 5','EA 6','EA 7','EA 8','EA 9','EA 10',
+  'EA 11','EA 12','EA 13','EA 14','EA 15','EA 16','EA 17','EA 18','EA 19','EA 20',
+  'EA 21','EA 22','EA 23','EA 24','EA 25','EA 26','EA 27','EA 28','EA 29','EA 30',
+  'EA 31','EA 32','EA 33','EA 34','EA 35','EA 36','EA 37','EA 38','EA 39','EA 40',
+  'EA 41','EA 42',
+]
+
 function getStandardType(code: string): 'ea' | 'food' | 'medical' | 'sector' | 'energy' {
   const c = code.toLowerCase()
   if (['22000','fssc'].some((s) => c.includes(s)))  return 'food'
@@ -263,11 +272,25 @@ function ScopeInput({ standardCode, eaCodes, scopeCategory, onChangeEA, onChange
   return (
     <div className="mt-2 space-y-2">
       <div>
-        <label className="block text-xs text-gray-400 mb-1">EA codes (comma-separated)</label>
-        <input type="text" className={inputCls} placeholder="e.g. EA 3, EA 9"
-          value={eaCodes.join(', ')}
-          onChange={(e) => onChangeEA(e.target.value.split(',').map((s) => s.trim()).filter(Boolean))}
-        />
+        <label className="block text-xs text-gray-400 mb-1">EA codes</label>
+        <div className="flex flex-wrap gap-1">
+          {EA_CODES.map((ea) => {
+            const active = eaCodes.includes(ea)
+            return (
+              <button key={ea} type="button"
+                className="rounded px-1.5 py-0.5 text-xs font-mono border transition-colors"
+                style={active
+                  ? { background: '#D1FAE5', color: '#065F46', borderColor: '#6EE7B7' }
+                  : { background: 'white', color: '#9CA3AF', borderColor: '#E5E7EB' }}
+                onClick={() => {
+                  const next = active ? eaCodes.filter((x) => x !== ea) : [...eaCodes, ea]
+                  onChangeEA(next)
+                }}>
+                {ea}
+              </button>
+            )
+          })}
+        </div>
       </div>
       {!c.includes('27001') && (
         <div>
@@ -308,8 +331,8 @@ function rowsFromAuditor(a: AuditorResponse): QualEditRow[] {
 
 function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
   const queryClient = useQueryClient()
+  const { user }                           = useAuth()
   const [editing, setEditing]             = useState(false)
-  const [eaText, setEaText]               = useState('')
   const [rows, setRows]                   = useState<QualEditRow[]>([])
   const [validationErr, setValidationErr] = useState<string | null>(null)
   const [saveErr, setSaveErr]             = useState<string | null>(null)
@@ -317,7 +340,6 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
   const qs = a.standard_qualifications.filter((q) => q.is_qualified !== false && q.standard_code)
 
   function startEdit() {
-    setEaText((a.ea_codes ?? []).join(', '))
     setRows(rowsFromAuditor(a))
     setValidationErr(null)
     setSaveErr(null)
@@ -338,10 +360,9 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
 
   const save = useMutation({
     mutationFn: async () => {
-      const eaCodes = eaText.split(',').map((s) => s.trim()).filter(Boolean)
       const payload = {
         ...a,
-        ea_codes: eaCodes.length ? eaCodes : null,
+        ea_codes: null,  // auto-derived by the backend from per-standard qual ea_codes
         standard_qualifications: rows.map((r) => {
           const yrs   = parseInt(r.experience_years, 10)
           const stype = getStandardType(r.standard_code.trim())
@@ -409,26 +430,18 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
               Save
             </button>
           </div>
-        ) : (
+        ) : user?.role === 'admin' ? (
           <button
             type="button" onClick={startEdit}
             className="rounded-lg border border-gray-200 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
           >
             Edit
           </button>
-        )}
+        ) : null}
       </div>
 
       {editing ? (
         <div className="space-y-4">
-          <div>
-            <label className={lblCls}>EA Codes <span className="font-normal text-gray-300">(comma-separated)</span></label>
-            <input
-              type="text" className={inputCls} value={eaText}
-              onChange={(e) => setEaText(e.target.value)} placeholder="EA 3, EA 18, EA 29"
-            />
-          </div>
-
           <div>
             <div className="mb-2 flex items-center justify-between">
               <label className="block text-sm font-medium text-gray-700">Standard qualifications</label>
@@ -444,16 +457,24 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
                 <div key={i} className="rounded-lg border border-gray-100 p-3 space-y-2">
                   {/* Row header: standard code / AB / depth / years / remove */}
                   <div className="flex flex-wrap items-center gap-2">
-                    <input
-                      type="text" placeholder="ISO 9001" className={`${inputCls} w-28`}
+                    <select
+                      className={`${inputCls} w-32`}
                       value={r.standard_code}
-                      onChange={(e) => patchRow(i, { standard_code: e.target.value })}
-                    />
-                    <input
-                      type="text" placeholder="UAF" className={`${inputCls} w-20`}
+                      onChange={(e) => patchRow(i, { standard_code: e.target.value, ea_codes: [], scope_category: '' })}
+                    >
+                      <option value="">— Standard —</option>
+                      {STANDARDS.map((s) => (
+                        <option key={s} value={STANDARDS_FULL[s]}>{STANDARDS_FULL[s]} ({s})</option>
+                      ))}
+                    </select>
+                    <select
+                      className={`${inputCls} w-24`}
                       value={r.accreditation_body}
                       onChange={(e) => patchRow(i, { accreditation_body: e.target.value })}
-                    />
+                    >
+                      <option value="">— AB —</option>
+                      {BODIES.map((b) => <option key={b} value={b}>{b}</option>)}
+                    </select>
                     <select
                       className={`${inputCls} w-36`} value={r.technical_depth}
                       onChange={(e) => patchRow(i, { technical_depth: e.target.value })}

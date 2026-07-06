@@ -19,6 +19,13 @@ _THREE_YEARS = timedelta(days=3 * 365)
 _ONE_YEAR    = timedelta(days=365)
 
 
+def _ea_int(code: str) -> int | None:
+    """Normalise 'EA 28', 'EA28', '28' → 28. Returns None if unparseable."""
+    import re
+    m = re.search(r'\d+', str(code))
+    return int(m.group()) if m else None
+
+
 def check_eligibility(
     db: Session,
     auditor_id: str,
@@ -49,13 +56,7 @@ def check_eligibility(
     if not auditor.is_active:
         blocking_reasons.append("Auditor profile is inactive.")
 
-    ea_codes = auditor.ea_codes or []
-    if company_ea_code not in ea_codes:
-        blocking_reasons.append(
-            f"Auditor EA codes {ea_codes} do not cover the client scope "
-            f"{company_ea_code}. IAF MD22 requires a matching EA code."
-        )
-
+    # Fetch qualification row first — needed for both the EA check and warnings
     qual = (
         db.query(AuditorStandardQualification)
         .filter(
@@ -68,6 +69,24 @@ def check_eligibility(
     if not qual:
         blocking_reasons.append(
             f"Auditor has no active qualification recorded for {standard_code}."
+        )
+
+    # EA code check — use per-standard qual.ea_codes if available, else top-level
+    # Normalise with _ea_int() so "EA 28", "EA28", and "28" all compare as 28.
+    company_ea_int = _ea_int(company_ea_code)
+    qual_ea_codes  = (qual.ea_codes if qual else None) or auditor.ea_codes or []
+    if company_ea_int is not None:
+        auditor_ea_ints = {_ea_int(c) for c in qual_ea_codes} - {None}
+        if company_ea_int not in auditor_ea_ints:
+            blocking_reasons.append(
+                f"Auditor EA codes {qual_ea_codes} do not cover the client scope "
+                f"{company_ea_code}. IAF MD22 requires a matching EA code."
+            )
+    elif qual_ea_codes and company_ea_code not in qual_ea_codes:
+        # Fallback: plain string match when company_ea_code isn't numeric format
+        blocking_reasons.append(
+            f"Auditor EA codes {qual_ea_codes} do not cover the client scope "
+            f"{company_ea_code}. IAF MD22 requires a matching EA code."
         )
 
     accreditation_bodies = auditor.accreditation_bodies or []

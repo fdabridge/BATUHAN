@@ -42,6 +42,16 @@ def _attach_children(db: Session, auditor: Auditor, data: AuditorCreateSchema) -
 
 def create_auditor(db: Session, data: AuditorCreateSchema) -> Auditor:
     """Create a new Auditor with all child rows. Returns the persisted ORM object."""
+    # Auto-derive top-level ea_codes as the union of per-standard qual ea_codes.
+    # This keeps the top-level field in sync without requiring manual admin input.
+    _all_ea: set[str] = set()
+    for _q in (data.standard_qualifications or []):
+        for _c in (_q.ea_codes or []):
+            _s = _c.strip()
+            if _s:
+                _all_ea.add(_s)
+    _derived_ea = sorted(_all_ea) if _all_ea else None
+
     auditor = Auditor(
         id=str(uuid.uuid4()),
         name=data.name,
@@ -50,7 +60,7 @@ def create_auditor(db: Session, data: AuditorCreateSchema) -> Auditor:
         mobile=data.mobile,
         role=data.role,
         field_of_expertise=data.field_of_expertise,
-        ea_codes=data.ea_codes,
+        ea_codes=_derived_ea,
         accreditation_bodies=data.accreditation_bodies,
     )
     db.add(auditor)
@@ -84,6 +94,15 @@ def update_auditor(db: Session, auditor_id: str, data: AuditorCreateSchema) -> A
     if not auditor:
         return None
 
+    # Auto-derive top-level ea_codes as the union of per-standard qual ea_codes.
+    _all_ea: set[str] = set()
+    for _q in (data.standard_qualifications or []):
+        for _c in (_q.ea_codes or []):
+            _s = _c.strip()
+            if _s:
+                _all_ea.add(_s)
+    _derived_ea = sorted(_all_ea) if _all_ea else None
+
     # Update scalar fields
     auditor.name                = data.name
     auditor.email               = data.email
@@ -91,7 +110,7 @@ def update_auditor(db: Session, auditor_id: str, data: AuditorCreateSchema) -> A
     auditor.mobile              = data.mobile
     auditor.role                = data.role
     auditor.field_of_expertise  = data.field_of_expertise
-    auditor.ea_codes            = data.ea_codes
+    auditor.ea_codes            = _derived_ea
     auditor.accreditation_bodies= data.accreditation_bodies
 
     # Delete all existing child rows (cascade would also work, but explicit is safer)
