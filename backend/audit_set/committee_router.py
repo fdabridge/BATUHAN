@@ -288,12 +288,14 @@ def get_planning_committee_available(
 
     target_ea = _ea_int(plan_ea_code) if plan_ea_code else None
 
-    def _compute_covered_scope(qualifications: list, req: dict) -> dict:
-        """Mirror of /auditors/available._compute_covered_scope.
-
-        For each required ISO standard + required codes, check whether this
+    def _compute_covered_scope(qualifications: list, req: dict, top_level_ea: list) -> dict:
+        """For each required ISO standard + required codes, check whether this
         auditor's qualification record covers any of those codes.
         Returns {iso_std: [matched_codes]}.
+
+        EA codes are compared numerically ("EA 36" == "EA36" == "36") so that
+        format differences between the audit set and the auditor profile do not
+        silently drop auditors from the committee picker.
         """
         covered: dict = {}
         for iso_std, entry in req.items():
@@ -313,9 +315,15 @@ def get_planning_committee_available(
             if scope_type in ("food", "medical", "sector", "energy"):
                 raw = qual.scope_category or ""
                 auditor_codes = [c.strip() for c in raw.split(",") if c.strip()]
+                matched = [c for c in required_codes if c in auditor_codes]
             else:
+                # EA codes — numeric normalisation: "EA 36" == "EA36" == "36"
                 auditor_codes = qual.ea_codes or []
-            matched = [c for c in required_codes if c in auditor_codes]
+                if not auditor_codes:
+                    # Per-standard list empty — fall back to top-level field
+                    auditor_codes = top_level_ea
+                aud_ints = {_ea_int(c) for c in auditor_codes} - {None}
+                matched  = [c for c in required_codes if _ea_int(c) in aud_ints]
             if matched:
                 covered[iso_std] = matched
         return covered
@@ -348,7 +356,7 @@ def get_planning_committee_available(
         iso_q  = _auditor_iso_quals(db, a.id)
         std_ok = (not audit_standards) or bool(audit_standards & iso_q)
 
-        covered_scope = _compute_covered_scope(a.standard_qualifications, req_cat)
+        covered_scope = _compute_covered_scope(a.standard_qualifications, req_cat, a.ea_codes or [])
 
         results.append({
             "id":            a.id,
