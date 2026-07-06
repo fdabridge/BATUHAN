@@ -817,8 +817,7 @@ def delete_document(
 ):
     """
     Delete a shared document from an audit set.
-    Restricted to planner and admin.
-    Blocked if any signature slot on the document has already been signed.
+    Restricted to planner and admin — no signature guard.
     Cleans up: physical file, AuditDocumentSignature rows,
     DocumentSignatureField rows, VisualSignaturePlacement rows.
     """
@@ -830,22 +829,6 @@ def delete_document(
     ).first()
     if not doc:
         raise HTTPException(404, "Document not found.")
-
-    # Hard guard: block if any signature slot has been signed
-    signed_count = (
-        db.query(AuditDocumentSignature)
-        .filter(
-            AuditDocumentSignature.document_id == doc_id,
-            AuditDocumentSignature.signed_at.isnot(None),
-        )
-        .count()
-    )
-    if signed_count > 0:
-        raise HTTPException(
-            409,
-            "This document has already been signed and cannot be deleted. "
-            "Signed documents are legal records.",
-        )
 
     # Clean up visual signature placements and scanned field cache
     db.query(VisualSignaturePlacement).filter_by(
