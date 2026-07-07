@@ -1059,7 +1059,10 @@ function PlanOverview({
 // ── FR.218 Reviewer Picker (Portal 51 — FSMS/ISMS only) ──────────────────────
 
 function needsFr218Reviewer(standards: string[]): boolean {
-  return standards.some(s => ['FSMS', 'ISMS'].includes(s))
+  // Mirror _needs_reviewer() in documents_router.py:
+  // match both short-code format ("FSMS", "ISMS") and ISO-number format ("22000", "27001")
+  const joined = standards.join(' ').toUpperCase()
+  return ['FSMS', 'ISMS', '22000', '27001'].some(kw => joined.includes(kw))
 }
 
 function FR218ReviewerPicker({
@@ -1070,14 +1073,18 @@ function FR218ReviewerPicker({
   currentReviewerName: string | null | undefined
   onSaved: (id: string | null, name: string | null) => void
 }) {
-  const [auditors, setAuditors] = useState<{ id: string; name: string }[]>([])
-  const [selected, setSelected] = useState(currentReviewerId ?? '')
-  const [saving, setSaving]     = useState(false)
-  const [msg, setMsg]           = useState('')
+  const [auditors,    setAuditors]    = useState<{ id: string; name: string }[]>([])
+  const [selected,    setSelected]    = useState(currentReviewerId ?? '')
+  const [saving,      setSaving]      = useState(false)
+  const [msg,         setMsg]         = useState('')
+  const [fetchError,  setFetchError]  = useState('')
 
   useEffect(() => {
-    api.get('/auditors').then(r => setAuditors(r.data as { id: string; name: string }[])).catch(() => {})
-  }, [])
+    setFetchError('')
+    api.get<{ id: string; name: string }[]>(`/audit-sets/${auditSetId}/fr218/eligible-reviewers`)
+      .then(r => setAuditors(r.data))
+      .catch(() => setFetchError('Could not load eligible reviewers. Check your connection or contact support.'))
+  }, [auditSetId])
 
   useEffect(() => {
     setSelected(currentReviewerId ?? '')
@@ -1103,6 +1110,9 @@ function FR218ReviewerPicker({
 
   return (
     <div className="flex flex-wrap items-center gap-3">
+      {fetchError && (
+        <p className="mb-2 text-xs text-red-500">{fetchError}</p>
+      )}
       <select
         value={selected}
         onChange={e => setSelected(e.target.value)}

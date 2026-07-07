@@ -266,6 +266,77 @@ def set_fr218_reviewer(
     }
 
 
+@router.get("/{audit_set_id}/fr218/eligible-reviewers")
+def get_fr218_eligible_reviewers(
+    audit_set_id: str,
+    db: Session = Depends(get_db),
+    _: PlatformUser = Depends(require_any),
+):
+    """Return auditors eligible to be the FR.218 Application Reviewer for this audit set.
+
+    Eligibility: auditor is active AND has at least one AuditorStandardQualification
+    whose standard_code matches the FSMS/ISMS standards present in the audit set.
+
+    Matching logic mirrors _needs_reviewer() in documents_router.py:
+      - "22000" or "FSMS" anywhere in the joined standards string → require FSMS qualification
+      - "27001" or "ISMS" anywhere                               → require ISMS qualification
+
+    If the audit set has no FSMS/ISMS standards (no cb_reviewer slot needed), this
+    endpoint returns all active auditors as a fallback (should not normally be called
+    in that case — the frontend gates the picker on needsFr218Reviewer).
+
+    Returns a simple list of {id, name} — intentionally minimal to avoid serialization
+    issues present in the full AuditorSummarySchema response model.
+    """
+    audit_set = db.query(AuditSet).filter(AuditSet.id == audit_set_id).first()
+    if not audit_set:
+        raise HTTPException(status_code=404, detail="Audit set not found")
+
+    # Mirror _needs_reviewer() keyword logic
+    standards = audit_set.standards or []
+    joined = " ".join(str(s).upper() for s in standards)
+    fsms_needed = "FSMS" in joined or "22000" in joined
+    isms_needed = "ISMS" in joined or "27001" in joined
+
+    keywords: list[str] = []
+    if fsms_needed:
+        keywords.extend(["22000", "FSMS"])
+    if isms_needed:
+        keywords.extend(["27001", "ISMS"])
+
+    # Lazy import — same pattern as committee_router.py
+    from auditors.models import Auditor as AuditorModel, AuditorStandardQualification  # noqa: F811
+
+    auditors = (
+        db.query(AuditorModel)
+        .filter(AuditorModel.is_active == True)  # noqa: E712
+        .order_by(AuditorModel.name)
+        .all()
+    )
+
+    result = []
+    for auditor in auditors:
+        if keywords:
+            # Load this auditor's qualification standard codes
+            qual_codes = [
+                (q.standard_code or "").upper()
+                for q in db.query(AuditorStandardQualification)
+                .filter(AuditorStandardQualification.auditor_id == auditor.id)
+                .all()
+            ]
+            # Qualified if any qual code contains any required keyword
+            has_match = any(
+                any(kw in code for kw in keywords)
+                for code in qual_codes
+            )
+            if not has_match:
+                continue
+
+        result.append({"id": auditor.id, "name": auditor.name})
+
+    return result
+
+
 @router.delete("/{audit_set_id}", status_code=204)
 def soft_delete(audit_set_id: str, db: Session = Depends(get_db), _: PlatformUser = Depends(require_admin)):
     """Soft-delete: set status to 'archived'. Returns 204 No Content."""
