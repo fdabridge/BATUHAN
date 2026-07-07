@@ -21,9 +21,13 @@ from sqlalchemy.orm import Session
 from audit_set.resolver import resolve_document_set
 
 
-def _set_cell_text(tc_el, text: str) -> None:
+def _set_cell_text(tc_el, text) -> None:
     """Clear all paragraphs in a <w:tc> and write `text` into a single run on
-    the first paragraph, preserving paragraph + run formatting where possible."""
+    the first paragraph, preserving paragraph + run formatting where possible.
+    Non-string values (e.g. integers stored in JSON columns) are coerced to str
+    so that lxml's strict text-setter does not raise TypeError."""
+    if not isinstance(text, str):
+        text = "" if text is None else str(text)
     paragraphs = tc_el.findall(qn("w:p"))
     if not paragraphs:
         return
@@ -71,7 +75,7 @@ def _build_committee_context(audit_set) -> list[dict]:
         {
             "id":            m.get("id", ""),
             "name":          m.get("name") or m.get("full_name") or "",
-            "ea_codes_str":  ", ".join(m.get("ea_codes") or []),
+            "ea_codes_str":  ", ".join(str(c) for c in (m.get("ea_codes") or [])),
             "role":          m.get("role", "member"),
         }
         for m in members

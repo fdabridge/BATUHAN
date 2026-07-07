@@ -66,6 +66,19 @@ def _std_norm(s: str) -> str:
     return _STD_ABBR_NORM.get(base, base)
 
 
+def _ea_int(code) -> int | None:
+    """Normalise 'EA 28', 'EA28', '28', or bare integer 28 → 28.
+    Handles integer inputs stored in JSON columns as well as string inputs.
+    Returns None if the value cannot be parsed as an EA sector number.
+    """
+    try:
+        if isinstance(code, (int, float)):
+            return int(code)
+        return int(str(code).strip().upper().replace("EA", "").replace(" ", ""))
+    except (ValueError, AttributeError):
+        return None
+
+
 # ── Bulk import helpers ───────────────────────────────────────────────────────
 
 class BulkAuditorEntry(BaseModel):
@@ -534,7 +547,12 @@ def get_available_auditors(
                 # any code. (Common for auditors imported without per-standard EA breakdown.)
                 if not auditor_codes:
                     return True
-                if any(c in auditor_codes for c in required_codes):
+                # EA codes — numeric normalisation so "EA 12", "12", and int 12 all match.
+                req_ints = {_ea_int(c) for c in required_codes} - {None}
+                if req_ints and any(_ea_int(c) in req_ints for c in auditor_codes):
+                    return True
+                elif not req_ints and any(c in auditor_codes for c in required_codes):
+                    # Non-numeric required codes — fall back to plain string match
                     return True
             return False
 
@@ -555,11 +573,6 @@ def get_available_auditors(
         # 3. Filter by ea_code — read from AuditorStandardQualification.ea_codes (per-standard),
         #    NOT from Auditor.ea_codes (top-level field is null for bulk-imported auditors).
         if ea_code:
-            def _ea_int(code: str) -> Optional[int]:
-                try:
-                    return int(code.strip().upper().replace('EA', '').replace(' ', ''))
-                except (ValueError, AttributeError):
-                    return None
             target_ea = _ea_int(ea_code)
             if target_ea is not None:
                 sc_lower = (standard_code or '').lower()
@@ -635,8 +648,14 @@ def get_available_auditors(
                     covered[iso_std] = required_codes
                     continue
 
-                # Intersection of required codes and auditor's codes
-                matched = [c for c in required_codes if c in auditor_codes]
+                # Intersection — numeric normalisation for EA codes so "EA 12", "12",
+                # and bare integer 12 all compare as the same sector number.
+                aud_ints = {_ea_int(c) for c in auditor_codes} - {None}
+                if aud_ints:
+                    matched = [c for c in required_codes if _ea_int(c) in aud_ints]
+                else:
+                    # No parseable integers — fall back to plain string match
+                    matched = [c for c in required_codes if c in auditor_codes]
                 if matched:
                     covered[iso_std] = matched
 

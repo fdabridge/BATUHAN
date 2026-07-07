@@ -279,10 +279,16 @@ def get_planning_committee_available(
     else:
         req_cat = {}
 
-    def _ea_int(code: str) -> int | None:
-        """Strip 'EA' prefix and return the integer sector number, or None."""
+    def _ea_int(code) -> int | None:
+        """Strip 'EA' prefix and return the integer sector number, or None.
+        Handles integer inputs (e.g. 12) in addition to string inputs
+        ("EA 12", "12") so that JSON fields storing codes as bare numbers
+        still compare correctly.
+        """
         try:
-            return int(code.strip().upper().replace("EA", "").replace(" ", ""))
+            if isinstance(code, (int, float)):
+                return int(code)
+            return int(str(code).strip().upper().replace("EA", "").replace(" ", ""))
         except (ValueError, AttributeError):
             return None
 

@@ -60,8 +60,8 @@ export function FR233Panel({
   if (!workflowStatus || !SHOW_STAGES.has(workflowStatus)) return null
   if (loading) return null
 
-  const canGenerate    = user && ['admin', 'planner', 'executive'].includes(user.role)
-  const canCertManager = user && ['admin', 'executive'].includes(user.role)
+  const canGenerate    = user && ['admin', 'planner', 'planner_us', 'executive'].includes(user.role)
+  const canCertManager = user && ['admin', 'executive', 'certification_manager'].includes(user.role)
   const status         = data?.status ?? 'pending'
   const documentId     = data?.document_id ?? null
   const members        = data?.members ?? []
@@ -222,7 +222,7 @@ export function FR233Panel({
           >
             Open FR.233 in viewer
           </Link>
-          {canCertManager && allSigned && !cmSigned && (
+          {canCertManager && documentId && !cmSigned && (
             <Link
               href={`/viewer/shared_doc/${documentId}?slot=CERT_MANAGER_FR233`}
               className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#143b27]"
