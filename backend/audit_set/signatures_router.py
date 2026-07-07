@@ -22,7 +22,7 @@ from auth.dependencies import get_current_user
 
 router = APIRouter(prefix="/audit-sets", tags=["signatures"])
 
-CB_ROLES = {"admin", "planner", "officer", "executive", "gm", "certification_manager"}
+CB_ROLES = {"admin", "planner", "planner_us", "officer", "executive", "gm", "certification_manager"}
 
 
 class SignDirectBody(BaseModel):
@@ -69,7 +69,7 @@ def get_my_pending_signatures(
     # Unassigned slots this user is eligible to claim.
     # NOTE: cb_reviewer removed in Prompt 14 — assigned only via committee appointment.
     eligible_labels: list[str] = []
-    if current_user.role in ("admin", "planner"):
+    if current_user.role in ("admin", "planner", "planner_us"):
         eligible_labels.append("cb_planner")
     if current_user.role in ("admin", "executive", "certification_manager"):
         eligible_labels.append("cb_cert_manager")
@@ -127,7 +127,7 @@ def sign_direct(
     # Self-assign if the slot is unassigned and the caller is eligible.
     if sig.signer_user_id is None:
         eligible = (
-            (sig.signer_role_label == "cb_planner"      and current_user.role in ("admin", "planner"))
+            (sig.signer_role_label == "cb_planner"      and current_user.role in ("admin", "planner", "planner_us"))
             or (sig.signer_role_label == "cb_cert_manager" and current_user.role in ("admin", "executive", "certification_manager"))
             or (sig.signer_role_label == "gm"              and current_user.role == "gm")
             or (sig.signer_role_label == "cb_reviewer"     and current_user.role in ("admin", "certification_manager"))
@@ -218,7 +218,7 @@ def get_internal_signatures(
 
     # NOTE: cb_reviewer removed in Prompt 14 — assigned only via committee appointment.
     eligible_labels: set[str] = set()
-    if current_user.role in ("admin", "planner"):
+    if current_user.role in ("admin", "planner", "planner_us"):
         eligible_labels.add("cb_planner")
     if current_user.role in ("admin", "executive", "certification_manager"):
         eligible_labels.add("cb_cert_manager")
@@ -257,7 +257,7 @@ def create_fr222_signatures(
     Planner triggers creation of FR.222 Audit Programme signature slots.
     Idempotent — if slots already exist, returns without creating duplicates.
     """
-    if current_user.role not in {"admin", "planner"}:
+    if current_user.role not in {"admin", "planner", "planner_us"}:
         raise HTTPException(403, "Only planners can create the audit programme signature")
 
     existing = (

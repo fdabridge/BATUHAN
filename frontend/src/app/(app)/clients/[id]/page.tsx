@@ -406,6 +406,7 @@ function PlanOverview({
   onInvalidate: () => void
   userRole?: string
 }) {
+  const isRealtimeMode = userRole === 'planner_us'
   const [integLevel, setIntegLevel] = useState<string>(data.scope_integration_level ?? 'Medium')
   const [certFee, setCertFee] = useState(data.certification_fee != null ? String(data.certification_fee) : '')
   const [survFee, setSurvFee] = useState(data.surveillance_fee != null ? String(data.surveillance_fee) : '')
@@ -622,31 +623,33 @@ function PlanOverview({
         )}
       </div>
 
-      {/* Application date — retroactive override */}
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <label className="text-xs font-medium text-gray-600">Application date</label>
-        <input
-          type="date"
-          value={appDate}
-          onChange={e => setAppDate(e.target.value)}
-          className="rounded border border-gray-200 px-2 py-1 text-sm focus:border-[#1A4731] focus:outline-none"
-        />
-        <button
-          type="button"
-          onClick={() => saveAppDate()}
-          disabled={savingAppDate}
-          className="rounded-lg bg-[#1A4731] px-3 py-1 text-xs font-medium text-white hover:bg-[#143828] disabled:opacity-50"
-        >
-          {appDateSaved ? 'Saved ✓' : savingAppDate ? 'Saving…' : 'Save'}
-        </button>
-        {data.application_date && (
-          <span className="text-xs text-gray-400">
-            Currently: {new Date(data.application_date).toLocaleDateString('en-GB', {
-              day: 'numeric', month: 'short', year: 'numeric',
-            })}
-          </span>
-        )}
-      </div>
+      {/* Application date — retroactive override (hidden in realtime mode) */}
+      {!isRealtimeMode && (
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <label className="text-xs font-medium text-gray-600">Application date</label>
+          <input
+            type="date"
+            value={appDate}
+            onChange={e => setAppDate(e.target.value)}
+            className="rounded border border-gray-200 px-2 py-1 text-sm focus:border-[#1A4731] focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => saveAppDate()}
+            disabled={savingAppDate}
+            className="rounded-lg bg-[#1A4731] px-3 py-1 text-xs font-medium text-white hover:bg-[#143828] disabled:opacity-50"
+          >
+            {appDateSaved ? 'Saved ✓' : savingAppDate ? 'Saving…' : 'Save'}
+          </button>
+          {data.application_date && (
+            <span className="text-xs text-gray-400">
+              Currently: {new Date(data.application_date).toLocaleDateString('en-GB', {
+                day: 'numeric', month: 'short', year: 'numeric',
+              })}
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-3 gap-x-6 gap-y-5">
         <LabeledField label="Standards">
@@ -946,7 +949,7 @@ function PlanOverview({
             </div>
             <div className="w-28">
               <label className={lblCls}>Currency</label>
-              {(userRole === 'planner' || userRole === 'admin') ? (
+              {(userRole === 'planner' || userRole === 'planner_us' || userRole === 'admin') ? (
                 <select
                   className={inputCls}
                   value={currency}
@@ -2267,13 +2270,14 @@ function ManDaySection({ result }: { result: ManDayResult | null }) {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-const CAN_DELETE_ROLES = new Set(['admin', 'planner'])
+const CAN_DELETE_ROLES = new Set(['admin', 'planner', 'planner_us'])
 
 export default function ClientDetailPage({ params }: { params: { id: string } }) {
   const { id } = params
   const router = useRouter()
   const queryClient = useQueryClient()
   const { user: currentUser } = useAuth()
+  const isRealtimeMode = currentUser?.role === 'planner_us'
   const canDelete = !!currentUser && CAN_DELETE_ROLES.has(currentUser.role)
   const [downloading, setDownloading] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
@@ -2503,8 +2507,8 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
         </div>
       )}
 
-      {/* Retroactive mode — always shown, no off switch */}
-      <RetroactiveBanner />
+      {/* Retroactive mode — always shown, no off switch (hidden for planner_us) */}
+      {!isRealtimeMode && <RetroactiveBanner />}
 
       {/* Client portal application — show approval banner when pending */}
       {data.workflow_status === 'pending_review' && (
@@ -2698,7 +2702,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
         ) : null
       ) : ncDecision === null ? (
         /* No decision yet — show submission form for auditor/admin/planner */
-        currentUser && ['admin', 'planner', 'auditor'].includes(currentUser.role) ? (
+        currentUser && ['admin', 'planner', 'planner_us', 'auditor'].includes(currentUser.role) ? (
           <div className="rounded-lg border bg-white p-6 space-y-4">
             <h2 className="text-base font-semibold text-gray-900">Nonconformities (NC)</h2>
             <p className="text-sm text-gray-500">

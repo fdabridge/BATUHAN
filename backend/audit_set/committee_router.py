@@ -46,7 +46,7 @@ from auth.dependencies import get_current_user
 
 router = APIRouter(prefix="/audit-sets", tags=["committee"])
 
-CB_ROLES = {"admin", "planner", "officer", "executive", "gm"}
+CB_ROLES = {"admin", "planner", "planner_us", "officer", "executive", "gm"}
 CM_ROLES = {"admin", "executive"}   # roles that act as Certification Manager
 
 
@@ -380,7 +380,7 @@ def appoint_committee_member(
     auth_db: Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
-    if current_user.role not in {"admin", "planner"}:
+    if current_user.role not in {"admin", "planner", "planner_us"}:
         raise HTTPException(403, "Only admin or planner can appoint committee members")
 
     if body.role not in ("reviewer", "decision_maker"):
@@ -462,7 +462,7 @@ def remove_committee_member(
     db: Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
-    if current_user.role not in {"admin", "planner"}:
+    if current_user.role not in {"admin", "planner", "planner_us"}:
         raise HTTPException(403, "Not authorized")
 
     member = db.query(AuditSetCommitteeMember).filter_by(
@@ -519,7 +519,7 @@ def generate_fr233(
     from audit_set.fr233_generator import render_fr233_bytes
     from config.settings import get_settings
 
-    if current_user.role not in {"admin", "planner", "executive", "certification_manager"}:
+    if current_user.role not in {"admin", "planner", "planner_us", "executive", "certification_manager"}:
         raise HTTPException(403, "Only Planner or Certification Manager may generate FR.233")
 
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
@@ -629,7 +629,7 @@ async def upload_fr233(
     from datetime import datetime
     from config.settings import get_settings
 
-    if current_user.role not in {"admin", "planner", "executive", "certification_manager"}:
+    if current_user.role not in {"admin", "planner", "planner_us", "executive", "certification_manager"}:
         raise HTTPException(403, "Not authorized to upload FR.233")
 
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()

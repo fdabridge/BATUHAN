@@ -55,7 +55,7 @@ router = APIRouter(prefix="/viewer", tags=["viewer"])
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-CB_ROLES = {"admin", "planner", "officer", "executive", "gm", "certification_manager"}
+CB_ROLES = {"admin", "planner", "planner_us", "officer", "executive", "gm", "certification_manager"}
 
 ROLE_TO_SIG: dict[str, str] = {
     "cb_planner":       "CB_PLANNER",
@@ -411,7 +411,7 @@ def _shared_slot_eligible(
     if role_label == "gm":
         return role in ("gm", "admin")
     if role_label == "cb_planner":
-        return role in ("planner", "admin")
+        return role in ("planner", "planner_us", "admin")
     if role_label == "cb_cert_manager":
         # Bug fix: include "certification_manager" (was incorrectly "executive" only)
         return role in ("admin", "certification_manager", "executive")

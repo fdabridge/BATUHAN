@@ -40,8 +40,8 @@ router = APIRouter(tags=["audit_reports"])
 
 # Portal 75 — certification_manager added so the CM can list, download and
 # approve audit reports (same access as other CB staff).
-CB_ROLES      = {"admin", "planner", "officer", "executive", "gm", "certification_manager"}
-UPLOAD_ROLES  = {"auditor", "admin", "planner"}
+CB_ROLES      = {"admin", "planner", "planner_us", "officer", "executive", "gm", "certification_manager"}
+UPLOAD_ROLES  = {"auditor", "admin", "planner", "planner_us"}
 AUDITOR_ROLES = {"auditor", "admin"}
 # (OTP_EXPIRY removed — OTP signing was removed system-wide)
 
@@ -466,7 +466,7 @@ def assign_reviewer(
     The auditor must have at least one standard qualification overlapping with
     the audit set's standards.  Planner/admin only.
     """
-    if current_user.role not in ("admin", "planner", "certification_manager", "executive"):
+    if current_user.role not in ("admin", "planner", "planner_us", "certification_manager", "executive"):
         raise HTTPException(403, "Planner or admin access required")
 
     report = db.query(AuditSetAuditReport).filter_by(

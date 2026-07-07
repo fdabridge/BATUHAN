@@ -41,16 +41,16 @@ router = APIRouter(prefix="/audit-sets", tags=["workflow"])
 # (from_status_or_None, to_status) → set of roles allowed to trigger
 VALID_TRANSITIONS: dict[tuple[Optional[str], str], set[str]] = {
     (None,                "pending_review"):    {"system"},
-    ("pending_review",    "in_planning"):       {"admin", "planner"},
-    ("in_planning",       "quotation_sent"):    {"admin", "planner"},
+    ("pending_review",    "in_planning"):       {"admin", "planner", "planner_us"},
+    ("in_planning",       "quotation_sent"):    {"admin", "planner", "planner_us"},
     # ── Surveillance: notification replaces quotation + agreement ─────────────
-    ("in_planning",          "notification_sent"):  {"admin", "planner"},
-    ("notification_sent",    "audit_scheduled"):    {"admin", "planner"},
-    ("quotation_sent",    "agreement_signed"):  {"admin", "planner", "client"},
+    ("in_planning",          "notification_sent"):  {"admin", "planner", "planner_us"},
+    ("notification_sent",    "audit_scheduled"):    {"admin", "planner", "planner_us"},
+    ("quotation_sent",    "agreement_signed"):  {"admin", "planner", "planner_us", "client"},
     # ── Surveillance / Recertification path (single-audit) ───────────────────
-    ("agreement_signed",  "audit_scheduled"):   {"admin", "planner"},
-    ("audit_scheduled",   "audit_in_progress"): {"admin", "planner", "auditor"},
-    ("audit_in_progress", "under_review"):      {"admin", "planner", "auditor"},
+    ("agreement_signed",  "audit_scheduled"):   {"admin", "planner", "planner_us"},
+    ("audit_scheduled",   "audit_in_progress"): {"admin", "planner", "planner_us", "auditor"},
+    ("audit_in_progress", "under_review"):      {"admin", "planner", "planner_us", "auditor"},
     # ── Initial certification — FR.218 Application Review (Portal 47) ────────
     # These two are auto-fired by the backend (agreement signing + FR.218
     # completion). Keeping them in VALID_TRANSITIONS lets jump/manual
@@ -61,24 +61,24 @@ VALID_TRANSITIONS: dict[tuple[Optional[str], str], set[str]] = {
     # Portal 49b: the team is assigned at planning, so fr218_complete advances
     # directly to stage1_in_progress (gated below). Scheduled statuses are
     # kept for legacy sets only.
-    ("fr218_complete",     "stage1_in_progress"): {"admin", "planner"},
-    ("fr218_complete",     "stage1_scheduled"):   {"admin", "planner"},  # legacy
-    ("agreement_signed",   "stage1_scheduled"):   {"admin", "planner"},  # retroactive / legacy
-    ("stage1_scheduled",   "stage1_in_progress"): {"admin", "planner", "auditor"},
-    ("stage1_in_progress", "stage1_complete"):    {"admin", "planner", "auditor"},
+    ("fr218_complete",     "stage1_in_progress"): {"admin", "planner", "planner_us"},
+    ("fr218_complete",     "stage1_scheduled"):   {"admin", "planner", "planner_us"},  # legacy
+    ("agreement_signed",   "stage1_scheduled"):   {"admin", "planner", "planner_us"},  # retroactive / legacy
+    ("stage1_scheduled",   "stage1_in_progress"): {"admin", "planner", "planner_us", "auditor"},
+    ("stage1_in_progress", "stage1_complete"):    {"admin", "planner", "planner_us", "auditor"},
     # ── Initial certification — Stage 2 ──────────────────────────────────────
     # Portal 49b: CM clicks "Stage 1 appropriate" → stage2_in_progress (gated).
     ("stage1_complete",    "stage2_in_progress"): {"admin", "executive", "certification_manager"},
-    ("stage1_complete",    "stage2_scheduled"):   {"admin", "planner"},  # legacy
-    ("stage2_scheduled",   "stage2_in_progress"): {"admin", "planner", "auditor"},
-    ("stage2_in_progress", "stage2_complete"):    {"admin", "planner", "auditor"},
-    ("stage2_in_progress", "under_review"):       {"admin", "planner", "auditor"},  # legacy
+    ("stage1_complete",    "stage2_scheduled"):   {"admin", "planner", "planner_us"},  # legacy
+    ("stage2_scheduled",   "stage2_in_progress"): {"admin", "planner", "planner_us", "auditor"},
+    ("stage2_in_progress", "stage2_complete"):    {"admin", "planner", "planner_us", "auditor"},
+    ("stage2_in_progress", "under_review"):       {"admin", "planner", "planner_us", "auditor"},  # legacy
     # ── Committee + closing ───────────────────────────────────────────────────
-    ("stage2_complete",    "committee_review"):   {"admin", "planner", "certification_manager"},
+    ("stage2_complete",    "committee_review"):   {"admin", "planner", "planner_us", "certification_manager"},
     ("under_review",       "certified"):          {"admin", "executive"},
 }
 
-CB_REVIEW_ROLES = {"admin", "planner", "officer", "executive"}
+CB_REVIEW_ROLES = {"admin", "planner", "planner_us", "officer", "executive"}
 
 
 # ─── Portal 49b: hard entry gates ────────────────────────────────────────────
@@ -491,7 +491,7 @@ def jump_workflow_status(
     Admin and planner only. Creates a single status event with the supplied date.
     Does NOT fire the side effects of normal transitions (FR.218 seeding, etc.).
     """
-    if current_user.role not in {"admin", "planner"}:
+    if current_user.role not in {"admin", "planner", "planner_us"}:
         raise HTTPException(403, "Only admin and planner can jump workflow status")
 
     if payload.target_status not in VALID_JUMP_STATUSES:
@@ -544,7 +544,7 @@ def delete_audit_set(
     audit_set_status_events, audit_set_messages, and audit_set_shared_documents
     are removed by Postgres ON DELETE CASCADE.
     """
-    if current_user.role not in {"admin", "planner"}:
+    if current_user.role not in {"admin", "planner", "planner_us"}:
         raise HTTPException(403, "Not authorized")
 
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()

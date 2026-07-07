@@ -40,7 +40,7 @@ from config.settings import get_settings
 
 router = APIRouter(tags=["nc_management"])
 
-CB_ROLES    = {"admin", "planner", "officer", "executive", "gm"}
+CB_ROLES    = {"admin", "planner", "planner_us", "officer", "executive", "gm"}
 AUDITOR_ROLES = {"auditor", "admin"}
 
 

@@ -38,8 +38,8 @@ router = APIRouter(prefix="/audit-sets", tags=["documents"])
 
 # Portal 75 — certification_manager added: CM can see all shared docs and
 # perform CB-side document actions (release, view, download).
-CB_ROLES = {"admin", "planner", "officer", "executive", "gm", "certification_manager"}
-AUDITOR_UPLOAD_ROLES = {"auditor", "admin", "planner"}
+CB_ROLES = {"admin", "planner", "planner_us", "officer", "executive", "gm", "certification_manager"}
+AUDITOR_UPLOAD_ROLES = {"auditor", "admin", "planner", "planner_us"}
 
 # Portal 49b — full document-type vocabulary (Document Type Reference table)
 ALLOWED_DOC_TYPES = {
@@ -806,7 +806,7 @@ def regenerate_meeting_form(
 
 # ── Portal 105 — Delete a released document (planner / admin only) ────────────
 
-DELETE_ROLES = {"admin", "planner"}
+DELETE_ROLES = {"admin", "planner", "planner_us"}
 
 @router.delete("/{audit_set_id}/documents/{doc_id}", status_code=200)
 def delete_document(

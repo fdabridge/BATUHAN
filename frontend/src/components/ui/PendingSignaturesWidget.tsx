@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import api from '@/lib/api'
+import { useAuth } from '@/lib/auth'
 
 interface PendingSig {
   id: string
@@ -15,6 +16,7 @@ interface PendingSig {
 }
 
 export function PendingSignaturesWidget() {
+  const { user } = useAuth()
   const [sigs, setSigs]                       = useState<PendingSig[]>([])
   const [loading, setLoading]                 = useState(true)
   const [busy, setBusy]                       = useState(false)
@@ -173,18 +175,29 @@ export function PendingSignaturesWidget() {
                   )}
 
                   {!isInternal && !isViewer && !isOtpSigning && (
-                    <button
-                      type="button"
-                      onClick={() => requestOtp(sig)}
-                      disabled={busy}
-                      className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
-                    >
-                      Sign
-                    </button>
+                    user?.role === 'planner_us' ? (
+                      <button
+                        type="button"
+                        onClick={() => openDirectSign(sig)}
+                        disabled={busy}
+                        className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+                      >
+                        Sign
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => requestOtp(sig)}
+                        disabled={busy}
+                        className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+                      >
+                        Sign
+                      </button>
+                    )
                   )}
                 </div>
 
-                {isOtpSigning && (
+                {isOtpSigning && user?.role !== 'planner_us' && (
                   <div className="mt-3 rounded-lg border bg-gray-50 p-3">
                     {!otpSent ? (
                       <p className="text-xs text-gray-500">

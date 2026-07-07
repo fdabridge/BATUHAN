@@ -15,7 +15,7 @@ from email_service import send_new_message_notification
 
 router = APIRouter(prefix="/audit-sets", tags=["messages"])
 
-CB_ROLES = {"admin", "planner", "officer", "executive", "auditor"}
+CB_ROLES = {"admin", "planner", "planner_us", "officer", "executive", "auditor"}
 
 
 class MessageCreateSchema(BaseModel):

@@ -16,6 +16,7 @@ import type {
 const ROLES: { value: UserRole; label: string }[] = [
   { value: 'admin',                 label: 'Admin' },
   { value: 'planner',               label: 'Planning Officer' },
+  { value: 'planner_us',            label: 'Planner US' },
   { value: 'gm',                    label: 'General Manager' },
   { value: 'certification_manager', label: 'Certification Manager' },
   { value: 'auditor',               label: 'Auditor' },
@@ -29,6 +30,7 @@ const ROLES: { value: UserRole; label: string }[] = [
 const ROLE_PILL: Record<UserRole, string> = {
   admin:                 'bg-purple-50 text-purple-700',
   planner:               'bg-blue-50 text-blue-700',
+  planner_us:            'bg-sky-50 text-sky-700',
   auditor:               'bg-certiva-surface text-certiva-primary',
   officer:               'bg-amber-50 text-amber-700',
   executive:             'bg-gray-100 text-gray-600',

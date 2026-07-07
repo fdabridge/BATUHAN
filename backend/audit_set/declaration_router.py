@@ -31,7 +31,7 @@ from email_service import send_impartiality_declaration_request, send_otp_code
 
 router = APIRouter(tags=["declarations"])
 
-CB_ROLES      = {"admin", "planner", "officer", "executive", "gm"}
+CB_ROLES      = {"admin", "planner", "planner_us", "officer", "executive", "gm"}
 AUDITOR_ROLES = {"auditor", "admin"}
 OTP_EXPIRY    = 10  # minutes
 
@@ -66,7 +66,7 @@ def create_declarations_for_stage(
     current_user: PlatformUser = Depends(get_current_user),
 ):
     """Seed one declaration record per team member for this stage. Idempotent."""
-    if current_user.role not in {"admin", "planner"}:
+    if current_user.role not in {"admin", "planner", "planner_us"}:
         raise HTTPException(403, "Not authorized")
 
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()

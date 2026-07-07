@@ -92,7 +92,7 @@ const INITIAL_PANELS: Record<string, ActionPanel> = {
   fr218_complete: {
     heading: 'FR.218 complete — ready for Stage 1',
     body: 'Application review is signed off. Upload FR.222 (Audit Programme), the per-auditor FR.224 forms, and the Stage 1 FR.223 (Audit Plan). Stage 1 can begin once FR.222 is signed by Planner + Cert Manager, every Stage 1 FR.224 is signed by its auditor, and FR.223 is signed by the organisation representative.',
-    cta: { label: 'Begin Stage 1', nextStatus: 'stage1_in_progress', allowedRoles: ['admin', 'planner'] },
+    cta: { label: 'Begin Stage 1', nextStatus: 'stage1_in_progress', allowedRoles: ['admin', 'planner', 'planner_us'] },
   },
   stage1_scheduled: {
     heading: 'Stage 1 scheduled (legacy)',
@@ -122,7 +122,7 @@ const INITIAL_PANELS: Record<string, ActionPanel> = {
   stage2_complete: {
     heading: 'Stage 2 complete — committee review next',
     body: 'Stage 2 is done. Certification is NOT automatic: generate FR.233 in the Review & Decision panel below to open the committee review.',
-    cta: { label: 'Open Committee Review', nextStatus: 'committee_review', allowedRoles: ['admin', 'planner', 'certification_manager'] },
+    cta: { label: 'Open Committee Review', nextStatus: 'committee_review', allowedRoles: ['admin', 'planner', 'planner_us', 'certification_manager'] },
   },
   committee_review: {
     heading: 'Committee review in progress',
@@ -181,7 +181,7 @@ const SURVEILLANCE_PANELS: Record<string, ActionPanel> = {
   notification_sent: {
     heading: 'Client notified — confirm audit dates',
     body: 'FR.234 has been released to the client. Upload FR.224 (Team Information) and FR.223 (Audit Plan) for the surveillance stage. Once dates are confirmed, mark the audit as scheduled.',
-    cta: { label: 'Mark as Audit Scheduled', nextStatus: 'audit_scheduled', allowedRoles: ['admin', 'planner'] },
+    cta: { label: 'Mark as Audit Scheduled', nextStatus: 'audit_scheduled', allowedRoles: ['admin', 'planner', 'planner_us'] },
   },
   audit_scheduled: {
     heading: 'Surveillance audit is scheduled',
@@ -210,6 +210,7 @@ function getPanels(auditType: string | null) {
 }
 
 export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, auditType, onAdvanced }: WorkflowStatusBarProps) {
+  const isRealtimeMode = currentUserRole === 'planner_us'
   const [errMsg, setErrMsg] = useState<string | null>(null)
   // Retroactive mode — date picker for recording when transitions actually happened.
   const [effectiveDate, setEffectiveDate] = useState<string>(
@@ -260,7 +261,7 @@ export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, 
 
   if (!currentStatus) {
     // Workflow not started yet. Show jump panel for admin/planner only.
-    if (currentUserRole !== 'admin' && currentUserRole !== 'planner') return null
+    if (currentUserRole !== 'admin' && currentUserRole !== 'planner' && currentUserRole !== 'planner_us') return null
 
     return (
       <div className="rounded-xl border border-gray-200 bg-white p-5 mb-2">
@@ -301,18 +302,20 @@ export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, 
             </select>
           </div>
 
-          {/* Date picker */}
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">
-              Effective date
-            </label>
-            <input
-              type="date"
-              value={jumpDate}
-              onChange={e => setJumpDate(e.target.value)}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 focus:border-[#1A4731] focus:outline-none"
-            />
-          </div>
+          {/* Date picker — hidden in realtime mode */}
+          {!isRealtimeMode && (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">
+                Effective date
+              </label>
+              <input
+                type="date"
+                value={jumpDate}
+                onChange={e => setJumpDate(e.target.value)}
+                className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 focus:border-[#1A4731] focus:outline-none"
+              />
+            </div>
+          )}
 
           {/* Apply button */}
           <button
@@ -385,16 +388,18 @@ export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, 
               >
                 {isPending ? 'Saving…' : panel.cta.label}
               </button>
-              {/* Retroactive date picker — always visible, no off switch */}
-              <div className="mt-2 flex items-center gap-2">
-                <label className="text-xs text-gray-500">Effective date:</label>
-                <input
-                  type="date"
-                  value={effectiveDate}
-                  onChange={e => setEffectiveDate(e.target.value)}
-                  className="rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-700 focus:border-[#1A4731] focus:outline-none"
-                />
-              </div>
+              {/* Retroactive date picker — hidden in realtime mode */}
+              {!isRealtimeMode && (
+                <div className="mt-2 flex items-center gap-2">
+                  <label className="text-xs text-gray-500">Effective date:</label>
+                  <input
+                    type="date"
+                    value={effectiveDate}
+                    onChange={e => setEffectiveDate(e.target.value)}
+                    className="rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-700 focus:border-[#1A4731] focus:outline-none"
+                  />
+                </div>
+              )}
             </div>
           )}
           {errMsg && <p className="mt-2 text-sm text-red-600">{errMsg}</p>}

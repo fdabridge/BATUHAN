@@ -31,7 +31,7 @@ STAGE_LABELS: dict[str, str] = {
 }
 TOKEN_TTL_HOURS = 72
 OTP_EXPIRY_MIN  = 10
-CB_ROLES        = {"admin", "planner", "officer", "executive", "gm"}
+CB_ROLES        = {"admin", "planner", "planner_us", "officer", "executive", "gm"}
 ALLOWED_ROLES   = CB_ROLES | {"auditor"}
 
 

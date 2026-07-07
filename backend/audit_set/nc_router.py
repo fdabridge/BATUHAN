@@ -31,7 +31,7 @@ from email_service import send_nc_form_la_request
 
 router = APIRouter(tags=["nc_forms"])
 
-CB_ROLES = {"admin", "planner", "officer", "executive", "gm"}
+CB_ROLES = {"admin", "planner", "planner_us", "officer", "executive", "gm"}
 
 
 def _nc_dict(n: AuditSetNCForm) -> dict:
@@ -79,7 +79,7 @@ async def upload_nc_form(
     current_user: PlatformUser = Depends(get_current_user),
 ):
     """CB uploads the NC form file. Notifies the Lead Auditor by email."""
-    if current_user.role not in {"admin", "planner"}:
+    if current_user.role not in {"admin", "planner", "planner_us"}:
         raise HTTPException(403, "Not authorized")
 
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()

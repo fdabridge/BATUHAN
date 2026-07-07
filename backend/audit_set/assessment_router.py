@@ -34,7 +34,7 @@ from email_service import send_otp_code
 
 router = APIRouter(tags=["assessments"])
 
-CB_ROLES   = {"admin", "planner", "officer", "executive", "gm"}
+CB_ROLES   = {"admin", "planner", "planner_us", "officer", "executive", "gm"}
 OTP_EXPIRY = 10  # minutes
 
 
@@ -71,7 +71,7 @@ def create_assessments_for_stage(
     Auto-populate FR.211 assessment records for all auditors on the given stage.
     Idempotent: skips records that already exist for the same auditor + stage.
     """
-    if current_user.role not in {"admin", "planner"}:
+    if current_user.role not in {"admin", "planner", "planner_us"}:
         raise HTTPException(403, "Not authorized")
 
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()

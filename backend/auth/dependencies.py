@@ -44,7 +44,7 @@ def require_role(*roles: str):
 
 # Convenience shortcuts — use as Depends(require_admin) etc.
 require_admin    = require_role("admin")
-require_planner  = require_role("admin", "planner")
-require_auditor  = require_role("admin", "planner", "auditor")
+require_planner  = require_role("admin", "planner", "planner_us")
+require_auditor  = require_role("admin", "planner", "planner_us", "auditor")
 require_officer  = require_role("admin", "officer")
-require_any      = require_role("admin", "planner", "auditor", "officer", "executive", "certification_manager")
+require_any      = require_role("admin", "planner", "planner_us", "auditor", "officer", "executive", "certification_manager")
