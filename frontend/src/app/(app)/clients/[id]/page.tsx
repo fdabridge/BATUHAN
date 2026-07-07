@@ -1318,7 +1318,14 @@ function CommitteePlanningCard({
 
   useEffect(() => {
     setLoadingPool(true)
-    const qs = stageAuditorIdsKey ? `?exclude_auditor_ids=${encodeURIComponent(stageAuditorIdsKey)}` : ''
+    // Never exclude already-selected committee members from the backend query —
+    // we need their covered_scope in the response to enrich their data.
+    // The pool dropdown still hides them via setPool's selectedIds filter below.
+    const committeeIds = new Set(selectedRef.current.map((m) => m.id))
+    const excludeParam = stageAuditorIdsKey
+      ? stageAuditorIdsKey.split(',').filter(id => !committeeIds.has(id)).join(',')
+      : ''
+    const qs = excludeParam ? `?exclude_auditor_ids=${encodeURIComponent(excludeParam)}` : ''
     api.get<AvailableCommitteeAuditor[]>(`/audit-sets/${auditSetId}/planning/committee/available-auditors${qs}`)
       .then((r) => {
         const all = r.data
