@@ -1216,17 +1216,20 @@ def _commit_existing_signing_record(
             # document would make remaining_all > 0 permanently and prevent the
             # completion trigger from firing. Exclude it if the current audit
             # standards don't require a reviewer.
-            if remaining_all > 0 and doc and doc.document_type == "fr218_review":
-                from audit_set.documents_router import _needs_reviewer
-                _audit_set_for_doc = db.query(AuditSet).filter_by(id=doc.audit_set_id).first()
-                if _audit_set_for_doc and not _needs_reviewer(_audit_set_for_doc):
-                    remaining_all = (
-                        db.query(AuditDocumentSignature)
-                        .filter_by(document_id=doc_id, required=True)
-                        .filter(AuditDocumentSignature.signed_at.is_(None))
-                        .filter(AuditDocumentSignature.signer_role_label != "cb_reviewer")
-                        .count()
-                    )
+            # NOTE: `doc` is not yet in scope here; fetch inline to avoid NameError.
+            if remaining_all > 0:
+                _p114_doc = db.query(AuditSetSharedDocument).filter_by(id=doc_id).first()
+                if _p114_doc and _p114_doc.document_type == "fr218_review":
+                    from audit_set.documents_router import _needs_reviewer
+                    _audit_set_for_doc = db.query(AuditSet).filter_by(id=_p114_doc.audit_set_id).first()
+                    if _audit_set_for_doc and not _needs_reviewer(_audit_set_for_doc):
+                        remaining_all = (
+                            db.query(AuditDocumentSignature)
+                            .filter_by(document_id=doc_id, required=True)
+                            .filter(AuditDocumentSignature.signed_at.is_(None))
+                            .filter(AuditDocumentSignature.signer_role_label != "cb_reviewer")
+                            .count()
+                        )
             remaining_cb = (
                 db.query(AuditDocumentSignature)
                 .filter_by(document_id=doc_id, required=True)
