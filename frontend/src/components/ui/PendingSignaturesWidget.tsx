@@ -128,14 +128,11 @@ export function PendingSignaturesWidget() {
             // Filter out legacy FR.218 slots that have no backing document
             .filter(sig => !(sig.document_type === 'FR218' && !sig.document_id))
             .map((sig) => {
-            // Any PDF-backed shared document goes through the Certiva viewer.
-            const isViewer = !!sig.document_id && [
-              'quotation',
-              'agreement',
-              'fr218_review',
-              'audit_programme',
-              'FR222',
-            ].includes(sig.document_type)
+            // Any slot backed by an AuditSetSharedDocument (has document_id) goes through
+            // the Certiva viewer — this covers all modern document types including stage
+            // reports, NC forms, FR.218, FR.224, etc.
+            // isInternal only applies to legacy in-memory slots (no document_id) for FR218/FR222.
+            const isViewer = !!sig.document_id
             const isInternal = !isViewer && ['FR218', 'FR222'].includes(sig.document_type)
             const isOtpSigning = otpSigningId === sig.id
             return (

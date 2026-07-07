@@ -14,8 +14,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from audit_set.db_models import (
-    AuditDocumentSignature, AuditSetSharedDocument, AuditSet,
-    AuditSetStatusEvent, get_db,
+    AuditDocumentSignature, AuditSet, AuditSetSharedDocument,
+    AuditSetStage, AuditSetStatusEvent, get_db,
 )
 from auth.db_models import PlatformUser
 from auth.dependencies import get_current_user
@@ -54,7 +54,147 @@ def get_my_pending_signatures(
     db: Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
-    """Unsigned signature slots assigned to (or claimable by) the current user."""
+    """Unsigned signature slots assigned to (or claimable by) the current user.
+
+    Serves both CB staff (role in CB_ROLES) and auditors (role == 'auditor').
+
+    Auditor coverage — three slot types, all matched via auditor_id:
+      1. cb_reviewer   → AuditSet.fr218_reviewer_id == current_user.auditor_id
+      2. lead_auditor  → AuditSetStage.lead_auditor_id == current_user.auditor_id
+                         (stage matched by document stage_type)
+      3. assigned_auditor → AuditSetSharedDocument.assigned_auditor_id == current_user.auditor_id
+
+    Also returns any slot with signer_user_id == current_user.id (direct assignment,
+    covering future cases where slots are pre-assigned at appointment time).
+    """
+
+    # ── Auditor path ────────────────────────────────────────────────────────────
+    if current_user.role == "auditor":
+        if not current_user.auditor_id:
+            return []
+
+        auditor_id = current_user.auditor_id
+        seen_ids: set[str] = set()
+        all_slots: list[AuditDocumentSignature] = []
+
+        def _add(slot: AuditDocumentSignature) -> None:
+            if slot.id not in seen_ids:
+                seen_ids.add(slot.id)
+                all_slots.append(slot)
+
+        # ── 0. Directly assigned (signer_user_id already set) ──────────────────
+        for s in (
+            db.query(AuditDocumentSignature)
+            .filter_by(signer_user_id=current_user.id)
+            .filter(AuditDocumentSignature.signed_at.is_(None))
+            .all()
+        ):
+            _add(s)
+
+        # ── 1. cb_reviewer — FR.218 Application Review ─────────────────────────
+        # Find all audit sets where this auditor is the appointed FR.218 reviewer.
+        fr218_set_ids = {
+            row.id
+            for row in db.query(AuditSet.id)
+            .filter_by(fr218_reviewer_id=auditor_id)
+            .all()
+        }
+        if fr218_set_ids:
+            for s in (
+                db.query(AuditDocumentSignature)
+                .filter(
+                    AuditDocumentSignature.signer_role_label == "cb_reviewer",
+                    AuditDocumentSignature.signed_at.is_(None),
+                    AuditDocumentSignature.audit_set_id.in_(fr218_set_ids),
+                )
+                .all()
+            ):
+                _add(s)
+
+        # ── 2. lead_auditor — stage reports and NC forms ────────────────────────
+        # Find all (audit_set_id, stage_type) pairs where this auditor is lead.
+        lead_pairs: set[tuple[str, str]] = {
+            (row.audit_set_id, row.stage_type)
+            for row in db.query(
+                AuditSetStage.audit_set_id, AuditSetStage.stage_type
+            )
+            .filter_by(lead_auditor_id=auditor_id)
+            .all()
+        }
+        if lead_pairs:
+            # Collect audit_set_ids so we can pre-filter slots efficiently.
+            lead_audit_set_ids = {p[0] for p in lead_pairs}
+            candidate_slots = (
+                db.query(AuditDocumentSignature)
+                .filter(
+                    AuditDocumentSignature.signer_role_label == "lead_auditor",
+                    AuditDocumentSignature.signed_at.is_(None),
+                    AuditDocumentSignature.audit_set_id.in_(lead_audit_set_ids),
+                )
+                .all()
+            )
+            for s in candidate_slots:
+                # Derive stage_type: prefer AuditSetSharedDocument.stage_type;
+                # fall back to inferring from document_type string.
+                stage_type: str | None = None
+                if s.document_id:
+                    doc = db.query(AuditSetSharedDocument).filter_by(id=s.document_id).first()
+                    if doc:
+                        stage_type = doc.stage_type
+                if not stage_type:
+                    dt = s.document_type or ""
+                    if "stage1" in dt:
+                        stage_type = "stage_1"
+                    elif "stage2" in dt:
+                        stage_type = "stage_2"
+
+                if stage_type:
+                    if (s.audit_set_id, stage_type) in lead_pairs:
+                        _add(s)
+                else:
+                    # nc_form without stage_type info — include if auditor leads
+                    # any stage in this audit set (conservative: better to show than hide)
+                    if any(p[0] == s.audit_set_id for p in lead_pairs):
+                        _add(s)
+
+        # ── 3. assigned_auditor — FR.224 team info ─────────────────────────────
+        # Find all shared documents where this auditor is the assigned auditor.
+        assigned_doc_ids = {
+            row.id
+            for row in db.query(AuditSetSharedDocument.id)
+            .filter_by(assigned_auditor_id=auditor_id)
+            .all()
+        }
+        if assigned_doc_ids:
+            for s in (
+                db.query(AuditDocumentSignature)
+                .filter(
+                    AuditDocumentSignature.signer_role_label == "assigned_auditor",
+                    AuditDocumentSignature.signed_at.is_(None),
+                    AuditDocumentSignature.document_id.in_(assigned_doc_ids),
+                )
+                .all()
+            ):
+                _add(s)
+
+        # ── Serialize and return ────────────────────────────────────────────────
+        results = []
+        for s in all_slots:
+            audit_set = db.query(AuditSet).filter_by(id=s.audit_set_id).first()
+            doc_label = (s.document_type or "").replace("_", " ").title()
+            if s.document_id:
+                doc = db.query(AuditSetSharedDocument).filter_by(id=s.document_id).first()
+                if doc and doc.label:
+                    doc_label = doc.label
+            results.append(_sig_to_dict(
+                s,
+                doc_label=doc_label,
+                company_name=audit_set.company_name if audit_set else "",
+                plan_number=audit_set.plan_number if audit_set else None,
+            ))
+        return results
+
+    # ── CB staff path (unchanged) ───────────────────────────────────────────────
     if current_user.role not in CB_ROLES:
         raise HTTPException(403, "Not authorized")
 
