@@ -56,7 +56,7 @@ VALID_TRANSITIONS: dict[tuple[Optional[str], str], set[str]] = {
     # completion). Keeping them in VALID_TRANSITIONS lets jump/manual
     # corrections by admin still go through the normal endpoint.
     ("agreement_signed",  "fr218_in_progress"): {"admin"},
-    ("fr218_in_progress", "fr218_complete"):    {"admin"},
+    ("fr218_in_progress", "fr218_complete"):    {"admin", "planner", "planner_us", "certification_manager"},
     # ── Initial certification — Stage 1 ──────────────────────────────────────
     # Portal 49b: the team is assigned at planning, so fr218_complete advances
     # directly to stage1_in_progress (gated below). Scheduled statuses are

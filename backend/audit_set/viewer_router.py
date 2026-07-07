@@ -916,6 +916,22 @@ def _get_field_status(
                 return _result("not_applicable")
             return _result("pending")
 
+        # Portal 114 — stale cb_reviewer slot: slot exists in DB but the current
+        # audit standards no longer require a reviewer. Mark as not_applicable
+        # and flip required=False so it stops blocking remaining_all counts.
+        if (
+            role_label == "cb_reviewer"
+            and doc and doc.document_type == "fr218_review"
+            and sig_record.signed_at is None
+        ):
+            from audit_set.documents_router import _needs_reviewer
+            _audit_set_for_slot = db.query(AuditSet).filter_by(id=doc.audit_set_id).first()
+            if _audit_set_for_slot and not _needs_reviewer(_audit_set_for_slot):
+                if sig_record.required:
+                    sig_record.required = False
+                    db.commit()
+                return _result("not_applicable")
+
         if sig_record.signed_at:
             return _result("signed", sig_record.signer_name, vsp.signature_image if vsp else None)
         # Portal 63 — APPOINTED_REVIEWER (FR.231/FR.232) is the Certification
@@ -1196,6 +1212,21 @@ def _commit_existing_signing_record(
                 .filter(AuditDocumentSignature.signed_at.is_(None))
                 .count()
             )
+            # Portal 114 — a stale cb_reviewer slot on a non-FSMS/ISMS fr218_review
+            # document would make remaining_all > 0 permanently and prevent the
+            # completion trigger from firing. Exclude it if the current audit
+            # standards don't require a reviewer.
+            if remaining_all > 0 and doc and doc.document_type == "fr218_review":
+                from audit_set.documents_router import _needs_reviewer
+                _audit_set_for_doc = db.query(AuditSet).filter_by(id=doc.audit_set_id).first()
+                if _audit_set_for_doc and not _needs_reviewer(_audit_set_for_doc):
+                    remaining_all = (
+                        db.query(AuditDocumentSignature)
+                        .filter_by(document_id=doc_id, required=True)
+                        .filter(AuditDocumentSignature.signed_at.is_(None))
+                        .filter(AuditDocumentSignature.signer_role_label != "cb_reviewer")
+                        .count()
+                    )
             remaining_cb = (
                 db.query(AuditDocumentSignature)
                 .filter_by(document_id=doc_id, required=True)

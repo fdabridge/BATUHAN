@@ -132,6 +132,27 @@ def check_fr218_completion(
         .first()
     )
     if fr218_doc:
+        # Portal 114 — A stale cb_reviewer slot (required=True, signed_at=None) can
+        # block completion for non-FSMS/ISMS audits if the document was uploaded when
+        # standards were different. Exclude the cb_reviewer slot from the remaining
+        # count if the current audit standards don't require a reviewer, and
+        # simultaneously flip it to required=False so future counts are clean.
+        from audit_set.documents_router import _needs_reviewer
+        needs_reviewer = _needs_reviewer(audit_set)
+
+        if not needs_reviewer:
+            # Neutralise any stale cb_reviewer slots on this document.
+            stale_reviewer_slots = (
+                db.query(AuditDocumentSignature)
+                .filter_by(document_id=fr218_doc.id, signer_role_label="cb_reviewer")
+                .filter(AuditDocumentSignature.signed_at.is_(None))
+                .all()
+            )
+            for slot in stale_reviewer_slots:
+                slot.required = False
+            if stale_reviewer_slots:
+                db.flush()  # make the update visible to the count below
+
         remaining = (
             db.query(AuditDocumentSignature)
             .filter_by(document_id=fr218_doc.id, required=True)
