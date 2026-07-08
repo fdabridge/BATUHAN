@@ -77,6 +77,12 @@ function sigLabel(key: string) {
   return key
 }
 
+function canonicalSigKey(key: string) {
+  const blankOrg = /^ORG_(OPENING|CLOSING)_ORG_EMP_BLANK_(\d+)$/.exec(key)
+  if (blankOrg) return `ORG_${blankOrg[1]}_ORG_EMP_${blankOrg[2]}`
+  return key
+}
+
 // ── PDF.js lazy loader (CDN worker — avoids Next.js bundler issues) ────────────
 
 type PdfjsLib = typeof import('pdfjs-dist')
@@ -273,14 +279,19 @@ export function CertivaDocumentViewer({
   // ── Fields for current page ───────────────────────────────────────────────
   const currentFields = rawFields.filter(f => f.page_number === currentPage - 1)
   function getOverride(sig_key: string): SignatureOverride {
-    return signatureOverrides.find(o => o.sig_key === sig_key) ?? { sig_key, status: 'pending' }
+    const canonical = canonicalSigKey(sig_key)
+    return (
+      signatureOverrides.find(o => o.sig_key === sig_key)
+      ?? signatureOverrides.find(o => canonicalSigKey(o.sig_key) === canonical)
+      ?? { sig_key: canonical, status: 'pending' }
+    )
   }
 
   // Slots ready for current user to sign but with no detected PDF position.
   // These come from signing-status (signatureOverrides) but were missed by pdfplumber.
-  const detectedSigKeys = new Set(rawFields.map(f => f.sig_key))
+  const detectedSigKeys = new Set(rawFields.map(f => canonicalSigKey(f.sig_key)))
   const unpositionedSignable = signatureOverrides.filter(
-    ov => ov.status === 'current_user' && !detectedSigKeys.has(ov.sig_key)
+    ov => ov.status === 'current_user' && !detectedSigKeys.has(canonicalSigKey(ov.sig_key))
   )
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -335,19 +346,22 @@ export function CertivaDocumentViewer({
           {/* Canvas + overlays */}
           <div ref={containerRef} className="relative w-full max-w-3xl shadow-xl" style={{ background: 'white' }}>
             <canvas ref={canvasRef} className="block w-full" />
-            {currentFields.map((field) => (
-              <SignatureBox
-                key={`${field.sig_key}-${field.page_number}`}
-                field={field}
-                scale={pageScale}
-                override={getOverride(field.sig_key)}
-                onClick={
-                  getOverride(field.sig_key).status === 'current_user'
-                    ? () => onSignatureClick?.(field.sig_key)
-                    : undefined
-                }
-              />
-            ))}
+            {currentFields.map((field) => {
+              const override = getOverride(field.sig_key)
+              return (
+                <SignatureBox
+                  key={`${field.sig_key}-${field.page_number}`}
+                  field={field}
+                  scale={pageScale}
+                  override={override}
+                  onClick={
+                    override.status === 'current_user'
+                      ? () => onSignatureClick?.(override.sig_key)
+                      : undefined
+                  }
+                />
+              )
+            })}
           </div>
 
           {/* Fallback signing panel: slots ready to sign but not detected in PDF */}
@@ -380,8 +394,8 @@ export function CertivaDocumentViewer({
               <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">Signatures</p>
               <div className="flex flex-wrap gap-3">
                 {Array.from(new Set([
-                  ...rawFields.map(f => f.sig_key),
-                  ...signatureOverrides.map(o => o.sig_key),
+                  ...rawFields.map(f => canonicalSigKey(f.sig_key)),
+                  ...signatureOverrides.map(o => canonicalSigKey(o.sig_key)),
                 ])).map(sig_key => {
                   const ov = getOverride(sig_key)
                   return (

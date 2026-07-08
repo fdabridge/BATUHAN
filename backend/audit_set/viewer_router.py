@@ -132,6 +132,64 @@ def _aliased_sig_keys(sig_key: str) -> list[str]:
     return [sig_key, *aliases] if aliases else [sig_key]
 
 
+def _meeting_employee_count(doc: AuditSetSharedDocument, db: Session, auth_db: Session) -> int:
+    client_user = (
+        auth_db.query(PlatformUser)
+        .filter_by(role="client", audit_set_id=doc.audit_set_id)
+        .first()
+    )
+    if not client_user:
+        return 0
+    return (
+        db.query(ClientOrgEmployee)
+        .filter_by(client_user_id=client_user.id, is_active=True)
+        .count()
+    )
+
+
+def _canonical_meeting_sig_key(
+    sig_key: str,
+    doc: AuditSetSharedDocument | None,
+    db: Session,
+    auth_db: Session,
+) -> str:
+    """Map stale FR.225 blank-row keys to real employee-row keys when possible."""
+    if not doc or doc.document_type != "meeting_form":
+        return sig_key
+    blank = ORG_BLANK_RE.match(sig_key)
+    if not blank:
+        return sig_key
+    phase, idx_raw = blank.group(1), blank.group(2)
+    idx = int(idx_raw)
+    if idx <= _meeting_employee_count(doc, db, auth_db):
+        return f"ORG_{phase}_ORG_EMP_{idx}"
+    return sig_key
+
+
+def _repair_meeting_signature_fields(
+    document_type: str,
+    doc_id: str,
+    docx_path: str,
+    db: Session,
+    auth_db: Session,
+) -> None:
+    """Self-heal cached FR.225 fields that still reference blank placeholder rows."""
+    if document_type != "shared_doc":
+        return
+    doc = db.query(AuditSetSharedDocument).filter_by(id=doc_id).first()
+    if not doc or doc.document_type != "meeting_form":
+        return
+    changed = False
+    rows = db.query(DocumentSignatureField).filter_by(docx_path=docx_path).all()
+    for row in rows:
+        canonical = _canonical_meeting_sig_key(row.sig_key, doc, db, auth_db)
+        if canonical != row.sig_key:
+            row.sig_key = canonical
+            changed = True
+    if changed:
+        db.commit()
+
+
 # ── Pydantic request bodies ───────────────────────────────────────────────────
 
 class SignConfirmRequest(BaseModel):
@@ -182,6 +240,7 @@ def viewer_prepare(
     document_type: str         = Query(..., description="shared_doc | audit_report | nc_form"),
     doc_id:        str         = Query(..., description="UUID of the document record"),
     db:            Session     = Depends(get_db),
+    auth_db:       Session     = Depends(get_auth_db),
     current_user:  PlatformUser = Depends(get_current_user),
 ):
     """
@@ -194,12 +253,30 @@ def viewer_prepare(
     docx_path = _resolve_docx_path(document_type, doc_id, db)
 
     try:
-        result = prepare_document(docx_path, db)
+        prepare_document(docx_path, db)
     except RuntimeError as exc:
         raise HTTPException(500, f"Document preparation failed: {exc}") from exc
 
-    # Filter out the sentinel "__none__" row from the response
-    fields = [f for f in result["fields"] if f.get("sig_key") != "__none__"]
+    _repair_meeting_signature_fields(document_type, doc_id, docx_path, db, auth_db)
+
+    # Return the DB rows, not raw extractor output, so first-open responses also
+    # include normalized/self-healed keys used by signing-status and flattening.
+    fields = [
+        {
+            "sig_key":     f.sig_key,
+            "page_number": f.page_number,
+            "x0": f.x0, "y0": f.y0,
+            "x1": f.x1, "y1": f.y1,
+            "page_width":  f.page_width,
+            "page_height": f.page_height,
+        }
+        for f in db.query(DocumentSignatureField)
+            .filter(
+                DocumentSignatureField.docx_path == docx_path,
+                DocumentSignatureField.sig_key != "__none__",
+            )
+            .all()
+    ]
 
     return {
         "document_type": document_type,
@@ -261,6 +338,8 @@ def download_signed_pdf(
     from audit_set.pdf_flattener import _resolve_docx_path
 
     try:
+        docx_path_for_repair = _resolve_docx_path(document_type, doc_id, db)
+        _repair_meeting_signature_fields(document_type, doc_id, docx_path_for_repair, db, auth_db)
         pdf_bytes = flatten_document(document_type, doc_id, db)
 
     except FileNotFoundError:
@@ -274,6 +353,7 @@ def download_signed_pdf(
             if not os.path.exists(docx_path):
                 raise FileNotFoundError(f"DOCX not on disk: {docx_path}")
             prepare_document(docx_path, db)
+            _repair_meeting_signature_fields(document_type, doc_id, docx_path, db, auth_db)
             pdf_bytes = flatten_document(document_type, doc_id, db)
         except FileNotFoundError:
             # DOCX itself is also gone — storage is wiped; can't recover.
@@ -1409,6 +1489,15 @@ def viewer_signing_status(
             .distinct()
             .all()
     }
+    doc_row = (
+        db.query(AuditSetSharedDocument).filter_by(id=doc_id).first()
+        if document_type == "shared_doc" else None
+    )
+    if doc_row and doc_row.document_type == "meeting_form":
+        pdf_sig_keys = {
+            _canonical_meeting_sig_key(sk, doc_row, db, auth_db)
+            for sk in pdf_sig_keys
+        }
 
     # Source 2 — DB slot records seeded at upload time
     db_sig_keys: set[str] = set()
@@ -1429,7 +1518,6 @@ def viewer_signing_status(
         # Seeding is additive; pdf_sig_keys (with coordinates) take precedence
         # via the union below, so the overlay boxes still appear when the PDF
         # scan succeeds.
-        doc_row = db.query(AuditSetSharedDocument).filter_by(id=doc_id).first()
         if doc_row and doc_row.document_type == "meeting_form":
             # Org-employee slots (ORG_OPENING + ORG_CLOSING for each employee)
             try:
