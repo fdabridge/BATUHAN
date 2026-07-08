@@ -33,6 +33,14 @@ const ROLE_LABELS: Record<string, string> = {
   reviewer:       'Member',
 }
 
+function todayISO(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 export function FR233Panel({
   auditSetId, workflowStatus,
 }: { auditSetId: string; workflowStatus: string | null }) {
@@ -42,6 +50,8 @@ export function FR233Panel({
   const [busy,    setBusy]    = useState(false)
   const [error,   setError]   = useState('')
   const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [showUpload, setShowUpload] = useState(false)
+  const [releaseDate, setReleaseDate] = useState(todayISO())
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
@@ -68,11 +78,24 @@ export function FR233Panel({
   const cmSigned       = data?.cert_manager_signed ?? false
   const allSigned      = data?.all_committee_signed ?? false
 
+  async function release() {
+    setBusy(true); setError('')
+    try {
+      await api.post(`/audit-sets/${auditSetId}/fr233/release`, {
+        released_at: releaseDate || null,
+      })
+      await load()
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setError(detail || 'Release failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function generate() {
     if (!confirm(
-      status === 'pending'
-        ? 'Generate the FR.233 Review & Decision Form from the template?'
-        : 'Re-generate FR.233 from the template? The existing draft will be overwritten and any signatures collected on the old draft will need to be re-applied.',
+      'Re-generate FR.233 from the template? The existing draft will be overwritten and any signatures collected on the old draft will need to be re-applied.',
     )) return
     setBusy(true); setError('')
     try {
@@ -96,6 +119,7 @@ export function FR233Panel({
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       setUploadFile(null)
+      setShowUpload(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
       await load()
     } catch (e: unknown) {
@@ -122,66 +146,99 @@ export function FR233Panel({
             {status}
           </span>
         </div>
-        {canGenerate && status === 'pending' && (
-          <div className="flex items-center gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.docx"
-              className="hidden"
-              id={`fr233-upload-${auditSetId}`}
-              onChange={e => setUploadFile(e.target.files?.[0] ?? null)}
-            />
-            <label
-              htmlFor={`fr233-upload-${auditSetId}`}
-              className="cursor-pointer rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
-            >
-              {uploadFile ? uploadFile.name : 'Choose FR.233 file…'}
-            </label>
-            {uploadFile && (
-              <button
-                type="button"
-                onClick={upload}
-                disabled={busy}
-                className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#143b27] disabled:opacity-40"
-              >
-                {busy ? 'Uploading…' : 'Upload FR.233'}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={generate}
-              disabled={busy}
-              className="rounded-lg border border-gray-300 px-2 py-1 text-[11px] font-medium text-gray-400 hover:bg-gray-50 disabled:opacity-40"
-              title="Generate a pre-filled FR.233 from the template (admin/planner shortcut)"
-            >
-              Generate from template instead
-            </button>
-          </div>
-        )}
         {canGenerate && status !== 'pending' && (
           <button
             type="button"
             onClick={generate}
             disabled={busy}
             className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-40"
-            title="Overwrite with a template-generated FR.233 (admin use)"
+            title="Re-generate FR.233 with filled committee member names"
           >
-            {busy ? 'Generating…' : 'Re-generate from template'}
+            {busy ? 'Generating...' : 'Re-generate (fill member names)'}
           </button>
         )}
       </div>
 
       <div className="rounded-xl border bg-white">
         {status === 'pending' ? (
-          <div className="px-4 py-6 text-center text-xs text-gray-400">
-            Upload the completed FR.233 document above to begin committee signing.
+          <div className="divide-y divide-gray-100">
+            {/* Release-first flow */}
+            {canGenerate && (
+              <div className="px-4 py-4">
+                <p className="mb-3 text-xs text-gray-500">
+                  Release FR.233 from the template to begin committee signing.
+                </p>
+                <div className="flex items-center gap-3">
+                  <label className="text-xs font-medium text-gray-600">
+                    Release date
+                  </label>
+                  <input
+                    type="date"
+                    value={releaseDate}
+                    onChange={e => setReleaseDate(e.target.value)}
+                    className="rounded-lg border border-gray-300 px-2 py-1 text-xs text-gray-700"
+                  />
+                  <button
+                    type="button"
+                    onClick={release}
+                    disabled={busy}
+                    className="rounded-lg bg-[#1A4731] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#143b27] disabled:opacity-40"
+                  >
+                    {busy ? 'Releasing...' : 'Release FR.233'}
+                  </button>
+                </div>
+
+                {/* Secondary upload option */}
+                <div className="mt-4 border-t pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowUpload(!showUpload)}
+                    className="text-xs font-medium text-gray-400 hover:text-gray-600"
+                  >
+                    {showUpload ? 'Hide upload option' : 'Upload custom document instead'}
+                  </button>
+                  {showUpload && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".pdf,.docx"
+                        className="hidden"
+                        id={`fr233-upload-${auditSetId}`}
+                        onChange={e => setUploadFile(e.target.files?.[0] ?? null)}
+                      />
+                      <label
+                        htmlFor={`fr233-upload-${auditSetId}`}
+                        className="cursor-pointer rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                      >
+                        {uploadFile ? uploadFile.name : 'Choose FR.233 file...'}
+                      </label>
+                      {uploadFile && (
+                        <button
+                          type="button"
+                          onClick={upload}
+                          disabled={busy}
+                          className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#143b27] disabled:opacity-40"
+                        >
+                          {busy ? 'Uploading...' : 'Upload FR.233'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {!canGenerate && (
+              <div className="px-4 py-6 text-center text-xs text-gray-400">
+                Waiting for a planner or certification manager to release FR.233.
+              </div>
+            )}
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
             {members.length === 0 && (
               <div className="px-4 py-3 text-xs text-gray-400">
-                FR.233 uploaded — appoint committee members to enable signing.
+                FR.233 released — appoint committee members to enable signing.
               </div>
             )}
             {members.map(m => (

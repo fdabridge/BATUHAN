@@ -9,6 +9,7 @@ Endpoints under /audit-sets:
   DELETE /audit-sets/{id}/committee/{member_id}
   GET    /audit-sets/{id}/planning/committee/available-auditors  (Portal 64)
   POST   /audit-sets/{id}/fr233/generate
+  POST   /audit-sets/{id}/fr233/release
   POST   /audit-sets/{id}/fr233/upload
   GET    /audit-sets/{id}/fr233
 """
@@ -48,6 +49,11 @@ from auth.dependencies import get_current_user
 class GenerateFR233Request(BaseModel):
     released_at_override: str | None = None
     """ISO 8601 date or datetime string for a retroactive release date."""
+
+class ReleaseFR233Request(BaseModel):
+    released_at: str | None = None
+    """ISO 8601 date for retroactive release. Format: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS.
+    Defaults to current UTC time if omitted."""
 
 router = APIRouter(prefix="/audit-sets", tags=["committee"])
 
@@ -536,16 +542,6 @@ def generate_fr233(
     from datetime import datetime
     from audit_set.fr233_generator import render_fr233_bytes
     import datetime as _dt
-    if body.released_at_override:
-        try:
-            released_at_dt = _dt.datetime.fromisoformat(body.released_at_override)
-        except ValueError:
-            raise HTTPException(
-                400,
-                "released_at_override must be ISO 8601 format: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS",
-            )
-    else:
-        released_at_dt = _dt.datetime.utcnow()
 
     if current_user.role not in {"admin", "planner", "planner_us", "executive", "certification_manager"}:
         raise HTTPException(403, "Only Planner or Certification Manager may generate FR.233")
@@ -565,11 +561,39 @@ def generate_fr233(
             "Complete Stage 2 first.",
         )
 
+    # Query record early so we can use it for released_at resolution.
+    record = db.query(AuditSetFR233Record).filter_by(audit_set_id=audit_set_id).first()
+
+    # Resolve released_at:
+    # 1. Explicit override from caller (retroactive date).
+    # 2. Preserve existing released_at from a prior blank release.
+    # 3. Fall back to current time.
+    _existing_doc_for_date = None
+    if record and record.document_id:
+        _existing_doc_for_date = db.query(AuditSetSharedDocument).filter_by(
+            id=record.document_id
+        ).first()
+
+    if body.released_at_override:
+        try:
+            released_at_dt = _dt.datetime.fromisoformat(body.released_at_override)
+        except ValueError:
+            raise HTTPException(
+                400,
+                "released_at_override must be ISO 8601: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS",
+            )
+    elif _existing_doc_for_date and _existing_doc_for_date.released_at:
+        released_at_dt = _existing_doc_for_date.released_at
+    else:
+        released_at_dt = _dt.datetime.utcnow()
+
+    # Portal 125 — allow generation even with empty committee (blank rows will render).
     committee_members = audit_set.committee_members or []
     if not committee_members:
-        raise HTTPException(
-            400,
-            "Save the certification committee in the audit planning section before generating FR.233.",
+        import logging as _log
+        _log.getLogger(__name__).info(
+            "generate_fr233 called with no committee members for audit_set_id=%s — "
+            "rendering blank committee rows", audit_set_id,
         )
 
     try:
@@ -580,8 +604,6 @@ def generate_fr233(
     fname = f"FR233_{audit_set.plan_number or audit_set_id}.docx"
     relative_path = f"shared_docs/{audit_set_id}/{fname}"
     out_path = store_upload(relative_path, docx_bytes)
-
-    record = db.query(AuditSetFR233Record).filter_by(audit_set_id=audit_set_id).first()
     doc = None
     if record and record.document_id:
         doc = db.query(AuditSetSharedDocument).filter_by(id=record.document_id).first()
@@ -633,6 +655,137 @@ def generate_fr233(
         "generated":    True,
         "document_id":  doc.id,
         "fr233_status": record.status,
+    }
+
+
+@router.post("/{audit_set_id}/fr233/release")
+def release_fr233_blank(
+    audit_set_id: str,
+    body: ReleaseFR233Request = Body(default=ReleaseFR233Request()),
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """Portal 125 — Release FR.233 as a blank document from the template."""
+    import datetime as _dt
+    from audit_set.fr233_generator import (
+        _resolve_fr233_template,
+        _safe_fill_table0,
+        _fill_table3_committee,
+        _build_committee_context,
+    )
+
+    if current_user.role not in {"admin", "planner", "planner_us", "executive", "certification_manager"}:
+        raise HTTPException(403, "Only Planner or Certification Manager may release FR.233")
+
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    if not audit_set:
+        raise HTTPException(404, "Audit set not found")
+
+    existing_record = db.query(AuditSetFR233Record).filter_by(audit_set_id=audit_set_id).first()
+    existing_doc = None
+    if existing_record and existing_record.document_id:
+        existing_doc = db.query(AuditSetSharedDocument).filter_by(
+            id=existing_record.document_id
+        ).first()
+
+    if body.released_at:
+        try:
+            released_at_dt = _dt.datetime.fromisoformat(body.released_at)
+        except ValueError:
+            raise HTTPException(400, "released_at must be ISO 8601: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS")
+    elif existing_doc and existing_doc.released_at:
+        released_at_dt = existing_doc.released_at
+    else:
+        released_at_dt = _dt.datetime.utcnow()
+
+    template_path = _resolve_fr233_template(audit_set)
+    if not template_path:
+        raise HTTPException(500, "FR.233 template not found for this audit set.")
+
+    try:
+        from docx import Document as DocxDocument
+        from io import BytesIO
+
+        docx_doc = DocxDocument(str(template_path))
+        stages = {s.stage_type: s for s in (audit_set.stages or [])}
+        stage1 = stages.get("stage_1")
+        stage2 = stages.get("stage_2")
+        auditors = [p for p in (audit_set.personnel or {}).get("auditors", []) if p.get("name")]
+        team_str = ", ".join(
+            f"{a['name']} (Lead Auditor)" if a.get("is_lead") else a["name"]
+            for a in auditors
+        )
+
+        if len(docx_doc.tables) >= 1:
+            _safe_fill_table0(docx_doc.tables[0], audit_set, team_str, stage1, stage2)
+        if len(docx_doc.tables) >= 4:
+            members_ctx = _build_committee_context(audit_set)
+            _fill_table3_committee(docx_doc.tables[3], members_ctx)
+
+        buf = BytesIO()
+        docx_doc.save(buf)
+        docx_bytes = buf.getvalue()
+    except Exception as exc:
+        raise HTTPException(500, f"FR.233 render failed: {exc}")
+
+    fname = f"FR233_{audit_set.plan_number or audit_set_id}.docx"
+    relative_path = f"shared_docs/{audit_set_id}/{fname}"
+    out_path = store_upload(relative_path, docx_bytes)
+
+    if existing_doc is None:
+        doc_record = AuditSetSharedDocument(
+            audit_set_id=audit_set_id,
+            label=f"FR.233 Review & Decision — {audit_set.plan_number or ''}".strip(" —"),
+            document_type="fr233",
+            file_path=out_path,
+            direction="cb_to_client",
+            status="released",
+            released_by=current_user.id,
+            released_at=released_at_dt,
+        )
+        db.add(doc_record)
+        db.flush()
+    else:
+        doc_record = existing_doc
+        doc_record.file_path   = out_path
+        doc_record.status      = "released"
+        doc_record.released_by = current_user.id
+        doc_record.released_at = released_at_dt
+        invalidate_cache(out_path)
+        from audit_set.db_models import DocumentSignatureField
+        from storage.document_store import resolve_docx_key
+        _dsf_key = resolve_docx_key(out_path)
+        db.query(DocumentSignatureField).filter_by(docx_path=_dsf_key).delete()
+
+    if existing_record is None:
+        fr233_record = AuditSetFR233Record(
+            audit_set_id=audit_set_id,
+            document_id=doc_record.id,
+            status="signing",
+        )
+        db.add(fr233_record)
+    else:
+        existing_record.document_id = doc_record.id
+        existing_record.status      = "signing"
+
+    if audit_set.workflow_status in {"stage2_complete", "stage2_in_progress"}:
+        old = audit_set.workflow_status
+        audit_set.workflow_status = "committee_review"
+        from audit_set.db_models import AuditSetStatusEvent
+        db.add(AuditSetStatusEvent(
+            audit_set_id=audit_set_id,
+            from_status=old,
+            to_status="committee_review",
+            triggered_by=current_user.id,
+            notes="FR.233 released; committee review opened",
+        ))
+
+    db.commit()
+    return {
+        "released":     True,
+        "document_id":  doc_record.id,
+        "released_at":  released_at_dt.isoformat(),
+        "fr233_status": "signing",
     }
 
 
