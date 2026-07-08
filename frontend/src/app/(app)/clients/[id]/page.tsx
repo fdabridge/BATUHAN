@@ -1244,6 +1244,26 @@ const _COMMITTEE_STD_TO_ISO: Record<string, string> = {
   "EnMS": "ISO 50001", "ABMS": "ISO 37001", "CMS": "ISO 37301",
 }
 
+function committeeCodeKey(code: string | number | null | undefined): string {
+  if (code === null || code === undefined) return ''
+  const raw = String(code).trim().toUpperCase()
+  const numeric = raw.replace(/[^0-9]/g, '')
+  return numeric || raw.replace(/\s+/g, '')
+}
+
+function committeeMemberCoversCode(member: AvailableCommitteeAuditor, code: string): boolean {
+  const target = committeeCodeKey(code)
+  if (!target) return false
+
+  const scopedCodes = Object.values(member.covered_scope ?? {}).flat()
+  if (scopedCodes.some((c) => committeeCodeKey(c) === target)) return true
+
+  // Committee coverage is sector-based for EA-code standards. Saved members
+  // may not have covered_scope rehydrated yet, so fall back to the profile's
+  // top-level EA codes to avoid false "not covered" warnings.
+  return (member.ea_codes ?? []).some((c) => committeeCodeKey(c) === target)
+}
+
 function CommitteePlanningCard({
   auditSetId,
   stages,
@@ -1393,10 +1413,10 @@ function CommitteePlanningCard({
     const codeResults = requiredCodes.map((code) => {
       const coveringMember = selected.find((m) => {
         // Direct coverage: member explicitly covers this standard + code
-        if ((m.covered_scope?.[std] ?? []).includes(code)) return true
+        if ((m.covered_scope?.[std] ?? []).some((c) => committeeCodeKey(c) === committeeCodeKey(code))) return true
         // Cross-standard: sector expertise (EA code) spans all audit standards —
         // if the member covers this EA code for ANY standard, they cover it here too.
-        return Object.values(m.covered_scope ?? {}).some((codes) => codes.includes(code))
+        return committeeMemberCoversCode(m, code)
       })
       return { code, coveredBy: coveringMember?.full_name ?? null }
     })

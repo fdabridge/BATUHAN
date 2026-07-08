@@ -317,17 +317,23 @@ def get_planning_committee_available(
                  (q.standard_code or "").lower().replace("iso ", "").replace(" ", "")),
                 None,
             )
-            if not qual:
-                continue
             if scope_type in ("food", "medical", "sector", "energy"):
+                if not qual:
+                    continue
                 raw = qual.scope_category or ""
                 auditor_codes = [c.strip() for c in raw.split(",") if c.strip()]
                 matched = [c for c in required_codes if c in auditor_codes]
             else:
-                # EA codes — numeric normalisation: "EA 36" == "EA36" == "36"
-                auditor_codes = qual.ea_codes or []
+                # EA codes — numeric normalisation: "EA 36" == "EA36" == "36".
+                # Committee review is sector-competence based: if the auditor
+                # covers the required EA code for any EA-standard qualification
+                # or in their top-level EA list, that EA sector can cover the
+                # audit's EA requirement across ISO 9001/14001/45001.
+                auditor_codes: list = []
+                for q in (qualifications or []):
+                    if q.is_qualified is not False:
+                        auditor_codes.extend(q.ea_codes or [])
                 if not auditor_codes:
-                    # Per-standard list empty — fall back to top-level field
                     auditor_codes = top_level_ea
                 aud_ints = {_ea_int(c) for c in auditor_codes} - {None}
                 matched  = [c for c in required_codes if _ea_int(c) in aud_ints]
