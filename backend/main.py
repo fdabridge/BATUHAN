@@ -289,7 +289,8 @@ def on_startup():
     import os as _os
     _sp = settings.storage_base_path
     _abs_sp = _os.path.abspath(_sp)
-    _railway_mount = _os.environ.get("RAILWAY_VOLUME_MOUNT_PATH")
+    _railway_mount_raw = _os.environ.get("RAILWAY_VOLUME_MOUNT_PATH")
+    _railway_mount = _railway_mount_raw.strip() if _railway_mount_raw else None
     _is_railway = any(
         _os.environ.get(k)
         for k in (
@@ -361,7 +362,8 @@ def health_storage():
     import os as _os, time as _time
     sp = settings.storage_base_path
     abs_sp = _os.path.abspath(sp)
-    railway_mount = _os.environ.get("RAILWAY_VOLUME_MOUNT_PATH")
+    railway_mount_raw = _os.environ.get("RAILWAY_VOLUME_MOUNT_PATH")
+    railway_mount = railway_mount_raw.strip() if railway_mount_raw else None
     abs_mount = _os.path.abspath(railway_mount) if railway_mount else None
     mount_matches = (
         bool(abs_mount)
