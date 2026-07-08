@@ -314,6 +314,13 @@ def on_startup():
                 "Railway volume mount %s. Refusing to start."
                 % (_abs_sp, _abs_mount)
             )
+        if not _os.path.ismount(_abs_mount):
+            raise RuntimeError(
+                "[STORAGE SAFETY] Railway says the volume mount path is %s, "
+                "but it is not an actual mounted filesystem. Refusing to start "
+                "because uploads would be written to ephemeral container disk."
+                % _abs_mount
+            )
     try:
         _os.makedirs(_abs_sp, exist_ok=True)
         _test = _os.path.join(_abs_sp, ".storage_probe")
@@ -369,6 +376,7 @@ def health_storage():
         bool(abs_mount)
         and _os.path.commonpath([abs_sp, abs_mount]) == abs_mount
     )
+    mount_is_filesystem = bool(abs_mount) and _os.path.ismount(abs_mount)
     exists = _os.path.exists(abs_sp)
     writable = False
     error = None
@@ -388,6 +396,7 @@ def health_storage():
         "STORAGE_BASE_PATH_abs":   abs_sp,
         "RAILWAY_VOLUME_MOUNT_PATH": railway_mount,
         "storage_inside_railway_volume": mount_matches,
+        "railway_volume_is_mounted_filesystem": mount_is_filesystem,
         "directory_exists":        exists,
         "write_test":              "OK" if writable else f"FAILED: {error}",
         "top_level_contents":      listing,
