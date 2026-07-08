@@ -1164,21 +1164,61 @@ def _commit_existing_signing_record(
                     .distinct(DocumentSignatureField.sig_key)
                     .count()
                 )
+                # Portal 119 Fix 2 — self-heal when DocumentSignatureField rows are missing.
+                if committee_total == 0:
+                    committee_total = (
+                        db.query(AuditSetCommitteeMember)
+                        .filter_by(audit_set_id=doc.audit_set_id)
+                        .count()
+                    )
+                    if committee_total == 0:
+                        logger.warning(
+                            "Portal 119: FR.233 CM sign: no committee members found "
+                            "for audit_set_id=%s — cannot determine committee_total, "
+                            "certification blocked.",
+                            doc.audit_set_id,
+                        )
                 if committee_total > 0 and committee_signed >= committee_total:
                     if record:
                         record.status = "complete"
                     audit_set = db.query(AuditSet).filter_by(id=doc.audit_set_id).first()
                     if audit_set and audit_set.workflow_status != "certified":
-                        old = audit_set.workflow_status
-                        audit_set.workflow_status  = "certified"
-                        audit_set.cert_issued_date = now.date()
-                        db.add(AuditSetStatusEvent(
-                            audit_set_id=doc.audit_set_id,
-                            from_status=old,
-                            to_status="certified",
-                            triggered_by=current_user.id,
-                            notes="FR.233 signed by Certification Manager",
-                        ))
+                        # Portal 119 Fix 1 — inline NC gate (mirrors _assert_nc_complete_gate
+                        # in workflow_router but does not raise; blocks silently instead).
+                        from audit_set.db_models import AuditSetNCDecision, AuditSetNCItem
+                        nc_decision = (
+                            db.query(AuditSetNCDecision)
+                            .filter_by(audit_set_id=doc.audit_set_id)
+                            .first()
+                        )
+                        nc_cleared = (
+                            nc_decision is not None
+                            and (
+                                nc_decision.no_nc
+                                or db.query(AuditSetNCItem)
+                                    .filter_by(audit_set_id=doc.audit_set_id)
+                                    .filter(AuditSetNCItem.status != "closed")
+                                    .count() == 0
+                            )
+                        )
+                        if not nc_cleared:
+                            logger.warning(
+                                "Portal 119: FR.233 CM sign: NC gate blocked "
+                                "auto-certification for audit_set_id=%s — "
+                                "NC decision missing or open NCs remain.",
+                                doc.audit_set_id,
+                            )
+                        else:
+                            old = audit_set.workflow_status
+                            audit_set.workflow_status  = "certified"
+                            audit_set.cert_issued_date = now.date()
+                            db.add(AuditSetStatusEvent(
+                                audit_set_id=doc.audit_set_id,
+                                from_status=old,
+                                to_status="certified",
+                                triggered_by=current_user.id,
+                                notes="FR.233 signed by Certification Manager",
+                            ))
             db.commit()
             return
 
