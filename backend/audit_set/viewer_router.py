@@ -780,7 +780,7 @@ def _assert_can_sign(
             if not stage or stage.lead_auditor_id != current_user.auditor_id:
                 raise HTTPException(403, "Only the Lead Auditor for this stage may sign")
 
-        elif sig_key == "CLIENT":
+        elif sig_key in ("CLIENT", "ORG_REP"):   # Portal 121
             if nc.client_signed_at:
                 raise HTTPException(400, "Client has already signed this NC form")
             if current_user.role != "client":
@@ -1014,7 +1014,7 @@ def _get_field_status(
                 is_la = stage is not None and stage.lead_auditor_id == current_user.auditor_id
             return _result("current_user" if is_la else "pending")
 
-        elif sig_key == "CLIENT":
+        elif sig_key in ("CLIENT", "ORG_REP"):   # Portal 121
             if nc.client_signed_at:
                 return _result("signed", _user_name(nc.client_user_id), vsp.signature_image if vsp else None)
             if not nc.la_signed_at:
@@ -1382,7 +1382,7 @@ def _commit_existing_signing_record(
             nc.status         = "pending_client"
             db.commit()
 
-        elif sig_key == "CLIENT" and not nc.client_signed_at:
+        elif sig_key in ("CLIENT", "ORG_REP") and not nc.client_signed_at:   # Portal 121
             nc.client_user_id     = current_user.id
             nc.client_signed_at   = now
             nc.client_signed_ip   = ip

@@ -44,7 +44,10 @@ def _normalize_sig_key(raw_key: str, docx_basename: str) -> str:
     if raw_key == "AUDITOR_MEMBER":
         return "ASSIGNED_AUDITOR"
     name = docx_basename.upper()
-    if raw_key == "CLIENT" and ("FR.211" in name or "FR.223" in name):
+    if raw_key == "CLIENT" and (
+        "FR.211" in name or "FR.223" in name
+        or "FR.230" in name or "FR230" in name   # Portal 121 — NC form
+    ):
         return "ORG_REP"
     if raw_key == "CB_REVIEWER" and ("FR.231" in name or "FR.232" in name):
         return "APPOINTED_REVIEWER"

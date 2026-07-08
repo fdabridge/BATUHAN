@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import api from '@/lib/api'
-import { useAuth } from '@/lib/auth'
 
 interface PendingSig {
   id: string
@@ -15,15 +14,18 @@ interface PendingSig {
   signer_role_label: string
 }
 
+/** Map AuditDocumentSignature.document_type to the viewer URL segment. */
+function viewerDocType(documentType: string): 'shared_doc' | 'audit_report' {
+  if (documentType === 'stage1_report' || documentType === 'stage2_report') {
+    return 'audit_report'
+  }
+  return 'shared_doc'
+}
+
 export function PendingSignaturesWidget() {
-  const { user } = useAuth()
   const [sigs, setSigs]                       = useState<PendingSig[]>([])
   const [loading, setLoading]                 = useState(true)
   const [busy, setBusy]                       = useState(false)
-
-  const [otpSigningId, setOtpSigningId]       = useState<string | null>(null)
-  const [otpSent, setOtpSent]                 = useState(false)
-  const [otpValue, setOtpValue]               = useState('')
 
   const [sigPreviewSlot, setSigPreviewSlot]   = useState<PendingSig | null>(null)
   const [sigPreviewImage, setSigPreviewImage] = useState<string | null>(null)
@@ -81,39 +83,6 @@ export function PendingSignaturesWidget() {
     }
   }
 
-  async function requestOtp(sig: PendingSig) {
-    setOtpSigningId(sig.id)
-    setOtpSent(false)
-    setError('')
-    setBusy(true)
-    try {
-      await api.post(`/audit-sets/${sig.audit_set_id}/signatures/${sig.id}/request-otp`)
-      setOtpSent(true)
-    } catch (e: unknown) {
-      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setError(detail || 'Failed to send code')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function verifyOtp(sig: PendingSig) {
-    setBusy(true)
-    setError('')
-    try {
-      await api.post(`/audit-sets/${sig.audit_set_id}/signatures/${sig.id}/verify?otp=${otpValue}`)
-      setOtpSigningId(null)
-      setOtpValue('')
-      setOtpSent(false)
-      await load()
-    } catch (e: unknown) {
-      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setError(detail || 'Invalid code')
-    } finally {
-      setBusy(false)
-    }
-  }
-
   if (loading || sigs.length === 0) return null
 
 
@@ -128,13 +97,7 @@ export function PendingSignaturesWidget() {
             // Filter out legacy FR.218 slots that have no backing document
             .filter(sig => !(sig.document_type === 'FR218' && !sig.document_id))
             .map((sig) => {
-            // Any slot backed by an AuditSetSharedDocument (has document_id) goes through
-            // the Certiva viewer — this covers all modern document types including stage
-            // reports, NC forms, FR.218, FR.224, etc.
-            // isInternal only applies to legacy in-memory slots (no document_id) for FR218/FR222.
             const isViewer = !!sig.document_id
-            const isInternal = !isViewer && ['FR218', 'FR222'].includes(sig.document_type)
-            const isOtpSigning = otpSigningId === sig.id
             return (
               <div key={sig.id} className="rounded-lg border border-amber-100 bg-white p-4">
                 <div className="flex items-center justify-between">
@@ -147,14 +110,14 @@ export function PendingSignaturesWidget() {
 
                   {isViewer && sig.document_id && (
                     <a
-                      href={`/viewer/shared_doc/${sig.document_id}`}
+                      href={`/viewer/${viewerDocType(sig.document_type)}/${sig.document_id}`}
                       className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#143828]"
                     >
                       Open to Sign
                     </a>
                   )}
 
-                  {isInternal && !isViewer && !isOtpSigning && (
+                  {!isViewer && (
                     sig.document_type === 'FR222' && !sig.document_id ? (
                       <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-500">
                         Awaiting document upload
@@ -170,72 +133,7 @@ export function PendingSignaturesWidget() {
                       </button>
                     )
                   )}
-
-                  {!isInternal && !isViewer && !isOtpSigning && (
-                    user?.role === 'planner_us' ? (
-                      <button
-                        type="button"
-                        onClick={() => openDirectSign(sig)}
-                        disabled={busy}
-                        className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
-                      >
-                        Sign
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => requestOtp(sig)}
-                        disabled={busy}
-                        className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
-                      >
-                        Sign
-                      </button>
-                    )
-                  )}
                 </div>
-
-                {isOtpSigning && user?.role !== 'planner_us' && (
-                  <div className="mt-3 rounded-lg border bg-gray-50 p-3">
-                    {!otpSent ? (
-                      <p className="text-xs text-gray-500">
-                        {busy ? 'Sending code…' : 'Sending a 6-digit code to your email…'}
-                      </p>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <input
-                          className="w-32 rounded border px-2 py-1.5 text-center font-mono text-sm tracking-widest"
-                          placeholder="000000"
-                          maxLength={6}
-                          value={otpValue}
-                          onChange={(e) => setOtpValue(e.target.value.replace(/\D/g, ''))}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => verifyOtp(sig)}
-                          disabled={otpValue.length !== 6 || busy}
-                          className="rounded bg-[#1A4731] px-3 py-1.5 text-xs text-white disabled:opacity-40"
-                        >
-                          {busy ? '…' : 'Confirm'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { setOtpSigningId(null); setOtpSent(false); setOtpValue('') }}
-                          className="text-xs text-gray-400"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => requestOtp(sig)}
-                          className="text-xs text-gray-400 underline"
-                        >
-                          Resend
-                        </button>
-                      </div>
-                    )}
-                    {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
-                  </div>
-                )}
               </div>
             )
           })}
