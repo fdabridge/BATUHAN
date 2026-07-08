@@ -998,6 +998,64 @@ def _get_field_status(
                 return _result("current_user", member_name)
             return _result("pending", member_name)
 
+        # Portal 124 — static committee keys written by fr233_generator.py.
+        # These must be checked BEFORE cm_match because COMMITTEE_MEMBER_1 and
+        # COMMITTEE_MEMBER_2 also match COMMITTEE_MEMBER_RE (treating "1"/"2" as
+        # member_id), which would silently fail name resolution and user matching.
+        if sig_key in COMMITTEE_SIG_KEYS:
+            members_q = (
+                db.query(AuditSetCommitteeMember)
+                .filter_by(audit_set_id=doc.audit_set_id)
+                .order_by(AuditSetCommitteeMember.appointed_at)
+                .all()
+            )
+            chair = next((m for m in members_q if m.role == "decision_maker"), None)
+            non_chairs = [m for m in members_q if m is not chair]
+            if sig_key == "COMMITTEE_CHAIR":
+                slot_member = chair
+            elif sig_key == "COMMITTEE_MEMBER_1":
+                slot_member = non_chairs[0] if len(non_chairs) > 0 else None
+            else:  # COMMITTEE_MEMBER_2
+                slot_member = non_chairs[1] if len(non_chairs) > 1 else None
+            member_name = slot_member.user_name if slot_member else None
+            if vsp:
+                return _result("signed", member_name, vsp.signature_image)
+            if slot_member is None:
+                return _result("pending", "Awaiting committee appointment")
+            if current_user.role == "admin":
+                return _result("current_user", member_name)
+            if current_user.id == slot_member.user_id:
+                return _result("current_user", member_name)
+            return _result("pending", member_name)
+
+        if sig_key == CERT_MANAGER_FR233_KEY:
+            # CM signs last; show "blocked" until all committee slots have signed.
+            if vsp:
+                return _result("signed", _user_name(current_user.id), vsp.signature_image)
+            committee_signed_count = (
+                db.query(VisualSignaturePlacement)
+                .filter_by(document_type="shared_doc", doc_id=doc_id)
+                .filter(
+                    VisualSignaturePlacement.sig_key.in_(list(COMMITTEE_SIG_KEYS))
+                    | VisualSignaturePlacement.sig_key.like("COMMITTEE_MEMBER_%")
+                )
+                .filter(VisualSignaturePlacement.signed_at.isnot(None))
+                .count()
+            )
+            committee_total = (
+                db.query(AuditSetCommitteeMember)
+                .filter_by(audit_set_id=doc.audit_set_id)
+                .count()
+            )
+            all_committee_signed = (
+                committee_total > 0 and committee_signed_count >= committee_total
+            )
+            if current_user.role in ("certification_manager", "admin", "executive"):
+                if all_committee_signed:
+                    return _result("current_user", current_user.full_name)
+                return _result("blocked")
+            return _result("pending")
+
         # Portal 62 — dynamic COMMITTEE_MEMBER_<auditor_id> slots on FR.233.
         cm_match = COMMITTEE_MEMBER_RE.match(sig_key)
         if cm_match:

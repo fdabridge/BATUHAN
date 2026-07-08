@@ -14,7 +14,7 @@ Endpoints under /audit-sets:
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
@@ -44,6 +44,10 @@ from audit_set.db_models import (
 )
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
+
+class GenerateFR233Request(BaseModel):
+    released_at_override: str | None = None
+    """ISO 8601 date or datetime string for a retroactive release date."""
 
 router = APIRouter(prefix="/audit-sets", tags=["committee"])
 
@@ -521,6 +525,7 @@ def remove_committee_member(
 @router.post("/{audit_set_id}/fr233/generate")
 def generate_fr233(
     audit_set_id: str,
+    body: GenerateFR233Request = Body(default=GenerateFR233Request()),
     db: Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
@@ -530,6 +535,17 @@ def generate_fr233(
     import os
     from datetime import datetime
     from audit_set.fr233_generator import render_fr233_bytes
+    import datetime as _dt
+    if body.released_at_override:
+        try:
+            released_at_dt = _dt.datetime.fromisoformat(body.released_at_override)
+        except ValueError:
+            raise HTTPException(
+                400,
+                "released_at_override must be ISO 8601 format: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS",
+            )
+    else:
+        released_at_dt = _dt.datetime.utcnow()
 
     if current_user.role not in {"admin", "planner", "planner_us", "executive", "certification_manager"}:
         raise HTTPException(403, "Only Planner or Certification Manager may generate FR.233")
@@ -578,7 +594,7 @@ def generate_fr233(
             direction="cb_to_client",
             status="released",
             released_by=current_user.id,
-            released_at=datetime.utcnow(),
+            released_at=released_at_dt,
         )
         db.add(doc)
         db.flush()
@@ -586,7 +602,7 @@ def generate_fr233(
         doc.file_path  = out_path
         doc.status     = "released"
         doc.released_by= current_user.id
-        doc.released_at= datetime.utcnow()
+        doc.released_at= released_at_dt
         # Old PDF + extracted SIG fields are stale — drop them so the viewer
         # re-converts and re-extracts from the new DOCX on next open.
         invalidate_cache(out_path)

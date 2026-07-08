@@ -69,7 +69,9 @@ def _build_committee_context(audit_set) -> list[dict]:
     members = list(raw) if isinstance(raw, list) else []
 
     # Chairperson first.
-    members.sort(key=lambda m: 0 if m.get("role") == "chairperson" else 1)
+    # Portal 124 — AuditSetCommitteeMember.role uses "decision_maker" for the chair.
+    # Accept "chairperson" as legacy fallback for snapshots written before Portal 64.
+    members.sort(key=lambda m: 0 if m.get("role") in ("decision_maker", "chairperson") else 1)
 
     ctx = [
         {
