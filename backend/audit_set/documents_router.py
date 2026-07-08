@@ -92,9 +92,9 @@ DOC_SIG_SLOTS: dict[str, list[str]] = {
     # Portal 58 — per-stage FR.211: client uploads the completed assessment and
     # signs it via the viewer using the Portal 56 org-rep employee picker.
     "auditor_assessment": ["org_rep"],
-    # Portal 82/83 — FR.234 Surveillance Notification: org_rep signs for acknowledgement.
+    # FR.234 Surveillance Notification: planner issues it, org_rep acknowledges it.
     # Signing is optional and does NOT gate workflow advance (advance fires at release time).
-    "surveillance_notification": ["org_rep"],
+    "surveillance_notification": ["cb_planner", "org_rep"],
 }
 
 # Linear order of the initial-certification status machine, used for
