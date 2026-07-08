@@ -5,14 +5,60 @@ import Link from 'next/link'
 import api from '@/lib/api'
 
 const WORKFLOW_STEPS = [
-  { key: 'pending_review',    label: 'Application Received', desc: 'Your application is being reviewed by our team.' },
-  { key: 'in_planning',       label: 'Planning',             desc: 'We are preparing your audit plan and assigning your auditor.' },
-  { key: 'quotation_sent',    label: 'Quotation',            desc: 'Your quotation is ready. Please review and sign.' },
-  { key: 'agreement_signed',  label: 'Agreement Confirmed',  desc: 'Your agreement has been signed.' },
-  { key: 'audit_scheduled',   label: 'Audit Scheduled',      desc: 'Your audit dates have been confirmed.' },
-  { key: 'audit_in_progress', label: 'Audit In Progress',    desc: 'Your audit is currently underway.' },
-  { key: 'under_review',      label: 'Under Review',         desc: 'The certification committee is reviewing your audit.' },
-  { key: 'certified',         label: 'Certified \u2713',          desc: 'Congratulations! Your certification has been issued.' },
+  {
+    key:      'application',
+    label:    'Application Received',
+    desc:     'Your application is being reviewed by our team.',
+    statuses: ['pending_review'],
+  },
+  {
+    key:      'planning',
+    label:    'Planning',
+    desc:     'We are preparing your audit plan and assigning your auditor.',
+    statuses: ['in_planning'],
+  },
+  {
+    key:      'quotation',
+    label:    'Quotation',
+    desc:     'Your quotation is ready. Please review and sign.',
+    statuses: ['quotation_draft', 'quotation_sent'],
+  },
+  {
+    key:      'agreement',
+    label:    'Agreement Confirmed',
+    desc:     'Your agreement has been signed. Audit preparation will begin shortly.',
+    statuses: ['agreement_signed'],
+  },
+  {
+    key:      'document_review',
+    label:    'Document Review',
+    desc:     'Our team is reviewing your management system documentation (FR.218).',
+    statuses: ['fr218_in_progress', 'fr218_complete'],
+  },
+  {
+    key:      'stage1',
+    label:    'Stage 1 Audit',
+    desc:     'The Stage 1 (document review) audit is underway.',
+    statuses: ['stage1_scheduled', 'stage1_in_progress', 'stage1_complete'],
+  },
+  {
+    key:      'stage2',
+    label:    'Stage 2 Audit',
+    desc:     'The Stage 2 (main site) audit is underway.',
+    statuses: ['stage2_scheduled', 'stage2_in_progress', 'stage2_complete'],
+  },
+  {
+    key:      'committee',
+    label:    'Committee Review',
+    desc:     'The certification committee is reviewing your audit results.',
+    statuses: ['committee_review', 'under_review'],
+  },
+  {
+    key:      'certified',
+    label:    'Certified \u2713',
+    desc:     'Congratulations! Your certification has been issued.',
+    statuses: ['certified'],
+  },
 ]
 
 const STANDARD_NAMES: Record<string, string> = {
@@ -135,7 +181,15 @@ function computeNextAction(
   }
 
   // No employees
-  if (employees.length === 0 && (status === 'audit_scheduled' || status === 'audit_in_progress' || status === 'in_planning' || status === 'agreement_signed')) {
+  const ACTIVE_AUDIT_STATUSES = new Set([
+    'agreement_signed',
+    'fr218_in_progress', 'fr218_complete',
+    'stage1_scheduled', 'stage1_in_progress', 'stage1_complete',
+    'stage2_scheduled', 'stage2_in_progress', 'stage2_complete',
+    'audit_scheduled', 'audit_in_progress',
+    'in_planning',
+  ])
+  if (employees.length === 0 && ACTIVE_AUDIT_STATUSES.has(status ?? '')) {
     return {
       urgency: 'medium',
       title:   'Add your organisation personnel',
@@ -147,7 +201,7 @@ function computeNextAction(
 
   // Employees missing signatures
   const missingSigs = employees.filter((e) => !e.has_signature).length
-  if (missingSigs > 0 && (status === 'audit_scheduled' || status === 'audit_in_progress')) {
+  if (missingSigs > 0 && ACTIVE_AUDIT_STATUSES.has(status ?? '')) {
     return {
       urgency: 'medium',
       title:   `${missingSigs} employee${missingSigs > 1 ? 's' : ''} missing a signature`,
@@ -168,11 +222,27 @@ function computeNextAction(
 
   // Status-specific fallbacks
   const statusMap: Record<string, ActionCard> = {
-    pending_review:   { urgency: 'info',   title: 'Application received', body: 'Our team is reviewing your application. No action needed right now.' },
-    in_planning:      { urgency: 'info',   title: 'Audit planning in progress', body: 'We\'re preparing your audit plan and assigning your auditor.' },
-    agreement_signed: { urgency: 'info',   title: 'Agreement confirmed', body: 'We\'ll notify you when your audit dates are confirmed.' },
-    audit_scheduled:  { urgency: 'medium', title: 'Your audit is scheduled', body: 'Prepare your documentation and ensure your employees are listed.' },
-    audit_in_progress:{ urgency: 'info',   title: 'Audit in progress', body: 'Your audit is underway. Sign any meeting forms you receive.' },
+    // ── Pre-audit ──────────────────────────────────────────────────────────
+    pending_review:      { urgency: 'info',   title: 'Application received',         body: 'Our team is reviewing your application. No action needed right now.' },
+    in_planning:         { urgency: 'info',   title: 'Audit planning in progress',   body: "We're preparing your audit plan and assigning your auditor." },
+    quotation_draft:     { urgency: 'info',   title: 'Quotation being prepared',     body: "We're preparing your cost quotation. You'll receive it shortly." },
+    quotation_sent:      { urgency: 'medium', title: 'Quotation ready to sign',      body: 'Your quotation is in the Documents section. Please review and sign it.' },
+    agreement_signed:    { urgency: 'info',   title: 'Agreement confirmed',          body: "We'll notify you when your audit preparation begins." },
+    // ── Document review (FR.218) ───────────────────────────────────────────
+    fr218_in_progress:   { urgency: 'info',   title: 'Document review in progress',  body: 'Our team is reviewing your management system documentation. No action needed.' },
+    fr218_complete:      { urgency: 'info',   title: 'Document review complete',     body: 'Your documents have been reviewed. Stage 1 will be scheduled next.' },
+    // ── Stage 1 ────────────────────────────────────────────────────────────
+    stage1_scheduled:    { urgency: 'medium', title: 'Stage 1 audit scheduled',      body: 'Prepare your documentation and ensure your employees are listed with signatures.' },
+    stage1_in_progress:  { urgency: 'info',   title: 'Stage 1 audit in progress',    body: 'Your Stage 1 audit is underway. Sign any forms you receive.' },
+    stage1_complete:     { urgency: 'info',   title: 'Stage 1 complete',             body: 'Stage 1 is complete. Stage 2 will be scheduled next.' },
+    // ── Stage 2 ────────────────────────────────────────────────────────────
+    stage2_scheduled:    { urgency: 'medium', title: 'Stage 2 audit scheduled',      body: 'Ensure your employees and their signatures are up to date before the audit.' },
+    stage2_in_progress:  { urgency: 'info',   title: 'Stage 2 audit in progress',    body: 'Your Stage 2 audit is underway. Sign any meeting forms you receive.' },
+    stage2_complete:     { urgency: 'info',   title: 'Stage 2 complete',             body: 'Stage 2 is complete. The certification committee will now review your results.' },
+    // ── Committee / certified ──────────────────────────────────────────────
+    committee_review:    { urgency: 'info',   title: 'Under committee review',       body: "No action needed right now. We'll notify you when the decision is made." },
+    audit_scheduled:     { urgency: 'medium', title: 'Your audit is scheduled',      body: 'Prepare your documentation and ensure your employees are listed.' },
+    audit_in_progress:   { urgency: 'info',   title: 'Audit in progress',            body: 'Your audit is underway. Sign any meeting forms you receive.' },
   }
   return statusMap[status ?? ''] ?? { urgency: 'info', title: 'All caught up', body: 'No pending actions right now.' }
 }
@@ -206,7 +276,9 @@ export default function ClientOverviewPage() {
   if (loading) return <div className="p-8 text-gray-400">Loading\u2026</div>
   if (!data)   return <div className="p-8 text-red-500">Could not load your data.</div>
 
-  const currentIdx = WORKFLOW_STEPS.findIndex((s) => s.key === data.workflow_status)
+  const currentIdx = WORKFLOW_STEPS.findIndex(
+    (s) => s.statuses.includes(data.workflow_status ?? '')
+  )
   const stage1 = data.stages?.find((s) => s.stage_type === 'stage_1')
   const stage2 = data.stages?.find((s) => s.stage_type === 'stage_2')
   const auditorName = stage2?.lead_auditor_name ?? stage1?.lead_auditor_name
@@ -356,7 +428,7 @@ export default function ClientOverviewPage() {
             const isDone    = currentIdx >= 0 && idx <  currentIdx
             const isCurrent = currentIdx >= 0 && idx === currentIdx
             const isFuture  = currentIdx <  0 || idx >  currentIdx
-            const histEvent = history.find((h) => h.to_status === step.key)
+            const histEvent = history.find((h) => step.statuses.includes(h.to_status))
 
             return (
               <div key={step.key} className="flex gap-3">
