@@ -291,6 +291,7 @@ function ScopeInput({ standardCode, eaCodes, scopeCategory, onChangeEA, onChange
             )
           })}
         </div>
+        <p className="mt-1 text-[11px] text-gray-400">Select the EA sector codes this auditor is qualified to audit.</p>
       </div>
       {!c.includes('27001') && (
         <div>
@@ -535,7 +536,12 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
                 {(() => {
                   const label = scopeLabel(q)
                   const type  = getStandardType(q.standard_code ?? '')
-                  if (!label) return null
+                  if (!label) {
+                    if (type === 'ea') {
+                      return <p className="mt-1 text-xs text-gray-400 italic">No EA codes on file</p>
+                    }
+                    return null
+                  }
 
                   if (type === 'food') return (
                     <div className="mt-1 flex flex-wrap gap-1">
