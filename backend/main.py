@@ -288,15 +288,40 @@ def on_startup():
     # confirm exactly where files are going and whether the volume is mounted.
     import os as _os
     _sp = settings.storage_base_path
+    _abs_sp = _os.path.abspath(_sp)
+    _railway_mount = _os.environ.get("RAILWAY_VOLUME_MOUNT_PATH")
+    _is_railway = any(
+        _os.environ.get(k)
+        for k in (
+            "RAILWAY_ENVIRONMENT",
+            "RAILWAY_PROJECT_ID",
+            "RAILWAY_SERVICE_ID",
+            "RAILWAY_DEPLOYMENT_ID",
+        )
+    )
+    if _is_railway and _abs_sp.startswith("/data"):
+        if not _railway_mount:
+            raise RuntimeError(
+                "[STORAGE SAFETY] STORAGE_BASE_PATH points under /data but "
+                "RAILWAY_VOLUME_MOUNT_PATH is not set. Refusing to start because "
+                "uploads would be written to ephemeral container disk."
+            )
+        _abs_mount = _os.path.abspath(_railway_mount)
+        if _os.path.commonpath([_abs_sp, _abs_mount]) != _abs_mount:
+            raise RuntimeError(
+                "[STORAGE SAFETY] STORAGE_BASE_PATH=%s is not inside the "
+                "Railway volume mount %s. Refusing to start."
+                % (_abs_sp, _abs_mount)
+            )
     try:
-        _os.makedirs(_sp, exist_ok=True)
-        _test = _os.path.join(_sp, ".storage_probe")
+        _os.makedirs(_abs_sp, exist_ok=True)
+        _test = _os.path.join(_abs_sp, ".storage_probe")
         with open(_test, "w") as _f:
             _f.write("ok")
         _os.remove(_test)
         logger.info(
-            "[STORAGE PROBE] ✓ STORAGE_BASE_PATH=%s  write OK  abspath=%s",
-            _sp, _os.path.abspath(_sp),
+            "[STORAGE PROBE] ✓ STORAGE_BASE_PATH=%s  write OK  abspath=%s  railway_volume_mount=%s",
+            _sp, _abs_sp, _railway_mount or "",
         )
     except Exception as _exc:
         logger.error(
@@ -336,6 +361,12 @@ def health_storage():
     import os as _os, time as _time
     sp = settings.storage_base_path
     abs_sp = _os.path.abspath(sp)
+    railway_mount = _os.environ.get("RAILWAY_VOLUME_MOUNT_PATH")
+    abs_mount = _os.path.abspath(railway_mount) if railway_mount else None
+    mount_matches = (
+        bool(abs_mount)
+        and _os.path.commonpath([abs_sp, abs_mount]) == abs_mount
+    )
     exists = _os.path.exists(abs_sp)
     writable = False
     error = None
@@ -353,6 +384,8 @@ def health_storage():
     return {
         "STORAGE_BASE_PATH_env":   sp,
         "STORAGE_BASE_PATH_abs":   abs_sp,
+        "RAILWAY_VOLUME_MOUNT_PATH": railway_mount,
+        "storage_inside_railway_volume": mount_matches,
         "directory_exists":        exists,
         "write_test":              "OK" if writable else f"FAILED: {error}",
         "top_level_contents":      listing,
@@ -370,4 +403,3 @@ def health_detailed():
     report = run_health_checks()
     status_code = 200 if report["healthy"] else 503
     return JSONResponse(content=report, status_code=status_code)
-
