@@ -22,6 +22,8 @@ interface NCReview {
 
 interface NCItem {
   id:          string
+  stage_type?: string | null
+  stage_label?: string | null
   nc_index:    number
   category:    string
   description: string
@@ -34,6 +36,8 @@ interface NCItem {
 interface NCDecision {
   id:          string
   audit_set_id: string
+  stage_type?: string | null
+  stage_label?: string | null
   no_nc:       boolean
   notes:       string | null
   decided_at:  string
@@ -55,7 +59,7 @@ const STATUS_COLOR: Record<string, string> = {
 
 export default function ClientNcsPage() {
   const { user } = useAuth()
-  const [decision, setDecision] = useState<NCDecision | null | undefined>(undefined)
+  const [decisions, setDecisions] = useState<NCDecision[] | undefined>(undefined)
   const [loading, setLoading]   = useState(true)
   const [uploading, setUploading] = useState<string | null>(null)
   const [uploadType, setUploadType] = useState<Record<string, string>>({})
@@ -63,9 +67,13 @@ export default function ClientNcsPage() {
   const [activeNcId, setActiveNcId] = useState<string | null>(null)
 
   const load = () => {
-    api.get<NCDecision | null>('/client/my-audit-set/ncs')
-      .then((r) => setDecision(r.data))
-      .catch(() => setDecision(null))
+    api.get<NCDecision[] | NCDecision | null>('/client/my-audit-set/ncs')
+      .then((r) => {
+        if (Array.isArray(r.data)) setDecisions(r.data)
+        else if (r.data) setDecisions([r.data])
+        else setDecisions([])
+      })
+      .catch(() => setDecisions([]))
       .finally(() => setLoading(false))
   }
 
@@ -79,7 +87,7 @@ export default function ClientNcsPage() {
       const formData = new FormData()
       formData.append('upload_type', type)
       Array.from(files).forEach((f) => formData.append('files', f))
-      const auditSetId = decision?.audit_set_id
+      const auditSetId = decisions?.find((decision) => decision.items.some((item) => item.id === ncId))?.audit_set_id
       await api.post(`/audit-sets/${auditSetId}/nc-items/${ncId}/evidence`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
@@ -98,7 +106,7 @@ export default function ClientNcsPage() {
     </div>
   )
 
-  if (!decision) return (
+  if (!decisions || decisions.length === 0) return (
     <div className="p-8 space-y-2">
       <h1 className="text-lg font-semibold text-gray-900">Nonconformities</h1>
       <p className="text-sm text-gray-500">
@@ -108,22 +116,30 @@ export default function ClientNcsPage() {
     </div>
   )
 
-  if (decision.no_nc) return (
+  const decisionsWithItems = decisions.filter((decision) => !decision.no_nc)
+  const allNoNC = decisions.length > 0 && decisionsWithItems.length === 0
+
+  if (allNoNC) return (
     <div className="p-8 space-y-4">
       <h1 className="text-lg font-semibold text-gray-900">Nonconformities</h1>
-      <div className="rounded-lg bg-green-50 border border-green-200 p-4 flex items-center gap-3">
-        <svg className="h-5 w-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-        </svg>
-        <div>
-          <p className="text-sm font-medium text-green-800">No nonconformities were identified</p>
-          {decision.notes && <p className="text-xs text-green-600 mt-0.5">{decision.notes}</p>}
+      {decisions.map((decision) => (
+        <div key={decision.id} className="rounded-lg bg-green-50 border border-green-200 p-4 flex items-center gap-3">
+          <svg className="h-5 w-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          <div>
+            <p className="text-sm font-medium text-green-800">
+              {decision.stage_label || decision.stage_type || 'Audit'}: No nonconformities were identified
+            </p>
+            {decision.notes && <p className="text-xs text-green-600 mt-0.5">{decision.notes}</p>}
+          </div>
         </div>
-      </div>
+      ))}
     </div>
   )
 
-  const allClosed = decision.items.every((i) => i.status === 'closed')
+  const allItems = decisionsWithItems.flatMap((decision) => decision.items)
+  const allClosed = allItems.length > 0 && allItems.every((i) => i.status === 'closed')
 
   return (
     <div className="p-8 space-y-6 max-w-3xl">
@@ -142,7 +158,12 @@ export default function ClientNcsPage() {
         )}
       </div>
 
-      {decision.items.map((item) => {
+      {decisionsWithItems.map((decision) => (
+        <div key={decision.id} className="space-y-4">
+          <h2 className="text-sm font-semibold text-gray-700">
+            {decision.stage_label || decision.stage_type || 'Audit'} NCs
+          </h2>
+          {decision.items.map((item) => {
         const isOverdue = item.due_date && new Date(item.due_date) < new Date() && item.status !== 'closed'
         const latestReview = item.reviews[item.reviews.length - 1]
         const isRejected   = item.status === 'rejected'
@@ -250,7 +271,9 @@ export default function ClientNcsPage() {
             )}
           </div>
         )
-      })}
+          })}
+        </div>
+      ))}
     </div>
   )
 }

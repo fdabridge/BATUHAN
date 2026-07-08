@@ -52,6 +52,19 @@ def _safe_add_column(table: str, col_def: str) -> None:
             pass  # column already exists
 
 
+def _safe_drop_constraint(table: str, constraint: str) -> None:
+    """Drop a Postgres constraint if present; ignored by SQLite/local files."""
+    if engine.dialect.name != "postgresql":
+        return
+    import sqlalchemy as sa
+    with engine.connect() as conn:
+        try:
+            conn.execute(sa.text(f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {constraint}"))
+            conn.commit()
+        except Exception:
+            pass
+
+
 def create_tables():
     # Portal 56 — checkfirst=True (default) ensures any table added after the
     # initial deploy (e.g. client_org_employees) is created on the running DB.
@@ -96,6 +109,10 @@ def create_tables():
     _safe_add_column("audit_sets", "consultant_id VARCHAR")
     # Portal 97 — trainee auditor assignments in stage planning
     _safe_add_column("audit_set_stages", "trainees JSON")
+    # Portal 118 — NC decisions are stage-specific: Stage 1 and Stage 2 are separate.
+    _safe_add_column("audit_set_nc_decisions", "stage_type VARCHAR")
+    _safe_add_column("audit_set_nc_items", "stage_type VARCHAR")
+    _safe_drop_constraint("audit_set_nc_decisions", "audit_set_nc_decisions_audit_set_id_key")
 
 
 # ---------------------------------------------------------------------------
@@ -702,13 +719,14 @@ NC_DUE_DAYS: dict[str, int] = {"critical": 14, "major": 90, "minor": 30}
 
 class AuditSetNCDecision(Base):
     """
-    One row per audit set. Created when the lead auditor finalises their NC
-    decision after Stage 2: either 'No NC' or at least one NC item exists.
+    One row per audit stage. Created when that stage's lead auditor finalises
+    the NC decision after the stage report is uploaded.
     """
     __tablename__ = "audit_set_nc_decisions"
 
     id           = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    audit_set_id = Column(String, ForeignKey("audit_sets.id", ondelete="CASCADE"), nullable=False, unique=True)
+    audit_set_id = Column(String, ForeignKey("audit_sets.id", ondelete="CASCADE"), nullable=False)
+    stage_type   = Column(String, nullable=True)
     no_nc        = Column(Boolean, default=False, nullable=False)  # True = auditor confirmed no NCs
     notes        = Column(Text, nullable=True)    # optional note for "no NC" declaration
     decided_by   = Column(String, nullable=True)  # PlatformUser.id who submitted
@@ -725,6 +743,7 @@ class AuditSetNCItem(Base):
 
     id           = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     audit_set_id = Column(String, ForeignKey("audit_sets.id", ondelete="CASCADE"), nullable=False)
+    stage_type   = Column(String, nullable=True)
     nc_index     = Column(Integer, nullable=False)  # 1-based sequential, displayed as NC-1, NC-2…
     category     = Column(String, nullable=False)   # "minor" | "major" | "critical"
     description  = Column(Text, nullable=False)     # auditor's written NC text

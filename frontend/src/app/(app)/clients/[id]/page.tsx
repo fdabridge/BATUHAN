@@ -81,6 +81,8 @@ interface NCReview {
 
 interface NCItem {
   id:          string
+  stage_type?: string | null
+  stage_label?: string | null
   nc_index:    number
   category:    string
   description: string
@@ -93,6 +95,8 @@ interface NCItem {
 interface NCDecision {
   id:          string
   audit_set_id: string
+  stage_type?: string | null
+  stage_label?: string | null
   no_nc:       boolean
   notes:       string | null
   decided_at:  string
@@ -102,6 +106,17 @@ interface NCDecision {
 interface NCItemDraft {
   category:    string
   description: string
+}
+
+interface NCStageDraft {
+  noNC: boolean
+  notes: string
+  items: NCItemDraft[]
+}
+
+interface AuditReportMini {
+  stage_type: string
+  report_form: string
 }
 
 interface NACSuggestion {
@@ -2319,14 +2334,13 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
   const [downloading, setDownloading] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
-  // NC Management state (Portal 103)
-  const [ncDecision, setNcDecision] = useState<NCDecision | null | undefined>(undefined)
+  // NC Management state (Portal 103 / 118)
+  const [ncDecisions, setNcDecisions] = useState<Record<string, NCDecision | null | undefined>>({})
   const [ncLoading, setNcLoading]   = useState(false)
   const [ncSubmitting, setNcSubmitting] = useState(false)
-  const [ncError, setNcError]       = useState<string | null>(null)
-  const [ncItems, setNcItems]       = useState<NCItemDraft[]>([{ category: 'minor', description: '' }])
-  const [ncNoNC, setNcNoNC]         = useState(false)
-  const [ncNotes, setNcNotes]       = useState('')
+  const [ncSubmittingStage, setNcSubmittingStage] = useState<string | null>(null)
+  const [ncErrors, setNcErrors] = useState<Record<string, string | null>>({})
+  const [ncDrafts, setNcDrafts] = useState<Record<string, NCStageDraft>>({})
   const [reviewingId, setReviewingId]   = useState<string | null>(null)
   const [reviewNotes, setReviewNotes]   = useState('')
 
@@ -2339,6 +2353,53 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
     queryKey: ['auditors-active'],
     queryFn:  () => api.get<AuditorSummary[]>('/auditors/?active_only=true').then((r) => r.data),
   })
+
+  const currentAuditorId = (currentUser as { auditor_id?: string | null } | null | undefined)?.auditor_id ?? null
+  const ncStages = useMemo(
+    () => (data?.stages ?? []).filter((stage) => ['stage_1', 'stage_2'].includes(stage.stage_type)),
+    [data?.stages],
+  )
+  const canUseAuditFlowNC = currentUser?.role === 'auditor'
+
+  const { data: auditReports = [] } = useQuery<AuditReportMini[]>({
+    queryKey: ['audit-reports', id],
+    queryFn: () => api.get<AuditReportMini[]>(`/audit-sets/${id}/audit-reports`).then((r) => r.data),
+    enabled: !!id && canUseAuditFlowNC,
+  })
+
+  const hasReportForNCStage = useCallback((stageType: string) => {
+    const allowedForms = stageType === 'stage_1' ? ['FR.231', 'FR.229'] : ['FR.232', 'FR.229']
+    return auditReports.some((report) => report.stage_type === stageType && allowedForms.includes(report.report_form))
+  }, [auditReports])
+
+  const isCurrentLeadForStage = useCallback((stage: StageResponse) => {
+    return currentUser?.role === 'auditor' && !!currentAuditorId && stage.lead_auditor_id === currentAuditorId
+  }, [currentAuditorId, currentUser?.role])
+
+  const ncStageLabel = useCallback((stageType: string) => {
+    if (stageType === 'stage_1') return 'Stage 1'
+    if (stageType === 'stage_2') return 'Stage 2'
+    return stageType.replace(/_/g, ' ')
+  }, [])
+
+  const getNCDraft = useCallback((stageType: string): NCStageDraft => {
+    return ncDrafts[stageType] ?? {
+      noNC: false,
+      notes: '',
+      items: [{ category: 'minor', description: '' }],
+    }
+  }, [ncDrafts])
+
+  const updateNCDraft = useCallback((stageType: string, updater: (draft: NCStageDraft) => NCStageDraft) => {
+    setNcDrafts((prev) => {
+      const current = prev[stageType] ?? {
+        noNC: false,
+        notes: '',
+        items: [{ category: 'minor', description: '' }],
+      }
+      return { ...prev, [stageType]: updater(current) }
+    })
+  }, [])
 
   // Auto-calculate man-days on page load if result is missing but personnel is stored
   const autoCalcFired = useRef(false)
@@ -2360,35 +2421,46 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
     }).then(() => queryClient.invalidateQueries({ queryKey: ['client', id] })).catch(() => {})
   }, [data?.id, data?.man_day_result])   // eslint-disable-line react-hooks/exhaustive-deps
 
-  // NC Management — load decision (Portal 103)
-  const loadNCDecision = useCallback(() => {
-    if (!id) return
+  // NC Management — load stage-specific decisions (Portal 103 / 118)
+  const loadNCDecisions = useCallback(() => {
+    if (!id || !canUseAuditFlowNC || ncStages.length === 0) return
     setNcLoading(true)
-    api.get<NCDecision | null>(`/audit-sets/${id}/nc-decision`)
-      .then((r) => setNcDecision(r.data))
-      .catch(() => setNcDecision(null))
+    Promise.all(ncStages.map((stage) => {
+      if (!isCurrentLeadForStage(stage)) {
+        return Promise.resolve<[string, NCDecision | null | undefined]>([stage.stage_type, undefined])
+      }
+      return api.get<NCDecision | null>(`/audit-sets/${id}/nc-decision`, {
+        params: { stage_type: stage.stage_type },
+      })
+        .then((r) => [stage.stage_type, r.data] as [string, NCDecision | null])
+        .catch(() => [stage.stage_type, null] as [string, NCDecision | null])
+    }))
+      .then((entries) => setNcDecisions(Object.fromEntries(entries)))
       .finally(() => setNcLoading(false))
-  }, [id])
+  }, [canUseAuditFlowNC, id, isCurrentLeadForStage, ncStages])
 
   useEffect(() => {
-    if (data?.id) loadNCDecision()
-  }, [data?.id, loadNCDecision])
+    if (data?.id) loadNCDecisions()
+  }, [data?.id, loadNCDecisions])
 
-  const handleSubmitNCDecision = async () => {
+  const handleSubmitNCDecision = async (stageType: string) => {
     if (!id) return
+    const draft = getNCDraft(stageType)
     setNcSubmitting(true)
-    setNcError(null)
+    setNcSubmittingStage(stageType)
+    setNcErrors((prev) => ({ ...prev, [stageType]: null }))
     try {
-      const payload = ncNoNC
-        ? { no_nc: true, notes: ncNotes, items: [] }
-        : { no_nc: false, notes: ncNotes, items: ncItems.filter((i) => i.description.trim()) }
+      const payload = draft.noNC
+        ? { stage_type: stageType, no_nc: true, notes: draft.notes, items: [] }
+        : { stage_type: stageType, no_nc: false, notes: draft.notes, items: draft.items.filter((i) => i.description.trim()) }
       const r = await api.post<NCDecision>(`/audit-sets/${id}/nc-decision`, payload)
-      setNcDecision(r.data)
+      setNcDecisions((prev) => ({ ...prev, [stageType]: r.data }))
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string } } }
-      setNcError(err.response?.data?.detail || 'Submission failed')
+      setNcErrors((prev) => ({ ...prev, [stageType]: err.response?.data?.detail || 'Submission failed' }))
     } finally {
       setNcSubmitting(false)
+      setNcSubmittingStage(null)
     }
   }
 
@@ -2401,7 +2473,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
       })
       setReviewingId(null)
       setReviewNotes('')
-      loadNCDecision()
+      loadNCDecisions()
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string } } }
       alert(err.response?.data?.detail || 'Review failed')
@@ -2732,126 +2804,164 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
         userRole={currentUser?.role}
       />
 
-      {/* ── NC Management (Portal 103) ──────────────────────────────────────── */}
-      {ncDecision === undefined ? (
-        ncLoading ? (
-          <div className="rounded-lg border bg-white p-6 text-sm text-gray-400">Loading NC data…</div>
-        ) : null
-      ) : ncDecision === null ? (
-        /* No decision yet — show submission form for auditor/admin/planner */
-        currentUser && ['admin', 'planner', 'planner_us', 'auditor'].includes(currentUser.role) ? (
-          <div className="rounded-lg border bg-white p-6 space-y-4">
-            <h2 className="text-base font-semibold text-gray-900">Nonconformities (NC)</h2>
-            <p className="text-sm text-gray-500">
-              After Stage 2 is complete, the lead auditor submits the NC decision. IFC Global
-              timelines: Critical = 14 days, Major = 90 days, Minor = 30 days.
-            </p>
+      {/* ── NC Management (Portal 103 / 118) ───────────────────────────────── */}
+      <div className="rounded-lg border bg-white p-6 space-y-4">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">Nonconformities (NC)</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            Stage NC decisions are submitted separately by the lead auditor after the relevant
+            audit report is uploaded. Cross-company NC visibility remains in the separate NC Management page.
+          </p>
+        </div>
 
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={ncNoNC}
-                onChange={(e) => setNcNoNC(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-green-700"
-              />
-              <span className="text-sm font-medium text-gray-700">No nonconformities were identified</span>
-            </label>
+        {!canUseAuditFlowNC ? (
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">
+            NC decisions for this audit flow are controlled by the stage lead auditor.
+          </div>
+        ) : ncStages.length === 0 ? (
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">
+            No Stage 1 or Stage 2 audit stages are available for NC decisions.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {ncStages.map((stage) => {
+              const stageType = stage.stage_type
+              const stageLabel = ncStageLabel(stageType)
+              const isLead = isCurrentLeadForStage(stage)
+              const reportReady = hasReportForNCStage(stageType)
+              const decision = ncDecisions[stageType]
+              const draft = getNCDraft(stageType)
 
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Notes (optional)</label>
-              <textarea
-                value={ncNotes}
-                onChange={(e) => setNcNotes(e.target.value)}
-                rows={2}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-green-700"
-                placeholder="Any additional context for this NC decision..."
-              />
-            </div>
-
-            {!ncNoNC && (
-              <div className="space-y-3">
-                <p className="text-xs font-medium text-gray-500">Nonconformities</p>
-                {ncItems.map((item, idx) => (
-                  <div key={idx} className="rounded border border-gray-200 p-3 space-y-2 bg-gray-50">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-gray-500">NC-{idx + 1}</span>
-                      <select
-                        value={item.category}
-                        onChange={(e) => {
-                          const updated = [...ncItems]
-                          updated[idx] = { ...updated[idx], category: e.target.value }
-                          setNcItems(updated)
-                        }}
-                        className="rounded border border-gray-300 px-2 py-1 text-xs"
-                      >
-                        <option value="minor">Minor</option>
-                        <option value="major">Major</option>
-                        <option value="critical">Critical</option>
-                      </select>
-                      {ncItems.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => setNcItems(ncItems.filter((_, i) => i !== idx))}
-                          className="ml-auto text-xs text-red-500 hover:text-red-700"
-                        >
-                          Remove
-                        </button>
-                      )}
+              return (
+                <div key={stage.id} className="rounded-lg border border-gray-200 p-4 space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">{stageLabel} NC Decision</p>
+                      <p className="text-xs text-gray-500">
+                        Lead auditor: {stage.lead_auditor_name || 'not assigned'}
+                      </p>
                     </div>
-                    <textarea
-                      value={item.description}
-                      onChange={(e) => {
-                        const updated = [...ncItems]
-                        updated[idx] = { ...updated[idx], description: e.target.value }
-                        setNcItems(updated)
-                      }}
-                      rows={3}
-                      className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-green-700"
-                      placeholder="Describe the nonconformity in detail (reference clause number, evidence, observation)..."
-                    />
+                    {decision?.decided_at && (
+                      <span className="text-xs text-gray-400">
+                        Decided {new Date(decision.decided_at).toLocaleDateString()}
+                      </span>
+                    )}
                   </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setNcItems([...ncItems, { category: 'minor', description: '' }])}
-                  className="text-xs text-green-700 hover:underline"
-                >
-                  + Add another NC
-                </button>
-              </div>
-            )}
 
-            {ncError && <p className="text-sm text-red-500">{ncError}</p>}
+                  {!isLead ? (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
+                      Only the assigned lead auditor can add, confirm, or review NCs for {stageLabel}.
+                    </div>
+                  ) : !reportReady ? (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                      Upload the {stageLabel} audit report before submitting the NC decision.
+                    </div>
+                  ) : ncLoading && decision === undefined ? (
+                    <div className="text-sm text-gray-400">Loading {stageLabel} NC data…</div>
+                  ) : decision === null || decision === undefined ? (
+                    <div className="space-y-4">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={draft.noNC}
+                          onChange={(e) => updateNCDraft(stageType, (current) => ({ ...current, noNC: e.target.checked }))}
+                          className="h-4 w-4 rounded border-gray-300 text-green-700"
+                        />
+                        <span className="text-sm font-medium text-gray-700">No nonconformities were identified</span>
+                      </label>
 
-            <button
-              type="button"
-              onClick={handleSubmitNCDecision}
-              disabled={ncSubmitting}
-              className="rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-              style={{ background: '#1A4731' }}
-            >
-              {ncSubmitting ? 'Submitting…' : ncNoNC ? 'Confirm — No NC' : 'Submit NC Decision'}
-            </button>
-          </div>
-        ) : null
-      ) : (
-        /* Existing decision — show items list with review controls */
-        <div className="rounded-lg border bg-white p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold text-gray-900">Nonconformities</h2>
-            <span className="text-xs text-gray-400">
-              Decided {ncDecision.decided_at ? new Date(ncDecision.decided_at).toLocaleDateString() : '—'}
-            </span>
-          </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Notes (optional)</label>
+                        <textarea
+                          value={draft.notes}
+                          onChange={(e) => updateNCDraft(stageType, (current) => ({ ...current, notes: e.target.value }))}
+                          rows={2}
+                          className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-green-700"
+                          placeholder="Any additional context for this NC decision..."
+                        />
+                      </div>
 
-          {ncDecision.no_nc ? (
-            <div className="flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 p-3">
-              <span className="text-green-700 font-medium text-sm">✓ No nonconformities were identified</span>
-              {ncDecision.notes && <span className="text-xs text-gray-500 ml-2">{ncDecision.notes}</span>}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {ncDecision.items.map((item) => {
+                      {!draft.noNC && (
+                        <div className="space-y-3">
+                          <p className="text-xs font-medium text-gray-500">Nonconformities</p>
+                          {draft.items.map((item, idx) => (
+                            <div key={idx} className="rounded border border-gray-200 p-3 space-y-2 bg-gray-50">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-semibold text-gray-500">NC-{idx + 1}</span>
+                                <select
+                                  value={item.category}
+                                  onChange={(e) => updateNCDraft(stageType, (current) => {
+                                    const items = [...current.items]
+                                    items[idx] = { ...items[idx], category: e.target.value }
+                                    return { ...current, items }
+                                  })}
+                                  className="rounded border border-gray-300 px-2 py-1 text-xs"
+                                >
+                                  <option value="minor">Minor</option>
+                                  <option value="major">Major</option>
+                                  <option value="critical">Critical</option>
+                                </select>
+                                {draft.items.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => updateNCDraft(stageType, (current) => ({
+                                      ...current,
+                                      items: current.items.filter((_, i) => i !== idx),
+                                    }))}
+                                    className="ml-auto text-xs text-red-500 hover:text-red-700"
+                                  >
+                                    Remove
+                                  </button>
+                                )}
+                              </div>
+                              <textarea
+                                value={item.description}
+                                onChange={(e) => updateNCDraft(stageType, (current) => {
+                                  const items = [...current.items]
+                                  items[idx] = { ...items[idx], description: e.target.value }
+                                  return { ...current, items }
+                                })}
+                                rows={3}
+                                className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-green-700"
+                                placeholder="Describe the nonconformity in detail (reference clause number, evidence, observation)..."
+                              />
+                            </div>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => updateNCDraft(stageType, (current) => ({
+                              ...current,
+                              items: [...current.items, { category: 'minor', description: '' }],
+                            }))}
+                            className="text-xs text-green-700 hover:underline"
+                          >
+                            + Add another NC
+                          </button>
+                        </div>
+                      )}
+
+                      {ncErrors[stageType] && <p className="text-sm text-red-500">{ncErrors[stageType]}</p>}
+
+                      <button
+                        type="button"
+                        onClick={() => handleSubmitNCDecision(stageType)}
+                        disabled={ncSubmitting && ncSubmittingStage === stageType}
+                        className="rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                        style={{ background: '#1A4731' }}
+                      >
+                        {ncSubmitting && ncSubmittingStage === stageType
+                          ? 'Submitting…'
+                          : draft.noNC ? 'Confirm — No NC' : `Submit ${stageLabel} NC Decision`}
+                      </button>
+                    </div>
+                  ) : decision.no_nc ? (
+                    <div className="flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 p-3">
+                      <span className="text-green-700 font-medium text-sm">✓ No nonconformities were identified</span>
+                      {decision.notes && <span className="text-xs text-gray-500 ml-2">{decision.notes}</span>}
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {decision.items.map((item) => {
                 const isOverdue = item.due_date && new Date(item.due_date) < new Date() && item.status !== 'closed'
                 return (
                   <div key={item.id} className="rounded-lg border border-gray-200 p-4 space-y-3">
@@ -2917,7 +3027,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
                       </div>
                     )}
 
-                    {item.status === 'client_responded' && (
+                    {isLead && item.status === 'client_responded' && (
                       <div className="border-t pt-3 space-y-2">
                         {reviewingId === item.id ? (
                           <div className="space-y-2">
@@ -2965,11 +3075,15 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
                     )}
                   </div>
                 )
-              })}
-            </div>
-          )}
-        </div>
-      )}
+                      })}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

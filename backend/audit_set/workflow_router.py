@@ -212,9 +212,66 @@ def _assert_nc_complete_gate(db: Session, audit_set_id: str) -> None:
     """
     Portal 103 — Gate for any transition → certified.
     Blocks certification until:
-    1. The lead auditor has submitted an NC decision (AuditSetNCDecision exists).
-    2. Either no_nc=True OR every NC item has status='closed'.
+    1. Each Stage 1 / Stage 2 lead auditor has submitted that stage's NC decision.
+    2. For each stage, either no_nc=True OR every NC item has status='closed'.
     """
+    from audit_set.db_models import AuditSetNCDecision, AuditSetNCItem
+    stages = (
+        db.query(AuditSetStage)
+        .filter_by(audit_set_id=audit_set_id)
+        .filter(AuditSetStage.stage_type.in_(["stage_1", "stage_2"]))
+        .order_by(AuditSetStage.stage_order)
+        .all()
+    )
+    if not stages:
+        stages = [None]
+
+    for stage in stages:
+        stage_type = stage.stage_type if stage else None
+        stage_label = {"stage_1": "Stage 1", "stage_2": "Stage 2"}.get(stage_type or "", "the audit")
+        q = db.query(AuditSetNCDecision).filter_by(audit_set_id=audit_set_id)
+        if stage_type:
+            q = q.filter_by(stage_type=stage_type)
+        else:
+            q = q.filter(AuditSetNCDecision.stage_type.is_(None))
+        decision = q.first()
+        if not decision:
+            raise HTTPException(
+                409,
+                f"Gate not met: The lead auditor has not submitted the NC decision for {stage_label}. "
+                "After each stage report is uploaded, the stage lead auditor must either confirm "
+                "'No NC' or submit nonconformity items before certification can be issued.",
+            )
+        if decision.no_nc:
+            continue
+
+        open_query = db.query(AuditSetNCItem).filter_by(audit_set_id=audit_set_id)
+        if stage_type:
+            open_query = open_query.filter_by(stage_type=stage_type)
+        else:
+            open_query = open_query.filter(AuditSetNCItem.stage_type.is_(None))
+        open_ncs = open_query.filter(AuditSetNCItem.status != "closed").count()
+        if open_ncs:
+            noun = "nonconformity" if open_ncs == 1 else "nonconformities"
+            raise HTTPException(
+                409,
+                f"Gate not met: {open_ncs} {stage_label} {noun} remain open. "
+                "All nonconformities must be closed (auditor approved) "
+                "before certification can be issued.",
+            )
+
+
+def _nc_complete_for_auto_certification(db: Session, audit_set_id: str) -> bool:
+    """Boolean version of _assert_nc_complete_gate for silent auto-certification paths."""
+    try:
+        _assert_nc_complete_gate(db, audit_set_id)
+        return True
+    except HTTPException:
+        return False
+
+
+def _legacy_assert_nc_complete_gate(db: Session, audit_set_id: str) -> None:
+    """Retained for old references during deploys; prefer _assert_nc_complete_gate."""
     from audit_set.db_models import AuditSetNCDecision, AuditSetNCItem
     decision = db.query(AuditSetNCDecision).filter_by(audit_set_id=audit_set_id).first()
     if not decision:

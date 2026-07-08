@@ -20,17 +20,19 @@ import secrets
 from datetime import date, timedelta, datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from audit_set.db_models import (
     AuditSet,
+    AuditSetAuditReport,
     AuditSetNCDecision,
     AuditSetNCItem,
     AuditSetNCEvidence,
     AuditSetNCReview,
+    AuditSetStage,
     NC_DUE_DAYS,
     get_db,
 )
@@ -42,7 +44,14 @@ from storage.document_store import upload as store_upload, ensure_local
 router = APIRouter(tags=["nc_management"])
 
 CB_ROLES    = {"admin", "planner", "planner_us", "officer", "executive", "gm"}
-AUDITOR_ROLES = {"auditor", "admin"}
+AUDITOR_ROLES = {"auditor"}
+
+NC_STAGE_TYPES = {"stage_1", "stage_2"}
+NC_STAGE_LABELS = {"stage_1": "Stage 1", "stage_2": "Stage 2"}
+REPORT_FORMS_BY_STAGE = {
+    "stage_1": {"FR.231", "FR.229"},
+    "stage_2": {"FR.232", "FR.229"},
+}
 
 
 # ── Serialisers ───────────────────────────────────────────────────────────────
@@ -83,6 +92,8 @@ def _item_dict(item: AuditSetNCItem, db: Session) -> dict:
     )
     return {
         "id":          item.id,
+        "stage_type":  item.stage_type,
+        "stage_label": NC_STAGE_LABELS.get(item.stage_type or "", item.stage_type),
         "nc_index":    item.nc_index,
         "category":    item.category,
         "description": item.description,
@@ -95,15 +106,17 @@ def _item_dict(item: AuditSetNCItem, db: Session) -> dict:
 
 
 def _decision_dict(dec: AuditSetNCDecision, db: Session) -> dict:
-    items = (
-        db.query(AuditSetNCItem)
-        .filter_by(audit_set_id=dec.audit_set_id)
-        .order_by(AuditSetNCItem.nc_index)
-        .all()
-    )
+    q = db.query(AuditSetNCItem).filter_by(audit_set_id=dec.audit_set_id)
+    if dec.stage_type:
+        q = q.filter_by(stage_type=dec.stage_type)
+    else:
+        q = q.filter(AuditSetNCItem.stage_type.is_(None))
+    items = q.order_by(AuditSetNCItem.nc_index).all()
     return {
         "id":          dec.id,
         "audit_set_id": dec.audit_set_id,
+        "stage_type":  dec.stage_type,
+        "stage_label": NC_STAGE_LABELS.get(dec.stage_type or "", dec.stage_type),
         "no_nc":       dec.no_nc,
         "notes":       dec.notes,
         "decided_at":  dec.decided_at.isoformat() if dec.decided_at else None,
@@ -118,6 +131,7 @@ class NCItemIn(BaseModel):
     description: str
 
 class NCDecisionIn(BaseModel):
+    stage_type: str
     no_nc: bool = False
     notes: Optional[str] = None
     items: list[NCItemIn] = []   # ignored when no_nc=True
@@ -142,6 +156,54 @@ def _require_cb_or_auditor(current_user: PlatformUser) -> None:
         raise HTTPException(403, "Not authorized")
 
 
+def _normalise_nc_stage(stage_type: str | None) -> str:
+    if stage_type not in NC_STAGE_TYPES:
+        raise HTTPException(422, "stage_type must be 'stage_1' or 'stage_2'")
+    return stage_type
+
+
+def _get_stage(audit_set_id: str, stage_type: str, db: Session) -> AuditSetStage:
+    stage = db.query(AuditSetStage).filter_by(
+        audit_set_id=audit_set_id, stage_type=stage_type,
+    ).first()
+    if not stage:
+        raise HTTPException(404, f"{NC_STAGE_LABELS.get(stage_type, stage_type)} not found")
+    return stage
+
+
+def _is_stage_lead(current_user: PlatformUser, stage: AuditSetStage) -> bool:
+    return (
+        current_user.role == "auditor"
+        and current_user.auditor_id is not None
+        and stage.lead_auditor_id == current_user.auditor_id
+    )
+
+
+def _require_stage_lead(current_user: PlatformUser, stage: AuditSetStage) -> None:
+    if not _is_stage_lead(current_user, stage):
+        raise HTTPException(
+            403,
+            f"Only the lead auditor assigned to {NC_STAGE_LABELS.get(stage.stage_type, stage.stage_type)} "
+            "can manage NCs for that stage.",
+        )
+
+
+def _require_report_uploaded(audit_set_id: str, stage_type: str, db: Session) -> None:
+    forms = REPORT_FORMS_BY_STAGE.get(stage_type, set())
+    exists = (
+        db.query(AuditSetAuditReport)
+        .filter_by(audit_set_id=audit_set_id, stage_type=stage_type)
+        .filter(AuditSetAuditReport.report_form.in_(forms))
+        .first()
+    )
+    if not exists:
+        raise HTTPException(
+            409,
+            f"{NC_STAGE_LABELS.get(stage_type, stage_type)} NCs can only be submitted after "
+            "that stage's audit report has been uploaded.",
+        )
+
+
 # ── POST /audit-sets/{id}/nc-decision ────────────────────────────────────────
 
 @router.post("/audit-sets/{audit_set_id}/nc-decision")
@@ -151,10 +213,11 @@ def submit_nc_decision(
     db: Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
-    if current_user.role not in CB_ROLES | AUDITOR_ROLES:
-        raise HTTPException(403, "Not authorized")
-
     _get_audit_set(audit_set_id, db)
+    stage_type = _normalise_nc_stage(payload.stage_type)
+    stage = _get_stage(audit_set_id, stage_type, db)
+    _require_stage_lead(current_user, stage)
+    _require_report_uploaded(audit_set_id, stage_type, db)
 
     if not payload.no_nc and not payload.items:
         raise HTTPException(422, "Must provide at least one NC item when no_nc=False")
@@ -165,11 +228,13 @@ def submit_nc_decision(
         if not item.description.strip():
             raise HTTPException(422, "NC description cannot be empty")
 
-    existing = db.query(AuditSetNCDecision).filter_by(audit_set_id=audit_set_id).first()
+    existing = db.query(AuditSetNCDecision).filter_by(
+        audit_set_id=audit_set_id, stage_type=stage_type,
+    ).first()
     if existing:
         in_progress = (
             db.query(AuditSetNCItem)
-            .filter_by(audit_set_id=audit_set_id)
+            .filter_by(audit_set_id=audit_set_id, stage_type=stage_type)
             .filter(AuditSetNCItem.status.in_(["client_responded", "closed"]))
             .count()
         )
@@ -179,7 +244,9 @@ def submit_nc_decision(
                 f"{in_progress} NC item(s) are already in progress (client has responded or NC is closed). "
                 "Cannot replace the NC decision once clients have begun responding."
             )
-        db.query(AuditSetNCItem).filter_by(audit_set_id=audit_set_id).delete()
+        db.query(AuditSetNCItem).filter_by(
+            audit_set_id=audit_set_id, stage_type=stage_type,
+        ).delete()
         existing.no_nc      = payload.no_nc
         existing.notes      = payload.notes
         existing.decided_by = current_user.id
@@ -188,6 +255,7 @@ def submit_nc_decision(
     else:
         decision = AuditSetNCDecision(
             audit_set_id=audit_set_id,
+            stage_type=stage_type,
             no_nc=payload.no_nc,
             notes=payload.notes,
             decided_by=current_user.id,
@@ -201,6 +269,7 @@ def submit_nc_decision(
             due = decided_date + timedelta(days=NC_DUE_DAYS[item_in.category])
             nc_item = AuditSetNCItem(
                 audit_set_id=audit_set_id,
+                stage_type=stage_type,
                 nc_index=idx,
                 category=item_in.category,
                 description=item_in.description.strip(),
@@ -219,12 +288,20 @@ def submit_nc_decision(
 @router.get("/audit-sets/{audit_set_id}/nc-decision")
 def get_nc_decision(
     audit_set_id: str,
+    stage_type: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     _require_cb_or_auditor(current_user)
     _get_audit_set(audit_set_id, db)
-    decision = db.query(AuditSetNCDecision).filter_by(audit_set_id=audit_set_id).first()
+    if stage_type is None:
+        raise HTTPException(422, "stage_type is required for audit-flow NC access")
+    stage_type = _normalise_nc_stage(stage_type)
+    stage = _get_stage(audit_set_id, stage_type, db)
+    _require_stage_lead(current_user, stage)
+    decision = db.query(AuditSetNCDecision).filter_by(
+        audit_set_id=audit_set_id, stage_type=stage_type,
+    ).first()
     if not decision:
         return None
     return _decision_dict(decision, db)
@@ -306,6 +383,9 @@ def review_nc_item(
     item = db.query(AuditSetNCItem).filter_by(id=nc_id, audit_set_id=audit_set_id).first()
     if not item:
         raise HTTPException(404, "NC item not found")
+    if item.stage_type:
+        stage = _get_stage(audit_set_id, item.stage_type, db)
+        _require_stage_lead(current_user, stage)
     if item.status == "closed":
         raise HTTPException(409, "NC item is already closed")
     if item.status not in ("client_responded",):
@@ -347,12 +427,10 @@ def client_get_ncs(
 ):
     if current_user.role != "client" or not current_user.audit_set_id:
         raise HTTPException(403, "Client access only")
-    decision = db.query(AuditSetNCDecision).filter_by(
+    decisions = db.query(AuditSetNCDecision).filter_by(
         audit_set_id=current_user.audit_set_id
-    ).first()
-    if not decision:
-        return None
-    return _decision_dict(decision, db)
+    ).order_by(AuditSetNCDecision.stage_type, AuditSetNCDecision.decided_at).all()
+    return [_decision_dict(decision, db) for decision in decisions]
 
 
 # ── Download evidence ─────────────────────────────────────────────────────────
@@ -434,6 +512,8 @@ def nc_management_summary(
         if dec.no_nc:
             rows.append({
                 "audit_set_id": dec.audit_set_id,
+                "stage_type":   dec.stage_type,
+                "stage_label":  NC_STAGE_LABELS.get(dec.stage_type or "", dec.stage_type),
                 "company_name": audit_set.company_name,
                 "plan_number":  audit_set.plan_number,
                 "no_nc":        True,
@@ -446,7 +526,12 @@ def nc_management_summary(
             })
             continue
 
-        items = db.query(AuditSetNCItem).filter_by(audit_set_id=dec.audit_set_id).all()
+        q = db.query(AuditSetNCItem).filter_by(audit_set_id=dec.audit_set_id)
+        if dec.stage_type:
+            q = q.filter_by(stage_type=dec.stage_type)
+        else:
+            q = q.filter(AuditSetNCItem.stage_type.is_(None))
+        items = q.all()
         open_count   = sum(1 for i in items if i.status != "closed")
         closed_count = sum(1 for i in items if i.status == "closed")
         has_overdue  = any(
@@ -456,6 +541,8 @@ def nc_management_summary(
 
         rows.append({
             "audit_set_id":    dec.audit_set_id,
+            "stage_type":      dec.stage_type,
+            "stage_label":     NC_STAGE_LABELS.get(dec.stage_type or "", dec.stage_type),
             "company_name":    audit_set.company_name,
             "plan_number":     audit_set.plan_number,
             "no_nc":           False,

@@ -1184,24 +1184,10 @@ def _commit_existing_signing_record(
                         record.status = "complete"
                     audit_set = db.query(AuditSet).filter_by(id=doc.audit_set_id).first()
                     if audit_set and audit_set.workflow_status != "certified":
-                        # Portal 119 Fix 1 — inline NC gate (mirrors _assert_nc_complete_gate
-                        # in workflow_router but does not raise; blocks silently instead).
-                        from audit_set.db_models import AuditSetNCDecision, AuditSetNCItem
-                        nc_decision = (
-                            db.query(AuditSetNCDecision)
-                            .filter_by(audit_set_id=doc.audit_set_id)
-                            .first()
-                        )
-                        nc_cleared = (
-                            nc_decision is not None
-                            and (
-                                nc_decision.no_nc
-                                or db.query(AuditSetNCItem)
-                                    .filter_by(audit_set_id=doc.audit_set_id)
-                                    .filter(AuditSetNCItem.status != "closed")
-                                    .count() == 0
-                            )
-                        )
+                        # Portal 118 — NC gate is stage-specific and must match
+                        # the normal workflow transition gate.
+                        from audit_set.workflow_router import _nc_complete_for_auto_certification
+                        nc_cleared = _nc_complete_for_auto_certification(db, doc.audit_set_id)
                         if not nc_cleared:
                             logger.warning(
                                 "Portal 119: FR.233 CM sign: NC gate blocked "
