@@ -24,6 +24,8 @@ from typing import TYPE_CHECKING
 
 import fitz  # PyMuPDF
 
+from storage.document_store import ensure_local, is_s3_ref
+
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
@@ -210,4 +212,7 @@ def _resolve_docx_path(document_type: str, doc_id: str, db: "Session") -> str:
     if not path:
         raise FileNotFoundError("Document not found or has no file")
 
-    return os.path.abspath(path)
+    try:
+        return ensure_local(path)
+    except (FileNotFoundError, Exception):
+        raise FileNotFoundError(f"Document file not found: {path}")

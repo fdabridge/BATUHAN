@@ -22,6 +22,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from storage.document_store import upload as store_upload, ensure_local
 from audit_set.db_models import (
     AuditSet, AuditSetImpartialityDeclaration, AuditSetStage, get_db,
 )
@@ -300,17 +301,13 @@ def sign_declaration_direct(
     # Generate PDF signing certificate (Portal 50b)
     try:
         from audit_set.declaration_pdf import generate_declaration_pdf
-        from config.settings import get_settings
 
         audit_set  = db.query(AuditSet).filter_by(id=audit_set_id).first()
         sig_image: Optional[str] = current_user.signature_image if hasattr(current_user, "signature_image") else None
 
-        _settings  = get_settings()
-        out_path = os.path.join(
-            _settings.storage_base_path,
-            audit_set_id, "declarations",
-            f"FR215_declaration_{decl.id}.pdf",
-        )
+        import tempfile as _tempfile
+        _tmp_dir = _tempfile.mkdtemp(prefix="fr215_")
+        _tmp_path = os.path.join(_tmp_dir, f"FR215_declaration_{decl.id}.pdf")
         generate_declaration_pdf(
             member_name=decl.member_name,
             member_role=decl.member_role,
@@ -319,8 +316,14 @@ def sign_declaration_direct(
             company_name=audit_set.company_name if audit_set else "",
             signed_at=decl.signed_at,
             signature_image_b64=sig_image,
-            output_path=out_path,
+            output_path=_tmp_path,
         )
+        with open(_tmp_path, "rb") as _f:
+            _pdf_bytes = _f.read()
+        relative_path = f"{audit_set_id}/declarations/FR215_declaration_{decl.id}.pdf"
+        out_path = store_upload(relative_path, _pdf_bytes, content_type="application/pdf")
+        import shutil as _shutil
+        _shutil.rmtree(_tmp_dir, ignore_errors=True)
         decl.file_path = out_path
         decl.file_name = f"FR215_declaration_{decl.member_name.replace(' ', '_')}.pdf"
         db.commit()
@@ -345,10 +348,14 @@ def download_declaration_certificate(
         raise HTTPException(404, "Declaration not found")
     if not decl.signed_at:
         raise HTTPException(400, "Not yet signed")
-    if not decl.file_path or not os.path.exists(decl.file_path):
+    if not decl.file_path:
+        raise HTTPException(404, "Signing certificate PDF not found")
+    try:
+        local_path = ensure_local(decl.file_path)
+    except FileNotFoundError:
         raise HTTPException(404, "Signing certificate PDF not found")
     return FileResponse(
-        decl.file_path,
+        local_path,
         media_type="application/pdf",
         filename=decl.file_name or f"FR215_declaration_{did}.pdf",
     )

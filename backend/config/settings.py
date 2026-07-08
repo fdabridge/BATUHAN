@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     s3_region: str = ""
     s3_access_key: str = ""
     s3_secret_key: str = ""
+    s3_endpoint_url: str = ""            # Cloudflare R2: https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+    local_storage_cache_dir: str = "/tmp/certiva-doc-cache"  # temp cache for S3 downloads
 
     # -----------------------------------------------------------------------
     # Database

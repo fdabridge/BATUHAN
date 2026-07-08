@@ -37,6 +37,7 @@ _STD_CODE_TO_ISO: dict[str, str] = {
     "CMS":        "ISO 37301",
 }
 
+from storage.document_store import upload as store_upload, ensure_local, delete as store_delete, invalidate_cache, is_s3_ref, resolve_docx_key
 from audit_set.db_models import (
     AuditSet, AuditSetCommitteeMember, AuditSetFR233Record, AuditSetSharedDocument,
     AuditSetStage, AuditDocumentSignature, VisualSignaturePlacement, get_db,
@@ -523,7 +524,6 @@ def generate_fr233(
     import os
     from datetime import datetime
     from audit_set.fr233_generator import render_fr233_bytes
-    from config.settings import get_settings
 
     if current_user.role not in {"admin", "planner", "planner_us", "executive", "certification_manager"}:
         raise HTTPException(403, "Only Planner or Certification Manager may generate FR.233")
@@ -555,12 +555,9 @@ def generate_fr233(
     except Exception as exc:
         raise HTTPException(500, f"FR.233 render failed: {exc}")
 
-    settings = get_settings()
-    out_dir = os.path.join(settings.storage_base_path, "shared_docs", audit_set_id)
-    os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, f"FR233_{audit_set.plan_number or audit_set_id}.docx")
-    with open(out_path, "wb") as f:
-        f.write(docx_bytes)
+    fname = f"FR233_{audit_set.plan_number or audit_set_id}.docx"
+    relative_path = f"shared_docs/{audit_set_id}/{fname}"
+    out_path = store_upload(relative_path, docx_bytes)
 
     record = db.query(AuditSetFR233Record).filter_by(audit_set_id=audit_set_id).first()
     doc = None
@@ -586,12 +583,10 @@ def generate_fr233(
         doc.released_at= datetime.utcnow()
         # Old PDF + extracted SIG fields are stale — drop them so the viewer
         # re-converts and re-extracts from the new DOCX on next open.
-        pdf_path = os.path.splitext(out_path)[0] + ".pdf"
-        if os.path.exists(pdf_path):
-            try:    os.remove(pdf_path)
-            except Exception: pass
+        invalidate_cache(out_path)
         from audit_set.db_models import DocumentSignatureField
-        db.query(DocumentSignatureField).filter_by(docx_path=os.path.abspath(out_path)).delete()
+        _dsf_key = resolve_docx_key(out_path)
+        db.query(DocumentSignatureField).filter_by(docx_path=_dsf_key).delete()
 
     if record is None:
         record = AuditSetFR233Record(
@@ -633,7 +628,6 @@ async def upload_fr233(
     flow keeps working unchanged."""
     import os
     from datetime import datetime
-    from config.settings import get_settings
 
     if current_user.role not in {"admin", "planner", "planner_us", "executive", "certification_manager"}:
         raise HTTPException(403, "Not authorized to upload FR.233")
@@ -646,14 +640,10 @@ async def upload_fr233(
     if ext not in {".pdf", ".docx"}:
         raise HTTPException(400, "Only PDF and DOCX files are accepted for FR.233")
 
-    settings = get_settings()
-    out_dir = os.path.join(settings.storage_base_path, "shared_docs", audit_set_id)
-    os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, f"FR233_{audit_set.plan_number or audit_set_id}{ext}")
-
+    fname = f"FR233_{audit_set.plan_number or audit_set_id}{ext}"
+    relative_path = f"shared_docs/{audit_set_id}/{fname}"
     contents = await file.read()
-    with open(out_path, "wb") as f:
-        f.write(contents)
+    out_path = store_upload(relative_path, contents)
 
     record = db.query(AuditSetFR233Record).filter_by(audit_set_id=audit_set_id).first()
     doc = None
@@ -675,19 +665,16 @@ async def upload_fr233(
     else:
         # Replacing the file — drop any stale rendered PDF + extracted sig fields
         # so the viewer re-converts and re-extracts on next open.
-        if doc.file_path and doc.file_path != out_path and os.path.exists(doc.file_path):
-            try:    os.remove(doc.file_path)
-            except Exception: pass
-        old_pdf = os.path.splitext(doc.file_path or "")[0] + ".pdf"
-        if old_pdf and os.path.exists(old_pdf):
-            try:    os.remove(old_pdf)
-            except Exception: pass
+        if doc.file_path and doc.file_path != out_path:
+            store_delete(doc.file_path)
+        invalidate_cache(out_path)
         doc.file_path   = out_path
         doc.status      = "released"
         doc.released_by = current_user.id
         doc.released_at = datetime.utcnow()
         from audit_set.db_models import DocumentSignatureField
-        db.query(DocumentSignatureField).filter_by(docx_path=os.path.abspath(out_path)).delete()
+        _dsf_key = resolve_docx_key(out_path)
+        db.query(DocumentSignatureField).filter_by(docx_path=_dsf_key).delete()
 
     if record is None:
         record = AuditSetFR233Record(

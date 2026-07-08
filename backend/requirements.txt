@@ -57,6 +57,7 @@ python-jose[cryptography]==3.3.0  # JWT signing & verification
 passlib[bcrypt]==1.7.4            # password hashing
 bcrypt==4.0.1                     # pin: passlib 1.7.4 breaks with bcrypt 4.1+
 aiofiles==24.1.0               # async file I/O
+boto3==1.35.0                      # S3-compatible storage (Cloudflare R2)
 json-repair==0.30.3            # fix malformed LLM JSON output (trailing commas, unescaped strings, etc.)
 
 # -----------------------------------------------------------------------

@@ -31,6 +31,7 @@ from audit_set.db_models import (
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
 from config.settings import get_settings
+from storage.document_store import upload as store_upload, ensure_local
 from email_service import (
     send_audit_report_review_request,
     send_client_status_update,
@@ -114,15 +115,10 @@ async def upload_audit_report(
     if not audit_set:
         raise HTTPException(404, "Audit set not found")
 
-    settings = get_settings()
-    upload_dir = os.path.join(settings.storage_base_path, "audit_reports", audit_set_id)
-    os.makedirs(upload_dir, exist_ok=True)
-
     safe_name = f"{secrets.token_hex(6)}_{file.filename or 'report'}"
-    file_path = os.path.join(upload_dir, safe_name)
-    content   = await file.read()
-    with open(file_path, "wb") as fh:
-        fh.write(content)
+    relative_path = f"audit_reports/{audit_set_id}/{safe_name}"
+    content = await file.read()
+    file_path = store_upload(relative_path, content)
 
     record_date = datetime.combine(report_date, datetime.min.time()) if report_date else datetime.utcnow()
     report = AuditSetAuditReport(
@@ -202,11 +198,14 @@ def download_audit_report(
     ).first()
     if not report:
         raise HTTPException(404, "Report not found")
-    if not report.file_path or not os.path.exists(report.file_path):
+    if not report.file_path:
         raise HTTPException(404, "File not found on server")
-
+    try:
+        local_path = ensure_local(report.file_path)
+    except FileNotFoundError:
+        raise HTTPException(404, "File not found on server")
     return FileResponse(
-        report.file_path,
+        local_path,
         filename=report.file_name or "audit_report.docx",
         media_type="application/octet-stream",
     )

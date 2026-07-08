@@ -300,7 +300,9 @@ def on_startup():
             "RAILWAY_DEPLOYMENT_ID",
         )
     )
-    if _is_railway and _abs_sp.startswith("/data"):
+    # Railway volume guard only applies in local storage mode — S3 mode does
+    # not need a persistent Railway volume for document storage.
+    if _is_railway and _abs_sp.startswith("/data") and settings.storage_backend != "s3":
         if not _railway_mount:
             raise RuntimeError(
                 "[STORAGE SAFETY] STORAGE_BASE_PATH points under /data but "
@@ -314,6 +316,13 @@ def on_startup():
                 "Railway volume mount %s. Refusing to start."
                 % (_abs_sp, _abs_mount)
             )
+    if settings.storage_backend == "s3":
+        logger.info(
+            "[STORAGE] S3 mode — documents stored in %s/%s, "
+            "local cache at %s, STORAGE_BASE_PATH=%s (legacy/cache only)",
+            settings.s3_endpoint_url, settings.s3_bucket,
+            settings.local_storage_cache_dir, _abs_sp,
+        )
     try:
         _os.makedirs(_abs_sp, exist_ok=True)
         _test = _os.path.join(_abs_sp, ".storage_probe")
@@ -392,6 +401,13 @@ def health_storage():
         "write_test":              "OK" if writable else f"FAILED: {error}",
         "top_level_contents":      listing,
     }
+
+
+@app.get("/health/storage-object", tags=["health"])
+def health_storage_object():
+    """Test S3/R2 storage: write a test object, read it back, verify, delete."""
+    from storage.document_store import health_check
+    return health_check()
 
 
 @app.get("/health/detailed", tags=["health"])

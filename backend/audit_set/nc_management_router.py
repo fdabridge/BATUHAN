@@ -37,6 +37,7 @@ from audit_set.db_models import (
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
 from config.settings import get_settings
+from storage.document_store import upload as store_upload, ensure_local
 
 router = APIRouter(tags=["nc_management"])
 
@@ -262,17 +263,12 @@ async def upload_nc_evidence(
     )
     round_num = (last_review.round_number + 1) if last_review else 1
 
-    settings = get_settings()
-    upload_dir = os.path.join(settings.storage_base_path, "nc_evidence", audit_set_id, nc_id)
-    os.makedirs(upload_dir, exist_ok=True)
-
     saved = []
     for file in files:
         safe_name = f"{secrets.token_hex(6)}_{file.filename or 'evidence'}"
-        file_path = os.path.join(upload_dir, safe_name)
-        content   = await file.read()
-        with open(file_path, "wb") as fh:
-            fh.write(content)
+        relative_path = f"nc_evidence/{audit_set_id}/{nc_id}/{safe_name}"
+        content = await file.read()
+        file_path = store_upload(relative_path, content)
 
         ev = AuditSetNCEvidence(
             nc_item_id=nc_id,
@@ -380,10 +376,13 @@ def client_download_evidence(
     ev = db.query(AuditSetNCEvidence).filter_by(id=ev_id, nc_item_id=nc_id).first()
     if not ev:
         raise HTTPException(404, "Evidence file not found")
-    if not os.path.exists(ev.file_path):
+    if not ev.file_path:
         raise HTTPException(404, "File not on server")
-
-    return FileResponse(ev.file_path, filename=ev.file_name or "evidence", media_type="application/octet-stream")
+    try:
+        local_path = ensure_local(ev.file_path)
+    except FileNotFoundError:
+        raise HTTPException(404, "File not on server")
+    return FileResponse(local_path, filename=ev.file_name or "evidence", media_type="application/octet-stream")
 
 
 @router.get("/audit-sets/{audit_set_id}/nc-items/{nc_id}/evidence/{ev_id}/download")
@@ -404,10 +403,13 @@ def cb_download_evidence(
     ev = db.query(AuditSetNCEvidence).filter_by(id=ev_id, nc_item_id=nc_id).first()
     if not ev:
         raise HTTPException(404, "Evidence file not found")
-    if not os.path.exists(ev.file_path):
+    if not ev.file_path:
         raise HTTPException(404, "File not on server")
-
-    return FileResponse(ev.file_path, filename=ev.file_name or "evidence", media_type="application/octet-stream")
+    try:
+        local_path = ensure_local(ev.file_path)
+    except FileNotFoundError:
+        raise HTTPException(404, "File not on server")
+    return FileResponse(local_path, filename=ev.file_name or "evidence", media_type="application/octet-stream")
 
 
 # ── GET /nc-management/summary (planner/admin cross-company view) ─────────────

@@ -27,6 +27,7 @@ from audit_set.db_models import AuditSet, AuditSetNCForm, AuditSetStage, get_db
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
 from config.settings import get_settings
+from storage.document_store import upload as store_upload, ensure_local
 from email_service import send_nc_form_la_request
 
 router = APIRouter(tags=["nc_forms"])
@@ -86,15 +87,10 @@ async def upload_nc_form(
     if not audit_set:
         raise HTTPException(404, "Audit set not found")
 
-    settings = get_settings()
-    upload_dir = os.path.join(settings.storage_base_path, "nc_forms", audit_set_id)
-    os.makedirs(upload_dir, exist_ok=True)
-
     safe_name = f"{secrets.token_hex(6)}_{file.filename or 'nc_form'}"
-    file_path = os.path.join(upload_dir, safe_name)
-    content   = await file.read()
-    with open(file_path, "wb") as fh:
-        fh.write(content)
+    relative_path = f"nc_forms/{audit_set_id}/{safe_name}"
+    content = await file.read()
+    file_path = store_upload(relative_path, content)
 
     nc = AuditSetNCForm(
         audit_set_id=audit_set_id,
@@ -159,11 +155,14 @@ def download_nc_form(
     if current_user.role not in CB_ROLES | {"auditor"}:
         raise HTTPException(403, "Not authorized")
 
-    if not nc.file_path or not os.path.exists(nc.file_path):
+    if not nc.file_path:
         raise HTTPException(404, "File not found on server")
-
+    try:
+        local_path = ensure_local(nc.file_path)
+    except FileNotFoundError:
+        raise HTTPException(404, "File not found on server")
     return FileResponse(
-        nc.file_path,
+        local_path,
         filename=nc.file_name or "nc_form.docx",
         media_type="application/octet-stream",
     )
@@ -215,10 +214,14 @@ def client_download_nc_form(
     current_user: PlatformUser = Depends(get_current_user),
 ):
     nc = _get_client_nc(nid, current_user, db)
-    if not nc.file_path or not os.path.exists(nc.file_path):
+    if not nc.file_path:
+        raise HTTPException(404, "File not found on server")
+    try:
+        local_path = ensure_local(nc.file_path)
+    except FileNotFoundError:
         raise HTTPException(404, "File not found on server")
     return FileResponse(
-        nc.file_path,
+        local_path,
         filename=nc.file_name or "nc_form.docx",
         media_type="application/octet-stream",
     )

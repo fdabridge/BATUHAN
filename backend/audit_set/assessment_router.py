@@ -31,6 +31,7 @@ from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
 from config.settings import get_settings
 from email_service import send_otp_code
+from storage.document_store import upload as store_upload
 
 router = APIRouter(tags=["assessments"])
 
@@ -360,10 +361,6 @@ def generate_fr211_forms(
     audit_dates = format_date_range(stage.audit_date_start, stage.audit_date_end)
     standards_str = ", ".join(audit_set.standards or [])
 
-    # Output directory
-    upload_dir = os.path.join(settings.storage_base_path, "shared_docs", audit_set_id)
-    os.makedirs(upload_dir, exist_ok=True)
-
     created = []
     for member in members:
         auditor_key = member["id"] or member["name"]
@@ -391,8 +388,11 @@ def generate_fr211_forms(
         # Save DOCX
         safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in member["name"])
         file_name = f"FR.211_{stage_type}_{safe_name}.docx"
-        file_path = os.path.join(upload_dir, file_name)
-        tpl.save(file_path)
+        import io as _io
+        _buf = _io.BytesIO()
+        tpl.save(_buf)
+        relative_path = f"shared_docs/{audit_set_id}/{file_name}"
+        file_path = store_upload(relative_path, _buf.getvalue())
 
         # Create shared document record
         doc = AuditSetSharedDocument(

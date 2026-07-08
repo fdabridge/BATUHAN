@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 from audit_set.pdf_flattener import flatten_document
+from storage.document_store import ensure_local, is_s3_ref, resolve_docx_key
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -168,10 +169,10 @@ def _resolve_docx_path(document_type: str, doc_id: str, db: Session) -> str:
 
     if not path:
         raise HTTPException(404, "Document not found or has no file.")
-    if not os.path.exists(path):
+    try:
+        return ensure_local(path)
+    except (FileNotFoundError, Exception):
         raise HTTPException(404, "Document file not found on server.")
-
-    return os.path.abspath(path)
 
 
 # ── Prepare (convert + extract) ───────────────────────────────────────────────
@@ -1156,7 +1157,7 @@ def _commit_existing_signing_record(
                 )
                 committee_total = (
                     db.query(DocumentSignatureField)
-                    .filter(DocumentSignatureField.docx_path == os.path.abspath(doc.file_path or ""))
+                    .filter(DocumentSignatureField.docx_path == resolve_docx_key(doc.file_path or ""))
                     .filter(
                         DocumentSignatureField.sig_key.like("COMMITTEE_MEMBER_%")
                         | DocumentSignatureField.sig_key.in_(list(COMMITTEE_SIG_KEYS))

@@ -20,6 +20,7 @@ from audit_set.db_models import (
 )
 from auth.db_models import PlatformUser
 from auth.dependencies import get_current_user
+from storage.document_store import ensure_local
 
 router = APIRouter(prefix="/client", tags=["client-portal"])
 
@@ -205,10 +206,14 @@ def download_my_document(
     doc = db.query(AuditSetSharedDocument).filter_by(
         id=doc_id, audit_set_id=audit_set.id
     ).first()
-    if not doc or doc.id not in visible_ids or not doc.file_path or not os.path.exists(doc.file_path):
+    if not doc or doc.id not in visible_ids or not doc.file_path:
+        raise HTTPException(404, "Document not found")
+    try:
+        local_path = ensure_local(doc.file_path)
+    except FileNotFoundError:
         raise HTTPException(404, "Document not found")
     return FileResponse(
-        doc.file_path,
-        filename=os.path.basename(doc.file_path),
+        local_path,
+        filename=os.path.basename(local_path),
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     )

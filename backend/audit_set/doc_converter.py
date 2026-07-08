@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING
 
 import pdfplumber
 
+from storage.document_store import ensure_local, is_s3_ref
+
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
@@ -202,7 +204,7 @@ def prepare_document(docx_path: str, db: "Session") -> dict:
     """
     from audit_set.db_models import DocumentSignatureField
 
-    docx_path = os.path.abspath(docx_path)
+    docx_path = ensure_local(docx_path) if is_s3_ref(docx_path) else os.path.abspath(docx_path)
     pdf_path  = os.path.splitext(docx_path)[0] + ".pdf"
 
     # Step 1: Convert DOCX → PDF

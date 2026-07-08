@@ -32,6 +32,7 @@ from audit_set.db_models import (
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
 from config.settings import get_settings
+from storage.document_store import upload as store_upload, ensure_local, delete as store_delete, is_s3_ref, invalidate_cache, resolve_docx_key
 from email_service import send_client_status_update, send_document_released
 
 router = APIRouter(prefix="/audit-sets", tags=["documents"])
@@ -310,14 +311,10 @@ async def release_document(
             raise HTTPException(400, "team_info (FR.224) requires assigned_auditor_id")
 
         # Persist the uploaded file alongside auditor uploads, under a sibling folder
-        settings = get_settings()
-        upload_dir = os.path.join(settings.storage_base_path, "shared_docs", audit_set_id)
-        os.makedirs(upload_dir, exist_ok=True)
         safe_name = f"{secrets.token_hex(6)}_{file.filename}"
-        file_path = os.path.join(upload_dir, safe_name)
+        relative_path = f"shared_docs/{audit_set_id}/{safe_name}"
         content = await file.read()
-        with open(file_path, "wb") as f:
-            f.write(content)
+        file_path = store_upload(relative_path, content)
 
         # Determine signature slots for this document type. FR.218 gains a
         # cb_reviewer slot between cb_planner and cb_cert_manager for FSMS/ISMS
@@ -498,10 +495,13 @@ def download_document(
     if doc.id not in visible_ids:
         raise HTTPException(403, "Not authorized")
 
-    if not doc.file_path or not os.path.exists(doc.file_path):
+    if not doc.file_path:
         raise HTTPException(404, "File not found on server")
-
-    return FileResponse(doc.file_path, filename=os.path.basename(doc.file_path), media_type=DOCX_MIME)
+    try:
+        local_path = ensure_local(doc.file_path)
+    except FileNotFoundError:
+        raise HTTPException(404, "File not found on server")
+    return FileResponse(local_path, filename=os.path.basename(local_path), media_type=DOCX_MIME)
 
 
 # ── Client: FR.211 auditor assessment uploads (Phase 9.5 / 13.5) ────────────
@@ -537,14 +537,10 @@ async def upload_assessment(
             f"Assessments for {stage_type} open once the audit set reaches '{threshold}'.",
         )
 
-    settings = get_settings()
-    upload_dir = os.path.join(settings.storage_base_path, "shared_docs", audit_set_id)
-    os.makedirs(upload_dir, exist_ok=True)
     safe_name = f"{secrets.token_hex(6)}_{file.filename}"
-    file_path = os.path.join(upload_dir, safe_name)
+    relative_path = f"shared_docs/{audit_set_id}/{safe_name}"
     content = await file.read()
-    with open(file_path, "wb") as f:
-        f.write(content)
+    file_path = store_upload(relative_path, content)
 
     uploaded_dt = (
         datetime.combine(upload_date, datetime.min.time())
@@ -651,16 +647,10 @@ async def upload_audit_document(
                 f"Auditor assessment for {stage_type} opens once the audit set reaches '{threshold}'.",
             )
 
-    settings = get_settings()
-    upload_dir = os.path.join(settings.storage_base_path, "audit_uploads", audit_set_id)
-    os.makedirs(upload_dir, exist_ok=True)
-
     safe_name = f"{secrets.token_hex(6)}_{file.filename}"
-    file_path = os.path.join(upload_dir, safe_name)
-
+    relative_path = f"audit_uploads/{audit_set_id}/{safe_name}"
     content = await file.read()
-    with open(file_path, "wb") as f:
-        f.write(content)
+    file_path = store_upload(relative_path, content)
 
     uploaded_dt = (
         datetime.combine(upload_date, datetime.min.time())
@@ -767,25 +757,22 @@ def regenerate_meeting_form(
     except Exception as exc:  # pragma: no cover — surface render errors
         raise HTTPException(500, f"FR.225 render failed: {exc}")
 
-    # Overwrite the file in place so the existing doc id, signatures table,
-    # and any downstream links remain valid.
-    old_docx_path = os.path.abspath(doc.file_path)
-    os.makedirs(os.path.dirname(old_docx_path), exist_ok=True)
-    with open(old_docx_path, "wb") as f:
-        f.write(docx_bytes)
-
-    # Drop the cached PDF so doc_converter re-renders on next /viewer/prepare.
-    cached_pdf = os.path.splitext(old_docx_path)[0] + ".pdf"
-    if os.path.exists(cached_pdf):
-        try:
-            os.remove(cached_pdf)
-        except OSError:
-            pass
+    # Re-upload to the same relative key (or new S3 object)
+    safe_name = f"{secrets.token_hex(6)}_FR225_{stage_type}.docx"
+    relative_path = f"shared_docs/{audit_set_id}/{safe_name}"
+    new_ref = store_upload(relative_path, docx_bytes)
+    # Clean up old file if path changed
+    if doc.file_path and doc.file_path != new_ref:
+        store_delete(doc.file_path)
+    doc.file_path = new_ref
+    # Invalidate any cached PDF
+    invalidate_cache(new_ref)
 
     # Clear pdfplumber-scanned field rows (keyed by docx_path) and any
     # existing visual placements / seeded signature slots so the viewer
     # rebuilds the legend from the regenerated DOCX.
-    db.query(DocumentSignatureField).filter_by(docx_path=old_docx_path).delete()
+    _dsf_key = resolve_docx_key(new_ref)
+    db.query(DocumentSignatureField).filter_by(docx_path=_dsf_key).delete()
     db.query(VisualSignaturePlacement).filter_by(
         document_type="shared_doc", doc_id=doc.id,
     ).delete()
@@ -835,21 +822,18 @@ def delete_document(
         document_type="shared_doc", doc_id=doc_id,
     ).delete()
     if doc.file_path:
-        db.query(DocumentSignatureField).filter_by(
-            docx_path=os.path.abspath(doc.file_path)
-        ).delete()
+        _dsf_key = resolve_docx_key(doc.file_path)
+        db.query(DocumentSignatureField).filter_by(docx_path=_dsf_key).delete()
 
     # Clean up all signature slots (unsigned ones)
     db.query(AuditDocumentSignature).filter_by(document_id=doc_id).delete()
 
-    # Delete the physical file from disk (best-effort — don't fail if already gone)
-    if doc.file_path and os.path.exists(doc.file_path):
+    # Delete the physical file (best-effort — don't fail if already gone)
+    if doc.file_path:
         try:
-            os.remove(doc.file_path)
-        except OSError as exc:
-            logger.warning(
-                "[delete_document] Could not remove file %s: %s", doc.file_path, exc
-            )
+            store_delete(doc.file_path)
+        except Exception as exc:
+            logger.warning("Could not delete file %s: %s", doc.file_path, exc)
 
     # Delete the document row
     db.delete(doc)
