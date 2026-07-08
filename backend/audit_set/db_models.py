@@ -82,6 +82,7 @@ def create_tables():
     _safe_add_column("visual_signature_placements", "otp_hash TEXT")
     _safe_add_column("visual_signature_placements", "otp_expires TIMESTAMP")
     _safe_add_column("visual_signature_placements", "signed_ip TEXT")
+    _safe_add_column("visual_signature_placements", "signer_name VARCHAR")
     # Prompt 33 — retroactive operation support
     _safe_add_column("audit_sets", "application_date DATE")
     # Prompt 35 — standard-specific application data
@@ -663,6 +664,7 @@ class VisualSignaturePlacement(Base):
     doc_id          = Column(String, nullable=False, index=True)
     sig_key         = Column(String, nullable=False)   # CB_PLANNER | CB_REVIEWER | etc.
     user_id         = Column(String, nullable=False)   # PlatformUser.id who placed it
+    signer_name     = Column(String, nullable=True)    # display name stamped under the signature
     signature_image = Column(Text, nullable=True)      # base64 PNG data-URL snapshot at sign time
     otp_hash        = Column(String, nullable=True)    # sha256; cleared after use
     otp_expires     = Column(DateTime, nullable=True)  # cleared after use

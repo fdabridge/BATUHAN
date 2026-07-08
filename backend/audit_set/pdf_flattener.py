@@ -33,9 +33,24 @@ if TYPE_CHECKING:
 # Minimum overlay dimensions in PDF points (1 pt = 1/72 inch)
 SIG_MIN_W = 140.0
 SIG_MIN_H = 28.0
+NAME_TEXT_H = 10.0
+NAME_GAP = 1.5
 
 # Padding around the [SIG:...] text bounding box for the whiteout rect
 WHITEOUT_PAD = 4.0
+
+SIG_TO_ROLE = {
+    "CB_PLANNER": "cb_planner",
+    "CB_CERT_MANAGER": "cb_cert_manager",
+    "CB_REVIEWER": "cb_reviewer",
+    "LEAD_AUDITOR": "lead_auditor",
+    "GM": "gm",
+    "ORG_REP": "org_rep",
+    "CLIENT": "client",
+    "ASSIGNED_AUDITOR": "assigned_auditor",
+    "REVIEWER": "reviewer",
+    "APPOINTED_REVIEWER": "appointed_reviewer",
+}
 
 
 def flatten_document(
@@ -136,6 +151,7 @@ def flatten_document(
 
         sig_w = max(SIG_MIN_W, (x1 - x0) + 40.0)
         sig_h = max(SIG_MIN_H, (y1 - y0) + 10.0)
+        signer_name = _placement_signer_name(document_type, doc_id, sig_key, placement, db)
 
         overlay_rect = fitz.Rect(
             cx - sig_w / 2.0,
@@ -143,13 +159,14 @@ def flatten_document(
             cx + sig_w / 2.0,
             cy + sig_h / 2.0,
         )
+        name_rect = _name_rect_below_signature(overlay_rect, doc[page_idx].rect)
 
         # ── White-out the [SIG:...] placeholder text ──────────────────────────
         placeholder_rect = fitz.Rect(
             x0 - WHITEOUT_PAD,
             y0 - WHITEOUT_PAD,
             x1 + WHITEOUT_PAD,
-            y1 + WHITEOUT_PAD,
+            max(y1 + WHITEOUT_PAD, name_rect.y1 + 1.0),
         )
         # Draw a white filled rectangle with no visible border
         page.draw_rect(
@@ -162,12 +179,14 @@ def flatten_document(
         # ── Insert signature image ────────────────────────────────────────────
         try:
             page.insert_image(overlay_rect, stream=img_bytes)
+            if signer_name:
+                _insert_signer_name(page, name_rect, signer_name)
         except Exception:
             # Fallback: print signer's name as text if image fails
             try:
                 page.insert_text(
                     (overlay_rect.x0 + 4, overlay_rect.y0 + overlay_rect.height / 2 + 4),
-                    "[Signed]",
+                    signer_name or "[Signed]",
                     fontsize=9,
                     color=(0.1, 0.27, 0.19),
                 )
@@ -193,6 +212,101 @@ def flatten_document(
 
 
 # ── Internal helper ───────────────────────────────────────────────────────────
+
+def _name_rect_below_signature(signature_rect: fitz.Rect, page_rect: fitz.Rect) -> fitz.Rect:
+    """Return a small centered text box just below the visual signature."""
+    y0 = signature_rect.y1 + NAME_GAP
+    y1 = y0 + NAME_TEXT_H
+    if y1 > page_rect.y1 - 2:
+        y1 = signature_rect.y1 - 1
+        y0 = y1 - NAME_TEXT_H
+    return fitz.Rect(signature_rect.x0, y0, signature_rect.x1, y1)
+
+
+def _insert_signer_name(page: fitz.Page, rect: fitz.Rect, signer_name: str) -> None:
+    """Draw the human signer name under the signature image."""
+    cleaned = " ".join((signer_name or "").split())
+    if not cleaned:
+        return
+    page.insert_textbox(
+        rect,
+        cleaned,
+        fontsize=7.5,
+        fontname="helv",
+        color=(0.1, 0.27, 0.19),
+        align=fitz.TEXT_ALIGN_CENTER,
+    )
+
+
+def _auth_user_name(user_id: str | None) -> str | None:
+    if not user_id:
+        return None
+    try:
+        from auth.db_models import PlatformUser, SessionLocal as AuthSessionLocal
+
+        auth_db = AuthSessionLocal()
+        try:
+            user = auth_db.query(PlatformUser).filter_by(id=user_id).first()
+            return user.full_name if user else None
+        finally:
+            auth_db.close()
+    except Exception:
+        return None
+
+
+def _placement_signer_name(
+    document_type: str,
+    doc_id: str,
+    sig_key: str,
+    placement,
+    db: "Session",
+) -> str | None:
+    """Best-effort display name for the burned-in signature label."""
+    name = getattr(placement, "signer_name", None)
+    if name:
+        return name
+
+    from audit_set.db_models import (
+        AuditDocumentSignature,
+        AuditSetAuditReport,
+        AuditSetNCForm,
+        AuditSetSharedDocument,
+    )
+
+    if document_type == "shared_doc":
+        role_label = SIG_TO_ROLE.get(sig_key)
+        if role_label:
+            sig = db.query(AuditDocumentSignature).filter_by(
+                document_id=doc_id, signer_role_label=role_label,
+            ).first()
+            if sig and sig.signer_name:
+                return sig.signer_name
+        doc = db.query(AuditSetSharedDocument).filter_by(id=doc_id).first()
+        if doc and sig_key in ("CLIENT", "ORG_REP"):
+            client_slot = db.query(AuditDocumentSignature).filter_by(
+                document_id=doc_id, signer_role_label="client",
+            ).first()
+            if client_slot and client_slot.signer_name:
+                return client_slot.signer_name
+
+    elif document_type == "audit_report":
+        report = db.query(AuditSetAuditReport).filter_by(id=doc_id).first()
+        if report:
+            if sig_key == "LEAD_AUDITOR":
+                return _auth_user_name(report.la_user_id)
+            if sig_key in ("CB_REVIEWER", "CB_CERT_MANAGER"):
+                return _auth_user_name(report.reviewer_user_id)
+
+    elif document_type == "nc_form":
+        nc = db.query(AuditSetNCForm).filter_by(id=doc_id).first()
+        if nc:
+            if sig_key == "LEAD_AUDITOR":
+                return _auth_user_name(nc.la_user_id)
+            if sig_key in ("CLIENT", "ORG_REP"):
+                return _auth_user_name(nc.client_user_id)
+
+    return _auth_user_name(getattr(placement, "user_id", None))
+
 
 def _resolve_docx_path(document_type: str, doc_id: str, db: "Session") -> str:
     """Map (document_type, doc_id) → absolute DOCX file path."""

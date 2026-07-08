@@ -1544,8 +1544,10 @@ def sign_confirm(
         if not emp or not emp.signature_data:
             raise HTTPException(400, "Employee signature missing — re-upload and try again.")
         signature_image_b64 = emp.signature_data
+        signer_display_name = emp.full_name
     elif selected_employee is not None:
         signature_image_b64 = selected_employee.signature_data
+        signer_display_name = selected_employee.full_name
     else:
         user_sig = auth_db.query(UserSignature).filter_by(user_id=current_user.id).first()
         if not user_sig:
@@ -1554,6 +1556,7 @@ def sign_confirm(
                 "No signature on file. Go to Settings → My Signature to set one up, then try again.",
             )
         signature_image_b64 = user_sig.image_data
+        signer_display_name = current_user.full_name
 
     # Reuse or create the pending VisualSignaturePlacement row.
     vsp = (
@@ -1582,6 +1585,7 @@ def sign_confirm(
         if body.signed_date else datetime.utcnow()
     )
     vsp.signature_image = signature_image_b64
+    vsp.signer_name     = signer_display_name
     vsp.otp_hash        = None
     vsp.otp_expires     = None
     vsp.signed_at       = signed_at
