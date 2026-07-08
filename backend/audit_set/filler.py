@@ -657,8 +657,7 @@ def build_team_members(stage, auditor_lookup: dict, standards_codes: list) -> li
 def render_docx(template_path, context: dict) -> bytes:
     """Render one docxtpl template with `context`; return DOCX bytes."""
     doc = DocxTemplate(str(template_path))
-    doc.render(context)
+    doc.render(context, autoescape=True)
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
-
