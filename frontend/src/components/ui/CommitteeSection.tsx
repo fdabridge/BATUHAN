@@ -66,9 +66,9 @@ export function CommitteeSection({
     'agreement_signed',
     'fr218_in_progress', 'fr218_complete',
     'stage1_scheduled', 'stage1_in_progress', 'stage1_complete',
-    'stage2_scheduled', 'stage2_in_progress',
+    'stage2_scheduled', 'stage2_in_progress', 'stage2_complete',
     'audit_scheduled', 'audit_in_progress',
-    'under_review', 'certified',
+    'under_review', 'committee_review', 'certified',
   ]
   const showSection = workflowStatus != null && COMMITTEE_STAGES.includes(workflowStatus)
   if (!showSection) return null
@@ -107,6 +107,22 @@ export function CommitteeSection({
     }
   }
 
+  async function appointReviewer() {
+    // Backend auto-assigns the certification_manager — no user picker needed
+    if (!confirm('Appoint the Certification Manager as committee reviewer?')) return
+    setBusy(true)
+    setError('')
+    try {
+      await api.post(`/audit-sets/${auditSetId}/committee/appoint`, { role: 'reviewer' })
+      await loadMembers()
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setError(detail || 'Appointment failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function removeMember(memberId: string) {
     if (!confirm('Remove this committee member?')) return
     setBusy(true)
@@ -128,6 +144,16 @@ export function CommitteeSection({
           Certification Committee
         </h2>
         <div className="flex gap-2">
+          {!members.some(m => m.role === 'reviewer') && (
+            <button
+              type="button"
+              onClick={appointReviewer}
+              disabled={busy}
+              className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+            >
+              + Appoint Reviewer
+            </button>
+          )}
           <button
             type="button"
             onClick={() => openPicker('decision_maker')}

@@ -46,7 +46,7 @@ from auth.dependencies import get_current_user
 
 router = APIRouter(prefix="/audit-sets", tags=["committee"])
 
-CB_ROLES = {"admin", "planner", "planner_us", "officer", "executive", "gm"}
+CB_ROLES = {"admin", "planner", "planner_us", "officer", "executive", "gm", "certification_manager"}
 CM_ROLES = {"admin", "executive"}   # roles that act as Certification Manager
 
 
@@ -719,6 +719,7 @@ async def upload_fr233(
 def get_fr233_status(
     audit_set_id: str,
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     if current_user.role not in CB_ROLES:
@@ -732,8 +733,7 @@ def get_fr233_status(
         .all()
     )
 
-    # Per-slot signed lookup from VisualSignaturePlacement (the source of truth
-    # for committee signing — populated by /viewer/sign/confirm).
+    # Per-slot signed lookup from VisualSignaturePlacement (source of truth).
     placements = []
     if record and record.document_id:
         placements = (
@@ -744,30 +744,53 @@ def get_fr233_status(
         )
     signed_keys = {p.sig_key for p in placements}
 
-    chair = next((m for m in members if m.role == "decision_maker"), None)
-    regulars = [m for m in members if m is not chair]
-    slot_for_member = {}
-    if chair: slot_for_member[chair.id] = "COMMITTEE_CHAIR"
-    if len(regulars) > 0: slot_for_member[regulars[0].id] = "COMMITTEE_MEMBER_1"
-    if len(regulars) > 1: slot_for_member[regulars[1].id] = "COMMITTEE_MEMBER_2"
+    # Portal 118: resolve dynamic sig_key per member.
+    # Dynamic key = COMMITTEE_MEMBER_<auditor_id> where auditor_id comes from
+    # the PlatformUser.auditor_id linked to each committee member's user_id.
+    # Fall back to legacy static key assignment if auditor_id is not set.
+    chair_member = next((m for m in members if m.role == "decision_maker"), None)
+    reviewer_members = [m for m in members if m.role == "reviewer"]
+
+    # Static fallback mapping (for pre-Portal-62 VSP rows)
+    static_slot: dict[str, str] = {}
+    if chair_member:
+        static_slot[chair_member.id] = "COMMITTEE_CHAIR"
+    if len(reviewer_members) > 0:
+        static_slot[reviewer_members[0].id] = "COMMITTEE_MEMBER_1"
+    if len(reviewer_members) > 1:
+        static_slot[reviewer_members[1].id] = "COMMITTEE_MEMBER_2"
+
+    def _sig_key_for_member(m: AuditSetCommitteeMember) -> str | None:
+        """Return the expected sig_key for this member (dynamic preferred, static fallback)."""
+        user = auth_db.query(PlatformUser).filter_by(id=m.user_id).first()
+        if user and user.auditor_id:
+            return f"COMMITTEE_MEMBER_{user.auditor_id}"
+        return static_slot.get(m.id)
+
+    member_rows = []
+    for m in members:
+        sig_key = _sig_key_for_member(m)
+        is_signed = False
+        if sig_key and sig_key in signed_keys:
+            is_signed = True
+        elif static_slot.get(m.id) and static_slot.get(m.id) in signed_keys:
+            is_signed = True
+        member_rows.append({
+            "id":        m.id,
+            "user_id":   m.user_id,
+            "user_name": m.user_name,
+            "role":      m.role,
+            "sig_key":   sig_key,
+            "ea_codes":  m.ea_codes_at_appointment or [],
+            "signed":    is_signed,
+        })
+
+    all_committee_signed = bool(member_rows) and all(r["signed"] for r in member_rows)
 
     return {
-        "status":             record.status if record else "pending",
-        "document_id":        record.document_id if record else None,
-        "members": [
-            {
-                "id":         m.id,
-                "user_id":    m.user_id,
-                "user_name":  m.user_name,
-                "role":       m.role,
-                "sig_key":    slot_for_member.get(m.id),
-                "ea_codes":   m.ea_codes_at_appointment or [],
-                "signed":     slot_for_member.get(m.id) in signed_keys,
-            }
-            for m in members
-        ],
+        "status":              record.status if record else "pending",
+        "document_id":         record.document_id if record else None,
+        "members":             member_rows,
         "cert_manager_signed": "CERT_MANAGER_FR233" in signed_keys,
-        "all_committee_signed": all(
-            slot_for_member.get(m.id) in signed_keys for m in members if slot_for_member.get(m.id)
-        ) and bool(members),
+        "all_committee_signed": all_committee_signed,
     }

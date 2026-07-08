@@ -75,6 +75,7 @@ VALID_TRANSITIONS: dict[tuple[Optional[str], str], set[str]] = {
     ("stage2_in_progress", "under_review"):       {"admin", "planner", "planner_us", "auditor"},  # legacy
     # ── Committee + closing ───────────────────────────────────────────────────
     ("stage2_complete",    "committee_review"):   {"admin", "planner", "planner_us", "certification_manager"},
+    ("committee_review",   "certified"):          {"admin", "executive"},
     ("under_review",       "certified"):          {"admin", "executive"},
 }
 
