@@ -99,6 +99,7 @@ async def upload_audit_report(
     stage_type:   str = Form(...),
     report_form:  str = Form(...),
     label:        str = Form(...),
+    report_date:  Optional[date] = Form(None),
     file: UploadFile = File(...),
     db:       Session = Depends(get_db),
     auth_db:  Session = Depends(get_auth_db),
@@ -123,6 +124,7 @@ async def upload_audit_report(
     with open(file_path, "wb") as fh:
         fh.write(content)
 
+    record_date = datetime.combine(report_date, datetime.min.time()) if report_date else datetime.utcnow()
     report = AuditSetAuditReport(
         audit_set_id=audit_set_id,
         stage_type=stage_type,
@@ -132,6 +134,7 @@ async def upload_audit_report(
         file_name=file.filename or safe_name,
         status="pending_la",
         uploaded_by=current_user.id,
+        created_at=record_date,
     )
     db.add(report)
     db.commit()

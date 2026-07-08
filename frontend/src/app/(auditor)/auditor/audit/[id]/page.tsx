@@ -363,6 +363,7 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
   const [file, setFile]   = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadMsg, setUploadMsg] = useState('')
+  const [reportDate, setReportDate] = useState(() => new Date().toISOString().slice(0, 10))
   const fileRef = useRef<HTMLInputElement>(null)
 
   // Reviewer direct-sign state (Portal 77)
@@ -411,6 +412,7 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
       fd.append('stage_type', form.stage_type)
       fd.append('report_form', form.report_form)
       fd.append('label', form.label.trim())
+      fd.append('report_date', reportDate)
       fd.append('file', file)
       const r = await api.post(`/audit-sets/${auditSetId}/audit-reports/upload`, fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -509,14 +511,25 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
               className="w-full rounded-lg border bg-white px-3 py-2 text-sm"
             />
           </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">File</label>
-            <input
-              ref={fileRef}
-              required type="file"
-              onChange={e => setFile(e.target.files?.[0] || null)}
-              className="text-sm"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">File</label>
+              <input
+                ref={fileRef}
+                required type="file"
+                onChange={e => setFile(e.target.files?.[0] || null)}
+                className="text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Report date</label>
+              <input
+                type="date"
+                value={reportDate}
+                onChange={(e) => setReportDate(e.target.value)}
+                className="w-full rounded-lg border px-3 py-2 text-sm"
+              />
+            </div>
           </div>
           <button
             type="submit"
@@ -1123,7 +1136,7 @@ export default function AuditorAuditDetail() {
               The Lead Auditor uploads the Audit Plan for each stage. The organisation
               representative signs it via their portal once it is uploaded.
             </p>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[140px_1fr_auto] sm:items-center">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[140px_1fr_auto_auto] sm:items-center">
               <select
                 value={auditPlanStage}
                 onChange={(e) => setAuditPlanStage(e.target.value as 'stage_1' | 'stage_2')}
@@ -1137,6 +1150,13 @@ export default function AuditorAuditDetail() {
                 accept=".pdf,.docx"
                 onChange={(e) => setAuditPlanFile(e.target.files?.[0] ?? null)}
                 className="text-sm"
+              />
+              <input
+                type="date"
+                value={uploadDate}
+                onChange={(e) => setUploadDate(e.target.value)}
+                className="rounded-lg border px-2 py-1.5 text-sm"
+                title="Document date (leave as today if correct)"
               />
               <button
                 type="button"
@@ -1159,7 +1179,7 @@ export default function AuditorAuditDetail() {
               Generated from the client's employee roster. The organisation
               representatives sign their respective slots once it is uploaded.
             </p>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[140px_1fr_auto] sm:items-center">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[140px_1fr_auto_auto] sm:items-center">
               <select
                 value={meetingStage}
                 onChange={(e) => setMeetingStage(e.target.value as 'stage_1' | 'stage_2')}
@@ -1173,6 +1193,13 @@ export default function AuditorAuditDetail() {
                 accept=".pdf,.docx"
                 onChange={(e) => setMeetingFile(e.target.files?.[0] ?? null)}
                 className="text-sm"
+              />
+              <input
+                type="date"
+                value={uploadDate}
+                onChange={(e) => setUploadDate(e.target.value)}
+                className="rounded-lg border px-2 py-1.5 text-sm"
+                title="Document date (leave as today if correct)"
               />
               <button
                 type="button"
