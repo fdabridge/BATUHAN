@@ -86,6 +86,11 @@ def planning(
     """
     # Portal 64 — validate committee before touching the DB
     if payload.committee_members is not None and len(payload.committee_members) > 0:
+        if len(payload.committee_members) > 3:
+            raise HTTPException(
+                status_code=422,
+                detail="FR.233 supports one Chairperson and up to two Members.",
+            )
         audit_set_row = db.query(AuditSet).filter_by(id=audit_set_id).first()
         if not audit_set_row:
             raise HTTPException(status_code=404, detail=f"Audit set '{audit_set_id}' not found.")

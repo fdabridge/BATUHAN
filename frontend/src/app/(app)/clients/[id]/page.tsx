@@ -1379,6 +1379,10 @@ function CommitteePlanningCard({
   }, [auditSetId, stageAuditorIdsKey])
 
   function addMember(id: string) {
+    if (selected.length >= 3) {
+      setError('FR.233 supports one Chairperson and up to two Members')
+      return
+    }
     const auditor = pool.find((a) => a.id === id)
     if (!auditor) return
     setSelected((prev) => [...prev, auditor])
@@ -1514,11 +1518,15 @@ function CommitteePlanningCard({
         <select
           className={inputCls}
           value=""
-          disabled={loadingPool}
+          disabled={loadingPool || selected.length >= 3}
           onChange={(e) => { if (e.target.value) addMember(e.target.value) }}
         >
           <option value="">
-            {loadingPool ? 'Loading…' : `+ Add committee member… (${eligiblePool.length} qualifying)`}
+            {loadingPool
+              ? 'Loading…'
+              : selected.length >= 3
+                ? 'Maximum 3 committee members'
+                : `+ Add committee member… (${eligiblePool.length} qualifying)`}
           </option>
           {eligiblePool.map((a) => {
             // Show covered codes in option text — same format as stage auditor dropdown

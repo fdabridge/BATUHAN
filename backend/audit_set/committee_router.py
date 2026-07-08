@@ -39,6 +39,11 @@ _STD_CODE_TO_ISO: dict[str, str] = {
 }
 
 from storage.document_store import upload as store_upload, ensure_local, delete as store_delete, invalidate_cache, is_s3_ref, resolve_docx_key
+from audit_set.committee_slots import (
+    committee_member_auditor_id,
+    committee_member_name,
+    planned_committee_slots,
+)
 from audit_set.db_models import (
     AuditSet, AuditSetCommitteeMember, AuditSetFR233Record, AuditSetSharedDocument,
     AuditSetStage, AuditDocumentSignature, VisualSignaturePlacement, get_db,
@@ -888,12 +893,10 @@ def get_fr233_status(
         raise HTTPException(403, "Not authorized")
 
     record = db.query(AuditSetFR233Record).filter_by(audit_set_id=audit_set_id).first()
-    members = (
-        db.query(AuditSetCommitteeMember)
-        .filter_by(audit_set_id=audit_set_id)
-        .order_by(AuditSetCommitteeMember.appointed_at)
-        .all()
-    )
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    if not audit_set:
+        raise HTTPException(404, "Audit set not found")
+    slots = planned_committee_slots(audit_set)
 
     # Per-slot signed lookup from VisualSignaturePlacement (source of truth).
     placements = []
@@ -906,44 +909,25 @@ def get_fr233_status(
         )
     signed_keys = {p.sig_key for p in placements}
 
-    # Portal 118: resolve dynamic sig_key per member.
-    # Dynamic key = COMMITTEE_MEMBER_<auditor_id> where auditor_id comes from
-    # the PlatformUser.auditor_id linked to each committee member's user_id.
-    # Fall back to legacy static key assignment if auditor_id is not set.
-    chair_member = next((m for m in members if m.role == "decision_maker"), None)
-    reviewer_members = [m for m in members if m.role == "reviewer"]
-
-    # Static fallback mapping (for pre-Portal-62 VSP rows)
-    static_slot: dict[str, str] = {}
-    if chair_member:
-        static_slot[chair_member.id] = "COMMITTEE_CHAIR"
-    if len(reviewer_members) > 0:
-        static_slot[reviewer_members[0].id] = "COMMITTEE_MEMBER_1"
-    if len(reviewer_members) > 1:
-        static_slot[reviewer_members[1].id] = "COMMITTEE_MEMBER_2"
-
-    def _sig_key_for_member(m: AuditSetCommitteeMember) -> str | None:
-        """Return the expected sig_key for this member (dynamic preferred, static fallback)."""
-        user = auth_db.query(PlatformUser).filter_by(id=m.user_id).first()
-        if user and user.auditor_id:
-            return f"COMMITTEE_MEMBER_{user.auditor_id}"
-        return static_slot.get(m.id)
-
     member_rows = []
-    for m in members:
-        sig_key = _sig_key_for_member(m)
-        is_signed = False
-        if sig_key and sig_key in signed_keys:
-            is_signed = True
-        elif static_slot.get(m.id) and static_slot.get(m.id) in signed_keys:
-            is_signed = True
+    for static_key, member in slots.items():
+        auditor_id = committee_member_auditor_id(member)
+        dynamic_key = f"COMMITTEE_MEMBER_{auditor_id}" if auditor_id else None
+        user = (
+            auth_db.query(PlatformUser).filter_by(auditor_id=auditor_id).first()
+            if auditor_id else None
+        )
+        is_signed = static_key in signed_keys or (
+            dynamic_key is not None and dynamic_key in signed_keys
+        )
+        is_chair = static_key == "COMMITTEE_CHAIR"
         member_rows.append({
-            "id":        m.id,
-            "user_id":   m.user_id,
-            "user_name": m.user_name,
-            "role":      m.role,
-            "sig_key":   sig_key,
-            "ea_codes":  m.ea_codes_at_appointment or [],
+            "id":        auditor_id or static_key,
+            "user_id":   user.id if user else "",
+            "user_name": committee_member_name(member) or "",
+            "role":      "decision_maker" if is_chair else "reviewer",
+            "sig_key":   static_key,
+            "ea_codes":  member.get("ea_codes") or [],
             "signed":    is_signed,
         })
 

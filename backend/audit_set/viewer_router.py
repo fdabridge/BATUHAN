@@ -34,6 +34,13 @@ from storage.document_store import ensure_local, is_s3_ref, resolve_docx_key
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from audit_set.committee_slots import (
+    STATIC_COMMITTEE_SIG_KEYS,
+    committee_member_auditor_id,
+    committee_member_name,
+    expected_committee_sig_keys,
+    planned_committee_slots,
+)
 from audit_set.db_models import (
     AuditDocumentSignature,
     AuditSet,
@@ -100,7 +107,7 @@ ORG_BLANK_RE = re.compile(
 # Portal 49a Part 3 — FR.233 certification committee signature slots.
 # Portal 62: dynamic per-auditor keys replace static slots.
 # Legacy static keys kept so old signed FR.233 docs still resolve.
-COMMITTEE_SIG_KEYS = {"COMMITTEE_CHAIR", "COMMITTEE_MEMBER_1", "COMMITTEE_MEMBER_2"}
+COMMITTEE_SIG_KEYS = set(STATIC_COMMITTEE_SIG_KEYS)
 CERT_MANAGER_FR233_KEY = "CERT_MANAGER_FR233"
 # Portal 62 — regex for dynamic committee member sig keys: COMMITTEE_MEMBER_<auditor_id>
 COMMITTEE_MEMBER_RE = re.compile(r"^COMMITTEE_MEMBER_(.+)$")
@@ -403,7 +410,11 @@ def _get_doc_label(document_type: str, doc_id: str, db: Session) -> str:
 # ── Helper: committee sig permission (Portal 49a Part 3) ─────────────────────
 
 def _check_committee_sig(
-    sig_key: str, audit_set_id: str, current_user: PlatformUser, db: Session,
+    sig_key: str,
+    audit_set_id: str,
+    current_user: PlatformUser,
+    db: Session,
+    doc_id: str | None = None,
 ) -> None:
     """Raise HTTPException(403) if `current_user` may not sign `sig_key` on FR.233."""
     if sig_key == CERT_MANAGER_FR233_KEY:
@@ -413,6 +424,16 @@ def _check_committee_sig(
             raise HTTPException(
                 403, "Only the Certification Manager may sign this slot",
             )
+        if doc_id:
+            _, all_committee_signed = _fr233_committee_signing_state(
+                doc_id, audit_set_id, db,
+            )
+            if not all_committee_signed:
+                raise HTTPException(
+                    409,
+                    "All planned committee members must sign FR.233 before "
+                    "the Certification Manager.",
+                )
         return
 
     # Portal 62 — dynamic COMMITTEE_MEMBER_<auditor_id> slots (new-style FR.233).
@@ -437,28 +458,63 @@ def _check_committee_sig(
                 raise HTTPException(403, "This auditor is not on the appointed committee")
         return
 
-    # Legacy static keys — fall back to AuditSetCommitteeMember rows.
-    members = (
-        db.query(AuditSetCommitteeMember)
-        .filter_by(audit_set_id=audit_set_id)
-        .order_by(AuditSetCommitteeMember.appointed_at)
-        .all()
-    )
-    chair = next((m for m in members if m.role == "decision_maker"), None)
-    non_chairs = [m for m in members if m is not chair]
-
-    expected_user_id: str | None = None
-    if sig_key == "COMMITTEE_CHAIR":
-        expected_user_id = chair.user_id if chair else None
-    elif sig_key == "COMMITTEE_MEMBER_1":
-        expected_user_id = non_chairs[0].user_id if len(non_chairs) > 0 else None
-    elif sig_key == "COMMITTEE_MEMBER_2":
-        expected_user_id = non_chairs[1].user_id if len(non_chairs) > 1 else None
-
-    if expected_user_id is None:
+    # Static keys are positional rows backed by the committee saved in planning.
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    member = planned_committee_slots(audit_set).get(sig_key) if audit_set else None
+    expected_auditor_id = committee_member_auditor_id(member)
+    if expected_auditor_id is None:
         raise HTTPException(400, f"No committee member assigned for '{sig_key}'")
-    if expected_user_id != current_user.id:
+    if current_user.role == "admin":
+        return
+    if current_user.role != "auditor" or current_user.auditor_id != expected_auditor_id:
         raise HTTPException(403, "This signature slot is assigned to a different committee member")
+
+
+def _fr233_committee_signing_state(
+    doc_id: str,
+    audit_set_id: str,
+    db: Session,
+) -> tuple[set[str], bool]:
+    """Return the expected FR.233 committee keys and whether all are signed."""
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    if not audit_set:
+        return set(), False
+
+    doc = db.query(AuditSetSharedDocument).filter_by(id=doc_id).first()
+    document_keys: set[str] = set()
+    if doc and doc.file_path:
+        document_keys.update(
+            key
+            for (key,) in (
+                db.query(DocumentSignatureField.sig_key)
+                .filter_by(docx_path=resolve_docx_key(doc.file_path))
+                .all()
+            )
+        )
+    if not document_keys:
+        document_keys.update(
+            key
+            for (key,) in (
+                db.query(VisualSignaturePlacement.sig_key)
+                .filter_by(document_type="shared_doc", doc_id=doc_id)
+                .all()
+            )
+        )
+
+    expected = expected_committee_sig_keys(audit_set, document_keys)
+    if not expected:
+        return expected, False
+    signed = {
+        key
+        for (key,) in (
+            db.query(VisualSignaturePlacement.sig_key)
+            .filter_by(document_type="shared_doc", doc_id=doc_id)
+            .filter(VisualSignaturePlacement.sig_key.in_(expected))
+            .filter(VisualSignaturePlacement.signed_at.isnot(None))
+            .all()
+        )
+    }
+    return expected, expected.issubset(signed)
 
 
 # ── Helpers: shared-doc slot eligibility + order gating (Portal 49b) ─────────
@@ -758,7 +814,9 @@ def _assert_can_sign(
             # Portal 49a Part 3 / Portal 62 — FR.233 committee signing.
             # Dynamic COMMITTEE_MEMBER_<auditor_id> keys (Portal 62) and legacy
             # static keys are both handled by _check_committee_sig.
-            _check_committee_sig(sig_key, doc.audit_set_id, current_user, db)
+            _check_committee_sig(
+                sig_key, doc.audit_set_id, current_user, db, doc_id=doc.id,
+            )
 
         else:
             # Portal 49b — generic slot-based signing (GM, CB_*, ORG_REP,
@@ -998,33 +1056,27 @@ def _get_field_status(
                 return _result("current_user", member_name)
             return _result("pending", member_name)
 
-        # Portal 124 — static committee keys written by fr233_generator.py.
-        # These must be checked BEFORE cm_match because COMMITTEE_MEMBER_1 and
-        # COMMITTEE_MEMBER_2 also match COMMITTEE_MEMBER_RE (treating "1"/"2" as
-        # member_id), which would silently fail name resolution and user matching.
+        # Static FR.233 rows resolve against the committee saved during planning.
+        # This must run before COMMITTEE_MEMBER_RE because MEMBER_1/MEMBER_2 also
+        # match the old dynamic-key pattern.
         if sig_key in COMMITTEE_SIG_KEYS:
-            members_q = (
-                db.query(AuditSetCommitteeMember)
-                .filter_by(audit_set_id=doc.audit_set_id)
-                .order_by(AuditSetCommitteeMember.appointed_at)
-                .all()
+            audit_set = db.query(AuditSet).filter_by(id=doc.audit_set_id).first()
+            slot_member = (
+                planned_committee_slots(audit_set).get(sig_key)
+                if audit_set else None
             )
-            chair = next((m for m in members_q if m.role == "decision_maker"), None)
-            non_chairs = [m for m in members_q if m is not chair]
-            if sig_key == "COMMITTEE_CHAIR":
-                slot_member = chair
-            elif sig_key == "COMMITTEE_MEMBER_1":
-                slot_member = non_chairs[0] if len(non_chairs) > 0 else None
-            else:  # COMMITTEE_MEMBER_2
-                slot_member = non_chairs[1] if len(non_chairs) > 1 else None
-            member_name = slot_member.user_name if slot_member else None
+            member_name = committee_member_name(slot_member)
+            member_auditor_id = committee_member_auditor_id(slot_member)
             if vsp:
                 return _result("signed", member_name, vsp.signature_image)
             if slot_member is None:
                 return _result("pending", "Awaiting committee appointment")
             if current_user.role == "admin":
                 return _result("current_user", member_name)
-            if current_user.id == slot_member.user_id:
+            if (
+                current_user.role == "auditor"
+                and current_user.auditor_id == member_auditor_id
+            ):
                 return _result("current_user", member_name)
             return _result("pending", member_name)
 
@@ -1032,23 +1084,8 @@ def _get_field_status(
             # CM signs last; show "blocked" until all committee slots have signed.
             if vsp:
                 return _result("signed", _user_name(current_user.id), vsp.signature_image)
-            committee_signed_count = (
-                db.query(VisualSignaturePlacement)
-                .filter_by(document_type="shared_doc", doc_id=doc_id)
-                .filter(
-                    VisualSignaturePlacement.sig_key.in_(list(COMMITTEE_SIG_KEYS))
-                    | VisualSignaturePlacement.sig_key.like("COMMITTEE_MEMBER_%")
-                )
-                .filter(VisualSignaturePlacement.signed_at.isnot(None))
-                .count()
-            )
-            committee_total = (
-                db.query(AuditSetCommitteeMember)
-                .filter_by(audit_set_id=doc.audit_set_id)
-                .count()
-            )
-            all_committee_signed = (
-                committee_total > 0 and committee_signed_count >= committee_total
+            _, all_committee_signed = _fr233_committee_signing_state(
+                doc_id, doc.audit_set_id, db,
             )
             if current_user.role in ("certification_manager", "admin", "executive"):
                 if all_committee_signed:
@@ -1337,44 +1374,10 @@ def _commit_existing_signing_record(
                 record.status = "signing"
 
             if sig_key == CERT_MANAGER_FR233_KEY:
-                # Require all committee member slots signed before CM finalises.
-                # Portal 62: use LIKE 'COMMITTEE_MEMBER_%' for new-style dynamic
-                # keys; also fall back to legacy static keys.
-                committee_signed = (
-                    db.query(VisualSignaturePlacement)
-                    .filter_by(document_type="shared_doc", doc_id=doc_id)
-                    .filter(
-                        VisualSignaturePlacement.sig_key.like("COMMITTEE_MEMBER_%")
-                        | VisualSignaturePlacement.sig_key.in_(list(COMMITTEE_SIG_KEYS))
-                    )
-                    .filter(VisualSignaturePlacement.signed_at.isnot(None))
-                    .count()
+                _, all_committee_signed = _fr233_committee_signing_state(
+                    doc_id, doc.audit_set_id, db,
                 )
-                committee_total = (
-                    db.query(DocumentSignatureField)
-                    .filter(DocumentSignatureField.docx_path == resolve_docx_key(doc.file_path or ""))
-                    .filter(
-                        DocumentSignatureField.sig_key.like("COMMITTEE_MEMBER_%")
-                        | DocumentSignatureField.sig_key.in_(list(COMMITTEE_SIG_KEYS))
-                    )
-                    .distinct(DocumentSignatureField.sig_key)
-                    .count()
-                )
-                # Portal 119 Fix 2 — self-heal when DocumentSignatureField rows are missing.
-                if committee_total == 0:
-                    committee_total = (
-                        db.query(AuditSetCommitteeMember)
-                        .filter_by(audit_set_id=doc.audit_set_id)
-                        .count()
-                    )
-                    if committee_total == 0:
-                        logger.warning(
-                            "Portal 119: FR.233 CM sign: no committee members found "
-                            "for audit_set_id=%s — cannot determine committee_total, "
-                            "certification blocked.",
-                            doc.audit_set_id,
-                        )
-                if committee_total > 0 and committee_signed >= committee_total:
+                if all_committee_signed:
                     if record:
                         record.status = "complete"
                     audit_set = db.query(AuditSet).filter_by(id=doc.audit_set_id).first()
@@ -1401,6 +1404,12 @@ def _commit_existing_signing_record(
                                 triggered_by=current_user.id,
                                 notes="FR.233 signed by Certification Manager",
                             ))
+                else:
+                    logger.warning(
+                        "FR.233 Certification Manager signature received before "
+                        "all planned committee signatures for audit_set_id=%s",
+                        doc.audit_set_id,
+                    )
             db.commit()
             return
 

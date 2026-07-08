@@ -15,9 +15,16 @@ from sqlalchemy.orm import Session
 
 from audit_set.db_models import (
     AuditSet,
+    AuditSetFR233Record,
     AuditSetMessage,
     AuditSetStage,
+    VisualSignaturePlacement,
     get_db,
+)
+from audit_set.committee_slots import (
+    committee_member_auditor_id,
+    committee_member_name,
+    planned_committee_slots,
 )
 from auth.db_models import PlatformUser
 from auth.dependencies import get_current_user
@@ -109,6 +116,68 @@ def get_my_assignments(
             "my_stages":       my_stages,
         })
     return result
+
+
+@router.get("/my-committee-reviews")
+def get_my_committee_reviews(
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """FR.233 reviews assigned during planning to the current auditor."""
+    _require_auditor(current_user)
+    if not current_user.auditor_id:
+        return []
+
+    results = []
+    audit_sets = (
+        db.query(AuditSet)
+        .filter(AuditSet.committee_members.isnot(None))
+        .order_by(AuditSet.created_at.desc())
+        .all()
+    )
+    for audit_set in audit_sets:
+        matching_slot = next(
+            (
+                (sig_key, member)
+                for sig_key, member in planned_committee_slots(audit_set).items()
+                if committee_member_auditor_id(member) == current_user.auditor_id
+            ),
+            None,
+        )
+        if not matching_slot:
+            continue
+
+        sig_key, member = matching_slot
+        record = db.query(AuditSetFR233Record).filter_by(
+            audit_set_id=audit_set.id,
+        ).first()
+        document_id = record.document_id if record else None
+        signed = False
+        if document_id:
+            dynamic_key = f"COMMITTEE_MEMBER_{current_user.auditor_id}"
+            signed = (
+                db.query(VisualSignaturePlacement)
+                .filter_by(document_type="shared_doc", doc_id=document_id)
+                .filter(
+                    VisualSignaturePlacement.sig_key.in_([sig_key, dynamic_key]),
+                    VisualSignaturePlacement.signed_at.isnot(None),
+                )
+                .count()
+                > 0
+            )
+
+        results.append({
+            "audit_set_id":   audit_set.id,
+            "plan_number":    audit_set.plan_number,
+            "company_name":   audit_set.company_name,
+            "standards":      audit_set.standards or [],
+            "committee_role": "Chairperson" if sig_key == "COMMITTEE_CHAIR" else "Member",
+            "member_name":    committee_member_name(member),
+            "document_id":    document_id,
+            "status":         record.status if record else "awaiting_release",
+            "signed":         signed,
+        })
+    return results
 
 
 def _assert_assigned(audit_set_id: str, current_user: PlatformUser, db: Session) -> None:

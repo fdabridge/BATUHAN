@@ -29,6 +29,7 @@ from audit_set.filler import (
     build_team_members,
     render_docx,
 )
+from audit_set.fr233_generator import render_fr233_bytes
 from audit_set.postprocess import (
     apply_audit_type_highlighting,
     apply_standard_highlighting,
@@ -285,7 +286,12 @@ def render_single_document(audit_set, db, fr_number: str, stage_type: str) -> tu
     if fr_number == "FR.211":
         ctx["assessed_person_name"] = ctx.get("lead_auditor_name", "") or ""
 
-    data = render_docx(spec.template_path, ctx)
+    if fr_number == "FR.233":
+        data = render_fr233_bytes(
+            audit_set, db, template_path=spec.template_path,
+        )
+    else:
+        data = render_docx(spec.template_path, ctx)
     # Always apply colour highlighting (safe no-op on forms without standard/audit-type cells).
     data = apply_standard_highlighting(data, standards_codes)
     data = apply_audit_type_highlighting(data, audit_set.audit_type or "")
@@ -358,7 +364,12 @@ def build_audit_set_zip(audit_set, db) -> bytes:
                             }
                         else:
                             rctx = ctx
-                        data = render_docx(doc.template_path, rctx)
+                        if doc.fr_number == "FR.233":
+                            data = render_fr233_bytes(
+                                audit_set, db, template_path=doc.template_path,
+                            )
+                        else:
+                            data = render_docx(doc.template_path, rctx)
                         # Always apply colour highlighting (safe no-op on forms without
                         # standard/audit-type cells).
                         data = apply_standard_highlighting(data, standards_codes)

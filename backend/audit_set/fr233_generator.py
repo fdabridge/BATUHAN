@@ -12,13 +12,16 @@ from __future__ import annotations
 import copy
 from datetime import date
 from io import BytesIO
+from typing import TYPE_CHECKING
 
 from docx import Document
 from docx.oxml.ns import qn
 from lxml import etree
-from sqlalchemy.orm import Session
 
-from audit_set.resolver import resolve_document_set
+from audit_set.committee_slots import planned_committee_members
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 
 def _set_cell_text(tc_el, text) -> None:
@@ -57,21 +60,8 @@ def _fmt_d(d) -> str:
 
 
 def _build_committee_context(audit_set) -> list[dict]:
-    """Portal 62 — context for the docxtpl `{%tr for member in committee_members %}`
-    loop. Reads the denormalized snapshot stored on AuditSet.committee_members.
-
-    Falls back to 3 blank placeholder rows (id ``BLANK_<n>``) when the
-    committee has not yet been appointed so the template still renders
-    readable rows. The viewer treats `COMMITTEE_MEMBER_BLANK_*` sig_keys as
-    non-signable "awaiting committee appointment" placeholders.
-    """
-    raw = audit_set.committee_members or []
-    members = list(raw) if isinstance(raw, list) else []
-
-    # Chairperson first.
-    # Portal 124 — AuditSetCommitteeMember.role uses "decision_maker" for the chair.
-    # Accept "chairperson" as legacy fallback for snapshots written before Portal 64.
-    members.sort(key=lambda m: 0 if m.get("role") in ("decision_maker", "chairperson") else 1)
+    """Build the three positional FR.233 rows from the planning snapshot."""
+    members = planned_committee_members(audit_set)
 
     ctx = [
         {
@@ -83,16 +73,20 @@ def _build_committee_context(audit_set) -> list[dict]:
         for m in members
     ]
 
-    if not ctx:
-        ctx = [
-            {"id": f"BLANK_{i}", "name": "", "ea_codes_str": "", "role": "member"}
-            for i in range(3)
-        ]
+    while len(ctx) < 3:
+        ctx.append({
+            "id": f"BLANK_{len(ctx)}",
+            "name": "",
+            "ea_codes_str": "",
+            "role": "member",
+        })
 
     return ctx
 
 
 def _resolve_fr233_template(audit_set):
+    from audit_set.resolver import resolve_document_set
+
     document_set, _missing = resolve_document_set(audit_set)
     for folder, specs in document_set.items():
         for spec in specs:
@@ -146,7 +140,7 @@ def _fill_table3_committee(t3, members_ctx: list[dict]) -> None:
             _set_cell_text(cm_row.cells[4]._tc, "[SIG:CERT_MANAGER_FR233]")
 
 
-def render_fr233_bytes(audit_set, db: Session) -> bytes:
+def render_fr233_bytes(audit_set, db: "Session", template_path=None) -> bytes:
     """Render FR.233 bytes.
 
     Single-pass python-docx render:
@@ -156,7 +150,7 @@ def render_fr233_bytes(audit_set, db: Session) -> bytes:
 
     The docxtpl pass has been removed: the template has no Jinja2 tags.
     """
-    template_path = _resolve_fr233_template(audit_set)
+    template_path = template_path or _resolve_fr233_template(audit_set)
     if template_path is None:
         raise RuntimeError("FR.233 template not found for this audit set")
 
@@ -202,6 +196,3 @@ def _safe_fill_table0(t0, audit_set, team_str: str, stage1, stage2) -> None:
     for ri, ci, value in pairs:
         if ri < len(rows) and ci < len(rows[ri].cells):
             _set_cell_text(rows[ri].cells[ci]._tc, value)
-
-
-

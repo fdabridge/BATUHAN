@@ -35,14 +35,31 @@ interface Assignment {
   my_stages:       MyStage[]
 }
 
+interface CommitteeReview {
+  audit_set_id:   string
+  plan_number:    number
+  company_name:   string
+  standards:      string[]
+  committee_role: 'Chairperson' | 'Member'
+  document_id:    string | null
+  status:         'awaiting_release' | 'pending' | 'signing' | 'complete'
+  signed:         boolean
+}
+
 export default function AuditorDashboard() {
   const router = useRouter()
   const [assignments, setAssignments] = useState<Assignment[]>([])
+  const [committeeReviews, setCommitteeReviews] = useState<CommitteeReview[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.get<Assignment[]>('/auditor/my-assignments')
-      .then(r => setAssignments(r.data))
+    Promise.all([
+      api.get<Assignment[]>('/auditor/my-assignments')
+        .then(response => setAssignments(response.data)),
+      api.get<CommitteeReview[]>('/auditor/my-committee-reviews')
+        .then(response => setCommitteeReviews(response.data)),
+    ])
+      .catch(() => undefined)
       .finally(() => setLoading(false))
   }, [])
 
@@ -59,9 +76,72 @@ export default function AuditorDashboard() {
         </p>
       </div>
 
+      {committeeReviews.length > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-3 text-sm font-semibold uppercase text-gray-600">
+            Committee Reviews
+          </h2>
+          <div className="space-y-3">
+            {committeeReviews.map(review => (
+              <div
+                key={review.audit_set_id}
+                className="flex items-center justify-between rounded-lg border bg-white p-5"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="truncate font-semibold text-gray-900">
+                      {review.company_name}
+                    </h3>
+                    <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                      {review.committee_role}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-400">
+                    FR.233 Review &amp; Decision
+                    {review.plan_number ? ` · #${review.plan_number}` : ''}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {(review.standards || []).map(standard => (
+                      <span
+                        key={standard}
+                        className="rounded bg-blue-50 px-2 py-0.5 text-xs text-blue-700"
+                      >
+                        {STANDARD_NAMES[standard] || standard}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="ml-4 flex shrink-0 items-center gap-3">
+                  <span className={`text-xs font-medium ${
+                    review.signed ? 'text-green-700' : 'text-amber-700'
+                  }`}>
+                    {review.signed
+                      ? 'Signed'
+                      : review.document_id
+                        ? 'Signature required'
+                        : 'Awaiting release'}
+                  </span>
+                  {review.document_id && (
+                    <button
+                      type="button"
+                      onClick={() => router.push(
+                        `/auditor/viewer/shared_doc/${review.document_id}`,
+                      )}
+                      className="rounded-lg bg-[#1A4731] px-3 py-2 text-xs font-medium text-white hover:bg-[#143828]"
+                    >
+                      {review.signed ? 'Open' : 'Open to Sign'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {assignments.length === 0 ? (
         <div className="py-16 text-center text-sm text-gray-400">
-          No assignments yet.
+          No audit-team assignments yet.
         </div>
       ) : (
         <div className="space-y-3">
