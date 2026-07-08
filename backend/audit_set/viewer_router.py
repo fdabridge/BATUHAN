@@ -121,7 +121,6 @@ SIG_KEY_ALIASES: dict[str, str] = {
     # Keep aliases so existing VisualSignaturePlacement rows written under the
     # old names (CB_REVIEWER, APPOINTED_REVIEWER) still resolve at read-time.
     "CB_REVIEWER":         "CB_CERT_MANAGER",
-    "APPOINTED_REVIEWER":  "CB_CERT_MANAGER",
     "CERT_MANAGER_REVIEW": "CERT_MANAGER_FR233",  # FR.233 only (template-scoped)
 }
 
@@ -822,6 +821,27 @@ def _assert_can_sign(
             if not stage or stage.lead_auditor_id != current_user.auditor_id:
                 raise HTTPException(403, "Only the Lead Auditor for this stage may sign")
 
+        elif sig_key == "APPOINTED_REVIEWER":
+            # Portal 123 — the auditor appointed by the planner as reviewer for
+            # this specific report (AuditSetAuditReport.reviewer_auditor_id).
+            if report.appointed_reviewer_signed_at:
+                raise HTTPException(400, "Appointed reviewer has already signed this report")
+            if current_user.role == "admin":
+                return
+            if not report.reviewer_auditor_id:
+                raise HTTPException(
+                    400,
+                    "No reviewer has been appointed for this report. "
+                    "Ask the planner to assign a reviewer in the audit planning section.",
+                )
+            if current_user.role != "auditor" or current_user.auditor_id != report.reviewer_auditor_id:
+                raise HTTPException(403, "Only the appointed reviewer for this report may sign this slot")
+            if not report.la_signed_at:
+                raise HTTPException(
+                    400,
+                    "The Lead Auditor must sign before the appointed reviewer can sign",
+                )
+
         elif sig_key in ("CB_REVIEWER", "CB_CERT_MANAGER"):
             # Portal 73 — templates now use CB_CERT_MANAGER; CB_REVIEWER kept as alias.
             if report.reviewer_signed_at:
@@ -833,6 +853,24 @@ def _assert_can_sign(
                     400,
                     "The Lead Auditor must sign before the Certification Manager can sign",
                 )
+            # If this document has an APPOINTED_REVIEWER sig field, that must be
+            # signed first. Check DocumentSignatureField for this docx_path.
+            if report.reviewer_auditor_id and not report.appointed_reviewer_signed_at:
+                from storage.document_store import resolve_docx_key
+                try:
+                    docx_key = resolve_docx_key(report.file_path)
+                except Exception:
+                    docx_key = report.file_path  # fallback to raw path
+                has_ar_field = (
+                    db.query(DocumentSignatureField)
+                    .filter_by(docx_path=docx_key, sig_key="APPOINTED_REVIEWER")
+                    .first()
+                ) is not None
+                if has_ar_field:
+                    raise HTTPException(
+                        400,
+                        "The appointed reviewer must sign before the Certification Manager can sign",
+                    )
 
         else:
             raise HTTPException(400, f"Unexpected sig_key '{sig_key}' for audit_report")
@@ -1058,6 +1096,25 @@ def _get_field_status(
                 )
                 is_la = stage is not None and stage.lead_auditor_id == current_user.auditor_id
             return _result("current_user" if is_la else "pending")
+
+        elif sig_key == "APPOINTED_REVIEWER":
+            # Portal 123 — the auditor appointed by planner to review this report.
+            if report.appointed_reviewer_signed_at:
+                return _result(
+                    "signed",
+                    _user_name(report.appointed_reviewer_user_id),
+                    vsp.signature_image if vsp else None,
+                )
+            if not report.la_signed_at:
+                return _result("blocked")
+            reviewer_name = report.reviewer_auditor_name or "Appointed Reviewer"
+            if (current_user.role == "auditor"
+                    and report.reviewer_auditor_id
+                    and current_user.auditor_id == report.reviewer_auditor_id):
+                return _result("current_user", reviewer_name)
+            if current_user.role == "admin":
+                return _result("current_user", reviewer_name)
+            return _result("pending", reviewer_name)
 
         elif sig_key in ("CB_REVIEWER", "CB_CERT_MANAGER"):
             # Portal 73 — templates now use CB_CERT_MANAGER; CB_REVIEWER kept as alias.
@@ -1421,6 +1478,13 @@ def _commit_existing_signing_record(
             report.status         = "pending_review"
             db.commit()
 
+        elif sig_key == "APPOINTED_REVIEWER" and not report.appointed_reviewer_signed_at:
+            # Portal 123 — record appointed reviewer's sign without changing overall status
+            report.appointed_reviewer_user_id   = current_user.id
+            report.appointed_reviewer_signed_at  = now
+            report.appointed_reviewer_signed_ip  = ip
+            db.commit()
+
         elif sig_key in ("CB_REVIEWER", "CB_CERT_MANAGER") and not report.reviewer_signed_at:
             report.reviewer_user_id     = current_user.id
             report.reviewer_signed_at   = now
@@ -1638,10 +1702,10 @@ def sign_confirm(
         signer_display_name = selected_employee.full_name
     else:
         user_sig = auth_db.query(UserSignature).filter_by(user_id=current_user.id).first()
-        if not user_sig:
+        if not user_sig or not user_sig.image_data:
             raise HTTPException(
                 400,
-                "No signature on file. Go to Settings → My Signature to set one up, then try again.",
+                "No signature image on file. Go to Settings → My Signature to upload your signature, then try again.",
             )
         signature_image_b64 = user_sig.image_data
         signer_display_name = current_user.full_name

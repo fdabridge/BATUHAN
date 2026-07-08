@@ -24,7 +24,11 @@ from typing import TYPE_CHECKING
 
 import fitz  # PyMuPDF
 
+import logging
+
 from storage.document_store import ensure_local, is_s3_ref
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -97,15 +101,34 @@ def flatten_document(
     placement_map = {p.sig_key: p for p in placements}
 
     # ── Get field coordinates ─────────────────────────────────────────────────
+    # ── Get field coordinates (alias-aware) ───────────────────────────────
+    _SIG_ALIASES = {
+        "CB_REVIEWER":         "CB_CERT_MANAGER",
+        "AUDITOR_MEMBER":      "ASSIGNED_AUDITOR",
+        "CLIENT":              "ORG_REP",
+        "CERT_MANAGER_REVIEW": "CERT_MANAGER_FR233",
+    }
+    all_sig_keys: set[str] = set()
+    for k in placement_map.keys():
+        all_sig_keys.add(k)
+        for old_k, new_k in _SIG_ALIASES.items():
+            if new_k == k:
+                all_sig_keys.add(old_k)
+
     fields = (
         db.query(DocumentSignatureField)
         .filter(
             DocumentSignatureField.docx_path == docx_path,
-            DocumentSignatureField.sig_key.in_(list(placement_map.keys())),
+            DocumentSignatureField.sig_key.in_(list(all_sig_keys)),
         )
         .all()
     )
     if not fields:
+        logger.warning(
+            "[flatten_document] No DocumentSignatureField rows found for %s/%s "
+            "(docx_path=%s, sig_keys=%s). Returning raw PDF.",
+            document_type, doc_id, docx_path, sorted(all_sig_keys),
+        )
         with open(pdf_path, "rb") as f:
             return f.read()
 
@@ -127,6 +150,15 @@ def flatten_document(
     for sig_key, placement in placement_map.items():
         field = field_map.get(sig_key)
         if not field:
+            for old_k, new_k in _SIG_ALIASES.items():
+                if new_k == sig_key and old_k in field_map:
+                    field = field_map[old_k]
+                    break
+        if not field:
+            logger.warning(
+                "[flatten_document] No DSF field for sig_key=%s on %s/%s — skipping",
+                sig_key, document_type, doc_id,
+            )
             continue
 
         page_idx = field.page_number   # 0-indexed
@@ -294,6 +326,9 @@ def _placement_signer_name(
         if report:
             if sig_key == "LEAD_AUDITOR":
                 return _auth_user_name(report.la_user_id)
+            if sig_key == "APPOINTED_REVIEWER":
+                name = _auth_user_name(report.appointed_reviewer_user_id)
+                return name or report.reviewer_auditor_name
             if sig_key in ("CB_REVIEWER", "CB_CERT_MANAGER"):
                 return _auth_user_name(report.reviewer_user_id)
 

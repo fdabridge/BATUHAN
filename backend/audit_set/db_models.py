@@ -114,6 +114,10 @@ def create_tables():
     _safe_add_column("audit_set_nc_decisions", "stage_type VARCHAR")
     _safe_add_column("audit_set_nc_items", "stage_type VARCHAR")
     _safe_drop_constraint("audit_set_nc_decisions", "audit_set_nc_decisions_audit_set_id_key")
+    # Portal 123 — APPOINTED_REVIEWER signing on stage reports (separate from CB_CERT_MANAGER)
+    _safe_add_column("audit_set_audit_reports", "appointed_reviewer_signed_at TIMESTAMP")
+    _safe_add_column("audit_set_audit_reports", "appointed_reviewer_user_id VARCHAR")
+    _safe_add_column("audit_set_audit_reports", "appointed_reviewer_signed_ip VARCHAR")
 
 
 # ---------------------------------------------------------------------------
@@ -594,6 +598,11 @@ class AuditSetAuditReport(Base):
     la_signed_ip    = Column(String, nullable=True)
     la_otp_hash     = Column(String, nullable=True)
     la_otp_expires  = Column(DateTime, nullable=True)
+
+    # ── Appointed Reviewer signature (Portal 123) — signed before CM ───────
+    appointed_reviewer_signed_at  = Column(DateTime, nullable=True)
+    appointed_reviewer_user_id    = Column(String, nullable=True)
+    appointed_reviewer_signed_ip  = Column(String, nullable=True)
 
     # ── Committee Reviewer approval (party 2) ─────────────────────────────
     reviewer_user_id      = Column(String, nullable=True)

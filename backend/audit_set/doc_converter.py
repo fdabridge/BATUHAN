@@ -49,6 +49,10 @@ def _normalize_sig_key(raw_key: str, docx_basename: str) -> str:
         or "FR.230" in name or "FR230" in name   # Portal 121 — NC form
     ):
         return "ORG_REP"
+    # Portal 123 — old templates used [SIG:CB_REVIEWER] for the appointed reviewer's
+    # slot in stage reports. Normalize to APPOINTED_REVIEWER (canonical key). New
+    # templates write [SIG:APPOINTED_REVIEWER] directly, so this rule is a
+    # backward-compat fallback for already-uploaded pre-Portal-123 reports.
     if raw_key == "CB_REVIEWER" and ("FR.231" in name or "FR.232" in name):
         return "APPOINTED_REVIEWER"
     # Portal 61 — FR.233 static template ships [SIG:CERT_MANAGER_REVIEW] in the
