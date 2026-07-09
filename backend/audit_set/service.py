@@ -13,7 +13,7 @@ from sqlalchemy import cast, func, or_, String
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
-from audit_set.db_models import AuditSet, AuditSetStage
+from audit_set.db_models import AuditSet, AuditSetSharedDocument, AuditSetStage, AuditSetStatusEvent
 from audit_set.schemas import (
     AuditSetCertUpdateSchema,
     AuditSetCreateSchema,
@@ -1175,6 +1175,89 @@ def derive_and_save_scope(
 # Certificate management
 # ---------------------------------------------------------------------------
 
+def _add_certificate_years(issued: date, years: int = 3) -> date:
+    """Return the certificate expiry date, handling leap-day issue dates."""
+    try:
+        return issued.replace(year=issued.year + years)
+    except ValueError:
+        return issued.replace(year=issued.year + years, day=28)
+
+
+def _derive_certificate_issue_date(
+    db: Session,
+    audit_set: AuditSet,
+    fallback_date: date | None = None,
+) -> date:
+    """Best available issue date for rows that are already certified."""
+    certificate_doc = (
+        db.query(AuditSetSharedDocument)
+        .filter_by(audit_set_id=audit_set.id, document_type="certificate")
+        .order_by(
+            AuditSetSharedDocument.released_at.desc().nullslast(),
+            AuditSetSharedDocument.created_at.desc(),
+        )
+        .first()
+    )
+    if certificate_doc:
+        issued_at = certificate_doc.released_at or certificate_doc.created_at
+        if issued_at:
+            return issued_at.date()
+
+    certified_event = (
+        db.query(AuditSetStatusEvent)
+        .filter_by(audit_set_id=audit_set.id, to_status="certified")
+        .order_by(AuditSetStatusEvent.triggered_at.desc())
+        .first()
+    )
+    if certified_event and certified_event.triggered_at:
+        return certified_event.triggered_at.date()
+
+    return fallback_date or date.today()
+
+
+def ensure_cert_dates_for_certified(
+    db: Session,
+    audit_sets: list[AuditSet] | None = None,
+    fallback_date: date | None = None,
+) -> bool:
+    """
+    Certified/continued clients must have certificate dates so planner, CRM,
+    and dashboard lists can show them as valid certificates.
+    """
+    targets = audit_sets
+    if targets is None:
+        targets = (
+            db.query(AuditSet)
+            .filter(AuditSet.status != "archived")
+            .filter(AuditSet.workflow_status == "certified")
+            .filter(
+                or_(
+                    AuditSet.cert_issued_date.is_(None),
+                    AuditSet.cert_expiry_date.is_(None),
+                    AuditSet.cert_status.is_(None),
+                )
+            )
+            .all()
+        )
+
+    changed = False
+    for audit_set in targets:
+        if audit_set.workflow_status != "certified":
+            continue
+        if audit_set.cert_issued_date and audit_set.cert_expiry_date and audit_set.cert_status:
+            continue
+
+        issued = audit_set.cert_issued_date or _derive_certificate_issue_date(
+            db, audit_set, fallback_date=fallback_date,
+        )
+        audit_set.cert_issued_date = issued
+        if audit_set.cert_expiry_date is None:
+            audit_set.cert_expiry_date = _add_certificate_years(issued)
+        audit_set.cert_status = audit_set.compute_cert_status()
+        changed = True
+
+    return changed
+
 def update_cert_dates(
     db: Session,
     audit_set_id: str,
@@ -1196,12 +1279,7 @@ def update_cert_dates(
         audit_set.cert_expiry_date = data.cert_expiry_date
     elif data.cert_issued_date is not None and audit_set.cert_expiry_date is None:
         # Auto-set to 3 calendar years from issue date
-        issued = data.cert_issued_date
-        try:
-            audit_set.cert_expiry_date = issued.replace(year=issued.year + 3)
-        except ValueError:
-            # Feb 29 on a non-leap year → use Feb 28
-            audit_set.cert_expiry_date = issued.replace(year=issued.year + 3, day=28)
+        audit_set.cert_expiry_date = _add_certificate_years(data.cert_issued_date)
 
     audit_set.cert_status = audit_set.compute_cert_status()
     db.commit()
@@ -1238,6 +1316,9 @@ def _count_file_jobs(filename: str) -> int:
 
 def get_dashboard_stats(db: Session) -> dict:
     """Return aggregate counts for the dashboard stats cards."""
+    if ensure_cert_dates_for_certified(db):
+        db.commit()
+
     total_plans = (
         db.query(func.count(AuditSet.id))
         .filter(AuditSet.status != "archived")
@@ -1284,6 +1365,9 @@ def list_clients(
     Return audit sets with stages eagerly loaded, ordered newest-first.
     Excludes archived records. Applies AND filters for every non-None param.
     """
+    if ensure_cert_dates_for_certified(db):
+        db.commit()
+
     q = (
         db.query(AuditSet)
         .options(selectinload(AuditSet.stages))

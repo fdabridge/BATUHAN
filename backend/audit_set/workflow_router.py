@@ -502,6 +502,14 @@ def update_workflow_status(
     else:
         effective_ts = datetime.utcnow()
 
+    if to_status == "certified":
+        from audit_set.service import ensure_cert_dates_for_certified
+        ensure_cert_dates_for_certified(
+            db,
+            [audit_set],
+            fallback_date=effective_ts.date(),
+        )
+
     event = AuditSetStatusEvent(
         audit_set_id=audit_set_id,
         from_status=from_status,
@@ -580,6 +588,14 @@ def jump_workflow_status(
         )
     else:
         effective_ts = datetime.utcnow()
+
+    if payload.target_status == "certified":
+        from audit_set.service import ensure_cert_dates_for_certified
+        ensure_cert_dates_for_certified(
+            db,
+            [audit_set],
+            fallback_date=effective_ts.date(),
+        )
 
     event = AuditSetStatusEvent(
         audit_set_id=audit_set_id,
