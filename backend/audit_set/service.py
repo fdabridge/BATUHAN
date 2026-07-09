@@ -511,6 +511,7 @@ def _auto_populate_ea_fields(audit_set: AuditSet) -> None:
                 scope_tr=audit_set.scope_tr,
                 scope_en=audit_set.scope_en,
                 ea_code=audit_set.ea_code,
+                application_data=audit_set.application_data,
             )
         except Exception as exc:                                     # pragma: no cover
             logger.warning("[AuditSet] auto-derive in _auto_populate_ea_fields failed: %s", exc)
@@ -526,6 +527,7 @@ def derive_required_scope(
     scope_tr: str | None,
     scope_en: str | None,
     ea_code: str | None,
+    application_data: dict | None = None,
 ) -> dict:
     """
     Derive per-standard required scope codes from the client's scope text.
@@ -565,7 +567,14 @@ def derive_required_scope(
                 complexity = "Low"
             result[iso] = {"type": "energy", "codes": [complexity]}
 
-        elif any(n in norm for n in ("9001", "14001", "45001", "27001")):
+        elif "27001" in norm:
+            technical_area = (application_data or {}).get("isms_technical_area")
+            result[iso] = {
+                "type": "isms",
+                "codes": [technical_area] if technical_area else [],
+            }
+
+        elif any(n in norm for n in ("9001", "14001", "45001")):
             # Use stored ea_code if available, otherwise infer from scope text
             if ea_code:
                 codes = [ea_code]
@@ -897,6 +906,7 @@ def create_audit_set(db: Session, data: AuditSetCreateSchema) -> AuditSet:
         scope_tr=audit_set.scope_tr,
         scope_en=audit_set.scope_en,
         ea_code=audit_set.ea_code,
+        application_data=audit_set.application_data,
     )
 
     result = _run_calculation(audit_set)
@@ -963,6 +973,7 @@ def quick_calculate(db: Session, audit_set_id: str, data: QuickCalcSchema) -> Au
             scope_tr=audit_set.scope_tr,
             scope_en=audit_set.scope_en,
             ea_code=audit_set.ea_code,
+            application_data=audit_set.application_data,
         )
 
     result = _run_calculation(audit_set)
@@ -1151,6 +1162,7 @@ def derive_and_save_scope(
         scope_tr=audit_set.scope_tr,
         scope_en=audit_set.scope_en,
         ea_code=audit_set.ea_code,
+        application_data=audit_set.application_data,
     )
     audit_set.required_scope = scoped
     db.commit()

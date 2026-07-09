@@ -12,6 +12,7 @@ interface AuditReport {
   file_name:             string | null
   status:                string
   la_signed_at:          string | null
+  appointed_reviewer_signed_at: string | null
   reviewer_signed_at:    string | null
   can_review:            boolean
   created_at:            string
@@ -34,7 +35,7 @@ const STAGE_LABELS: Record<string, string> = {
 
 const STATUS_CONFIG: Record<string, { label: string; chip: string }> = {
   pending_la:     { label: 'Awaiting Lead Auditor', chip: 'bg-amber-100 text-amber-700' },
-  pending_review: { label: 'Awaiting Reviewer',     chip: 'bg-blue-100 text-blue-700' },
+  pending_review: { label: 'Awaiting Approval',     chip: 'bg-blue-100 text-blue-700' },
   approved:       { label: 'Approved',              chip: 'bg-green-100 text-green-700' },
 }
 
@@ -47,8 +48,6 @@ function fmtDate(iso: string | null) {
 
 export function AuditReportSection({
   auditSetId,
-  workflowStatus,
-  userRole,
 }: {
   auditSetId: string
   workflowStatus: string | null
@@ -60,7 +59,8 @@ export function AuditReportSection({
   const [errors,    setErrors]    = useState<Record<string, string>>({})
   const [approveDates, setApproveDates] = useState<Record<string, string>>({})
 
-  const canAssignReviewer = ['admin', 'planner', 'certification_manager', 'executive'].includes(userRole ?? '')
+  // The reviewer is the chairperson selected in audit planning.
+  const canAssignReviewer = false
 
   // Reviewer assignment state
   const [assigningFor, setAssigningFor] = useState<string | null>(null)
@@ -70,23 +70,11 @@ export function AuditReportSection({
   const [assigning,    setAssigning]    = useState(false)
   const [assignErr,    setAssignErr]    = useState('')
 
-  const relevantStatuses = new Set([
-    'stage1_in_progress', 'stage1_complete',
-    'stage2_scheduled', 'stage2_in_progress',
-    'audit_in_progress', 'under_review', 'certified',
-  ])
-
   useEffect(() => {
-    if (!workflowStatus || !relevantStatuses.has(workflowStatus)) {
-      setLoading(false)
-      return
-    }
     api.get<AuditReport[]>(`/audit-sets/${auditSetId}/audit-reports`)
       .then(r => setReports(r.data))
       .finally(() => setLoading(false))
-  }, [auditSetId, workflowStatus])
-
-  if (!workflowStatus || !relevantStatuses.has(workflowStatus)) return null
+  }, [auditSetId])
 
   async function download(id: string, fileName: string | null) {
     const r = await api.get(`/audit-sets/${auditSetId}/audit-reports/${id}/download`, {
@@ -186,13 +174,14 @@ export function AuditReportSection({
                     <p className="mt-0.5 text-xs text-gray-400">
                       {STAGE_LABELS[r.stage_type] ?? r.stage_type} · {r.report_form}
                       {r.la_signed_at && ` · LA signed ${fmtDate(r.la_signed_at)}`}
-                      {r.reviewer_signed_at && ` · Reviewer approved ${fmtDate(r.reviewer_signed_at)}`}
+                      {r.appointed_reviewer_signed_at && ` · Chair signed ${fmtDate(r.appointed_reviewer_signed_at)}`}
+                      {r.reviewer_signed_at && ` · CM approved ${fmtDate(r.reviewer_signed_at)}`}
                     </p>
                     {/* Reviewer assignment badge */}
                     <p className="mt-0.5 text-xs text-gray-500">
                       {r.reviewer_auditor_name
-                        ? <>Reviewer: <span className="font-medium text-gray-700">{r.reviewer_auditor_name}</span></>
-                        : <span className="text-amber-600">No reviewer assigned</span>
+                        ? <>Committee Chairperson: <span className="font-medium text-gray-700">{r.reviewer_auditor_name}</span></>
+                        : <span className="text-amber-600">No committee chairperson selected</span>
                       }
                     </p>
                   </div>

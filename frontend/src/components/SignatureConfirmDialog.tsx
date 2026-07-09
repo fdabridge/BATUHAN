@@ -54,6 +54,7 @@ const SIG_KEY_LABELS: Record<string, string> = {
   CB_PLANNER:      'Planning Officer',
   CB_CERT_MANAGER: 'Certification Manager',
   CB_REVIEWER:     'Committee Reviewer',
+  APPOINTED_REVIEWER: 'Committee Chairperson',
   LEAD_AUDITOR:    'Lead Auditor',
   CLIENT:          'Organisation Representative',
   ORG_REP:         'Organisation Representative',

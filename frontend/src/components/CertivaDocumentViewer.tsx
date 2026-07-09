@@ -58,6 +58,7 @@ const SIG_LABELS: Record<string, string> = {
   COMMITTEE_CHAIR:    'Committee Chairperson',
   COMMITTEE_MEMBER_1: 'Committee Member 1',
   COMMITTEE_MEMBER_2: 'Committee Member 2',
+  APPOINTED_REVIEWER: 'Committee Chairperson',
   CERT_MANAGER_FR233: 'Certification Manager (FR.233)',
 }
 function sigLabel(key: string) {

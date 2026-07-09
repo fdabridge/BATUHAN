@@ -39,6 +39,7 @@ from audit_set.committee_slots import (
     committee_member_auditor_id,
     committee_member_name,
     expected_committee_sig_keys,
+    planned_committee_chair,
     planned_committee_slots,
 )
 from audit_set.db_models import (
@@ -108,7 +109,11 @@ ORG_BLANK_RE = re.compile(
 # Portal 62: dynamic per-auditor keys replace static slots.
 # Legacy static keys kept so old signed FR.233 docs still resolve.
 COMMITTEE_SIG_KEYS = set(STATIC_COMMITTEE_SIG_KEYS)
-CERT_MANAGER_FR233_KEY = "CERT_MANAGER_FR233"
+FR233_CERT_MANAGER_KEYS = {
+    "CB_CERT_MANAGER",
+    "CERT_MANAGER_FR233",
+    "CERT_MANAGER_REVIEW",
+}
 # Portal 62 — regex for dynamic committee member sig keys: COMMITTEE_MEMBER_<auditor_id>
 COMMITTEE_MEMBER_RE = re.compile(r"^COMMITTEE_MEMBER_(.+)$")
 
@@ -128,7 +133,8 @@ SIG_KEY_ALIASES: dict[str, str] = {
     # Keep aliases so existing VisualSignaturePlacement rows written under the
     # old names (CB_REVIEWER, APPOINTED_REVIEWER) still resolve at read-time.
     "CB_REVIEWER":         "CB_CERT_MANAGER",
-    "CERT_MANAGER_REVIEW": "CERT_MANAGER_FR233",  # FR.233 only (template-scoped)
+    "CERT_MANAGER_REVIEW": "CB_CERT_MANAGER",  # FR.233 only (template-scoped)
+    "CERT_MANAGER_FR233":  "CB_CERT_MANAGER",  # legacy FR.233 generator key
 }
 
 
@@ -417,7 +423,7 @@ def _check_committee_sig(
     doc_id: str | None = None,
 ) -> None:
     """Raise HTTPException(403) if `current_user` may not sign `sig_key` on FR.233."""
-    if sig_key == CERT_MANAGER_FR233_KEY:
+    if sig_key in FR233_CERT_MANAGER_KEYS:
         # Portal 61 — certification_manager is the canonical CM role; admin /
         # executive retained as escape hatches for existing data.
         if current_user.role not in ("certification_manager", "admin", "executive"):
@@ -808,9 +814,14 @@ def _assert_can_sign(
             if not _org_team_eligible(sig_key, doc, current_user, db):
                 raise HTTPException(403, "This signature slot is not assigned to you")
 
-        elif (COMMITTEE_MEMBER_RE.match(sig_key)
-              or sig_key in COMMITTEE_SIG_KEYS
-              or sig_key == CERT_MANAGER_FR233_KEY):
+        elif (
+            COMMITTEE_MEMBER_RE.match(sig_key)
+            or sig_key in COMMITTEE_SIG_KEYS
+            or (
+                doc.document_type == "fr233"
+                and sig_key in FR233_CERT_MANAGER_KEYS
+            )
+        ):
             # Portal 49a Part 3 / Portal 62 — FR.233 committee signing.
             # Dynamic COMMITTEE_MEMBER_<auditor_id> keys (Portal 62) and legacy
             # static keys are both handled by _check_committee_sig.
@@ -880,24 +891,32 @@ def _assert_can_sign(
                 raise HTTPException(403, "Only the Lead Auditor for this stage may sign")
 
         elif sig_key == "APPOINTED_REVIEWER":
-            # Portal 123 — the auditor appointed by the planner as reviewer for
-            # this specific report (AuditSetAuditReport.reviewer_auditor_id).
+            # The "Approved By" row belongs to the committee chairperson saved
+            # during audit planning, not a separate per-report reviewer.
             if report.appointed_reviewer_signed_at:
-                raise HTTPException(400, "Appointed reviewer has already signed this report")
+                raise HTTPException(400, "Committee chairperson has already signed this report")
             if current_user.role == "admin":
                 return
-            if not report.reviewer_auditor_id:
+            audit_set = db.query(AuditSet).filter_by(id=report.audit_set_id).first()
+            chair = planned_committee_chair(audit_set) if audit_set else None
+            chair_auditor_id = committee_member_auditor_id(chair)
+            if not chair_auditor_id:
                 raise HTTPException(
                     400,
-                    "No reviewer has been appointed for this report. "
-                    "Ask the planner to assign a reviewer in the audit planning section.",
+                    "No committee chairperson has been selected in audit planning.",
                 )
-            if current_user.role != "auditor" or current_user.auditor_id != report.reviewer_auditor_id:
-                raise HTTPException(403, "Only the appointed reviewer for this report may sign this slot")
+            if (
+                current_user.role != "auditor"
+                or current_user.auditor_id != chair_auditor_id
+            ):
+                raise HTTPException(
+                    403,
+                    "Only the planned committee chairperson may sign this slot",
+                )
             if not report.la_signed_at:
                 raise HTTPException(
                     400,
-                    "The Lead Auditor must sign before the appointed reviewer can sign",
+                    "The Lead Auditor must sign before the committee chairperson can sign",
                 )
 
         elif sig_key in ("CB_REVIEWER", "CB_CERT_MANAGER"):
@@ -913,7 +932,7 @@ def _assert_can_sign(
                 )
             # If this document has an APPOINTED_REVIEWER sig field, that must be
             # signed first. Check DocumentSignatureField for this docx_path.
-            if report.reviewer_auditor_id and not report.appointed_reviewer_signed_at:
+            if not report.appointed_reviewer_signed_at:
                 from storage.document_store import resolve_docx_key
                 try:
                     docx_key = resolve_docx_key(report.file_path)
@@ -927,7 +946,7 @@ def _assert_can_sign(
                 if has_ar_field:
                     raise HTTPException(
                         400,
-                        "The appointed reviewer must sign before the Certification Manager can sign",
+                        "The committee chairperson must sign before the Certification Manager can sign",
                     )
 
         else:
@@ -1080,7 +1099,7 @@ def _get_field_status(
                 return _result("current_user", member_name)
             return _result("pending", member_name)
 
-        if sig_key == CERT_MANAGER_FR233_KEY:
+        if doc.document_type == "fr233" and sig_key in FR233_CERT_MANAGER_KEYS:
             # CM signs last; show "blocked" until all committee slots have signed.
             if vsp:
                 return _result("signed", _user_name(current_user.id), vsp.signature_image)
@@ -1193,7 +1212,6 @@ def _get_field_status(
             return _result("current_user" if is_la else "pending")
 
         elif sig_key == "APPOINTED_REVIEWER":
-            # Portal 123 — the auditor appointed by planner to review this report.
             if report.appointed_reviewer_signed_at:
                 return _result(
                     "signed",
@@ -1202,14 +1220,19 @@ def _get_field_status(
                 )
             if not report.la_signed_at:
                 return _result("blocked")
-            reviewer_name = report.reviewer_auditor_name or "Appointed Reviewer"
-            if (current_user.role == "auditor"
-                    and report.reviewer_auditor_id
-                    and current_user.auditor_id == report.reviewer_auditor_id):
-                return _result("current_user", reviewer_name)
+            audit_set = db.query(AuditSet).filter_by(id=report.audit_set_id).first()
+            chair = planned_committee_chair(audit_set) if audit_set else None
+            chair_name = committee_member_name(chair) or "Committee Chairperson"
+            chair_auditor_id = committee_member_auditor_id(chair)
+            if (
+                current_user.role == "auditor"
+                and chair_auditor_id
+                and current_user.auditor_id == chair_auditor_id
+            ):
+                return _result("current_user", chair_name)
             if current_user.role == "admin":
-                return _result("current_user", reviewer_name)
-            return _result("pending", reviewer_name)
+                return _result("current_user", chair_name)
+            return _result("pending", chair_name)
 
         elif sig_key in ("CB_REVIEWER", "CB_CERT_MANAGER"):
             # Portal 73 — templates now use CB_CERT_MANAGER; CB_REVIEWER kept as alias.
@@ -1357,9 +1380,14 @@ def _commit_existing_signing_record(
             # sign_confirm. No workflow status change is associated with it.
             return
 
-        elif (COMMITTEE_MEMBER_RE.match(sig_key)
-              or sig_key in COMMITTEE_SIG_KEYS
-              or sig_key == CERT_MANAGER_FR233_KEY):
+        elif (
+            COMMITTEE_MEMBER_RE.match(sig_key)
+            or sig_key in COMMITTEE_SIG_KEYS
+            or (
+                doc.document_type == "fr233"
+                and sig_key in FR233_CERT_MANAGER_KEYS
+            )
+        ):
             # Portal 49a Part 3 / Portal 62 — FR.233 signing. Placement already
             # saved. Update AuditSetFR233Record and (for the CM slot) the audit
             # set's workflow status.
@@ -1373,7 +1401,7 @@ def _commit_existing_signing_record(
             if record and record.status == "pending":
                 record.status = "signing"
 
-            if sig_key == CERT_MANAGER_FR233_KEY:
+            if sig_key in FR233_CERT_MANAGER_KEYS:
                 _, all_committee_signed = _fr233_committee_signing_state(
                     doc_id, doc.audit_set_id, db,
                 )
@@ -1563,7 +1591,7 @@ def _commit_existing_signing_record(
             # Portal 49a Part 3: the CB reviewer signing the audit report no
             # longer auto-advances the set to ``certified``. Certification now
             # requires the Cert Manager to sign FR.233 (see shared_doc branch
-            # below for CERT_MANAGER_FR233).
+            # below for the FR.233 Certification Manager slot).
 
     elif document_type == "nc_form":
         nc = db.query(AuditSetNCForm).filter_by(id=doc_id).first()

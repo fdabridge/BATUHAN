@@ -538,7 +538,7 @@ def get_available_auditors(
                 if not required_codes:
                     # Standard with no code system (ISO 37001 etc.) — qualification alone is enough
                     return True
-                if scope_type in ('food', 'medical', 'sector', 'energy'):
+                if scope_type in ('food', 'medical', 'isms', 'sector', 'energy'):
                     raw = qual.scope_category or ''
                     auditor_codes = [c.strip() for c in raw.split(',') if c.strip()]
                 else:  # ea
@@ -636,7 +636,7 @@ def get_available_auditors(
                     continue
 
                 auditor_codes: list[str] = []
-                if scope_type in ("food", "medical", "sector", "energy"):
+                if scope_type in ("food", "medical", "isms", "sector", "energy"):
                     # scope_category is a comma-separated string like "A1.1, A1.3"
                     raw = qual.scope_category or ""
                     auditor_codes = [c.strip() for c in raw.split(",") if c.strip()]

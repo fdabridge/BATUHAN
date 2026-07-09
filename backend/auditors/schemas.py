@@ -22,7 +22,7 @@ class StandardQualificationItem(BaseModel):
     standard_code: Optional[str] = None
     accreditation_body: Optional[str] = None  # e.g. "UAF", "TURKAK"
     scope_category: Optional[str] = None      # for category-based standards (ISO 22000, FSSC, etc.)
-    ea_codes: list[str] = []                  # per-standard EA codes for ISO 9001/14001/45001/27001
+    ea_codes: list[str] = []                  # per-standard EA codes for ISO 9001/14001/45001
     technical_depth: Optional[str] = None     # Lead Auditor, Team Auditor …
     experience_years: Optional[int] = None
     is_qualified: Optional[bool] = True

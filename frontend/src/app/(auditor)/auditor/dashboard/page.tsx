@@ -44,6 +44,14 @@ interface CommitteeReview {
   document_id:    string | null
   status:         'awaiting_release' | 'pending' | 'signing' | 'complete'
   signed:         boolean
+  stage_reports: {
+    id:          string
+    report_form: string
+    label:       string
+    stage_type:  string
+    status:      string
+    signed:      boolean
+  }[]
 }
 
 export default function AuditorDashboard() {
@@ -85,54 +93,92 @@ export default function AuditorDashboard() {
             {committeeReviews.map(review => (
               <div
                 key={review.audit_set_id}
-                className="flex items-center justify-between rounded-lg border bg-white p-5"
+                className="rounded-lg border bg-white p-5"
               >
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h3 className="truncate font-semibold text-gray-900">
-                      {review.company_name}
-                    </h3>
-                    <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
-                      {review.committee_role}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-gray-400">
-                    FR.233 Review &amp; Decision
-                    {review.plan_number ? ` · #${review.plan_number}` : ''}
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {(review.standards || []).map(standard => (
-                      <span
-                        key={standard}
-                        className="rounded bg-blue-50 px-2 py-0.5 text-xs text-blue-700"
-                      >
-                        {STANDARD_NAMES[standard] || standard}
+                <div className="flex items-center justify-between">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="truncate font-semibold text-gray-900">
+                        {review.company_name}
+                      </h3>
+                      <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                        {review.committee_role}
                       </span>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-400">
+                      FR.233 Review &amp; Decision
+                      {review.plan_number ? ` · #${review.plan_number}` : ''}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {(review.standards || []).map(standard => (
+                        <span
+                          key={standard}
+                          className="rounded bg-blue-50 px-2 py-0.5 text-xs text-blue-700"
+                        >
+                          {STANDARD_NAMES[standard] || standard}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="ml-4 flex shrink-0 items-center gap-3">
+                    <span className={`text-xs font-medium ${
+                      review.signed ? 'text-green-700' : 'text-amber-700'
+                    }`}>
+                      {review.signed
+                        ? 'Signed'
+                        : review.document_id
+                          ? 'Signature required'
+                          : 'Awaiting release'}
+                    </span>
+                    {review.document_id && (
+                      <button
+                        type="button"
+                        onClick={() => router.push(
+                          `/auditor/viewer/shared_doc/${review.document_id}`,
+                        )}
+                        className="rounded-lg bg-[#1A4731] px-3 py-2 text-xs font-medium text-white hover:bg-[#143828]"
+                      >
+                        {review.signed ? 'Open' : 'Open to Sign'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {review.stage_reports.length > 0 && (
+                  <div className="mt-4 divide-y border-t">
+                    {review.stage_reports.map(report => (
+                      <div
+                        key={report.id}
+                        className="flex items-center justify-between py-3"
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-gray-800">
+                            {report.report_form} · {report.label}
+                          </p>
+                          <p className="mt-0.5 text-xs text-gray-400">
+                            {report.stage_type.replace(/_/g, ' ')}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className={`text-xs font-medium ${
+                            report.signed ? 'text-green-700' : 'text-amber-700'
+                          }`}>
+                            {report.signed ? 'Approved By signed' : 'Approved By signature required'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => router.push(
+                              `/auditor/viewer/audit_report/${report.id}`,
+                            )}
+                            className="rounded-lg border border-[#1A4731] px-3 py-2 text-xs font-medium text-[#1A4731] hover:bg-green-50"
+                          >
+                            {report.signed ? 'Open' : 'Open to Sign'}
+                          </button>
+                        </div>
+                      </div>
                     ))}
                   </div>
-                </div>
-                <div className="ml-4 flex shrink-0 items-center gap-3">
-                  <span className={`text-xs font-medium ${
-                    review.signed ? 'text-green-700' : 'text-amber-700'
-                  }`}>
-                    {review.signed
-                      ? 'Signed'
-                      : review.document_id
-                        ? 'Signature required'
-                        : 'Awaiting release'}
-                  </span>
-                  {review.document_id && (
-                    <button
-                      type="button"
-                      onClick={() => router.push(
-                        `/auditor/viewer/shared_doc/${review.document_id}`,
-                      )}
-                      className="rounded-lg bg-[#1A4731] px-3 py-2 text-xs font-medium text-white hover:bg-[#143828]"
-                    >
-                      {review.signed ? 'Open' : 'Open to Sign'}
-                    </button>
-                  )}
-                </div>
+                )}
               </div>
             ))}
           </div>

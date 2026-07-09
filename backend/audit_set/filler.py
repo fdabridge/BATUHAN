@@ -185,7 +185,7 @@ def _compute_covered_scope(qualifications, required_scope: dict) -> dict:
         )
         if qual is None:
             continue
-        if scope_type in ("food", "medical", "sector", "energy"):
+        if scope_type in ("food", "medical", "isms", "sector", "energy"):
             raw = qual.scope_category or ""
             auditor_codes = [c.strip() for c in raw.split(",") if c.strip()]
         else:  # "ea"

@@ -106,7 +106,8 @@ def flatten_document(
         "CB_REVIEWER":         "CB_CERT_MANAGER",
         "AUDITOR_MEMBER":      "ASSIGNED_AUDITOR",
         "CLIENT":              "ORG_REP",
-        "CERT_MANAGER_REVIEW": "CERT_MANAGER_FR233",
+        "CERT_MANAGER_REVIEW": "CB_CERT_MANAGER",
+        "CERT_MANAGER_FR233":  "CB_CERT_MANAGER",
     }
     all_sig_keys: set[str] = set()
     for k in placement_map.keys():

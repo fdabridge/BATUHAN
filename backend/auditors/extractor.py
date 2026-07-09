@@ -87,12 +87,20 @@ STANDARD QUALIFICATIONS RULES:
 - A qualification must ONLY be included if there is evidence of BOTH: (a) relevant
   training/certification AND (b) documented auditing experience. Training alone → exclude.
 
-EA CODES PER STANDARD (ISO 9001, ISO 14001, ISO 45001, ISO 27001 only):
+EA CODES PER STANDARD (ISO 9001, ISO 14001, ISO 45001 only):
 - Include "ea_codes" as a list of IAF EA codes the auditor has audited in for THAT standard.
 - If the CV does not specify sectors per standard, use the auditor's overall ea_codes as default.
 - For all other standards: set "ea_codes": [] — do not use EA codes for these.
 
 SCOPE CATEGORY — mandatory for category-based standards. Use the exact mapping below.
+
+━━━ ISO 27001 — ISMS Technical Areas ━━━
+Set "scope_category" to a comma-separated list of applicable codes:
+  A — Standard IT and office systems
+  B — Industrial and operational technology (ICS/SCADA/manufacturing IT)
+  C — Telecom and service-provider infrastructure
+  D — Specialized systems and critical infrastructure
+Set "ea_codes": [] for ISO 27001.
 
 ━━━ ISO 22000 and FSSC 22000 — Food Chain Categories ━━━
 Set "scope_category" to a comma-separated list of applicable codes from this table.

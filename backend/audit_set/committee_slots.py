@@ -39,6 +39,12 @@ def planned_committee_slots(audit_set: Any) -> dict[str, dict]:
     return dict(zip(STATIC_COMMITTEE_SIG_KEYS, planned_committee_members(audit_set)))
 
 
+def planned_committee_chair(audit_set: Any) -> dict | None:
+    """Return the auditor assigned to the chairperson row during planning."""
+    members = planned_committee_members(audit_set)
+    return members[0] if members else None
+
+
 def committee_member_name(member: dict | None) -> str | None:
     if not member:
         return None

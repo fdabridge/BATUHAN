@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from audit_set.db_models import (
     AuditSet,
+    AuditSetAuditReport,
     AuditSetFR233Record,
     AuditSetMessage,
     AuditSetStage,
@@ -123,7 +124,7 @@ def get_my_committee_reviews(
     db: Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
-    """FR.233 reviews assigned during planning to the current auditor."""
+    """Committee documents assigned during planning to the current auditor."""
     _require_auditor(current_user)
     if not current_user.auditor_id:
         return []
@@ -148,6 +149,25 @@ def get_my_committee_reviews(
             continue
 
         sig_key, member = matching_slot
+        stage_reports = []
+        if sig_key == "COMMITTEE_CHAIR":
+            stage_reports = [
+                {
+                    "id":          report.id,
+                    "report_form": report.report_form,
+                    "label":       report.label,
+                    "stage_type":  report.stage_type,
+                    "status":      report.status,
+                    "signed":      report.appointed_reviewer_signed_at is not None,
+                }
+                for report in (
+                    db.query(AuditSetAuditReport)
+                    .filter_by(audit_set_id=audit_set.id)
+                    .filter(AuditSetAuditReport.report_form.in_(["FR.231", "FR.232"]))
+                    .order_by(AuditSetAuditReport.created_at)
+                    .all()
+                )
+            ]
         record = db.query(AuditSetFR233Record).filter_by(
             audit_set_id=audit_set.id,
         ).first()
@@ -176,6 +196,7 @@ def get_my_committee_reviews(
             "document_id":    document_id,
             "status":         record.status if record else "awaiting_release",
             "signed":         signed,
+            "stage_reports":  stage_reports,
         })
     return results
 

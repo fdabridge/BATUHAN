@@ -4,7 +4,7 @@ Portal 49a Part 3 — FR.233 Review & Decision Form generator.
 Renders an FR.233 DOCX for an audit set by:
   1. Resolving the correct blank template via the existing resolver.
   2. Filling project metadata (Table 0) and committee names (Table 3).
-  3. Inserting ``[SIG:COMMITTEE_*]`` and ``[SIG:CERT_MANAGER_FR233]`` markers
+  3. Inserting ``[SIG:COMMITTEE_*]`` and ``[SIG:CB_CERT_MANAGER]`` markers
      so the viewer's lazy field-extraction pipeline can place signatures.
 """
 from __future__ import annotations
@@ -137,7 +137,7 @@ def _fill_table3_committee(t3, members_ctx: list[dict]) -> None:
     if len(t3.rows) > 6:
         cm_row = t3.rows[6]
         if len(cm_row.cells) > 4:
-            _set_cell_text(cm_row.cells[4]._tc, "[SIG:CERT_MANAGER_FR233]")
+            _set_cell_text(cm_row.cells[4]._tc, "[SIG:CB_CERT_MANAGER]")
 
 
 def render_fr233_bytes(audit_set, db: "Session", template_path=None) -> bytes:

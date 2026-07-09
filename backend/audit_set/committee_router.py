@@ -288,12 +288,20 @@ def get_planning_committee_available(
     # Prefer the stored required_scope when available; fall back to deriving
     # it from standards + ea_code for older audit sets.
     if audit_set.required_scope:
-        req_cat: dict = audit_set.required_scope
+        req_cat: dict = dict(audit_set.required_scope)
     elif audit_standards and plan_ea_code:
         req_cat = {iso_std: {"type": "ea", "codes": [plan_ea_code]}
                    for iso_std in audit_standards}
     else:
         req_cat = {}
+
+    # Existing audit sets may still carry the old ISO 27001 EA-code scope.
+    # Prefer the ISMS technical area captured on the application.
+    isms_area = (audit_set.application_data or {}).get("isms_technical_area")
+    if isms_area:
+        for iso_std in audit_standards:
+            if "27001" in iso_std:
+                req_cat[iso_std] = {"type": "isms", "codes": [isms_area]}
 
     def _ea_int(code) -> int | None:
         """Strip 'EA' prefix and return the integer sector number, or None.
@@ -332,7 +340,7 @@ def get_planning_committee_available(
                  (q.standard_code or "").lower().replace("iso ", "").replace(" ", "")),
                 None,
             )
-            if scope_type in ("food", "medical", "sector", "energy"):
+            if scope_type in ("food", "medical", "isms", "sector", "energy"):
                 if not qual:
                     continue
                 raw = qual.scope_category or ""
@@ -937,6 +945,9 @@ def get_fr233_status(
         "status":              record.status if record else "pending",
         "document_id":         record.document_id if record else None,
         "members":             member_rows,
-        "cert_manager_signed": "CERT_MANAGER_FR233" in signed_keys,
+        "cert_manager_signed": bool(
+            signed_keys
+            & {"CB_CERT_MANAGER", "CERT_MANAGER_FR233", "CERT_MANAGER_REVIEW"}
+        ),
         "all_committee_signed": all_committee_signed,
     }

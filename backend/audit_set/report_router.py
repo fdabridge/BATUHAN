@@ -26,15 +26,19 @@ from sqlalchemy.orm import Session
 
 from audit_set.db_models import (
     AuditSet, AuditSetAuditReport, AuditSetCommitteeMember,
-    AuditSetStage, AuditSetStatusEvent, get_db,
+    AuditSetStage, get_db,
 )
-from auth.db_models import PlatformUser, get_db as get_auth_db
+from audit_set.committee_slots import (
+    committee_member_auditor_id,
+    committee_member_name,
+    planned_committee_chair,
+)
+from auth.db_models import PlatformUser
 from auth.dependencies import get_current_user
 from config.settings import get_settings
 from storage.document_store import upload as store_upload, ensure_local
 from email_service import (
     send_audit_report_review_request,
-    send_client_status_update,
 )
 
 router = APIRouter(tags=["audit_reports"])
@@ -65,7 +69,13 @@ _STD_CODE_TO_ISO: dict[str, str] = {
 
 
 
-def _report_dict(r: AuditSetAuditReport, can_review: bool = False) -> dict:
+def _report_dict(
+    r: AuditSetAuditReport,
+    can_review: bool = False,
+    committee_chair: dict | None = None,
+) -> dict:
+    chair_id = committee_member_auditor_id(committee_chair)
+    chair_name = committee_member_name(committee_chair)
     return {
         "id":                     r.id,
         "audit_set_id":           r.audit_set_id,
@@ -75,12 +85,16 @@ def _report_dict(r: AuditSetAuditReport, can_review: bool = False) -> dict:
         "file_name":              r.file_name,
         "status":                 r.status,
         "la_signed_at":           r.la_signed_at.isoformat() if r.la_signed_at else None,
+        "appointed_reviewer_signed_at": (
+            r.appointed_reviewer_signed_at.isoformat()
+            if r.appointed_reviewer_signed_at else None
+        ),
         "reviewer_signed_at":     r.reviewer_signed_at.isoformat() if r.reviewer_signed_at else None,
         "created_at":             r.created_at.isoformat() if r.created_at else None,
         "can_review":             can_review,
-        # Portal 76 — reviewer assignment
-        "reviewer_auditor_id":    r.reviewer_auditor_id,
-        "reviewer_auditor_name":  r.reviewer_auditor_name,
+        # The reviewer shown in report lists is the planned committee chair.
+        "reviewer_auditor_id":    chair_id or r.reviewer_auditor_id,
+        "reviewer_auditor_name":  chair_name or r.reviewer_auditor_name,
     }
 
 
@@ -103,7 +117,6 @@ async def upload_audit_report(
     report_date:  Optional[date] = Form(None),
     file: UploadFile = File(...),
     db:       Session = Depends(get_db),
-    auth_db:  Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     if current_user.role not in UPLOAD_ROLES:
@@ -121,6 +134,7 @@ async def upload_audit_report(
     file_path = store_upload(relative_path, content)
 
     record_date = datetime.combine(report_date, datetime.min.time()) if report_date else datetime.utcnow()
+    chair = planned_committee_chair(audit_set)
     report = AuditSetAuditReport(
         audit_set_id=audit_set_id,
         stage_type=stage_type,
@@ -131,6 +145,8 @@ async def upload_audit_report(
         status="pending_la",
         uploaded_by=current_user.id,
         created_at=record_date,
+        reviewer_auditor_id=committee_member_auditor_id(chair),
+        reviewer_auditor_name=committee_member_name(chair),
     )
     db.add(report)
     db.commit()
@@ -150,17 +166,12 @@ def list_audit_reports(
     if current_user.role not in CB_ROLES | AUDITOR_ROLES:
         raise HTTPException(403, "Not authorized")
 
-    # Portal 76 — CM/admin bypass, assigned auditor reviewer, or legacy committee reviewer.
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    chair = planned_committee_chair(audit_set) if audit_set else None
+
+    # The final review action belongs to the Certification Manager. The planned
+    # committee chairperson signs the APPOINTED_REVIEWER box in the viewer.
     is_cm = current_user.role in ("certification_manager", "admin", "executive")
-    is_assigned_reviewer = (
-        current_user.role == "auditor"
-        and current_user.auditor_id is not None
-    )
-    is_reviewer = (
-        is_cm
-        or is_assigned_reviewer  # can_review per-report determined below
-        or (_get_committee_reviewer(audit_set_id, current_user, db) is not None)
-    )
 
     rows = (
         db.query(AuditSetAuditReport)
@@ -172,14 +183,12 @@ def list_audit_reports(
     def _can_review(r: AuditSetAuditReport) -> bool:
         if r.status != "pending_review":
             return False
-        if is_cm:
-            return True
-        if is_assigned_reviewer:
-            return (r.reviewer_auditor_id is not None
-                    and current_user.auditor_id == r.reviewer_auditor_id)
-        return is_reviewer  # legacy committee reviewer
+        return is_cm and r.appointed_reviewer_signed_at is not None
 
-    return [_report_dict(r, can_review=_can_review(r)) for r in rows]
+    return [
+        _report_dict(r, can_review=_can_review(r), committee_chair=chair)
+        for r in rows
+    ]
 
 
 
@@ -338,40 +347,18 @@ def _check_reviewer_auth(
 ) -> None:
     """Verify current user may sign the reviewer slot.
 
-    Priority order:
-    1. Admin / certification_manager / executive — always allowed (bypass).
-    2. Auditor whose auditor_id matches report.reviewer_auditor_id.
-    3. CB staff member who is the appointed AuditSetCommitteeMember reviewer
-       (backward-compat fallback).
+    This direct final-approval path is reserved for the Certification Manager.
+    The planned committee chairperson signs the visual APPOINTED_REVIEWER box.
     """
     # 1. Admin/CM bypass
     if current_user.role in ("admin", "certification_manager", "executive"):
         return
 
-    # 2. Assigned auditor reviewer
-    if current_user.role == "auditor":
-        if not report.reviewer_auditor_id:
-            raise HTTPException(
-                403,
-                "No reviewer has been assigned to this report yet. "
-                "Ask a planner to assign a reviewer.",
-            )
-        if current_user.auditor_id != report.reviewer_auditor_id:
-            raise HTTPException(
-                403, "You are not the assigned reviewer for this report."
-            )
-        return
-
-    # 3. Legacy CB committee reviewer fallback
-    if current_user.role not in CB_ROLES:
-        raise HTTPException(403, "Not authorised to review this report.")
-    member = _get_committee_reviewer(report.audit_set_id, current_user, db)
-    if not member:
-        raise HTTPException(
-            403,
-            "You are not the appointed committee reviewer for this audit set. "
-            "Contact an admin to assign or reassign the reviewer role.",
-        )
+    raise HTTPException(
+        403,
+        "Only the Certification Manager may give final approval. "
+        "The committee chairperson must sign the Approved By box in the viewer.",
+    )
 
 
 # ── Reviewer: direct-sign (Portal 77 — only signing path, no OTP) ────────────
@@ -383,7 +370,6 @@ def review_sign_direct(
     request: Request,
     body:    SignReportBody = Body(default_factory=SignReportBody),
     db:      Session = Depends(get_db),
-    auth_db: Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     # Fetch once — 404 first, then auth.
@@ -399,6 +385,15 @@ def review_sign_direct(
         raise HTTPException(400, "Report already approved")
     if report.status != "pending_review":
         raise HTTPException(400, f"Report status is '{report.status}', expected 'pending_review'")
+    if (
+        report.report_form in {"FR.231", "FR.232"}
+        and not report.appointed_reviewer_signed_at
+    ):
+        raise HTTPException(
+            400,
+            "The committee chairperson must sign the Approved By box before "
+            "the Certification Manager gives final approval.",
+        )
 
     signed_dt = (
         datetime.combine(body.signed_date, datetime.min.time())
@@ -409,41 +404,6 @@ def review_sign_direct(
     report.reviewer_signed_ip = request.client.host if request.client else None
     report.status             = "approved"
     db.commit()
-
-    # ── Auto-advance workflow: under_review → certified ───────────────────────
-    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
-    if audit_set and audit_set.workflow_status == "under_review":
-        audit_set.workflow_status  = "certified"
-        audit_set.cert_issued_date = body.signed_date or datetime.utcnow().date()
-        db.add(AuditSetStatusEvent(
-            audit_set_id=audit_set_id,
-            from_status="under_review",
-            to_status="certified",
-            triggered_by=current_user.id,
-            notes=(
-                f"Audit report '{report.report_form} — {report.label}' "
-                "approved by assigned reviewer."
-            ),
-        ))
-        db.commit()
-
-        # Notify client — best-effort
-        try:
-            client_user = auth_db.query(PlatformUser).filter_by(
-                audit_set_id=audit_set_id, role="client",
-            ).first()
-            if client_user:
-                send_client_status_update(
-                    to=client_user.email,
-                    full_name=client_user.full_name,
-                    new_status="certified",
-                    notes=(
-                        "Your audit report has been reviewed and approved "
-                        "by the certification committee."
-                    ),
-                )
-        except Exception:
-            pass
 
     db.refresh(report)
     return _report_dict(report, can_review=False)

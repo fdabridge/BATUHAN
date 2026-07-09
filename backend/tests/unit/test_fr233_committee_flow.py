@@ -6,6 +6,7 @@ from docx import Document
 
 from audit_set.committee_slots import (
     expected_committee_sig_keys,
+    planned_committee_chair,
     planned_committee_members,
     planned_committee_slots,
 )
@@ -45,6 +46,7 @@ def test_planned_committee_drives_static_slot_order():
         "COMMITTEE_MEMBER_1": "member-1",
         "COMMITTEE_MEMBER_2": "member-2",
     }
+    assert planned_committee_chair(audit_set)["id"] == "chair-1"
 
 
 def test_expected_keys_support_static_and_legacy_dynamic_documents():
@@ -99,3 +101,4 @@ def test_fr233_render_fills_planned_names_codes_and_static_markers():
     assert committee_table.cell(2, 5).text == "[SIG:COMMITTEE_MEMBER_1]"
     assert committee_table.cell(3, 1).text == ""
     assert committee_table.cell(3, 5).text == "[SIG:COMMITTEE_MEMBER_2]"
+    assert committee_table.cell(6, 4).text == "[SIG:CB_CERT_MANAGER]"

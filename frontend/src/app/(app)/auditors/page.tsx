@@ -113,6 +113,15 @@ function AuditorRow({ a, quals, witness, onClick }: {
               </span>
             )
 
+            if (stype === 'isms' && cats.length > 0) return (
+              <span key={q.standard_code} className="flex flex-wrap items-center gap-0.5">
+                <span className="rounded px-1.5 py-0.5 font-medium" style={{ fontSize: 11, background: '#F0FAF4', color: '#1A4731' }}>{q.standard_code}</span>
+                {cats.map((area) => (
+                  <span key={area} className="rounded border border-blue-200 bg-blue-50 px-1 py-0.5 font-mono text-blue-700" style={{ fontSize: 10 }}>{area}</span>
+                ))}
+              </span>
+            )
+
             // Sector type → blue badge
             if (stype === 'sector' && q.scope_category) return (
               <span key={q.standard_code} className="flex gap-0.5 items-center">
@@ -221,14 +230,21 @@ function toQualRows(p: AuditorIngestResult): QualRow[] {
 
 const FOOD_CHAIN_CATEGORIES = ['BIII','C0','CI','CII','CIII','CIV','D','E','FI','FII','G','I','K']
 const MEDICAL_DEVICE_TAS    = ['A1.1','A1.2','A1.3','A1.4','A1.5','A1.6','A1.7','A2.1','A2.2','A2.3','A2.4']
+const ISMS_TECHNICAL_AREAS  = [
+  { code: 'A', label: 'A — Standard IT and office systems' },
+  { code: 'B', label: 'B — Industrial and operational technology' },
+  { code: 'C', label: 'C — Telecom and service-provider infrastructure' },
+  { code: 'D', label: 'D — Specialized and critical infrastructure' },
+]
 const FOOD_STANDARDS    = ['22000','fssc']
 const MEDICAL_STANDARDS = ['13485']
 const SECTOR_STANDARDS  = ['37001','37301']
 
-function getStandardType(code: string): 'ea' | 'food' | 'medical' | 'sector' | 'energy' {
+function getStandardType(code: string): 'ea' | 'food' | 'medical' | 'isms' | 'sector' | 'energy' {
   const c = code.toLowerCase()
   if (FOOD_STANDARDS.some((s) => c.includes(s)))    return 'food'
   if (MEDICAL_STANDARDS.some((s) => c.includes(s))) return 'medical'
+  if (c.includes('27001'))                           return 'isms'
   if (SECTOR_STANDARDS.some((s) => c.includes(s)))  return 'sector'
   if (c.includes('50001'))                           return 'energy'
   return 'ea'
@@ -303,6 +319,42 @@ function ScopeInput({ standardCode, eaCodes, scopeCategory, onChangeEA, onChange
     )
   }
 
+  if (type === 'isms') {
+    const selected = scopeCategory.split(',').map((s) => s.trim()).filter(Boolean)
+    return (
+      <div className="mt-2">
+        <label className="mb-1 block text-xs text-gray-400">ISMS technical areas</label>
+        <div className="grid gap-1 sm:grid-cols-2">
+          {ISMS_TECHNICAL_AREAS.map((area) => {
+            const active = selected.includes(area.code)
+            return (
+              <label
+                key={area.code}
+                className={`flex cursor-pointer items-start gap-2 rounded border px-2 py-1.5 text-xs ${
+                  active
+                    ? 'border-blue-300 bg-blue-50 text-blue-800'
+                    : 'border-gray-200 bg-white text-gray-500'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={active}
+                  onChange={() => {
+                    const next = active
+                      ? selected.filter((item) => item !== area.code)
+                      : [...selected, area.code]
+                    onChangeScope(next.join(', '))
+                  }}
+                />
+                <span>{area.label}</span>
+              </label>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
   if (type === 'sector') {
     return (
       <div className="mt-2">
@@ -337,7 +389,7 @@ function ScopeInput({ standardCode, eaCodes, scopeCategory, onChangeEA, onChange
     )
   }
 
-  // EA-code standards only: ISO 9001, 14001, 45001, 27001
+  // EA-code standards only: ISO 9001, 14001, 45001.
   return (
     <div className="mt-2 space-y-2">
       <div>
@@ -350,18 +402,16 @@ function ScopeInput({ standardCode, eaCodes, scopeCategory, onChangeEA, onChange
           onChange={(e) => onChangeEA(e.target.value.split(',').map((s) => s.trim()).filter(Boolean))}
         />
       </div>
-      {!c.includes('27001') && (
-        <div>
-          <label className="block text-xs text-gray-400 mb-1">{riskLabel}</label>
-          <select
-            className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm"
-            value={scopeCategory}
-            onChange={(e) => onChangeScope(e.target.value)}>
-            <option value="">— Select —</option>
-            {riskOptions.map((o) => <option key={o}>{o}</option>)}
-          </select>
-        </div>
-      )}
+      <div>
+        <label className="block text-xs text-gray-400 mb-1">{riskLabel}</label>
+        <select
+          className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm"
+          value={scopeCategory}
+          onChange={(e) => onChangeScope(e.target.value)}>
+          <option value="">— Select —</option>
+          {riskOptions.map((o) => <option key={o}>{o}</option>)}
+        </select>
+      </div>
     </div>
   )
 }
@@ -442,10 +492,7 @@ function AddAuditorPanel({ onClose, onCreated }: { onClose: () => void; onCreate
             experience_years:   Number.isFinite(yrs) ? yrs : null,
             // EA-code standards get ea_codes; all others get empty array
             ea_codes:           isEA ? (q.ea_codes.length ? q.ea_codes : []) : [],
-            // Category-based standards get scope_category; ISO 27001 does not
-            scope_category:     (!isEA || !q.standard_code.toLowerCase().includes('27001'))
-                                  ? (q.scope_category || null)
-                                  : null,
+            scope_category:     q.scope_category || null,
             is_qualified:       true,
           }
         }),

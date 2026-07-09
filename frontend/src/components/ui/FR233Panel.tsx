@@ -260,7 +260,7 @@ export function FR233Panel({
               <div>
                 <p className="text-sm font-medium text-gray-800">Certification Manager Approval</p>
                 <p className="mt-0.5 text-xs text-gray-400">
-                  slot: CERT_MANAGER_FR233 · advances workflow to <code>certified</code>
+                  slot: CB_CERT_MANAGER · advances workflow to <code>certified</code>
                 </p>
               </div>
               <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${cmSigned ? 'bg-green-100 text-green-700' : allSigned ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
@@ -281,7 +281,7 @@ export function FR233Panel({
           </Link>
           {canCertManager && documentId && !cmSigned && (
             <Link
-              href={`/viewer/shared_doc/${documentId}?slot=CERT_MANAGER_FR233`}
+              href={`/viewer/shared_doc/${documentId}?slot=CB_CERT_MANAGER`}
               className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#143b27]"
             >
               Sign as Certification Manager
