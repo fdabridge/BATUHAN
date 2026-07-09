@@ -326,8 +326,9 @@ def _assert_fr233_signed_gate(db: Session, audit_set_id: str) -> None:
         raise HTTPException(
             409,
             f"Gate not met: FR.233 Review & Decision Form is not fully signed "
-            f"(current status: '{record.status}'). All committee members and the "
-            "Certification Manager must sign FR.233 before certification can be issued.",
+            f"(current status: '{record.status}'). The chairperson, any appointed "
+            "committee members, and the Certification Manager must sign FR.233 "
+            "before certification can be issued.",
         )
 
     # FR.211 gate: if Stage 2 assessment docs were generated, all must be signed.

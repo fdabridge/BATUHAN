@@ -1089,7 +1089,7 @@ def _get_field_status(
             if vsp:
                 return _result("signed", member_name, vsp.signature_image)
             if slot_member is None:
-                return _result("pending", "Awaiting committee appointment")
+                return _result("not_applicable", "Not required")
             if current_user.role == "admin":
                 return _result("current_user", member_name)
             if (
@@ -1408,6 +1408,10 @@ def _commit_existing_signing_record(
                 if all_committee_signed:
                     if record:
                         record.status = "complete"
+                    doc.status = "signed"
+                    doc.signed_by = current_user.id
+                    doc.signed_at = now
+                    doc.signed_ip = ip
                     audit_set = db.query(AuditSet).filter_by(id=doc.audit_set_id).first()
                     if audit_set and audit_set.workflow_status != "certified":
                         # Portal 118 — NC gate is stage-specific and must match

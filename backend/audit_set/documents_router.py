@@ -163,6 +163,16 @@ def _doc_to_dict(d: AuditSetSharedDocument, db: Session | None = None) -> dict:
         "signatures":          [],
     }
     if db is not None:
+        if d.document_type in {"fr233", "review_decision"}:
+            fr233_record = db.query(AuditSetFR233Record).filter_by(
+                audit_set_id=d.audit_set_id,
+                document_id=d.id,
+            ).first()
+            if fr233_record and fr233_record.status == "complete":
+                # Self-heal the display state for FR.233 forms completed before
+                # the document row itself started being marked signed.
+                result["status"] = "signed"
+
         sigs = (
             db.query(AuditDocumentSignature)
             .filter(AuditDocumentSignature.document_id == d.id)
