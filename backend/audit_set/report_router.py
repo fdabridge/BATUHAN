@@ -14,6 +14,7 @@ Routes:
   POST /audit-sets/{id}/audit-reports/{rid}/sign/review/direct   (reviewer auditor / CM)
 """
 from __future__ import annotations
+import logging
 import os
 import secrets
 from datetime import date, datetime
@@ -26,7 +27,7 @@ from sqlalchemy.orm import Session
 
 from audit_set.db_models import (
     AuditSet, AuditSetAuditReport, AuditSetCommitteeMember,
-    AuditSetStage, get_db,
+    AuditSetStage, DocumentSignatureField, VisualSignaturePlacement, get_db,
 )
 from audit_set.committee_slots import (
     committee_member_auditor_id,
@@ -36,12 +37,19 @@ from audit_set.committee_slots import (
 from auth.db_models import PlatformUser
 from auth.dependencies import get_current_user
 from config.settings import get_settings
-from storage.document_store import upload as store_upload, ensure_local
+from storage.document_store import (
+    delete as store_delete,
+    ensure_local,
+    invalidate_cache,
+    resolve_docx_key,
+    upload as store_upload,
+)
 from email_service import (
     send_audit_report_review_request,
 )
 
 router = APIRouter(tags=["audit_reports"])
+logger = logging.getLogger(__name__)
 
 # Portal 75 — certification_manager added so the CM can list, download and
 # approve audit reports (same access as other CB staff).
@@ -218,6 +226,47 @@ def download_audit_report(
         filename=report.file_name or "audit_report.docx",
         media_type="application/octet-stream",
     )
+
+
+@router.delete("/audit-sets/{audit_set_id}/audit-reports/{rid}")
+def delete_audit_report(
+    audit_set_id: str,
+    rid: str,
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """Delete an uploaded stage report so the Lead Auditor can replace it."""
+    if current_user.role not in {"admin", "planner", "planner_us"}:
+        raise HTTPException(403, "Only planners and admins may delete audit reports")
+
+    report = db.query(AuditSetAuditReport).filter_by(
+        id=rid,
+        audit_set_id=audit_set_id,
+    ).first()
+    if not report:
+        raise HTTPException(404, "Audit report not found")
+
+    db.query(VisualSignaturePlacement).filter_by(
+        document_type="audit_report",
+        doc_id=rid,
+    ).delete()
+
+    if report.file_path:
+        docx_key = resolve_docx_key(report.file_path)
+        db.query(DocumentSignatureField).filter_by(docx_path=docx_key).delete()
+        invalidate_cache(report.file_path)
+        try:
+            store_delete(report.file_path)
+        except Exception as exc:
+            logger.warning(
+                "Could not delete audit report file %s: %s",
+                report.file_path,
+                exc,
+            )
+
+    db.delete(report)
+    db.commit()
+    return {"deleted": True, "id": rid}
 
 
 # ── Lead Auditor: sign party 1 ───────────────────────────────────────────────

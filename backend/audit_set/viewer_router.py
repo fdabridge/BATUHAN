@@ -1306,9 +1306,12 @@ def _commit_existing_signing_record(
     signer_name = employee.full_name if employee else current_user.full_name
 
     if document_type == "shared_doc":
+        doc = db.query(AuditSetSharedDocument).filter_by(id=doc_id).first()
+        if not doc:
+            return
+
         if sig_key == "CLIENT":
-            doc = db.query(AuditSetSharedDocument).filter_by(id=doc_id).first()
-            if not doc or doc.signed_at:
+            if doc.signed_at:
                 return
             doc.status         = "signed"
             doc.signed_by      = current_user.id
@@ -1392,9 +1395,6 @@ def _commit_existing_signing_record(
             # saved. Update AuditSetFR233Record and (for the CM slot) the audit
             # set's workflow status.
             from audit_set.db_models import AuditSetFR233Record
-            doc = db.query(AuditSetSharedDocument).filter_by(id=doc_id).first()
-            if not doc:
-                return
             record = db.query(AuditSetFR233Record).filter_by(
                 audit_set_id=doc.audit_set_id,
             ).first()
@@ -1814,7 +1814,7 @@ def sign_confirm(
             sig_key=body.sig_key,
             user_id=current_user.id,
         )
-        .filter(VisualSignaturePlacement.signed_at.is_(None))
+        .order_by(VisualSignaturePlacement.created_at.desc())
         .first()
     )
     if not vsp:

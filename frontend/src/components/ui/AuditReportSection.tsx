@@ -48,6 +48,7 @@ function fmtDate(iso: string | null) {
 
 export function AuditReportSection({
   auditSetId,
+  userRole,
 }: {
   auditSetId: string
   workflowStatus: string | null
@@ -56,11 +57,13 @@ export function AuditReportSection({
   const [reports, setReports]     = useState<AuditReport[]>([])
   const [loading, setLoading]     = useState(true)
   const [approving, setApproving] = useState<Record<string, boolean>>({})
+  const [deleting,  setDeleting]  = useState<Record<string, boolean>>({})
   const [errors,    setErrors]    = useState<Record<string, string>>({})
   const [approveDates, setApproveDates] = useState<Record<string, string>>({})
 
   // The reviewer is the chairperson selected in audit planning.
   const canAssignReviewer = false
+  const canDelete = ['admin', 'planner', 'planner_us'].includes(userRole ?? '')
 
   // Reviewer assignment state
   const [assigningFor, setAssigningFor] = useState<string | null>(null)
@@ -85,6 +88,28 @@ export function AuditReportSection({
     a.href = url; a.download = fileName || 'report.docx'
     document.body.appendChild(a); a.click(); a.remove()
     window.URL.revokeObjectURL(url)
+  }
+
+  async function deleteReport(report: AuditReport) {
+    if (!window.confirm(
+      `Delete ${report.report_form} — ${report.label}? The Lead Auditor will need to upload it again.`,
+    )) return
+
+    setDeleting((state) => ({ ...state, [report.id]: true }))
+    setErrors((state) => ({ ...state, [report.id]: '' }))
+    try {
+      await api.delete(`/audit-sets/${auditSetId}/audit-reports/${report.id}`)
+      setReports((current) => current.filter((item) => item.id !== report.id))
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })
+        ?.response?.data?.detail
+      setErrors((state) => ({
+        ...state,
+        [report.id]: detail || 'Could not delete audit report',
+      }))
+    } finally {
+      setDeleting((state) => ({ ...state, [report.id]: false }))
+    }
   }
 
   async function handleApprove(id: string) {
@@ -200,6 +225,16 @@ export function AuditReportSection({
                       className="text-xs text-[#1A4731] underline">
                       Download
                     </button>
+                    {canDelete && (
+                      <button
+                        type="button"
+                        onClick={() => deleteReport(r)}
+                        disabled={deleting[r.id]}
+                        className="rounded-lg border border-red-200 px-2.5 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-40"
+                      >
+                        {deleting[r.id] ? 'Deleting…' : 'Delete'}
+                      </button>
+                    )}
                     {/* Assign Reviewer button — planner/admin only, before approval */}
                     {canAssignReviewer && r.status !== 'approved' && (
                       <button
@@ -216,6 +251,9 @@ export function AuditReportSection({
                     )}
                   </div>
                 </div>
+                {errors[r.id] && (
+                  <p className="mt-1 text-xs text-red-500">{errors[r.id]}</p>
+                )}
 
                 {/* Assign reviewer panel */}
                 {isPanelOpen && (
@@ -284,9 +322,6 @@ export function AuditReportSection({
                         {approving[r.id] && <span className="animate-spin text-sm">⟳</span>}
                         {approving[r.id] ? 'Approving…' : 'Approve Report'}
                       </button>
-                      {errors[r.id] && (
-                        <p className="mt-1 text-xs text-red-500">{errors[r.id]}</p>
-                      )}
                     </div>
                   </div>
                 )}
