@@ -10,6 +10,7 @@ DELETE /audit-sets/{id}          → soft-delete: status = "archived" (204)
 from __future__ import annotations
 import io
 import logging
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -17,7 +18,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from audit_set.db_models import AuditSet, AuditSetSharedDocument, get_db
+from audit_set.db_models import AuditSet, AuditSetAuditReport, AuditSetSharedDocument, get_db
 from audit_set.packager import build_audit_set_zip
 from audit_set.schemas import (
     AuditSetCreateSchema,
@@ -69,6 +70,32 @@ def get_one(audit_set_id: str, db: Session = Depends(get_db), _: PlatformUser = 
     audit_set = get_audit_set(db, audit_set_id)
     if not audit_set:
         raise HTTPException(status_code=404, detail=f"Audit set '{audit_set_id}' not found.")
+
+    approved_single_stage_report = (
+        db.query(AuditSetAuditReport)
+        .filter_by(audit_set_id=audit_set_id, status="approved")
+        .filter(AuditSetAuditReport.stage_type.in_(["surveillance", "recertification"]))
+        .order_by(AuditSetAuditReport.reviewer_signed_at.desc().nullslast())
+        .first()
+    )
+    if approved_single_stage_report and audit_set.workflow_status == "audit_in_progress":
+        try:
+            from audit_set.report_router import _maybe_advance_single_stage_report_review
+
+            _maybe_advance_single_stage_report_review(
+                db,
+                audit_set,
+                approved_single_stage_report,
+                approved_single_stage_report.reviewer_user_id or "system",
+                approved_single_stage_report.reviewer_signed_at
+                or approved_single_stage_report.created_at
+                or datetime.utcnow(),
+            )
+            db.commit()
+            db.refresh(audit_set)
+        except HTTPException:
+            db.rollback()
+            raise
 
     certificate_doc = (
         db.query(AuditSetSharedDocument)

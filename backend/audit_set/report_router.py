@@ -27,7 +27,8 @@ from sqlalchemy.orm import Session
 
 from audit_set.db_models import (
     AuditSet, AuditSetAuditReport, AuditSetCommitteeMember,
-    AuditSetStage, DocumentSignatureField, VisualSignaturePlacement, get_db,
+    AuditSetStage, AuditSetStatusEvent, DocumentSignatureField,
+    VisualSignaturePlacement, get_db,
 )
 from audit_set.committee_slots import (
     committee_member_auditor_id,
@@ -112,6 +113,49 @@ def _get_committee_reviewer(
     return db.query(AuditSetCommitteeMember).filter_by(
         audit_set_id=audit_set_id, user_id=current_user.id, role="reviewer",
     ).first()
+
+
+def _maybe_advance_single_stage_report_review(
+    db: Session,
+    audit_set: AuditSet | None,
+    report: AuditSetAuditReport,
+    triggered_by: str,
+    effective_ts: datetime,
+) -> None:
+    """Move surveillance/recertification audits to review after report approval.
+
+    Shared-document uploads already have their own workflow hook, but audit
+    reports are stored in AuditSetAuditReport. Without this hook a fully
+    approved FR.232 surveillance report can remain stuck at audit_in_progress.
+    """
+    if not audit_set or audit_set.workflow_status != "audit_in_progress":
+        return
+
+    audit_type = (audit_set.audit_type or "").lower()
+    stage_type = (report.stage_type or "").lower()
+    if not (
+        audit_type.startswith("surveillance")
+        or audit_type == "recertification"
+        or stage_type in {"surveillance", "recertification"}
+    ):
+        return
+
+    if report.status != "approved":
+        return
+
+    audit_set.workflow_status = "under_review"
+    db.add(AuditSetStatusEvent(
+        audit_set_id=audit_set.id,
+        from_status="audit_in_progress",
+        to_status="under_review",
+        triggered_by=triggered_by,
+        triggered_at=effective_ts,
+        notes=(
+            "Auto-advanced after the single-stage audit report was fully "
+            "approved by the Lead Auditor, committee chairperson, and "
+            "Certification Manager."
+        ),
+    ))
 
 
 # ── Upload ────────────────────────────────────────────────────────────────────
@@ -452,6 +496,14 @@ def review_sign_direct(
     report.reviewer_signed_at = signed_dt
     report.reviewer_signed_ip = request.client.host if request.client else None
     report.status             = "approved"
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    _maybe_advance_single_stage_report_review(
+        db,
+        audit_set,
+        report,
+        current_user.id,
+        signed_dt,
+    )
     db.commit()
 
     db.refresh(report)
