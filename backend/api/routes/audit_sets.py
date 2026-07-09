@@ -17,7 +17,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from audit_set.db_models import AuditSet, get_db
+from audit_set.db_models import AuditSet, AuditSetSharedDocument, get_db
 from audit_set.packager import build_audit_set_zip
 from audit_set.schemas import (
     AuditSetCreateSchema,
@@ -69,6 +69,36 @@ def get_one(audit_set_id: str, db: Session = Depends(get_db), _: PlatformUser = 
     audit_set = get_audit_set(db, audit_set_id)
     if not audit_set:
         raise HTTPException(status_code=404, detail=f"Audit set '{audit_set_id}' not found.")
+
+    certificate_doc = (
+        db.query(AuditSetSharedDocument)
+        .filter_by(audit_set_id=audit_set_id, document_type="certificate")
+        .order_by(AuditSetSharedDocument.released_at.desc().nullslast(), AuditSetSharedDocument.created_at.desc())
+        .first()
+    )
+    if certificate_doc and (
+        audit_set.workflow_status != "certified"
+        or audit_set.cert_issued_date is None
+        or certificate_doc.status != "uploaded"
+    ):
+        try:
+            from audit_set.documents_router import _finalize_certificate_issuance
+
+            _finalize_certificate_issuance(
+                db,
+                audit_set,
+                certificate_doc,
+                triggered_by=certificate_doc.released_by or "system",
+            )
+            db.commit()
+            db.refresh(audit_set)
+        except HTTPException as exc:
+            db.rollback()
+            logger.warning(
+                "Certificate reconciliation blocked for audit_set_id=%s: %s",
+                audit_set_id,
+                exc.detail,
+            )
     return audit_set
 
 

@@ -155,6 +155,9 @@ export function SharedDocumentsSection({
     try {
       const r = await api.get<SharedDoc[]>(`/audit-sets/${auditSetId}/documents`)
       setDocs(r.data)
+      if (r.data.some((doc) => doc.document_type === 'certificate')) {
+        onDocumentReleased?.()
+      }
     } catch {
       // A GET failure after a successful release must not surface as
       // "Failed to release document." — keep errors isolated.
@@ -193,7 +196,6 @@ export function SharedDocumentsSection({
       if (fileRef.current) fileRef.current.value = ''
       setShowForm(false)
       await load()
-      onDocumentReleased?.()
       if (releasedFR233) {
         window.dispatchEvent(new CustomEvent('certiva:fr233-updated', {
           detail: { auditSetId },
