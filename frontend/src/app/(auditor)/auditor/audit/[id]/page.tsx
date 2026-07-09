@@ -93,6 +93,17 @@ interface NCDraft {
 // Portal 55 — 'attendees' tab removed; FR.225 attendees come from the client's
 // employee roster via docxtpl loop, not the legacy OTP invite flow.
 type Tab = 'overview' | 'documents' | 'messages' | 'upload' | 'nc_forms' | 'declarations' | 'reports'
+type UploadStageType = 'stage_1' | 'stage_2' | 'surveillance'
+
+function isSurveillanceAudit(auditType: string | null | undefined) {
+  return (auditType ?? '').toLowerCase().startsWith('surveillance')
+}
+
+function uploadStageLabel(stageType: UploadStageType) {
+  if (stageType === 'stage_1') return 'Stage 1'
+  if (stageType === 'stage_2') return 'Stage 2'
+  return 'Surveillance'
+}
 
 // Portal 55 — AuditorAttendeesView removed. FR.225 attendees are now sourced
 // from the client's employee roster (ClientOrgEmployee), embedded in the FR.225
@@ -736,7 +747,7 @@ const FORM_OPTS = [
   { value: 'FR.229', label: 'FR.229 — ISMS/PIMS Audit Report (ISO 27001)' },
 ]
 
-function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
+function AuditorReportsView({ auditSetId, auditType }: { auditSetId: string; auditType: string | null }) {
   const [reports, setReports] = useState<{
     id: string; stage_type: string; report_form: string; label: string
     file_name: string | null; status: string
@@ -757,6 +768,10 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
   const [reviewSignDate, setReviewSignDate] = useState<Record<string, string>>({})
   const [reviewSigning,  setReviewSigning]  = useState<Record<string, boolean>>({})
   const [reviewErr,      setReviewErr]      = useState<Record<string, string>>({})
+  const isSurveillance = isSurveillanceAudit(auditType)
+  const stageOptions = isSurveillance
+    ? [{ value: 'surveillance', label: 'Surveillance' }]
+    : STAGE_OPTS_REPORTS
 
   const STAGE_LABELS: Record<string, string> = {
     stage_1: 'Stage 1', stage_2: 'Stage 2',
@@ -777,6 +792,15 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
     }
   }
   useEffect(() => { load() }, [auditSetId])
+  useEffect(() => {
+    if (isSurveillance) {
+      setForm(f => ({
+        ...f,
+        stage_type: 'surveillance',
+        report_form: f.report_form === 'FR.231' ? 'FR.232' : f.report_form,
+      }))
+    }
+  }, [isSurveillance])
 
   async function download(id: string, fileName: string | null) {
     const r = await api.get(`/audit-sets/${auditSetId}/audit-reports/${id}/download`, {
@@ -795,9 +819,11 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
     setUploading(true)
     setUploadMsg('')
     try {
+      const stageType = isSurveillance ? 'surveillance' : form.stage_type
+      const reportForm = isSurveillance && form.report_form === 'FR.231' ? 'FR.232' : form.report_form
       const fd = new FormData()
-      fd.append('stage_type', form.stage_type)
-      fd.append('report_form', form.report_form)
+      fd.append('stage_type', stageType)
+      fd.append('report_form', reportForm)
       fd.append('label', form.label.trim())
       fd.append('report_date', reportDate)
       fd.append('file', file)
@@ -805,7 +831,11 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       setReports(prev => [...prev, r.data as typeof reports[0]])
-      setForm({ stage_type: 'stage_1', report_form: 'FR.231', label: '' })
+      setForm({
+        stage_type: isSurveillance ? 'surveillance' : 'stage_1',
+        report_form: isSurveillance ? 'FR.232' : 'FR.231',
+        label: '',
+      })
       setFile(null)
       if (fileRef.current) fileRef.current.value = ''
       setShowUpload(false)
@@ -870,7 +900,7 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
                 onChange={e => setForm(f => ({ ...f, stage_type: e.target.value }))}
                 className="w-full rounded-lg border bg-white px-3 py-2 text-sm"
               >
-                {STAGE_OPTS_REPORTS.map(s => (
+                {stageOptions.map(s => (
                   <option key={s.value} value={s.value}>{s.label}</option>
                 ))}
               </select>
@@ -894,7 +924,11 @@ function AuditorReportsView({ auditSetId }: { auditSetId: string }) {
               required
               value={form.label}
               onChange={e => setForm(f => ({ ...f, label: e.target.value }))}
-              placeholder="e.g. Stage 2 Audit Report — ACME Manufacturing"
+              placeholder={
+                isSurveillance
+                  ? 'e.g. Surveillance Audit Report — ACME Manufacturing'
+                  : 'e.g. Stage 2 Audit Report — ACME Manufacturing'
+              }
               className="w-full rounded-lg border bg-white px-3 py-2 text-sm"
             />
           </div>
@@ -1213,12 +1247,12 @@ export default function AuditorAuditDetail() {
   const [uploadDate, setUploadDate]   = useState(() => new Date().toISOString().slice(0, 10))
 
   // Portal 55 — typed upload state for FR.223 (Audit Plan) and FR.225 (Meeting Form).
-  const [auditPlanStage, setAuditPlanStage] = useState<'stage_1' | 'stage_2'>('stage_1')
+  const [auditPlanStage, setAuditPlanStage] = useState<UploadStageType>('stage_1')
   const [auditPlanFile, setAuditPlanFile]   = useState<File | null>(null)
   const [uploadingPlan, setUploadingPlan]   = useState(false)
   const [planMsg, setPlanMsg]               = useState('')
 
-  const [meetingStage, setMeetingStage] = useState<'stage_1' | 'stage_2'>('stage_1')
+  const [meetingStage, setMeetingStage] = useState<UploadStageType>('stage_1')
   const [meetingFile, setMeetingFile]   = useState<File | null>(null)
   const [uploadingMeeting, setUploadingMeeting] = useState(false)
   const [meetingMsg, setMeetingMsg]     = useState('')
@@ -1230,6 +1264,20 @@ export default function AuditorAuditDetail() {
       .then(r => setMyAuditorId(r.data.auditor_id ?? null))
       .catch(() => {})
   }, [id])
+
+  const isSurveillance = isSurveillanceAudit(data?.audit_type)
+  const effectiveAuditPlanStage: UploadStageType = isSurveillance ? 'surveillance' : auditPlanStage
+  const effectiveMeetingStage: UploadStageType = isSurveillance ? 'surveillance' : meetingStage
+
+  useEffect(() => {
+    if (isSurveillance) {
+      setAuditPlanStage('surveillance')
+      setMeetingStage('surveillance')
+    } else {
+      setAuditPlanStage(prev => prev === 'surveillance' ? 'stage_1' : prev)
+      setMeetingStage(prev => prev === 'surveillance' ? 'stage_1' : prev)
+    }
+  }, [isSurveillance])
 
   async function handleDownload() {
     if (!data) return
@@ -1300,11 +1348,12 @@ export default function AuditorAuditDetail() {
     try {
       const form = new FormData()
       form.append('file', auditPlanFile)
-      const label = `FR.223 Audit Plan — ${auditPlanStage === 'stage_1' ? 'Stage 1' : 'Stage 2'}`
+      const stageType = effectiveAuditPlanStage
+      const label = `FR.223 Audit Plan — ${uploadStageLabel(stageType)}`
       const qs = new URLSearchParams({
         label,
         document_type: 'audit_plan',
-        stage_type: auditPlanStage,
+        stage_type: stageType,
         upload_date: uploadDate,
       })
       await api.post(
@@ -1331,11 +1380,12 @@ export default function AuditorAuditDetail() {
     try {
       const form = new FormData()
       form.append('file', meetingFile)
-      const label = `FR.225 Opening/Closing Meeting — ${meetingStage === 'stage_1' ? 'Stage 1' : 'Stage 2'}`
+      const stageType = effectiveMeetingStage
+      const label = `FR.225 Opening/Closing Meeting — ${uploadStageLabel(stageType)}`
       const qs = new URLSearchParams({
         label,
         document_type: 'meeting_form',
-        stage_type: meetingStage,
+        stage_type: stageType,
         upload_date: uploadDate,
       })
       await api.post(
@@ -1360,7 +1410,7 @@ export default function AuditorAuditDetail() {
     setUploadingMeeting(true)
     setMeetingMsg('')
     try {
-      const qs = new URLSearchParams({ stage_type: meetingStage })
+      const qs = new URLSearchParams({ stage_type: effectiveMeetingStage })
       await api.post(`/audit-sets/${id}/meeting-form/regenerate?${qs.toString()}`)
       setMeetingMsg('Meeting Form regenerated with the current organisation roster.')
     } catch (e: unknown) {
@@ -1520,18 +1570,25 @@ export default function AuditorAuditDetail() {
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
             <p className="mb-1 text-sm font-semibold text-amber-900">Audit Plan (FR.223)</p>
             <p className="mb-3 text-xs text-amber-800/80">
-              The Lead Auditor uploads the Audit Plan for each stage. The organisation
-              representative signs it via their portal once it is uploaded.
+              {isSurveillance
+                ? 'The Lead Auditor uploads the Surveillance Audit Plan. The organisation representative signs it via their portal once it is uploaded.'
+                : 'The Lead Auditor uploads the Audit Plan for each stage. The organisation representative signs it via their portal once it is uploaded.'}
             </p>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-[140px_1fr_auto_auto] sm:items-center">
-              <select
-                value={auditPlanStage}
-                onChange={(e) => setAuditPlanStage(e.target.value as 'stage_1' | 'stage_2')}
-                className="rounded-lg border bg-white px-2 py-1.5 text-sm"
-              >
-                <option value="stage_1">Stage 1</option>
-                <option value="stage_2">Stage 2</option>
-              </select>
+              {isSurveillance ? (
+                <div className="rounded-lg border bg-white px-2 py-1.5 text-sm text-gray-700">
+                  Surveillance
+                </div>
+              ) : (
+                <select
+                  value={auditPlanStage}
+                  onChange={(e) => setAuditPlanStage(e.target.value as UploadStageType)}
+                  className="rounded-lg border bg-white px-2 py-1.5 text-sm"
+                >
+                  <option value="stage_1">Stage 1</option>
+                  <option value="stage_2">Stage 2</option>
+                </select>
+              )}
               <input
                 type="file"
                 accept=".pdf,.docx"
@@ -1567,14 +1624,20 @@ export default function AuditorAuditDetail() {
               representatives sign their respective slots once it is uploaded.
             </p>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-[140px_1fr_auto_auto] sm:items-center">
-              <select
-                value={meetingStage}
-                onChange={(e) => setMeetingStage(e.target.value as 'stage_1' | 'stage_2')}
-                className="rounded-lg border bg-white px-2 py-1.5 text-sm"
-              >
-                <option value="stage_1">Stage 1</option>
-                <option value="stage_2">Stage 2</option>
-              </select>
+              {isSurveillance ? (
+                <div className="rounded-lg border bg-white px-2 py-1.5 text-sm text-gray-700">
+                  Surveillance
+                </div>
+              ) : (
+                <select
+                  value={meetingStage}
+                  onChange={(e) => setMeetingStage(e.target.value as UploadStageType)}
+                  className="rounded-lg border bg-white px-2 py-1.5 text-sm"
+                >
+                  <option value="stage_1">Stage 1</option>
+                  <option value="stage_2">Stage 2</option>
+                </select>
+              )}
               <input
                 type="file"
                 accept=".pdf,.docx"
@@ -1626,7 +1689,7 @@ export default function AuditorAuditDetail() {
               </label>
               <input
                 className="w-full rounded-lg border px-3 py-2 text-sm"
-                placeholder="e.g. Stage 2 evidence pack"
+                placeholder={isSurveillance ? 'e.g. Surveillance evidence pack' : 'e.g. Stage 2 evidence pack'}
                 value={uploadLabel}
                 onChange={(e) => setUploadLabel(e.target.value)}
               />
@@ -1685,7 +1748,7 @@ export default function AuditorAuditDetail() {
 
       {/* Reports tab — Prompt 19 (FR.231/FR.229/FR.232 two-party signing) */}
       {tab === 'reports' && (
-        <AuditorReportsView auditSetId={id} />
+        <AuditorReportsView auditSetId={id} auditType={data.audit_type ?? null} />
       )}
     </div>
   )
