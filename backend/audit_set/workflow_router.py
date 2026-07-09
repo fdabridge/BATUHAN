@@ -306,7 +306,7 @@ def _assert_fr233_signed_gate(db: Session, audit_set_id: str) -> None:
     Blocks certification until the FR.233 Review & Decision Form has been
     fully signed by all committee members and the Certification Manager.
 
-    The FR.233 record is created when the document is generated; its status
+    The FR.233 record is created when the document is released; its status
     advances: "pending" → "signing" (first committee member signs) → "complete"
     (CM signs after all committee members have signed, in viewer_router).
 
@@ -318,8 +318,8 @@ def _assert_fr233_signed_gate(db: Session, audit_set_id: str) -> None:
     if not record:
         raise HTTPException(
             409,
-            "Gate not met: FR.233 Review & Decision Form has not been generated. "
-            "Generate FR.233 and collect all committee and Certification Manager "
+            "Gate not met: FR.233 Review & Decision Form has not been released. "
+            "Release FR.233 and collect all committee and Certification Manager "
             "signatures before issuing a certificate.",
         )
     if record.status != "complete":

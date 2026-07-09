@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from audit_set.db_models import (
     AuditDocumentSignature,
     AuditSet,
+    AuditSetFR233Record,
     AuditSetSharedDocument,
     AuditSetStage,
     AuditSetStatusEvent,
@@ -265,11 +266,41 @@ async def release_document(
         raise HTTPException(403, "Not authorized")
     if document_type not in ALLOWED_DOC_TYPES:
         raise HTTPException(400, f"Invalid document_type. Expected one of: {sorted(ALLOWED_DOC_TYPES)}")
+    # The release form calls this document type "review_decision", while the
+    # viewer and FR.233 workflow use the canonical internal type "fr233".
+    document_type = "fr233" if document_type == "review_decision" else document_type
+    if (
+        document_type == "fr233"
+        and os.path.splitext(file.filename or "")[1].lower() != ".docx"
+    ):
+        raise HTTPException(
+            400,
+            "FR.233 must be released as a DOCX so its signature boxes remain interactive.",
+        )
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
     if not audit_set:
         raise HTTPException(404, "Audit set not found")
 
     try:
+        if document_type == "fr233":
+            existing_record = db.query(AuditSetFR233Record).filter_by(
+                audit_set_id=audit_set_id,
+            ).first()
+            existing_doc = (
+                db.query(AuditSetSharedDocument).filter_by(
+                    id=existing_record.document_id,
+                    audit_set_id=audit_set_id,
+                ).first()
+                if existing_record and existing_record.document_id
+                else None
+            )
+            if existing_doc:
+                raise HTTPException(
+                    409,
+                    "FR.233 has already been released. Delete the existing "
+                    "document before releasing a replacement.",
+                )
+
         # Portal 49b gate: cannot release the agreement (FR.221) until the
         # quotation (FR.220) has been fully signed by GM AND client.
         if document_type == "agreement":
@@ -350,6 +381,32 @@ async def release_document(
         )
         db.add(doc)
         db.flush()  # populate doc.id before linking signatures
+
+        if document_type == "fr233":
+            fr233_record = db.query(AuditSetFR233Record).filter_by(
+                audit_set_id=audit_set_id,
+            ).first()
+            if fr233_record is None:
+                fr233_record = AuditSetFR233Record(
+                    audit_set_id=audit_set_id,
+                    document_id=doc.id,
+                    status="signing",
+                )
+                db.add(fr233_record)
+            else:
+                fr233_record.document_id = doc.id
+                fr233_record.status = "signing"
+
+            if audit_set.workflow_status in {"stage2_complete", "stage2_in_progress"}:
+                old_status = audit_set.workflow_status
+                audit_set.workflow_status = "committee_review"
+                db.add(AuditSetStatusEvent(
+                    audit_set_id=audit_set_id,
+                    from_status=old_status,
+                    to_status="committee_review",
+                    triggered_by=current_user.id,
+                    notes="FR.233 released through Shared Documents",
+                ))
 
         sig_ids = []
         for idx, role_label in enumerate(slot_labels):
@@ -827,6 +884,25 @@ def delete_document(
 
     # Clean up all signature slots (unsigned ones)
     db.query(AuditDocumentSignature).filter_by(document_id=doc_id).delete()
+
+    if doc.document_type in {"fr233", "review_decision"}:
+        fr233_record = db.query(AuditSetFR233Record).filter_by(
+            audit_set_id=audit_set_id,
+            document_id=doc_id,
+        ).first()
+        if fr233_record:
+            db.delete(fr233_record)
+
+        audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+        if audit_set and audit_set.workflow_status == "committee_review":
+            audit_set.workflow_status = "stage2_complete"
+            db.add(AuditSetStatusEvent(
+                audit_set_id=audit_set_id,
+                from_status="committee_review",
+                to_status="stage2_complete",
+                triggered_by=current_user.id,
+                notes="FR.233 deleted; review and decision must be released again",
+            ))
 
     # Delete the physical file (best-effort — don't fail if already gone)
     if doc.file_path:

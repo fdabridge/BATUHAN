@@ -121,7 +121,7 @@ const INITIAL_PANELS: Record<string, ActionPanel> = {
   },
   stage2_complete: {
     heading: 'Stage 2 complete — committee review next',
-    body: 'Stage 2 is done. Certification is NOT automatic: generate FR.233 in the Review & Decision panel below to open the committee review.',
+    body: 'Stage 2 is done. Certification is NOT automatic: release FR.233 from Shared Documents to open the committee review.',
     cta: { label: 'Open Committee Review', nextStatus: 'committee_review', allowedRoles: ['admin', 'planner', 'planner_us', 'certification_manager'] },
   },
   committee_review: {
@@ -194,7 +194,7 @@ const SURVEILLANCE_PANELS: Record<string, ActionPanel> = {
   },
   under_review: {
     heading: 'Under review — committee decision',
-    body: 'Audit documents are complete. Generate FR.233 (Review & Decision Form) in the panel below so the committee can sign. Once the decision is issued, mark certification as continued.',
+    body: 'Audit documents are complete. Release FR.233 (Review & Decision Form) from Shared Documents so the committee can sign. Once the decision is issued, mark certification as continued.',
     cta: { label: 'Issue Continuation Certificate', nextStatus: 'certified', allowedRoles: ['admin', 'executive'] },
   },
   certified: {

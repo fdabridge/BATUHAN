@@ -78,6 +78,7 @@ export function SharedDocumentsSection({
       return [
         { value: 'surveillance_notification', label: 'Surveillance Notification (FR.234)' },
         { value: 'team_info',                 label: 'Audit Team Info (FR.224)' },
+        { value: 'review_decision',           label: 'Review & Decision (FR.233)' },
         { value: 'certificate',               label: 'Certificate' },
       ]
     }
@@ -90,6 +91,7 @@ export function SharedDocumentsSection({
       // Portal 55 — FR.223 is uploaded by the Lead Auditor from their portal,
       // not released by the Planner. The Planner can still view it once uploaded.
       { value: 'team_info',       label: 'Audit Team Info (FR.224)' },
+      { value: 'review_decision', label: 'Review & Decision (FR.233)' },
       { value: 'certificate',     label: 'Certificate' },
     ]
   })()
@@ -115,15 +117,25 @@ export function SharedDocumentsSection({
   const [deleteError, setDeleteError]      = useState<string>('')
   const [deleteLoading, setDeleteLoading]  = useState(false)
 
-  const canDelete = user?.role === 'admin' || user?.role === 'planner'
+  const canDelete = (
+    user?.role === 'admin'
+    || user?.role === 'planner'
+    || user?.role === 'planner_us'
+  )
 
   async function deleteDoc(docId: string) {
     setDeleteError('')
     setDeleteLoading(true)
     try {
+      const deletedDoc = docs.find((doc) => doc.id === docId)
       await api.delete(`/audit-sets/${auditSetId}/documents/${docId}`)
       setDeletingId(null)
       await load()
+      if (deletedDoc?.document_type === 'fr233') {
+        window.dispatchEvent(new CustomEvent('certiva:fr233-updated', {
+          detail: { auditSetId },
+        }))
+      }
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })
         ?.response?.data?.detail
@@ -171,6 +183,7 @@ export function SharedDocumentsSection({
       await api.post(`/audit-sets/${auditSetId}/documents/release`, fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
+      const releasedFR233 = docType === 'review_decision'
       setLabel(''); setFile(null)
       setDocType((auditType ?? '').startsWith('surveillance') ? 'surveillance_notification' : 'quotation')
       setStageType(''); setAuditorId('')
@@ -178,6 +191,11 @@ export function SharedDocumentsSection({
       if (fileRef.current) fileRef.current.value = ''
       setShowForm(false)
       await load()
+      if (releasedFR233) {
+        window.dispatchEvent(new CustomEvent('certiva:fr233-updated', {
+          detail: { auditSetId },
+        }))
+      }
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })
         ?.response?.data?.detail
@@ -207,7 +225,7 @@ export function SharedDocumentsSection({
   }
 
   return (
-    <div className="mt-8">
+    <div id="shared-documents" className="mt-8 scroll-mt-6">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-700">
           Shared Documents
