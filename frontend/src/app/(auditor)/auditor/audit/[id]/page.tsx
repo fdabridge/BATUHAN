@@ -205,7 +205,7 @@ function AuditorNCManagementView({
   stages: Stage[]
   currentAuditorId: string | null
 }) {
-  const ncStages = stages.filter(s => ['stage_1', 'stage_2'].includes(s.stage_type))
+  const ncStages = stages.filter(s => ['stage_1', 'stage_2', 'surveillance'].includes(s.stage_type))
   const [decisions, setDecisions] = useState<Record<string, NCDecision | null | undefined>>({})
   const [drafts, setDrafts] = useState<Record<string, NCDraft>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -214,7 +214,11 @@ function AuditorNCManagementView({
   const [reviewingId, setReviewingId] = useState<string | null>(null)
   const [reviewNotes, setReviewNotes] = useState('')
 
-  const STAGE_LABELS: Record<string, string> = { stage_1: 'Stage 1', stage_2: 'Stage 2' }
+  const STAGE_LABELS: Record<string, string> = {
+    stage_1: 'Stage 1',
+    stage_2: 'Stage 2',
+    surveillance: 'Surveillance',
+  }
 
   function isLead(stage: Stage) {
     return !!currentAuditorId && stage.lead_auditor_id === currentAuditorId
@@ -295,7 +299,7 @@ function AuditorNCManagementView({
   return (
     <div className="space-y-4">
       {ncStages.length === 0 && (
-        <p className="py-8 text-center text-sm text-gray-400">No Stage 1 / Stage 2 audit stages found.</p>
+        <p className="py-8 text-center text-sm text-gray-400">No NC-managed audit stages found.</p>
       )}
 
       {ncStages.map(stage => {
