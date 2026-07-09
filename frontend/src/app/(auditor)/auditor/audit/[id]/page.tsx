@@ -21,6 +21,7 @@ interface Stage {
   stage_order:       number
   audit_date_start:  string | null
   audit_date_end:    string | null
+  lead_auditor_id:   string | null
   lead_auditor_name: string | null
   audit_days:        number | null
   status:            string
@@ -46,6 +47,47 @@ interface AssignmentDetail {
   // Portal 51 — FR.218 Application Reviewer (FSMS/ISMS only)
   fr218_reviewer_id:      string | null
   stages:                 Stage[]
+}
+
+interface NCEvidence {
+  id: string
+  file_name: string | null
+  upload_type: string
+  round_number: number
+}
+
+interface NCReview {
+  id: string
+  decision: string
+  notes: string | null
+  reviewed_at: string
+  round_number: number
+}
+
+interface NCItem {
+  id: string
+  nc_index: number
+  category: string
+  description: string
+  status: string
+  due_date: string | null
+  evidence: NCEvidence[]
+  reviews: NCReview[]
+}
+
+interface NCDecision {
+  id: string
+  stage_type: string | null
+  no_nc: boolean
+  notes: string | null
+  decided_at: string
+  items: NCItem[]
+}
+
+interface NCDraft {
+  noNC: boolean
+  notes: string
+  items: { category: string; description: string }[]
 }
 
 // Portal 55 — 'attendees' tab removed; FR.225 attendees come from the client's
@@ -139,6 +181,351 @@ function AuditorNCFormsView({ auditSetId }: { auditSetId: string }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function AuditorNCManagementView({
+  auditSetId,
+  stages,
+  currentAuditorId,
+}: {
+  auditSetId: string
+  stages: Stage[]
+  currentAuditorId: string | null
+}) {
+  const ncStages = stages.filter(s => ['stage_1', 'stage_2'].includes(s.stage_type))
+  const [decisions, setDecisions] = useState<Record<string, NCDecision | null | undefined>>({})
+  const [drafts, setDrafts] = useState<Record<string, NCDraft>>({})
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [loading, setLoading] = useState(false)
+  const [busyStage, setBusyStage] = useState<string | null>(null)
+  const [reviewingId, setReviewingId] = useState<string | null>(null)
+  const [reviewNotes, setReviewNotes] = useState('')
+
+  const STAGE_LABELS: Record<string, string> = { stage_1: 'Stage 1', stage_2: 'Stage 2' }
+
+  function isLead(stage: Stage) {
+    return !!currentAuditorId && stage.lead_auditor_id === currentAuditorId
+  }
+
+  function draftFor(stageType: string): NCDraft {
+    return drafts[stageType] ?? {
+      noNC: true,
+      notes: '',
+      items: [{ category: 'minor', description: '' }],
+    }
+  }
+
+  function updateDraft(stageType: string, updater: (draft: NCDraft) => NCDraft) {
+    setDrafts(prev => ({ ...prev, [stageType]: updater(draftFor(stageType)) }))
+  }
+
+  async function load() {
+    if (!auditSetId || ncStages.length === 0) return
+    setLoading(true)
+    const entries = await Promise.all(ncStages.map(async stage => {
+      if (!isLead(stage)) return [stage.stage_type, undefined] as const
+      try {
+        const r = await api.get<NCDecision | null>(`/audit-sets/${auditSetId}/nc-decision`, {
+          params: { stage_type: stage.stage_type },
+        })
+        return [stage.stage_type, r.data] as const
+      } catch {
+        return [stage.stage_type, null] as const
+      }
+    }))
+    setDecisions(Object.fromEntries(entries))
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [auditSetId, currentAuditorId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function submitDecision(stageType: string) {
+    const draft = draftFor(stageType)
+    setBusyStage(stageType)
+    setErrors(prev => ({ ...prev, [stageType]: '' }))
+    try {
+      const payload = draft.noNC
+        ? { stage_type: stageType, no_nc: true, notes: draft.notes, items: [] }
+        : {
+            stage_type: stageType,
+            no_nc: false,
+            notes: draft.notes,
+            items: draft.items.filter(i => i.description.trim()),
+          }
+      const r = await api.post<NCDecision>(`/audit-sets/${auditSetId}/nc-decision`, payload)
+      setDecisions(prev => ({ ...prev, [stageType]: r.data }))
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setErrors(prev => ({ ...prev, [stageType]: detail || 'NC decision could not be saved.' }))
+    } finally {
+      setBusyStage(null)
+    }
+  }
+
+  async function reviewNC(ncId: string, decision: 'approved' | 'rejected') {
+    try {
+      await api.post(`/audit-sets/${auditSetId}/nc-items/${ncId}/review`, {
+        decision,
+        notes: reviewNotes,
+      })
+      setReviewingId(null)
+      setReviewNotes('')
+      load()
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      alert(detail || 'NC review failed.')
+    }
+  }
+
+  if (loading) return <p className="text-sm text-gray-400">Loading NC workflow...</p>
+
+  return (
+    <div className="space-y-4">
+      {ncStages.length === 0 && (
+        <p className="py-8 text-center text-sm text-gray-400">No Stage 1 / Stage 2 audit stages found.</p>
+      )}
+
+      {ncStages.map(stage => {
+        const stageType = stage.stage_type
+        const stageLabel = STAGE_LABELS[stageType] ?? stageType
+        const decision = decisions[stageType]
+        const draft = draftFor(stageType)
+        const lead = isLead(stage)
+
+        return (
+          <div key={stageType} className="rounded-xl border bg-white p-5">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-gray-900">{stageLabel} NC Decision</p>
+                <p className="mt-0.5 text-xs text-gray-400">
+                  Lead auditor: {stage.lead_auditor_name || 'Not assigned'}
+                </p>
+              </div>
+              {decision?.no_nc ? (
+                <span className="rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-700">
+                  No NC
+                </span>
+              ) : decision ? (
+                <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
+                  {decision.items.filter(i => i.status !== 'closed').length} open
+                </span>
+              ) : (
+                <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+                  Required
+                </span>
+              )}
+            </div>
+
+            {!lead ? (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
+                Only the assigned lead auditor can submit or review the NC decision for this stage.
+              </div>
+            ) : decision === null || decision === undefined ? (
+              <div className="space-y-4">
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={draft.noNC}
+                    onChange={e => updateDraft(stageType, current => ({ ...current, noNC: e.target.checked }))}
+                    className="h-4 w-4 rounded border-gray-300 accent-[#1A4731]"
+                  />
+                  <span className="text-sm font-medium text-gray-700">No nonconformities were identified</span>
+                </label>
+
+                <textarea
+                  value={draft.notes}
+                  onChange={e => updateDraft(stageType, current => ({ ...current, notes: e.target.value }))}
+                  rows={2}
+                  className="w-full rounded-lg border px-3 py-2 text-sm"
+                  placeholder="Optional notes for this stage..."
+                />
+
+                {!draft.noNC && (
+                  <div className="space-y-3">
+                    {draft.items.map((item, idx) => (
+                      <div key={idx} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                        <div className="mb-2 flex items-center gap-2">
+                          <span className="text-xs font-semibold text-gray-500">NC-{idx + 1}</span>
+                          <select
+                            value={item.category}
+                            onChange={e => updateDraft(stageType, current => {
+                              const items = [...current.items]
+                              items[idx] = { ...items[idx], category: e.target.value }
+                              return { ...current, items }
+                            })}
+                            className="rounded border px-2 py-1 text-xs"
+                          >
+                            <option value="minor">Minor</option>
+                            <option value="major">Major</option>
+                            <option value="critical">Critical</option>
+                          </select>
+                          {draft.items.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => updateDraft(stageType, current => ({
+                                ...current,
+                                items: current.items.filter((_, i) => i !== idx),
+                              }))}
+                              className="ml-auto text-xs text-red-600"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                        <textarea
+                          value={item.description}
+                          onChange={e => updateDraft(stageType, current => {
+                            const items = [...current.items]
+                            items[idx] = { ...items[idx], description: e.target.value }
+                            return { ...current, items }
+                          })}
+                          rows={3}
+                          className="w-full rounded border px-3 py-2 text-sm"
+                          placeholder="Describe clause, evidence, and finding..."
+                        />
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => updateDraft(stageType, current => ({
+                        ...current,
+                        items: [...current.items, { category: 'minor', description: '' }],
+                      }))}
+                      className="text-xs font-medium text-[#1A4731] hover:underline"
+                    >
+                      + Add another NC
+                    </button>
+                  </div>
+                )}
+
+                {errors[stageType] && <p className="text-sm text-red-600">{errors[stageType]}</p>}
+                <button
+                  type="button"
+                  onClick={() => submitDecision(stageType)}
+                  disabled={busyStage === stageType}
+                  className="rounded-lg bg-[#1A4731] px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+                >
+                  {busyStage === stageType ? 'Saving...' : draft.noNC ? 'Confirm No NC' : 'Submit NC Decision'}
+                </button>
+              </div>
+            ) : decision.no_nc ? (
+              <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+                No nonconformities were identified for {stageLabel}.
+                {decision.notes && <span className="ml-2 text-xs text-green-700">{decision.notes}</span>}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {decision.items.map(item => (
+                  <div key={item.id} className="rounded-lg border border-gray-200 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="mb-1 flex items-center gap-2">
+                          <span className="text-sm font-semibold text-gray-800">NC-{item.nc_index}</span>
+                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] uppercase text-gray-600">
+                            {item.category}
+                          </span>
+                          <span className={`rounded-full px-2 py-0.5 text-[11px] ${
+                            item.status === 'closed' ? 'bg-green-100 text-green-700' :
+                            item.status === 'client_responded' ? 'bg-blue-100 text-blue-700' :
+                            item.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                            'bg-amber-100 text-amber-700'
+                          }`}>
+                            {item.status.replace(/_/g, ' ')}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-700">{item.description}</p>
+                      </div>
+                      {item.due_date && (
+                        <span className="shrink-0 text-xs text-gray-400">
+                          Due {new Date(item.due_date).toLocaleDateString('en-GB')}
+                        </span>
+                      )}
+                    </div>
+
+                    {item.evidence.length > 0 && (
+                      <div className="mt-3 space-y-1">
+                        <p className="text-xs font-medium text-gray-500">Client evidence</p>
+                        {item.evidence.map(ev => (
+                          <a
+                            key={ev.id}
+                            href={`${process.env.NEXT_PUBLIC_API_URL}/audit-sets/${auditSetId}/nc-items/${item.id}/evidence/${ev.id}/download`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block text-xs text-[#1A4731] hover:underline"
+                          >
+                            {ev.file_name || 'Evidence'} ({ev.upload_type.replace(/_/g, ' ')}, round {ev.round_number})
+                          </a>
+                        ))}
+                      </div>
+                    )}
+
+                    {item.reviews.length > 0 && (
+                      <div className="mt-3 space-y-1">
+                        <p className="text-xs font-medium text-gray-500">Review history</p>
+                        {item.reviews.map(review => (
+                          <p key={review.id} className="text-xs text-gray-500">
+                            {review.decision === 'approved' ? 'Approved' : 'Rejected'}
+                            {review.notes ? ` - ${review.notes}` : ''}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+
+                    {item.status === 'client_responded' && (
+                      <div className="mt-3 border-t pt-3">
+                        {reviewingId === item.id ? (
+                          <div className="space-y-2">
+                            <textarea
+                              value={reviewNotes}
+                              onChange={e => setReviewNotes(e.target.value)}
+                              rows={2}
+                              className="w-full rounded border px-3 py-2 text-sm"
+                              placeholder="Review notes..."
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => reviewNC(item.id, 'approved')}
+                                className="rounded bg-green-700 px-3 py-1.5 text-xs text-white"
+                              >
+                                Approve and close
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => reviewNC(item.id, 'rejected')}
+                                className="rounded bg-red-600 px-3 py-1.5 text-xs text-white"
+                              >
+                                Reject
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => { setReviewingId(null); setReviewNotes('') }}
+                                className="rounded border px-3 py-1.5 text-xs"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setReviewingId(item.id)}
+                            className="rounded-lg border border-[#1A4731] px-3 py-1.5 text-xs font-medium text-[#1A4731]"
+                          >
+                            Review client evidence
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -1019,7 +1406,7 @@ export default function AuditorAuditDetail() {
           >
             {t === 'documents' ? 'Documents'
               : t === 'upload' ? 'Upload Documents'
-              : t === 'nc_forms' ? 'NC Forms'
+              : t === 'nc_forms' ? 'NC Management'
               : t === 'declarations' ? 'Declarations'
               : t === 'reports' ? 'Reports'
               : t}
@@ -1274,9 +1661,21 @@ export default function AuditorAuditDetail() {
         </div>
       )}
 
-      {/* NC Forms tab — Prompt 17 (FR.230 Lead Auditor signs first) */}
+      {/* NC Management tab — typed NC workflow + legacy FR.230 forms */}
       {tab === 'nc_forms' && (
-        <AuditorNCFormsView auditSetId={id} />
+        <div className="space-y-6">
+          <AuditorNCManagementView
+            auditSetId={id}
+            stages={data.stages || []}
+            currentAuditorId={myAuditorId}
+          />
+          <div className="rounded-xl border bg-white p-5">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+              Legacy FR.230 Files
+            </p>
+            <AuditorNCFormsView auditSetId={id} />
+          </div>
+        </div>
       )}
 
       {/* Declarations tab — Prompt 18 (FR.224 impartiality, each team member self-signs) */}

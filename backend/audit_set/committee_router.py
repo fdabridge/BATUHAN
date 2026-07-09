@@ -574,6 +574,9 @@ def generate_fr233(
             "Complete Stage 2 first.",
         )
 
+    from audit_set.workflow_router import _assert_nc_stage_complete_gate
+    _assert_nc_stage_complete_gate(db, audit_set_id, "stage_2")
+
     # Query record early so we can use it for released_at resolution.
     record = db.query(AuditSetFR233Record).filter_by(audit_set_id=audit_set_id).first()
 
@@ -693,6 +696,9 @@ def release_fr233_blank(
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
     if not audit_set:
         raise HTTPException(404, "Audit set not found")
+
+    from audit_set.workflow_router import _assert_nc_stage_complete_gate
+    _assert_nc_stage_complete_gate(db, audit_set_id, "stage_2")
 
     existing_record = db.query(AuditSetFR233Record).filter_by(audit_set_id=audit_set_id).first()
     existing_doc = None
@@ -823,6 +829,9 @@ async def upload_fr233(
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
     if not audit_set:
         raise HTTPException(404, "Audit set not found")
+
+    from audit_set.workflow_router import _assert_nc_stage_complete_gate
+    _assert_nc_stage_complete_gate(db, audit_set_id, "stage_2")
 
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in {".pdf", ".docx"}:

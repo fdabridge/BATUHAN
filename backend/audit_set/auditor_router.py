@@ -227,6 +227,7 @@ def get_assignment_detail(
             "stage_order":       s.stage_order,
             "audit_date_start":  s.audit_date_start.isoformat() if s.audit_date_start else None,
             "audit_date_end":    s.audit_date_end.isoformat()   if s.audit_date_end   else None,
+            "lead_auditor_id":    s.lead_auditor_id,
             "lead_auditor_name": s.lead_auditor_name,
             "audit_days":        s.audit_days,
             "status":            s.status,

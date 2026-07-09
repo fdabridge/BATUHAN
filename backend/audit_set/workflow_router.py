@@ -208,6 +208,40 @@ def _assert_stage1_complete_gate(db: Session, audit_set_id: str) -> None:
         raise HTTPException(409, "Gate not met: " + "; ".join(failures))
 
 
+def _assert_nc_stage_complete_gate(db: Session, audit_set_id: str, stage_type: str) -> None:
+    """Require one stage to have either a No-NC decision or closed NC items."""
+    from audit_set.db_models import AuditSetNCDecision, AuditSetNCItem
+
+    stage_label = {"stage_1": "Stage 1", "stage_2": "Stage 2"}.get(stage_type, stage_type)
+    decision = db.query(AuditSetNCDecision).filter_by(
+        audit_set_id=audit_set_id,
+        stage_type=stage_type,
+    ).first()
+    if not decision:
+        raise HTTPException(
+            409,
+            f"Gate not met: The lead auditor has not submitted the NC decision for {stage_label}. "
+            "After each stage report is uploaded, the stage lead auditor must either confirm "
+            "'No NC' or submit nonconformity items before the workflow can proceed.",
+        )
+    if decision.no_nc:
+        return
+
+    open_ncs = (
+        db.query(AuditSetNCItem)
+        .filter_by(audit_set_id=audit_set_id, stage_type=stage_type)
+        .filter(AuditSetNCItem.status != "closed")
+        .count()
+    )
+    if open_ncs:
+        noun = "nonconformity" if open_ncs == 1 else "nonconformities"
+        raise HTTPException(
+            409,
+            f"Gate not met: {open_ncs} {stage_label} {noun} remain open. "
+            "All nonconformities must be closed (auditor approved) before the workflow can proceed.",
+        )
+
+
 def _assert_nc_complete_gate(db: Session, audit_set_id: str) -> None:
     """
     Portal 103 — Gate for any transition → certified.
@@ -215,7 +249,6 @@ def _assert_nc_complete_gate(db: Session, audit_set_id: str) -> None:
     1. Each Stage 1 / Stage 2 lead auditor has submitted that stage's NC decision.
     2. For each stage, either no_nc=True OR every NC item has status='closed'.
     """
-    from audit_set.db_models import AuditSetNCDecision, AuditSetNCItem
     stages = (
         db.query(AuditSetStage)
         .filter_by(audit_set_id=audit_set_id)
@@ -224,41 +257,11 @@ def _assert_nc_complete_gate(db: Session, audit_set_id: str) -> None:
         .all()
     )
     if not stages:
-        stages = [None]
+        _legacy_assert_nc_complete_gate(db, audit_set_id)
+        return
 
     for stage in stages:
-        stage_type = stage.stage_type if stage else None
-        stage_label = {"stage_1": "Stage 1", "stage_2": "Stage 2"}.get(stage_type or "", "the audit")
-        q = db.query(AuditSetNCDecision).filter_by(audit_set_id=audit_set_id)
-        if stage_type:
-            q = q.filter_by(stage_type=stage_type)
-        else:
-            q = q.filter(AuditSetNCDecision.stage_type.is_(None))
-        decision = q.first()
-        if not decision:
-            raise HTTPException(
-                409,
-                f"Gate not met: The lead auditor has not submitted the NC decision for {stage_label}. "
-                "After each stage report is uploaded, the stage lead auditor must either confirm "
-                "'No NC' or submit nonconformity items before certification can be issued.",
-            )
-        if decision.no_nc:
-            continue
-
-        open_query = db.query(AuditSetNCItem).filter_by(audit_set_id=audit_set_id)
-        if stage_type:
-            open_query = open_query.filter_by(stage_type=stage_type)
-        else:
-            open_query = open_query.filter(AuditSetNCItem.stage_type.is_(None))
-        open_ncs = open_query.filter(AuditSetNCItem.status != "closed").count()
-        if open_ncs:
-            noun = "nonconformity" if open_ncs == 1 else "nonconformities"
-            raise HTTPException(
-                409,
-                f"Gate not met: {open_ncs} {stage_label} {noun} remain open. "
-                "All nonconformities must be closed (auditor approved) "
-                "before certification can be issued.",
-            )
+        _assert_nc_stage_complete_gate(db, audit_set_id, stage.stage_type)
 
 
 def _nc_complete_for_auto_certification(db: Session, audit_set_id: str) -> bool:
@@ -469,6 +472,9 @@ def update_workflow_status(
         _assert_stage_entry_gate(db, audit_set_id, "stage_1")
     elif to_status == "stage2_in_progress":
         _assert_stage1_complete_gate(db, audit_set_id)
+        _assert_nc_stage_complete_gate(db, audit_set_id, "stage_1")
+    elif to_status == "committee_review":
+        _assert_nc_stage_complete_gate(db, audit_set_id, "stage_2")
     elif to_status == "certified":
         _assert_fr233_signed_gate(db, audit_set_id)
         _assert_nc_complete_gate(db, audit_set_id)
