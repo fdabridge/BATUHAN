@@ -1102,7 +1102,7 @@ def _get_field_status(
         if doc.document_type == "fr233" and sig_key in FR233_CERT_MANAGER_KEYS:
             # CM signs last; show "blocked" until all committee slots have signed.
             if vsp:
-                return _result("signed", _user_name(current_user.id), vsp.signature_image)
+                return _result("signed", vsp.signer_name or _user_name(vsp.user_id), vsp.signature_image)
             _, all_committee_signed = _fr233_committee_signing_state(
                 doc_id, doc.audit_set_id, db,
             )
