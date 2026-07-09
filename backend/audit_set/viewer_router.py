@@ -1412,30 +1412,9 @@ def _commit_existing_signing_record(
                     doc.signed_by = current_user.id
                     doc.signed_at = now
                     doc.signed_ip = ip
-                    audit_set = db.query(AuditSet).filter_by(id=doc.audit_set_id).first()
-                    if audit_set and audit_set.workflow_status != "certified":
-                        # Portal 118 — NC gate is stage-specific and must match
-                        # the normal workflow transition gate.
-                        from audit_set.workflow_router import _nc_complete_for_auto_certification
-                        nc_cleared = _nc_complete_for_auto_certification(db, doc.audit_set_id)
-                        if not nc_cleared:
-                            logger.warning(
-                                "Portal 119: FR.233 CM sign: NC gate blocked "
-                                "auto-certification for audit_set_id=%s — "
-                                "NC decision missing or open NCs remain.",
-                                doc.audit_set_id,
-                            )
-                        else:
-                            old = audit_set.workflow_status
-                            audit_set.workflow_status  = "certified"
-                            audit_set.cert_issued_date = now.date()
-                            db.add(AuditSetStatusEvent(
-                                audit_set_id=doc.audit_set_id,
-                                from_status=old,
-                                to_status="certified",
-                                triggered_by=current_user.id,
-                                notes="FR.233 signed by Certification Manager",
-                            ))
+                    # FR.233 approval completes the committee decision. The
+                    # workflow becomes certified only when the certificate file
+                    # itself is issued through Shared Documents.
                 else:
                     logger.warning(
                         "FR.233 Certification Manager signature received before "

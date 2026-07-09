@@ -66,10 +66,12 @@ export function SharedDocumentsSection({
   auditSetId,
   stages = [],
   auditType = null,
+  onDocumentReleased,
 }: {
   auditSetId: string
   stages?: StageResponse[]
   auditType?: string | null
+  onDocumentReleased?: () => void
 }) {
   // Document types available in the release form, filtered by audit type.
   const DOC_TYPES = (() => {
@@ -191,6 +193,7 @@ export function SharedDocumentsSection({
       if (fileRef.current) fileRef.current.value = ''
       setShowForm(false)
       await load()
+      onDocumentReleased?.()
       if (releasedFR233) {
         window.dispatchEvent(new CustomEvent('certiva:fr233-updated', {
           detail: { auditSetId },
@@ -376,7 +379,9 @@ export function SharedDocumentsSection({
                       : 'bg-amber-100 text-amber-700'
                     }`}
                   >
-                    {d.status === 'signed'
+                    {d.document_type === 'certificate'
+                      ? 'Issued'
+                      : d.status === 'signed'
                       ? '✓ Signed'
                       : d.status === 'uploaded'
                       ? 'Uploaded'

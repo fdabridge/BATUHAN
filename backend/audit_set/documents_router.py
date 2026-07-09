@@ -162,6 +162,11 @@ def _doc_to_dict(d: AuditSetSharedDocument, db: Session | None = None) -> dict:
         "cb_sig_id":           None,
         "signatures":          [],
     }
+    if d.document_type == "certificate":
+        # Certificates are issued files, not documents awaiting an electronic
+        # signature in the shared-document viewer.
+        result["status"] = "uploaded"
+
     if db is not None:
         if d.document_type in {"fr233", "review_decision"}:
             fr233_record = db.query(AuditSetFR233Record).filter_by(
@@ -255,6 +260,50 @@ def _auto_advance_workflow(
             )
         except Exception:
             pass
+
+
+def _add_certificate_years(issued: date, years: int = 3) -> date:
+    """Return the certificate expiry date, handling leap-day issue dates."""
+    try:
+        return issued.replace(year=issued.year + years)
+    except ValueError:
+        return issued.replace(year=issued.year + years, day=28)
+
+
+def _finalize_certificate_issuance(
+    db: Session,
+    audit_set: AuditSet,
+    certificate_doc: AuditSetSharedDocument,
+    triggered_by: str,
+) -> None:
+    """Complete certification when the final certificate file is issued."""
+    from audit_set.workflow_router import (
+        _assert_fr233_signed_gate,
+        _assert_nc_complete_gate,
+    )
+
+    _assert_fr233_signed_gate(db, audit_set.id)
+    _assert_nc_complete_gate(db, audit_set.id)
+
+    issued_at = certificate_doc.released_at or datetime.utcnow()
+    issued_date = issued_at.date()
+    certificate_doc.status = "uploaded"
+
+    audit_set.cert_issued_date = issued_date
+    audit_set.cert_expiry_date = _add_certificate_years(issued_date)
+    audit_set.cert_status = audit_set.compute_cert_status()
+
+    if audit_set.workflow_status != "certified":
+        old_status = audit_set.workflow_status
+        audit_set.workflow_status = "certified"
+        db.add(AuditSetStatusEvent(
+            audit_set_id=audit_set.id,
+            from_status=old_status,
+            to_status="certified",
+            triggered_by=triggered_by,
+            triggered_at=issued_at,
+            notes="Certificate document issued",
+        ))
 
 
 # ── CB: release a document to the client ────────────────────────────────────
@@ -351,6 +400,16 @@ async def release_document(
         if document_type == "team_info" and not assigned_auditor_id:
             raise HTTPException(400, "team_info (FR.224) requires assigned_auditor_id")
 
+        if document_type == "certificate":
+            # A certificate is the final issuance event. Validate the same
+            # closing gates before storing the file.
+            from audit_set.workflow_router import (
+                _assert_fr233_signed_gate,
+                _assert_nc_complete_gate,
+            )
+            _assert_fr233_signed_gate(db, audit_set_id)
+            _assert_nc_complete_gate(db, audit_set_id)
+
         # Persist the uploaded file alongside auditor uploads, under a sibling folder
         safe_name = f"{secrets.token_hex(6)}_{file.filename}"
         relative_path = f"shared_docs/{audit_set_id}/{safe_name}"
@@ -371,7 +430,12 @@ async def release_document(
         # signed (status flips to "released" on GM sign in the viewer). All other
         # documents are visible to their audience immediately.
         requires_cb_sig = document_type in ("quotation", "agreement")
-        initial_status  = "pending_cb_signature" if requires_cb_sig else "released"
+        initial_status = (
+            "pending_cb_signature"
+            if requires_cb_sig
+            else "uploaded" if document_type == "certificate"
+            else "released"
+        )
 
         released_dt = (
             datetime.combine(release_date, datetime.min.time())
@@ -435,6 +499,14 @@ async def release_document(
             db.flush()
             sig_ids.append(sig.id)
 
+        if document_type == "certificate":
+            _finalize_certificate_issuance(
+                db,
+                audit_set,
+                doc,
+                triggered_by=current_user.id,
+            )
+
         db.commit()
         db.refresh(doc)
 
@@ -467,7 +539,7 @@ async def release_document(
                 except Exception:
                     pass
 
-        return {"id": doc.id, "status": "released", "signature_ids": sig_ids}
+        return {"id": doc.id, "status": doc.status, "signature_ids": sig_ids}
 
     except HTTPException:
         raise  # let FastAPI handle expected 4xx
@@ -540,6 +612,36 @@ def list_documents(
     if current_user.role == "client" and current_user.audit_set_id != audit_set_id:
         raise HTTPException(403, "Not your audit set")
     docs = _visible_docs_for_user(audit_set_id, current_user, db)
+
+    # Repair certificates uploaded before issuance became the final workflow
+    # event. This is deliberately scoped to the requested audit set.
+    certificate_doc = next(
+        (doc for doc in reversed(docs) if doc.document_type == "certificate"),
+        None,
+    )
+    if certificate_doc:
+        audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+        if audit_set and (
+            audit_set.workflow_status != "certified"
+            or audit_set.cert_issued_date is None
+            or certificate_doc.status != "uploaded"
+        ):
+            try:
+                _finalize_certificate_issuance(
+                    db,
+                    audit_set,
+                    certificate_doc,
+                    triggered_by=certificate_doc.released_by or current_user.id,
+                )
+                db.commit()
+            except HTTPException as exc:
+                db.rollback()
+                logger.warning(
+                    "Certificate reconciliation blocked for audit_set_id=%s: %s",
+                    audit_set_id,
+                    exc.detail,
+                )
+
     return [_doc_to_dict(d, db) for d in docs]
 
 

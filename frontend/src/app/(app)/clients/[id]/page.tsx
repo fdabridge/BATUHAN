@@ -2730,11 +2730,8 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
               Certification Issued
             </p>
             <p className="mt-1 text-sm text-emerald-800">
-              The committee has approved the audit report and the workflow has advanced to{' '}
-              <strong>Certified</strong>. Upload the signed certificate document using the{' '}
-              <strong>Shared Documents</strong> section below — select{' '}
-              <em>Certificate</em> as the document type. It will be released to the client
-              portal automatically.
+              The certificate has been issued, the workflow is now{' '}
+              <strong>Certified</strong>, and the certification cycle is available to CRM.
             </p>
             {data.cert_issued_date && (
               <p className="mt-2 text-xs text-emerald-700">
@@ -2746,7 +2743,12 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
       )}
 
       {/* Shared Documents — Prompt 07 (additive, bottom of page) */}
-      <SharedDocumentsSection auditSetId={id} stages={data.stages ?? []} auditType={data.audit_type ?? null} />
+      <SharedDocumentsSection
+        auditSetId={id}
+        stages={data.stages ?? []}
+        auditType={data.audit_type ?? null}
+        onDocumentReleased={invalidate}
+      />
 
       {/* Internal CB Approvals — Prompt 13 (FR.218 / FR.222) */}
       <InternalApprovalsSection
