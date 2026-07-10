@@ -99,6 +99,24 @@ def _get_course_or_404(db: Session, course_id: str) -> TrainingCourse:
     return course
 
 
+def _require_course_access(
+    course_id: str, current_user: PlatformUser, db: Session,
+) -> None:
+    """Allow admin, training_officer, or a user assigned to this course."""
+    if current_user.role in ("admin", "training_officer"):
+        return
+    assigned = (
+        db.query(TrainingAssignment)
+        .filter(
+            TrainingAssignment.course_id == course_id,
+            TrainingAssignment.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not assigned:
+        raise HTTPException(status_code=403, detail="Access denied — you are not assigned to this course")
+
+
 def _course_to_dict(course: TrainingCourse, question_count: int = 0) -> dict:
     return {
         "id": course.id,
@@ -150,6 +168,26 @@ def list_courses(
     return result
 
 
+@router.get("/assignable-users")
+def assignable_users(
+    current_user: PlatformUser = Depends(require_training_officer),
+    auth_db: Session = Depends(get_auth_db),
+):
+    """Return active non-client users that can be assigned trainings."""
+    excluded_roles = {"client"}
+    users = (
+        auth_db.query(PlatformUser)
+        .filter(PlatformUser.is_active.is_(True))
+        .order_by(PlatformUser.full_name)
+        .all()
+    )
+    return [
+        {"id": u.id, "full_name": u.full_name, "email": u.email, "role": u.role}
+        for u in users
+        if u.role not in excluded_roles
+    ]
+
+
 @router.get("/courses/{course_id}")
 def get_course(
     course_id: str,
@@ -157,6 +195,7 @@ def get_course(
     db: Session = Depends(get_db),
 ):
     course = _get_course_or_404(db, course_id)
+    _require_course_access(course_id, current_user, db)
     q_count = db.query(TrainingExamQuestion).filter(TrainingExamQuestion.course_id == course_id).count()
     return _course_to_dict(course, question_count=q_count)
 
@@ -372,6 +411,7 @@ def download_material(
     db: Session = Depends(get_db),
 ):
     course = _get_course_or_404(db, course_id)
+    _require_course_access(course_id, current_user, db)
     if not course.file_path:
         raise HTTPException(status_code=404, detail="No training material uploaded for this course")
     local_path = ensure_local(course.file_path)
@@ -385,6 +425,7 @@ def download_exam_file(
     db: Session = Depends(get_db),
 ):
     course = _get_course_or_404(db, course_id)
+    _require_course_access(course_id, current_user, db)
     if not course.exam_file_path:
         raise HTTPException(status_code=404, detail="No exam file uploaded for this course")
     local_path = ensure_local(course.exam_file_path)
@@ -422,6 +463,8 @@ def submit_exam(
         raise HTTPException(status_code=404, detail="Assignment not found")
     if assignment.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="This assignment is not assigned to you")
+    if not assignment.training_completed:
+        raise HTTPException(status_code=400, detail="You must complete the training before taking the exam")
     if assignment.exam_completed:
         raise HTTPException(status_code=400, detail="Exam already submitted")
 

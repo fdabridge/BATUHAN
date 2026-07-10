@@ -8,11 +8,11 @@ import api from '@/lib/api'
 interface Assignment {
   id: string
   user_id: string
-  user_name: string
+  user_full_name: string
   training_completed: boolean
   exam_completed: boolean
-  score: number | null
-  passed: boolean | null
+  exam_score: number | null
+  exam_passed: boolean | null
 }
 
 interface UserOption {
@@ -42,10 +42,10 @@ export default function AssignmentsPage() {
     try {
       const [assignRes, usersRes] = await Promise.all([
         api.get(`/trainings/courses/${courseId}/assignments`),
-        api.get('/admin/users').catch(() => ({ data: [] })),
+        api.get('/trainings/assignable-users').catch(() => ({ data: [] })),
       ])
       setAssignments(assignRes.data)
-      setUsers(Array.isArray(usersRes.data) ? usersRes.data : usersRes.data?.items || [])
+      setUsers(Array.isArray(usersRes.data) ? usersRes.data : [])
     } catch {
       setError('Failed to load assignments.')
     } finally {
@@ -173,7 +173,7 @@ export default function AssignmentsPage() {
                   ))
                 : assignments.map((a) => (
                     <tr key={a.id} className="hover:bg-gray-50/40">
-                      <td className="px-4 py-3 font-medium">{a.user_name}</td>
+                      <td className="px-4 py-3 font-medium">{a.user_full_name}</td>
                       <td className="px-4 py-3">
                         <span
                           className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${
@@ -197,12 +197,12 @@ export default function AssignmentsPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-gray-500">
-                        {a.score !== null ? `${a.score}%` : '—'}
+                        {a.exam_score !== null ? `${a.exam_score}%` : '—'}
                       </td>
                       <td className="px-4 py-3">
-                        {a.passed === null ? (
+                        {a.exam_passed === null ? (
                           <span className="text-gray-400">—</span>
-                        ) : a.passed ? (
+                        ) : a.exam_passed ? (
                           <span className="text-xs font-medium text-green-700">Passed</span>
                         ) : (
                           <span className="text-xs font-medium text-red-600">Failed</span>
