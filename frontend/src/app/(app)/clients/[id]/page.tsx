@@ -235,14 +235,41 @@ function calendarDaysBetween(start: string, end: string): number {
 
 // ── Coverage check helpers ────────────────────────────────────────────────────
 
-const EA_CODE_STANDARDS = ['9001', '14001', '45001', '27001']
-const CATEGORY_STANDARDS = ['22000', 'fssc', '13485', '50001', '37001', '37301']
+const EA_CODE_STANDARDS = ['9001', '14001', '45001']
+const CATEGORY_STANDARDS = ['27001', '22000', 'fssc', '13485', '50001', '37001', '37301']
 
 function standardUsesCodes(std: string): 'ea' | 'category' | 'unknown' {
   const n = std.toLowerCase().replace('iso ', '').replace(/\s/g, '')
   if (EA_CODE_STANDARDS.some((s) => n.includes(s))) return 'ea'
   if (CATEGORY_STANDARDS.some((s) => n.includes(s))) return 'category'
   return 'unknown'
+}
+
+function normalizeStandardKey(std: string): string {
+  return std.toLowerCase().replace('iso/iec', '').replace('iso', '').replace(/[^a-z0-9]/g, '')
+}
+
+function normalizeScopeCode(code: string): string {
+  return code.trim().toUpperCase().replace(/\s+/g, '')
+}
+
+function coveredCodesForStandard(
+  coveredScope: Record<string, string[]> | undefined,
+  std: string,
+): string[] {
+  if (!coveredScope) return []
+  if (coveredScope[std]) return coveredScope[std]
+  const target = normalizeStandardKey(std)
+  const match = Object.entries(coveredScope).find(([key]) => {
+    const current = normalizeStandardKey(key)
+    return current === target || current.includes(target) || target.includes(current)
+  })
+  return match?.[1] ?? []
+}
+
+function codeListIncludes(codes: string[] | undefined, code: string): boolean {
+  const target = normalizeScopeCode(code)
+  return (codes ?? []).some((c) => normalizeScopeCode(c) === target)
 }
 
 interface CoverageResult {
@@ -279,12 +306,12 @@ function computeCoverage(
       const codeResults = rsEntry.codes.map((code) => {
         const coveringAuditor = teamAuditors.find((a) => {
           // Standard path: auditor covers this code for this specific standard
-          const cs = a.covered_scope?.[std]
-          if (cs && cs.includes(code)) return true
+          const cs = coveredCodesForStandard(a.covered_scope, std)
+          if (codeListIncludes(cs, code)) return true
           // TE path: a Technical Expert's EA code applies to ALL audit standards,
           // not only the standard they hold a formal auditor qualification for.
           if (teNames?.has(a.name ?? '')) {
-            return Object.values(a.covered_scope ?? {}).some((codes) => codes.includes(code))
+            return Object.values(a.covered_scope ?? {}).some((codes) => codeListIncludes(codes, code))
           }
           return false
         })

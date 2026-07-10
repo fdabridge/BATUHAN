@@ -401,8 +401,8 @@ async def release_document(
             raise HTTPException(400, "team_info (FR.224) requires assigned_auditor_id")
 
         if document_type == "fr233":
-            from audit_set.workflow_router import _assert_nc_stage_complete_gate
-            _assert_nc_stage_complete_gate(db, audit_set_id, "stage_2")
+            from audit_set.workflow_router import _assert_nc_stage_complete_gate, _fr233_nc_gate_stage
+            _assert_nc_stage_complete_gate(db, audit_set_id, _fr233_nc_gate_stage(db, audit_set_id))
 
         if document_type == "certificate":
             # A certificate is the final issuance event. Validate the same

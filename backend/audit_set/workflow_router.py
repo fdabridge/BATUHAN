@@ -212,7 +212,11 @@ def _assert_nc_stage_complete_gate(db: Session, audit_set_id: str, stage_type: s
     """Require one stage to have either a No-NC decision or closed NC items."""
     from audit_set.db_models import AuditSetNCDecision, AuditSetNCItem
 
-    stage_label = {"stage_1": "Stage 1", "stage_2": "Stage 2"}.get(stage_type, stage_type)
+    stage_label = {
+        "stage_1": "Stage 1",
+        "stage_2": "Stage 2",
+        "surveillance": "Surveillance",
+    }.get(stage_type, stage_type)
     decision = db.query(AuditSetNCDecision).filter_by(
         audit_set_id=audit_set_id,
         stage_type=stage_type,
@@ -242,6 +246,15 @@ def _assert_nc_stage_complete_gate(db: Session, audit_set_id: str, stage_type: s
         )
 
 
+def _fr233_nc_gate_stage(db: Session, audit_set_id: str) -> str:
+    """FR.233 waits on Stage 2 for initial audits, but Surveillance has one NC stage."""
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    audit_type = (audit_set.audit_type or "").lower() if audit_set else ""
+    if audit_type.startswith("surveillance"):
+        return "surveillance"
+    return "stage_2"
+
+
 def _assert_nc_complete_gate(db: Session, audit_set_id: str) -> None:
     """
     Portal 103 — Gate for any transition → certified.
@@ -252,7 +265,7 @@ def _assert_nc_complete_gate(db: Session, audit_set_id: str) -> None:
     stages = (
         db.query(AuditSetStage)
         .filter_by(audit_set_id=audit_set_id)
-        .filter(AuditSetStage.stage_type.in_(["stage_1", "stage_2"]))
+        .filter(AuditSetStage.stage_type.in_(["stage_1", "stage_2", "surveillance"]))
         .order_by(AuditSetStage.stage_order)
         .all()
     )
@@ -474,7 +487,7 @@ def update_workflow_status(
         _assert_stage1_complete_gate(db, audit_set_id)
         _assert_nc_stage_complete_gate(db, audit_set_id, "stage_1")
     elif to_status == "committee_review":
-        _assert_nc_stage_complete_gate(db, audit_set_id, "stage_2")
+        _assert_nc_stage_complete_gate(db, audit_set_id, _fr233_nc_gate_stage(db, audit_set_id))
     elif to_status == "certified":
         _assert_fr233_signed_gate(db, audit_set_id)
         _assert_nc_complete_gate(db, audit_set_id)

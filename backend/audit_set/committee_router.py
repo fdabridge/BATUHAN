@@ -327,6 +327,9 @@ def get_planning_committee_available(
         format differences between the audit set and the auditor profile do not
         silently drop auditors from the committee picker.
         """
+        def _category_key(value: str) -> str:
+            return (value or "").strip().upper().replace(" ", "")
+
         covered: dict = {}
         for iso_std, entry in req.items():
             scope_type      = entry.get("type", "ea")
@@ -345,7 +348,8 @@ def get_planning_committee_available(
                     continue
                 raw = qual.scope_category or ""
                 auditor_codes = [c.strip() for c in raw.split(",") if c.strip()]
-                matched = [c for c in required_codes if c in auditor_codes]
+                auditor_keys = {_category_key(c) for c in auditor_codes}
+                matched = [c for c in required_codes if _category_key(c) in auditor_keys]
             else:
                 # EA codes — numeric normalisation: "EA 36" == "EA36" == "36".
                 # Committee review is sector-competence based: if the auditor
@@ -574,8 +578,8 @@ def generate_fr233(
             "Complete Stage 2 first.",
         )
 
-    from audit_set.workflow_router import _assert_nc_stage_complete_gate
-    _assert_nc_stage_complete_gate(db, audit_set_id, "stage_2")
+    from audit_set.workflow_router import _assert_nc_stage_complete_gate, _fr233_nc_gate_stage
+    _assert_nc_stage_complete_gate(db, audit_set_id, _fr233_nc_gate_stage(db, audit_set_id))
 
     # Query record early so we can use it for released_at resolution.
     record = db.query(AuditSetFR233Record).filter_by(audit_set_id=audit_set_id).first()
@@ -697,8 +701,8 @@ def release_fr233_blank(
     if not audit_set:
         raise HTTPException(404, "Audit set not found")
 
-    from audit_set.workflow_router import _assert_nc_stage_complete_gate
-    _assert_nc_stage_complete_gate(db, audit_set_id, "stage_2")
+    from audit_set.workflow_router import _assert_nc_stage_complete_gate, _fr233_nc_gate_stage
+    _assert_nc_stage_complete_gate(db, audit_set_id, _fr233_nc_gate_stage(db, audit_set_id))
 
     existing_record = db.query(AuditSetFR233Record).filter_by(audit_set_id=audit_set_id).first()
     existing_doc = None
@@ -830,8 +834,8 @@ async def upload_fr233(
     if not audit_set:
         raise HTTPException(404, "Audit set not found")
 
-    from audit_set.workflow_router import _assert_nc_stage_complete_gate
-    _assert_nc_stage_complete_gate(db, audit_set_id, "stage_2")
+    from audit_set.workflow_router import _assert_nc_stage_complete_gate, _fr233_nc_gate_stage
+    _assert_nc_stage_complete_gate(db, audit_set_id, _fr233_nc_gate_stage(db, audit_set_id))
 
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in {".pdf", ".docx"}:
