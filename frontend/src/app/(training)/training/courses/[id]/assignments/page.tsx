@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import api from '@/lib/api'
@@ -9,6 +9,8 @@ interface Assignment {
   id: string
   user_id: string
   user_full_name: string
+  user_email: string | null
+  user_role: string | null
   training_completed: boolean
   exam_completed: boolean
   exam_score: number | null
@@ -19,7 +21,21 @@ interface UserOption {
   id: string
   full_name: string
   email: string
+  role: string
 }
+
+interface HistoryItem {
+  course_title: string
+  assigned_at: string | null
+  training_completed: boolean
+  training_completed_at: string | null
+  exam_completed: boolean
+  exam_score: number | null
+  exam_passed: boolean | null
+  exam_completed_at: string | null
+}
+
+type Filter = 'all' | 'pending' | 'training_done' | 'passed' | 'failed'
 
 export default function AssignmentsPage() {
   const params = useParams()
@@ -32,10 +48,15 @@ export default function AssignmentsPage() {
   const [assigning, setAssigning] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [filter, setFilter] = useState<Filter>('all')
 
-  useEffect(() => {
-    loadData()
-  }, [courseId])
+  // User history modal
+  const [historyUserId, setHistoryUserId] = useState<string | null>(null)
+  const [historyUserName, setHistoryUserName] = useState('')
+  const [history, setHistory] = useState<HistoryItem[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+
+  useEffect(() => { loadData() }, [courseId])
 
   async function loadData() {
     setLoading(true)
@@ -81,17 +102,47 @@ export default function AssignmentsPage() {
     }
   }
 
-  // Filter out already-assigned users
+  async function openHistory(userId: string, userName: string) {
+    setHistoryUserId(userId)
+    setHistoryUserName(userName)
+    setHistoryLoading(true)
+    setHistory([])
+    try {
+      const res = await api.get(`/trainings/users/${userId}/history`)
+      setHistory(res.data)
+    } catch {
+      // fail silently
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  const filtered = useMemo(() => {
+    if (filter === 'all') return assignments
+    return assignments.filter((a) => {
+      if (filter === 'pending') return !a.training_completed
+      if (filter === 'training_done') return a.training_completed && !a.exam_completed
+      if (filter === 'passed') return a.exam_passed === true
+      if (filter === 'failed') return a.exam_passed === false
+      return true
+    })
+  }, [assignments, filter])
+
   const assignedIds = new Set(assignments.map((a) => a.user_id))
   const availableUsers = users.filter((u) => !assignedIds.has(u.id))
+
+  const FILTERS: { key: Filter; label: string }[] = [
+    { key: 'all',           label: 'All' },
+    { key: 'pending',       label: 'Pending' },
+    { key: 'training_done', label: 'Exam Pending' },
+    { key: 'passed',        label: 'Passed' },
+    { key: 'failed',        label: 'Failed' },
+  ]
 
   return (
     <div className="p-6">
       <div className="mb-6 flex items-center gap-4">
-        <Link
-          href="/training/dashboard"
-          className="text-sm text-gray-400 hover:text-gray-600"
-        >
+        <Link href="/training/dashboard" className="text-sm text-gray-400 hover:text-gray-600">
           &larr; Back
         </Link>
         <h1 className="text-xl font-semibold" style={{ color: '#1A4731' }}>
@@ -99,35 +150,23 @@ export default function AssignmentsPage() {
         </h1>
       </div>
 
-      {error && (
-        <div className="mb-4 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
-      )}
-      {success && (
-        <div className="mb-4 rounded-md bg-green-50 px-4 py-3 text-sm text-green-700">{success}</div>
-      )}
+      {error && <div className="mb-4 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+      {success && <div className="mb-4 rounded-md bg-green-50 px-4 py-3 text-sm text-green-700">{success}</div>}
 
-      {/* Assign Users Section */}
+      {/* Assign Users */}
       <section className="mb-6 rounded-lg border border-gray-100 bg-white p-5">
         <h2 className="mb-3 text-sm font-semibold text-gray-700">Assign Users</h2>
-
         {availableUsers.length === 0 ? (
           <p className="text-sm text-gray-400">No unassigned users available.</p>
         ) : (
           <>
             <div className="mb-3 max-h-48 overflow-y-auto rounded-md border border-gray-100 p-2">
               {availableUsers.map((u) => (
-                <label
-                  key={u.id}
-                  className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-gray-50"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedUserIds.has(u.id)}
-                    onChange={() => toggleUser(u.id)}
-                    className="accent-[#1A4731]"
-                  />
+                <label key={u.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-gray-50">
+                  <input type="checkbox" checked={selectedUserIds.has(u.id)} onChange={() => toggleUser(u.id)} className="accent-[#1A4731]" />
                   <span>{u.full_name}</span>
                   <span className="text-xs text-gray-400">{u.email}</span>
+                  <span className="ml-auto rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">{u.role}</span>
                 </label>
               ))}
             </div>
@@ -144,82 +183,149 @@ export default function AssignmentsPage() {
         )}
       </section>
 
+      {/* Filter tabs */}
+      <div className="mb-3 flex gap-1">
+        {FILTERS.map((f) => (
+          <button
+            key={f.key}
+            onClick={() => setFilter(f.key)}
+            className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+              filter === f.key ? 'bg-[#1A4731] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
       {/* Assignments Table */}
       <div className="rounded-lg border border-gray-100 bg-white">
-        <div className="px-5 py-4">
-          <span className="text-sm font-medium">Current Assignments</span>
-        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-t border-gray-100 text-left text-xs font-medium uppercase tracking-wide text-gray-400">
-                <th className="px-4 py-2.5">User Name</th>
-                <th className="px-4 py-2.5">Training Completed</th>
-                <th className="px-4 py-2.5">Exam Completed</th>
+              <tr className="border-b border-gray-100 text-left text-xs font-medium uppercase tracking-wide text-gray-400">
+                <th className="px-4 py-2.5">User</th>
+                <th className="px-4 py-2.5">Role</th>
+                <th className="px-4 py-2.5">Training</th>
+                <th className="px-4 py-2.5">Exam</th>
                 <th className="px-4 py-2.5">Score</th>
-                <th className="px-4 py-2.5">Passed</th>
+                <th className="px-4 py-2.5">Result</th>
+                <th className="px-4 py-2.5">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {loading
                 ? Array.from({ length: 3 }).map((_, i) => (
                     <tr key={i}>
-                      {Array.from({ length: 5 }).map((_, j) => (
-                        <td key={j} className="px-4 py-3">
-                          <div className="h-3 w-20 animate-pulse rounded bg-gray-100" />
-                        </td>
+                      {Array.from({ length: 7 }).map((_, j) => (
+                        <td key={j} className="px-4 py-3"><div className="h-3 w-16 animate-pulse rounded bg-gray-100" /></td>
                       ))}
                     </tr>
                   ))
-                : assignments.map((a) => (
+                : filtered.map((a) => (
                     <tr key={a.id} className="hover:bg-gray-50/40">
-                      <td className="px-4 py-3 font-medium">{a.user_full_name}</td>
                       <td className="px-4 py-3">
-                        <span
-                          className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${
-                            a.training_completed
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-gray-100 text-gray-500'
-                          }`}
-                        >
-                          {a.training_completed ? 'Yes' : 'No'}
+                        <div className="font-medium">{a.user_full_name}</div>
+                        {a.user_email && <div className="text-xs text-gray-400">{a.user_email}</div>}
+                      </td>
+                      <td className="px-4 py-3">
+                        {a.user_role && (
+                          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">{a.user_role}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${a.training_completed ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                          {a.training_completed ? 'Done' : 'Pending'}
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <span
-                          className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${
-                            a.exam_completed
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-gray-100 text-gray-500'
-                          }`}
-                        >
-                          {a.exam_completed ? 'Yes' : 'No'}
+                        <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${a.exam_completed ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                          {a.exam_completed ? 'Done' : 'Pending'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-gray-500">
+                      <td className="px-4 py-3 font-medium tabular-nums">
                         {a.exam_score !== null ? `${a.exam_score}%` : '—'}
                       </td>
                       <td className="px-4 py-3">
                         {a.exam_passed === null ? (
                           <span className="text-gray-400">—</span>
                         ) : a.exam_passed ? (
-                          <span className="text-xs font-medium text-green-700">Passed</span>
+                          <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">Passed</span>
                         ) : (
-                          <span className="text-xs font-medium text-red-600">Failed</span>
+                          <span className="rounded bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">Failed</span>
                         )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => openHistory(a.user_id, a.user_full_name)}
+                          className="text-xs text-blue-600 hover:underline"
+                        >
+                          History
+                        </button>
                       </td>
                     </tr>
                   ))}
             </tbody>
           </table>
-
-          {!loading && assignments.length === 0 && (
+          {!loading && filtered.length === 0 && (
             <div className="py-12 text-center text-sm text-gray-400">
-              No users assigned to this course yet.
+              {assignments.length === 0 ? 'No users assigned to this course yet.' : 'No assignments match the selected filter.'}
             </div>
           )}
         </div>
       </div>
+
+      {/* User History Modal */}
+      {historyUserId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setHistoryUserId(null)}>
+          <div className="w-full max-w-xl rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-sm font-semibold" style={{ color: '#1A4731' }}>
+                Training History — {historyUserName}
+              </h2>
+              <button onClick={() => setHistoryUserId(null)} className="text-gray-400 hover:text-gray-600">&times;</button>
+            </div>
+            {historyLoading ? (
+              <div className="py-8 text-center text-sm text-gray-400">Loading...</div>
+            ) : history.length === 0 ? (
+              <div className="py-8 text-center text-sm text-gray-400">No training history found.</div>
+            ) : (
+              <div className="max-h-80 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-xs font-medium uppercase text-gray-400">
+                      <th className="px-3 py-2">Course</th>
+                      <th className="px-3 py-2">Training</th>
+                      <th className="px-3 py-2">Score</th>
+                      <th className="px-3 py-2">Result</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {history.map((h, i) => (
+                      <tr key={i}>
+                        <td className="px-3 py-2 font-medium">{h.course_title}</td>
+                        <td className="px-3 py-2">
+                          <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${h.training_completed ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                            {h.training_completed ? 'Done' : 'Pending'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 tabular-nums">{h.exam_score !== null ? `${h.exam_score}%` : '—'}</td>
+                        <td className="px-3 py-2">
+                          {h.exam_passed === null ? '—' : h.exam_passed ? (
+                            <span className="text-xs font-semibold text-emerald-700">Passed</span>
+                          ) : (
+                            <span className="text-xs font-semibold text-red-600">Failed</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

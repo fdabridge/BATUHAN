@@ -4,32 +4,59 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import api from '@/lib/api'
 
+interface Summary {
+  total_courses: number
+  active_courses: number
+  total_assignments: number
+  pending_training: number
+  training_completed_exam_pending: number
+  passed_count: number
+  failed_count: number
+}
+
 interface Course {
   id: string
   title: string
-  description: string
+  question_count: number
   passing_grade: number
   is_active: boolean
-  questions_count?: number
 }
 
 export default function TrainingDashboardPage() {
+  const [summary, setSummary] = useState<Summary | null>(null)
   const [courses, setCourses] = useState<Course[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api
-      .get<Course[]>('/trainings/courses')
-      .then((r) => setCourses(r.data))
+    Promise.all([
+      api.get<Summary>('/trainings/summary'),
+      api.get<Course[]>('/trainings/courses'),
+    ])
+      .then(([sRes, cRes]) => {
+        setSummary(sRes.data)
+        setCourses(cRes.data)
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
+
+  const cards: { label: string; value: number | string; color: string }[] = summary
+    ? [
+        { label: 'Courses',       value: summary.total_courses,                      color: 'bg-blue-50 text-blue-700' },
+        { label: 'Active',        value: summary.active_courses,                     color: 'bg-green-50 text-green-700' },
+        { label: 'Assignments',   value: summary.total_assignments,                  color: 'bg-purple-50 text-purple-700' },
+        { label: 'Pending',       value: summary.pending_training,                   color: 'bg-yellow-50 text-yellow-700' },
+        { label: 'Exam Pending',  value: summary.training_completed_exam_pending,    color: 'bg-orange-50 text-orange-700' },
+        { label: 'Passed',        value: summary.passed_count,                       color: 'bg-emerald-50 text-emerald-700' },
+        { label: 'Failed',        value: summary.failed_count,                       color: 'bg-red-50 text-red-700' },
+      ]
+    : []
 
   return (
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-semibold" style={{ color: '#1A4731' }}>
-          Training Courses
+          Training Dashboard
         </h1>
         <Link
           href="/training/courses/new"
@@ -40,6 +67,25 @@ export default function TrainingDashboardPage() {
         </Link>
       </div>
 
+      {/* Summary cards */}
+      {loading ? (
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+          {Array.from({ length: 7 }).map((_, i) => (
+            <div key={i} className="h-20 animate-pulse rounded-lg border border-gray-100 bg-white" />
+          ))}
+        </div>
+      ) : (
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+          {cards.map((c) => (
+            <div key={c.label} className={`rounded-lg border border-gray-100 p-4 ${c.color}`}>
+              <p className="text-2xl font-bold">{c.value}</p>
+              <p className="mt-0.5 text-xs font-medium opacity-80">{c.label}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Courses table */}
       <div className="rounded-lg border border-gray-100 bg-white">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -66,9 +112,7 @@ export default function TrainingDashboardPage() {
                 : courses.map((c) => (
                     <tr key={c.id} className="hover:bg-gray-50/40">
                       <td className="px-4 py-3 font-medium">{c.title}</td>
-                      <td className="px-4 py-3 text-gray-500">
-                        {(c as any).question_count ?? c.questions_count ?? '—'}
-                      </td>
+                      <td className="px-4 py-3 text-gray-500">{c.question_count ?? '—'}</td>
                       <td className="px-4 py-3 text-gray-500">{c.passing_grade}%</td>
                       <td className="px-4 py-3">
                         <span

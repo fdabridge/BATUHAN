@@ -209,6 +209,69 @@ def list_courses(
     return result
 
 
+@router.get("/summary")
+def training_summary(
+    current_user: PlatformUser = Depends(require_training_officer),
+    db: Session = Depends(get_db),
+):
+    """Aggregate stats for the training officer dashboard."""
+    total_courses = db.query(TrainingCourse).count()
+    active_courses = db.query(TrainingCourse).filter(TrainingCourse.is_active.is_(True)).count()
+    all_assignments = db.query(TrainingAssignment).all()
+    total_assignments = len(all_assignments)
+    pending_training = sum(1 for a in all_assignments if not a.training_completed)
+    training_done_exam_pending = sum(
+        1 for a in all_assignments if a.training_completed and not a.exam_completed
+    )
+    passed_count = sum(1 for a in all_assignments if a.exam_passed is True)
+    failed_count = sum(1 for a in all_assignments if a.exam_passed is False)
+    return {
+        "total_courses": total_courses,
+        "active_courses": active_courses,
+        "total_assignments": total_assignments,
+        "pending_training": pending_training,
+        "training_completed_exam_pending": training_done_exam_pending,
+        "passed_count": passed_count,
+        "failed_count": failed_count,
+    }
+
+
+@router.get("/users/{user_id}/history")
+def user_training_history(
+    user_id: str,
+    current_user: PlatformUser = Depends(require_training_officer),
+    db: Session = Depends(get_db),
+):
+    """Return all training assignments for a given user, with course details."""
+    assignments = (
+        db.query(TrainingAssignment)
+        .filter(TrainingAssignment.user_id == user_id)
+        .order_by(TrainingAssignment.assigned_at.desc())
+        .all()
+    )
+    course_ids = list({a.course_id for a in assignments})
+    courses_map: dict[str, TrainingCourse] = {}
+    if course_ids:
+        courses = db.query(TrainingCourse).filter(TrainingCourse.id.in_(course_ids)).all()
+        courses_map = {c.id: c for c in courses}
+    result = []
+    for a in assignments:
+        course = courses_map.get(a.course_id)
+        result.append({
+            "id": a.id,
+            "course_id": a.course_id,
+            "course_title": course.title if course else "Unknown",
+            "assigned_at": a.assigned_at.isoformat() if a.assigned_at else None,
+            "training_completed": a.training_completed,
+            "training_completed_at": a.training_completed_at.isoformat() if a.training_completed_at else None,
+            "exam_completed": a.exam_completed,
+            "exam_score": a.exam_score,
+            "exam_passed": a.exam_passed,
+            "exam_completed_at": a.exam_completed_at.isoformat() if a.exam_completed_at else None,
+        })
+    return result
+
+
 @router.get("/assignable-users")
 def assignable_users(
     current_user: PlatformUser = Depends(require_training_officer),
@@ -390,20 +453,23 @@ def get_course_assignments(
         .order_by(TrainingAssignment.assigned_at.desc())
         .all()
     )
-    # Collect user IDs and look up names from auth DB
+    # Collect user IDs and look up names/email/role from auth DB
     user_ids = list({a.user_id for a in assignments})
-    users_map: dict[str, str] = {}
+    users_map: dict[str, PlatformUser] = {}
     if user_ids:
         users = auth_db.query(PlatformUser).filter(PlatformUser.id.in_(user_ids)).all()
-        users_map = {u.id: u.full_name for u in users}
+        users_map = {u.id: u for u in users}
 
     result = []
     for a in assignments:
+        u = users_map.get(a.user_id)
         result.append({
             "id": a.id,
             "course_id": a.course_id,
             "user_id": a.user_id,
-            "user_full_name": users_map.get(a.user_id, "Unknown"),
+            "user_full_name": u.full_name if u else "Unknown",
+            "user_email": u.email if u else None,
+            "user_role": u.role if u else None,
             "assigned_by": a.assigned_by,
             "training_completed": a.training_completed,
             "training_completed_at": a.training_completed_at.isoformat() if a.training_completed_at else None,
