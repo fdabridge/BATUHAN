@@ -26,14 +26,20 @@ interface ExamResult {
   correct_count: number
 }
 
+interface CourseInfo {
+  exam_kind: string | null
+  exam_file_name: string | null
+}
+
 export default function AuditorExamPage() {
   const params = useParams()
   const courseId = params.courseId as string
   const router = useRouter()
 
+  const [course, setCourse] = useState<CourseInfo | null>(null)
   const [questions, setQuestions] = useState<Question[]>([])
   const [assignment, setAssignment] = useState<MyAssignment | null>(null)
-  const [examPdfUrl, setExamPdfUrl] = useState<string | null>(null)
+  const [examBlobUrl, setExamBlobUrl] = useState<string | null>(null)
   const [answers, setAnswers] = useState<Record<number, number>>({})
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -43,18 +49,21 @@ export default function AuditorExamPage() {
   useEffect(() => {
     async function load() {
       try {
-        const myRes = await api.get<MyAssignment[]>('/trainings/my')
+        const [courseRes, myRes, qRes] = await Promise.all([
+          api.get(`/trainings/courses/${courseId}`),
+          api.get<MyAssignment[]>('/trainings/my'),
+          api.get(`/trainings/courses/${courseId}/questions`),
+        ])
+        setCourse(courseRes.data)
         const myAssignment = myRes.data.find((a: any) => a.course_id === courseId)
         if (myAssignment) setAssignment(myAssignment)
-
-        const qRes = await api.get(`/trainings/courses/${courseId}/questions`)
         setQuestions(qRes.data)
 
         try {
           const pdfRes = await api.get(`/trainings/courses/${courseId}/exam-file`, {
             responseType: 'blob',
           })
-          setExamPdfUrl(URL.createObjectURL(pdfRes.data))
+          setExamBlobUrl(URL.createObjectURL(pdfRes.data))
         } catch {
           // Exam file might not be uploaded
         }
@@ -67,7 +76,7 @@ export default function AuditorExamPage() {
     load()
 
     return () => {
-      if (examPdfUrl) URL.revokeObjectURL(examPdfUrl)
+      if (examBlobUrl) URL.revokeObjectURL(examBlobUrl)
     }
   }, [courseId])
 
@@ -105,6 +114,7 @@ export default function AuditorExamPage() {
 
   const isDisabled = !!result || !!assignment?.exam_completed
   const backPath = '/auditor/trainings'
+  const examKind = course?.exam_kind || 'pdf'
 
   if (loading) {
     return (
@@ -155,23 +165,52 @@ export default function AuditorExamPage() {
       )}
 
       <div className="flex gap-4" style={{ height: '75vh' }}>
+        {/* Left: Exam document */}
         <div className="flex-1 rounded-lg border border-gray-100 bg-white">
-          {examPdfUrl ? (
-            <object data={examPdfUrl} type="application/pdf" className="h-full w-full rounded-lg">
+          {!examBlobUrl ? (
+            <div className="flex h-full items-center justify-center text-sm text-gray-400">
+              No exam document uploaded.
+            </div>
+          ) : examKind === 'pdf' ? (
+            <object data={examBlobUrl} type="application/pdf" className="h-full w-full rounded-lg">
               <div className="flex items-center justify-center p-12 text-sm text-gray-400">
                 Unable to display PDF.{' '}
-                <a href={examPdfUrl} target="_blank" rel="noreferrer" className="ml-1 text-blue-600 hover:underline">
+                <a href={examBlobUrl} target="_blank" rel="noreferrer" className="ml-1 text-blue-600 hover:underline">
                   Download instead
                 </a>
               </div>
             </object>
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-gray-400">
-              No exam document uploaded.
+            <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
+              <div className="rounded-full bg-gray-100 p-4">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-gray-400">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <path d="M14 2v6h6" />
+                  <path d="M12 18v-6" />
+                  <path d="M9 15l3 3 3-3" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-700">
+                  {course?.exam_file_name || 'Exam document'}
+                </p>
+                <p className="mt-1 text-xs text-gray-400">
+                  This file type cannot be previewed. Download to view.
+                </p>
+              </div>
+              <a
+                href={examBlobUrl}
+                download={course?.exam_file_name || 'exam'}
+                className="rounded-md px-5 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+                style={{ background: '#1A4731' }}
+              >
+                Download Exam File
+              </a>
             </div>
           )}
         </div>
 
+        {/* Right: Answer form */}
         <div className="flex flex-1 flex-col rounded-lg border border-gray-100 bg-white">
           <div className="border-b border-gray-100 px-5 py-3">
             <span className="text-sm font-medium">Answer Sheet</span>

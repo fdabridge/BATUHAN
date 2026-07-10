@@ -37,9 +37,15 @@ class TrainingCourse(Base):
     id              = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     title           = Column(String, nullable=False)
     description     = Column(String, nullable=True)
-    file_path       = Column(String, nullable=True)       # R2 storage ref for training material PDF
-    exam_file_path  = Column(String, nullable=True)       # R2 storage ref for exam display PDF
-    passing_grade   = Column(Integer, default=70)          # percentage
+    file_path              = Column(String, nullable=True)    # R2 storage ref for training material
+    material_file_name     = Column(String, nullable=True)   # original filename
+    material_content_type  = Column(String, nullable=True)   # stored MIME type
+    material_kind          = Column(String, nullable=True)   # pdf | video | office | other
+    exam_file_path         = Column(String, nullable=True)   # R2 storage ref for exam display file
+    exam_file_name         = Column(String, nullable=True)   # original filename
+    exam_content_type      = Column(String, nullable=True)   # stored MIME type
+    exam_kind              = Column(String, nullable=True)   # pdf | office | other
+    passing_grade          = Column(Integer, default=70)     # percentage
     is_active       = Column(Boolean, default=True)
     created_by      = Column(String, nullable=False)       # user ID of training officer
     created_at      = Column(DateTime, default=datetime.utcnow)
@@ -74,6 +80,27 @@ class TrainingAssignment(Base):
     assigned_at           = Column(DateTime, default=datetime.utcnow)
 
 
+def _safe_add_column(table: str, col_def: str) -> None:
+    """Add a column if it doesn't already exist (Postgres + SQLite safe)."""
+    import sqlalchemy as sa
+    with engine.connect() as conn:
+        try:
+            conn.execute(sa.text(f"ALTER TABLE {table} ADD COLUMN {col_def}"))
+            conn.commit()
+        except Exception:
+            pass  # column already exists
+
+
 def create_tables() -> None:
     """Create training tables if they do not exist. Safe to call on every startup."""
     Base.metadata.create_all(bind=engine, checkfirst=True)
+    # Phase 2 — file metadata columns (safe migration for existing deployments)
+    for col in (
+        "material_file_name VARCHAR",
+        "material_content_type VARCHAR",
+        "material_kind VARCHAR",
+        "exam_file_name VARCHAR",
+        "exam_content_type VARCHAR",
+        "exam_kind VARCHAR",
+    ):
+        _safe_add_column("training_courses", col)

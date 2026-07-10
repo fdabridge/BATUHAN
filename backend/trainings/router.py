@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime
 from secrets import token_hex
 from typing import Optional
@@ -117,13 +118,53 @@ def _require_course_access(
         raise HTTPException(status_code=403, detail="Access denied — you are not assigned to this course")
 
 
+# ---------------------------------------------------------------------------
+# File-type helpers
+# ---------------------------------------------------------------------------
+
+MATERIAL_ALLOWED_EXTS = {".pdf", ".mp4", ".mov", ".webm", ".ppt", ".pptx", ".doc", ".docx"}
+EXAM_ALLOWED_EXTS = {".pdf", ".doc", ".docx"}
+
+def _classify_material(filename: str) -> str:
+    ext = os.path.splitext(filename)[1].lower()
+    if ext == ".pdf":
+        return "pdf"
+    if ext in (".mp4", ".mov", ".webm"):
+        return "video"
+    if ext in (".ppt", ".pptx", ".doc", ".docx"):
+        return "office"
+    return "other"
+
+def _classify_exam(filename: str) -> str:
+    ext = os.path.splitext(filename)[1].lower()
+    if ext == ".pdf":
+        return "pdf"
+    if ext in (".doc", ".docx"):
+        return "office"
+    return "other"
+
+def _validate_ext(filename: str, allowed: set[str], label: str) -> None:
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported {label} file type '{ext}'. Allowed: {', '.join(sorted(allowed))}",
+        )
+
+
 def _course_to_dict(course: TrainingCourse, question_count: int = 0) -> dict:
     return {
         "id": course.id,
         "title": course.title,
         "description": course.description,
         "file_path": course.file_path,
+        "material_file_name": course.material_file_name,
+        "material_content_type": course.material_content_type,
+        "material_kind": course.material_kind,
         "exam_file_path": course.exam_file_path,
+        "exam_file_name": course.exam_file_name,
+        "exam_content_type": course.exam_content_type,
+        "exam_kind": course.exam_kind,
         "passing_grade": course.passing_grade,
         "is_active": course.is_active,
         "created_by": course.created_by,
@@ -230,15 +271,21 @@ async def upload_material(
     db: Session = Depends(get_db),
 ):
     course = _get_course_or_404(db, course_id)
+    filename = file.filename or "material.bin"
+    _validate_ext(filename, MATERIAL_ALLOWED_EXTS, "training material")
     content = await file.read()
-    filename = file.filename or "material.pdf"
+    ct = file.content_type or "application/octet-stream"
+    kind = _classify_material(filename)
     rel_path = f"training_materials/{course_id}/{token_hex(8)}_{filename}"
-    ref = store_upload(rel_path, content, content_type=file.content_type or "application/pdf")
+    ref = store_upload(rel_path, content, content_type=ct)
     course.file_path = ref
+    course.material_file_name = filename
+    course.material_content_type = ct
+    course.material_kind = kind
     db.commit()
     db.refresh(course)
-    logger.info("[Trainings] Material uploaded for course=%s by=%s", course_id, current_user.id)
-    return {"file_path": ref}
+    logger.info("[Trainings] Material uploaded (%s) for course=%s by=%s", kind, course_id, current_user.id)
+    return {"file_path": ref, "material_kind": kind, "material_file_name": filename}
 
 
 @router.post("/courses/{course_id}/upload-exam-file")
@@ -249,15 +296,21 @@ async def upload_exam_file(
     db: Session = Depends(get_db),
 ):
     course = _get_course_or_404(db, course_id)
+    filename = file.filename or "exam.bin"
+    _validate_ext(filename, EXAM_ALLOWED_EXTS, "exam")
     content = await file.read()
-    filename = file.filename or "exam.pdf"
+    ct = file.content_type or "application/octet-stream"
+    kind = _classify_exam(filename)
     rel_path = f"training_exams/{course_id}/{token_hex(8)}_{filename}"
-    ref = store_upload(rel_path, content, content_type=file.content_type or "application/pdf")
+    ref = store_upload(rel_path, content, content_type=ct)
     course.exam_file_path = ref
+    course.exam_file_name = filename
+    course.exam_content_type = ct
+    course.exam_kind = kind
     db.commit()
     db.refresh(course)
-    logger.info("[Trainings] Exam file uploaded for course=%s by=%s", course_id, current_user.id)
-    return {"exam_file_path": ref}
+    logger.info("[Trainings] Exam file uploaded (%s) for course=%s by=%s", kind, course_id, current_user.id)
+    return {"exam_file_path": ref, "exam_kind": kind, "exam_file_name": filename}
 
 
 @router.post("/courses/{course_id}/questions")
@@ -415,7 +468,9 @@ def download_material(
     if not course.file_path:
         raise HTTPException(status_code=404, detail="No training material uploaded for this course")
     local_path = ensure_local(course.file_path)
-    return FileResponse(local_path, filename=f"training_material_{course_id}.pdf", media_type="application/pdf")
+    dl_name = course.material_file_name or f"training_material_{course_id}"
+    media = course.material_content_type or "application/octet-stream"
+    return FileResponse(local_path, filename=dl_name, media_type=media)
 
 
 @router.get("/courses/{course_id}/exam-file")
@@ -429,7 +484,9 @@ def download_exam_file(
     if not course.exam_file_path:
         raise HTTPException(status_code=404, detail="No exam file uploaded for this course")
     local_path = ensure_local(course.exam_file_path)
-    return FileResponse(local_path, filename=f"exam_{course_id}.pdf", media_type="application/pdf")
+    dl_name = course.exam_file_name or f"exam_{course_id}"
+    media = course.exam_content_type or "application/octet-stream"
+    return FileResponse(local_path, filename=dl_name, media_type=media)
 
 
 @router.post("/assignments/{assignment_id}/complete-training")

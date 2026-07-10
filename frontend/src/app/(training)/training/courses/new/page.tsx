@@ -157,30 +157,30 @@ export default function CreateTrainingPage() {
 
         {/* Training Material */}
         <section className="rounded-lg border border-gray-100 bg-white p-5">
-          <h2 className="mb-4 text-sm font-semibold text-gray-700">Training Material (PDF)</h2>
+          <h2 className="mb-4 text-sm font-semibold text-gray-700">Training Material</h2>
           <input
             type="file"
-            accept="application/pdf"
+            accept=".pdf,.mp4,.mov,.webm,.ppt,.pptx,.doc,.docx"
             onChange={(e) => setMaterialFile(e.target.files?.[0] ?? null)}
             className="text-sm text-gray-600"
           />
-          {materialFile && (
-            <p className="mt-1 text-xs text-gray-400">Selected: {materialFile.name}</p>
-          )}
+          <p className="mt-1 text-xs text-gray-400">
+            {materialFile ? `Selected: ${materialFile.name}` : 'Accepted: PDF, MP4, MOV, WebM, PPT, PPTX, DOC, DOCX'}
+          </p>
         </section>
 
         {/* Exam File */}
         <section className="rounded-lg border border-gray-100 bg-white p-5">
-          <h2 className="mb-4 text-sm font-semibold text-gray-700">Exam File (PDF)</h2>
+          <h2 className="mb-4 text-sm font-semibold text-gray-700">Exam File</h2>
           <input
             type="file"
-            accept="application/pdf"
+            accept=".pdf,.doc,.docx"
             onChange={(e) => setExamFile(e.target.files?.[0] ?? null)}
             className="text-sm text-gray-600"
           />
-          {examFile && (
-            <p className="mt-1 text-xs text-gray-400">Selected: {examFile.name}</p>
-          )}
+          <p className="mt-1 text-xs text-gray-400">
+            {examFile ? `Selected: ${examFile.name}` : 'Accepted: PDF, DOC, DOCX'}
+          </p>
         </section>
 
         {/* Passing Grade */}
