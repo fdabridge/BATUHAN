@@ -77,6 +77,7 @@ class TrainingAssignment(Base):
     exam_score            = Column(Float, nullable=True)      # percentage
     exam_passed           = Column(Boolean, nullable=True)
     exam_completed_at     = Column(DateTime, nullable=True)
+    exam_answers          = Column(String, nullable=True)    # JSON: submitted answers for audit
     assigned_at           = Column(DateTime, default=datetime.utcnow)
 
 
@@ -104,3 +105,5 @@ def create_tables() -> None:
         "exam_kind VARCHAR",
     ):
         _safe_add_column("training_courses", col)
+    # Phase 4 — exam answers column for auditability
+    _safe_add_column("training_assignments", "exam_answers TEXT")

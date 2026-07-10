@@ -26,13 +26,25 @@ interface UserOption {
 
 interface HistoryItem {
   course_title: string
-  assigned_at: string | null
   training_completed: boolean
-  training_completed_at: string | null
-  exam_completed: boolean
   exam_score: number | null
   exam_passed: boolean | null
-  exam_completed_at: string | null
+}
+
+interface AnswerDetail {
+  question_number: number
+  question_text: string
+  options: string[]
+  correct_option_index: number
+  selected_option_index: number | null
+  is_correct: boolean
+}
+
+interface AnswersData {
+  assignment_id: string
+  exam_score: number
+  exam_passed: boolean
+  questions: AnswerDetail[]
 }
 
 type Filter = 'all' | 'pending' | 'training_done' | 'passed' | 'failed'
@@ -50,11 +62,16 @@ export default function AssignmentsPage() {
   const [success, setSuccess] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
 
-  // User history modal
+  // History modal
   const [historyUserId, setHistoryUserId] = useState<string | null>(null)
   const [historyUserName, setHistoryUserName] = useState('')
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
+
+  // Answers modal
+  const [answersData, setAnswersData] = useState<AnswersData | null>(null)
+  const [answersUserName, setAnswersUserName] = useState('')
+  const [answersLoading, setAnswersLoading] = useState(false)
 
   useEffect(() => { loadData() }, [courseId])
 
@@ -102,6 +119,19 @@ export default function AssignmentsPage() {
     }
   }
 
+  async function handleUnassign(a: Assignment) {
+    if (!confirm(`Remove ${a.user_full_name} from this course?`)) return
+    setError('')
+    setSuccess('')
+    try {
+      await api.delete(`/trainings/assignments/${a.id}`)
+      setSuccess(`${a.user_full_name} has been unassigned.`)
+      await loadData()
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Failed to unassign user.')
+    }
+  }
+
   async function openHistory(userId: string, userName: string) {
     setHistoryUserId(userId)
     setHistoryUserName(userName)
@@ -110,10 +140,34 @@ export default function AssignmentsPage() {
     try {
       const res = await api.get(`/trainings/users/${userId}/history`)
       setHistory(res.data)
+    } catch { /* */ }
+    finally { setHistoryLoading(false) }
+  }
+
+  async function openAnswers(assignmentId: string, userName: string) {
+    setAnswersUserName(userName)
+    setAnswersLoading(true)
+    setAnswersData(null)
+    try {
+      const res = await api.get(`/trainings/assignments/${assignmentId}/answers`)
+      setAnswersData(res.data)
+    } catch { /* */ }
+    finally { setAnswersLoading(false) }
+  }
+
+  async function handleExportCsv() {
+    try {
+      const res = await api.get(`/trainings/courses/${courseId}/assignments/export`, {
+        responseType: 'blob',
+      })
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `training_results_${courseId}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
     } catch {
-      // fail silently
-    } finally {
-      setHistoryLoading(false)
+      setError('Failed to export CSV.')
     }
   }
 
@@ -141,13 +195,19 @@ export default function AssignmentsPage() {
 
   return (
     <div className="p-6">
-      <div className="mb-6 flex items-center gap-4">
-        <Link href="/training/dashboard" className="text-sm text-gray-400 hover:text-gray-600">
-          &larr; Back
-        </Link>
-        <h1 className="text-xl font-semibold" style={{ color: '#1A4731' }}>
-          Course Assignments
-        </h1>
+      <div className="mb-6 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Link href="/training/dashboard" className="text-sm text-gray-400 hover:text-gray-600">&larr; Back</Link>
+          <h1 className="text-xl font-semibold" style={{ color: '#1A4731' }}>Course Assignments</h1>
+        </div>
+        {assignments.length > 0 && (
+          <button
+            onClick={handleExportCsv}
+            className="rounded-md border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+          >
+            Export CSV
+          </button>
+        )}
       </div>
 
       {error && <div className="mb-4 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
@@ -229,9 +289,7 @@ export default function AssignmentsPage() {
                         {a.user_email && <div className="text-xs text-gray-400">{a.user_email}</div>}
                       </td>
                       <td className="px-4 py-3">
-                        {a.user_role && (
-                          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">{a.user_role}</span>
-                        )}
+                        {a.user_role && <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">{a.user_role}</span>}
                       </td>
                       <td className="px-4 py-3">
                         <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${a.training_completed ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
@@ -256,12 +314,21 @@ export default function AssignmentsPage() {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <button
-                          onClick={() => openHistory(a.user_id, a.user_full_name)}
-                          className="text-xs text-blue-600 hover:underline"
-                        >
-                          History
-                        </button>
+                        <div className="flex gap-2">
+                          {a.exam_completed && (
+                            <button onClick={() => openAnswers(a.id, a.user_full_name)} className="text-xs text-blue-600 hover:underline">
+                              Answers
+                            </button>
+                          )}
+                          <button onClick={() => openHistory(a.user_id, a.user_full_name)} className="text-xs text-blue-600 hover:underline">
+                            History
+                          </button>
+                          {!a.training_completed && !a.exam_completed && (
+                            <button onClick={() => handleUnassign(a)} className="text-xs text-red-500 hover:underline">
+                              Remove
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -275,15 +342,70 @@ export default function AssignmentsPage() {
         </div>
       </div>
 
-      {/* User History Modal */}
+      {/* Answers Modal */}
+      {(answersData || answersLoading) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => { setAnswersData(null); setAnswersLoading(false) }}>
+          <div className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-sm font-semibold" style={{ color: '#1A4731' }}>
+                Exam Answers — {answersUserName}
+                {answersData && (
+                  <span className="ml-2 text-xs font-normal text-gray-400">
+                    Score: {answersData.exam_score}% — {answersData.exam_passed ? 'Passed' : 'Failed'}
+                  </span>
+                )}
+              </h2>
+              <button onClick={() => { setAnswersData(null); setAnswersLoading(false) }} className="text-lg text-gray-400 hover:text-gray-600">&times;</button>
+            </div>
+            {answersLoading ? (
+              <div className="py-8 text-center text-sm text-gray-400">Loading...</div>
+            ) : answersData ? (
+              <div className="max-h-[70vh] overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-xs font-medium uppercase text-gray-400">
+                      <th className="px-3 py-2">#</th>
+                      <th className="px-3 py-2">Question</th>
+                      <th className="px-3 py-2">Selected</th>
+                      <th className="px-3 py-2">Correct</th>
+                      <th className="px-3 py-2">Result</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {answersData.questions.map((q) => (
+                      <tr key={q.question_number} className={q.is_correct ? '' : 'bg-red-50/40'}>
+                        <td className="px-3 py-2 text-gray-400">{q.question_number}</td>
+                        <td className="px-3 py-2 font-medium">{q.question_text}</td>
+                        <td className="px-3 py-2">
+                          {q.selected_option_index !== null ? q.options[q.selected_option_index] ?? '—' : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-gray-500">
+                          {q.options[q.correct_option_index] ?? '—'}
+                        </td>
+                        <td className="px-3 py-2">
+                          {q.is_correct ? (
+                            <span className="text-xs font-semibold text-emerald-700">Correct</span>
+                          ) : (
+                            <span className="text-xs font-semibold text-red-600">Wrong</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
+
+      {/* History Modal */}
       {historyUserId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setHistoryUserId(null)}>
           <div className="w-full max-w-xl rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-sm font-semibold" style={{ color: '#1A4731' }}>
-                Training History — {historyUserName}
-              </h2>
-              <button onClick={() => setHistoryUserId(null)} className="text-gray-400 hover:text-gray-600">&times;</button>
+              <h2 className="text-sm font-semibold" style={{ color: '#1A4731' }}>Training History — {historyUserName}</h2>
+              <button onClick={() => setHistoryUserId(null)} className="text-lg text-gray-400 hover:text-gray-600">&times;</button>
             </div>
             {historyLoading ? (
               <div className="py-8 text-center text-sm text-gray-400">Loading...</div>

@@ -26,8 +26,10 @@ from datetime import datetime
 from secrets import token_hex
 from typing import Optional
 
+import io
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -411,7 +413,9 @@ def assign_training(
     current_user: PlatformUser = Depends(require_training_officer),
     db: Session = Depends(get_db),
 ):
-    _get_course_or_404(db, course_id)
+    course = _get_course_or_404(db, course_id)
+    if not course.is_active:
+        raise HTTPException(status_code=400, detail="Cannot assign users to an inactive course")
     new_count = 0
     for uid in payload.user_ids:
         existing = (
@@ -480,6 +484,121 @@ def get_course_assignments(
             "assigned_at": a.assigned_at.isoformat() if a.assigned_at else None,
         })
     return result
+
+
+@router.get("/assignments/{assignment_id}/answers")
+def get_exam_answers(
+    assignment_id: str,
+    current_user: PlatformUser = Depends(require_training_officer),
+    db: Session = Depends(get_db),
+):
+    """Return the submitted answers for a completed exam, with correct answers for comparison."""
+    assignment = db.query(TrainingAssignment).filter(TrainingAssignment.id == assignment_id).first()
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    if not assignment.exam_completed:
+        raise HTTPException(status_code=400, detail="Exam has not been completed for this assignment")
+
+    submitted: list[dict] = json.loads(assignment.exam_answers) if assignment.exam_answers else []
+    submitted_map = {a["question_number"]: a["selected_option_index"] for a in submitted}
+
+    questions = (
+        db.query(TrainingExamQuestion)
+        .filter(TrainingExamQuestion.course_id == assignment.course_id)
+        .order_by(TrainingExamQuestion.question_number)
+        .all()
+    )
+
+    result = []
+    for q in questions:
+        opts = json.loads(q.options)
+        selected = submitted_map.get(q.question_number)
+        result.append({
+            "question_number": q.question_number,
+            "question_text": q.question_text,
+            "options": opts,
+            "correct_option_index": q.correct_option_index,
+            "selected_option_index": selected,
+            "is_correct": selected == q.correct_option_index if selected is not None else False,
+        })
+    return {
+        "assignment_id": assignment_id,
+        "exam_score": assignment.exam_score,
+        "exam_passed": assignment.exam_passed,
+        "questions": result,
+    }
+
+
+@router.get("/courses/{course_id}/assignments/export")
+def export_assignments_csv(
+    course_id: str,
+    current_user: PlatformUser = Depends(require_training_officer),
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+):
+    """Export course assignment results as CSV."""
+    course = _get_course_or_404(db, course_id)
+    assignments = (
+        db.query(TrainingAssignment)
+        .filter(TrainingAssignment.course_id == course_id)
+        .order_by(TrainingAssignment.assigned_at.desc())
+        .all()
+    )
+    user_ids = list({a.user_id for a in assignments})
+    users_map: dict[str, PlatformUser] = {}
+    if user_ids:
+        users = auth_db.query(PlatformUser).filter(PlatformUser.id.in_(user_ids)).all()
+        users_map = {u.id: u for u in users}
+
+    import csv
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "User Name", "Email", "Role",
+        "Training Status", "Training Completed Date",
+        "Exam Status", "Score", "Pass/Fail", "Exam Completed Date",
+    ])
+    for a in assignments:
+        u = users_map.get(a.user_id)
+        writer.writerow([
+            u.full_name if u else "Unknown",
+            u.email if u else "",
+            u.role if u else "",
+            "Completed" if a.training_completed else "Pending",
+            a.training_completed_at.isoformat() if a.training_completed_at else "",
+            "Completed" if a.exam_completed else "Pending",
+            f"{a.exam_score}" if a.exam_score is not None else "",
+            "Passed" if a.exam_passed is True else ("Failed" if a.exam_passed is False else ""),
+            a.exam_completed_at.isoformat() if a.exam_completed_at else "",
+        ])
+    buf.seek(0)
+    safe_title = course.title.replace(" ", "_")[:30]
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="training_{safe_title}_results.csv"'},
+    )
+
+
+@router.delete("/assignments/{assignment_id}")
+def unassign_user(
+    assignment_id: str,
+    current_user: PlatformUser = Depends(require_training_officer),
+    db: Session = Depends(get_db),
+):
+    """Remove assignment only if user has not started training or exam."""
+    assignment = db.query(TrainingAssignment).filter(TrainingAssignment.id == assignment_id).first()
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    if assignment.training_completed or assignment.exam_completed:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot unassign — user has already completed training or exam. Results are preserved.",
+        )
+    db.delete(assignment)
+    db.commit()
+    logger.info("[Trainings] Assignment removed id=%s by=%s", assignment_id, current_user.id)
+    return {"status": "removed", "assignment_id": assignment_id}
 
 
 # ---------------------------------------------------------------------------
@@ -619,6 +738,11 @@ def submit_exam(
 
     passed = score >= passing_grade
 
+    # Persist submitted answers for audit trail
+    assignment.exam_answers = json.dumps([
+        {"question_number": a.question_number, "selected_option_index": a.selected_option_index}
+        for a in payload.answers
+    ])
     assignment.exam_completed = True
     assignment.exam_score = round(score, 2)
     assignment.exam_passed = passed
