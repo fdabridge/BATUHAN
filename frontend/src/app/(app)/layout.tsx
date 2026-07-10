@@ -28,6 +28,10 @@ export default function AppLayout({
     if (user?.role === 'crm') {
       router.replace('/crm')
     }
+    // Training officers go to the training portal.
+    if (user?.role === 'training_officer') {
+      router.replace('/training/dashboard')
+    }
   }, [isLoading, token, user, router])
 
   // While hydrating auth state, show a minimal spinner
@@ -43,6 +47,7 @@ export default function AppLayout({
   if (!token) return null
   if (user?.role === 'client') return null
   if (user?.role === 'crm' && typeof window !== 'undefined' && !window.location.pathname.startsWith('/crm')) return null
+  if (user?.role === 'training_officer') return null
 
   return (
     <div className="flex h-screen">

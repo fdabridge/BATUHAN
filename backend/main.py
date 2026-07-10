@@ -41,6 +41,7 @@ from auth.user_signature_router import router as user_signature_router
 from audit_set.employee_router import router as employee_router
 from health_router import router as health_full_router
 from audit_set.consultant_router import router as consultant_router
+from trainings.router import router as trainings_router
 try:
     from audit_set.crm_router import router as crm_router
     _crm_router_ok = True
@@ -124,6 +125,8 @@ if _crm_router_ok:
     app.include_router(crm_router)
 # Consultant portal — read-only view of referred clients. Portal 106.
 app.include_router(consultant_router)
+# Trainings module — training_officer + general user endpoints.
+app.include_router(trainings_router)
 
 
 # --- Startup: create DB tables + first-admin bootstrap ---
@@ -137,6 +140,8 @@ def on_startup():
     audit_set_create_tables()
     from auth.db_models import create_tables as auth_create_tables, get_db as auth_get_db
     auth_create_tables()
+    from trainings.models import create_tables as trainings_create_tables
+    trainings_create_tables()
 
     # First-admin bootstrap — only runs if both env vars are set
     startup_settings = get_settings()

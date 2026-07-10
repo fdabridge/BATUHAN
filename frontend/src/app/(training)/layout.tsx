@@ -6,12 +6,11 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 
 const NAV = [
-  { href: '/auditor/dashboard',  label: 'My Audits'    },
-  { href: '/auditor/trainings',  label: 'Trainings'    },
-  { href: '/auditor/signature',  label: 'My Signature' },
+  { href: '/training/dashboard',  label: 'Training Dashboard' },
+  { href: '/training/courses/new', label: 'Create Training'    },
 ]
 
-export default function AuditorLayout({ children }: { children: React.ReactNode }) {
+export default function TrainingLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoading, logout } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
@@ -22,12 +21,12 @@ export default function AuditorLayout({ children }: { children: React.ReactNode 
       router.push('/login')
       return
     }
-    if (!['auditor', 'admin'].includes(user.role)) {
+    if (!['training_officer', 'admin'].includes(user.role)) {
       router.push('/dashboard')
     }
   }, [user, isLoading, router])
 
-  if (isLoading || !user || !['auditor', 'admin'].includes(user.role)) return null
+  if (isLoading || !user || !['training_officer', 'admin'].includes(user.role)) return null
 
   return (
     <div className="flex min-h-screen bg-gray-50">
@@ -35,8 +34,8 @@ export default function AuditorLayout({ children }: { children: React.ReactNode 
         <div className="border-b p-5">
           <p className="text-sm font-bold" style={{ color: '#1A4731' }}>IFC Global</p>
           <p className="mt-0.5 truncate text-xs text-gray-400">{user.full_name}</p>
-          <span className="mt-1 inline-block rounded bg-orange-100 px-1.5 py-0.5 text-xs text-orange-700">
-            Auditor
+          <span className="mt-1 inline-block rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-700">
+            Training Officer
           </span>
         </div>
         <nav className="flex-1 space-y-1 p-4">

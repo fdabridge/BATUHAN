@@ -18,6 +18,7 @@ import {
   RefreshCw,
   CalendarDays,
   Briefcase,
+  GraduationCap,
   type LucideIcon,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
@@ -117,6 +118,7 @@ const NAV_TOP: NavItemProps[] = [
   { icon: Users,           label: 'Auditors',     href: '/auditors',     active: false },
   { icon: Calculator,      label: 'Calculator',   href: '/calculator',   active: false },
   { icon: ClipboardList,   label: 'NC Management',  href: '/nc-management',   active: false },
+  { icon: GraduationCap,   label: 'Trainings',      href: '/trainings',       active: false },
 ]
 
 const CB_REVIEW_ROLES = new Set(['admin', 'planner', 'officer', 'executive'])
