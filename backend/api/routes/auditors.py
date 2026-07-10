@@ -522,6 +522,9 @@ def get_available_auditors(
     if req_cat:
         _q_std_norm = _std_norm   # use module-level normaliser (maps ISMS→27001 etc.)
 
+        def _category_key(value) -> str:
+            return str(value or "").strip().upper().replace(" ", "")
+
         def _auditor_covers_any_required(auditor, req: dict) -> bool:
             for iso_std, entry in req.items():
                 scope_type    = entry.get('type', 'ea')
@@ -551,8 +554,11 @@ def get_available_auditors(
                 req_ints = {_ea_int(c) for c in required_codes} - {None}
                 if req_ints and any(_ea_int(c) in req_ints for c in auditor_codes):
                     return True
-                elif not req_ints and any(c in auditor_codes for c in required_codes):
-                    # Non-numeric required codes — fall back to plain string match
+                elif not req_ints and any(
+                    _category_key(c) in {_category_key(ac) for ac in auditor_codes}
+                    for c in required_codes
+                ):
+                    # Non-numeric required codes — category/complexity match.
                     return True
             return False
 
@@ -613,6 +619,9 @@ def get_available_auditors(
             Returns {iso_standard: [covered_codes]}.
             'UNSCOPED' is a sentinel meaning "qualified for this standard, no sub-code restriction".
             """
+            def _category_key(value) -> str:
+                return str(value or "").strip().upper().replace(" ", "")
+
             covered: dict = {}
             for iso_std, entry in req.items():
                 scope_type = entry.get("type", "ea")
@@ -654,8 +663,10 @@ def get_available_auditors(
                 if aud_ints:
                     matched = [c for c in required_codes if _ea_int(c) in aud_ints]
                 else:
-                    # No parseable integers — fall back to plain string match
-                    matched = [c for c in required_codes if c in auditor_codes]
+                    # No parseable integers — category/complexity codes such as
+                    # ISO 27001 "C" or ISO 22000 "C IV" should ignore case/spacing.
+                    auditor_keys = {_category_key(c) for c in auditor_codes}
+                    matched = [c for c in required_codes if _category_key(c) in auditor_keys]
                 if matched:
                     covered[iso_std] = matched
 
