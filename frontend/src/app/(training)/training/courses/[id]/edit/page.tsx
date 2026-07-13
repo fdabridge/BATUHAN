@@ -39,6 +39,7 @@ export default function EditTrainingPage() {
   const [description, setDescription] = useState('')
   const [passingGrade, setPassingGrade] = useState(70)
   const [isActive, setIsActive] = useState(true)
+  const [missing, setMissing] = useState<string[]>([])
   const [materialFile, setMaterialFile] = useState<File | null>(null)
   const [examFile, setExamFile] = useState<File | null>(null)
   const [questions, setQuestions] = useState<QuestionForm[]>([emptyQuestion(1)])
@@ -55,6 +56,7 @@ export default function EditTrainingPage() {
         setDescription(course.description || '')
         setPassingGrade(course.passing_grade ?? 70)
         setIsActive(course.is_active ?? true)
+        setMissing(course.missing_requirements ?? [])
 
         const qs = questionsRes.data
         if (Array.isArray(qs) && qs.length > 0) {
@@ -218,6 +220,16 @@ export default function EditTrainingPage() {
             </div>
           </div>
         </section>
+
+        {/* Readiness panel */}
+        {missing.length > 0 && (
+          <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
+            <p className="text-xs font-semibold text-orange-800">Not ready for assignment</p>
+            <ul className="mt-1 list-inside list-disc text-xs text-orange-700">
+              {missing.map((m) => <li key={m}>{m}</li>)}
+            </ul>
+          </div>
+        )}
 
         {/* Training Material */}
         <section className="rounded-lg border border-gray-100 bg-white p-5">

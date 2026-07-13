@@ -61,6 +61,8 @@ export default function AssignmentsPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
+  const [courseReady, setCourseReady] = useState(true)
+  const [courseMissing, setCourseMissing] = useState<string[]>([])
 
   // History modal
   const [historyUserId, setHistoryUserId] = useState<string | null>(null)
@@ -78,12 +80,15 @@ export default function AssignmentsPage() {
   async function loadData() {
     setLoading(true)
     try {
-      const [assignRes, usersRes] = await Promise.all([
+      const [assignRes, usersRes, courseRes] = await Promise.all([
         api.get(`/trainings/courses/${courseId}/assignments`),
         api.get('/trainings/assignable-users').catch(() => ({ data: [] })),
+        api.get(`/trainings/courses/${courseId}`).catch(() => ({ data: {} })),
       ])
       setAssignments(assignRes.data)
       setUsers(Array.isArray(usersRes.data) ? usersRes.data : [])
+      setCourseReady(courseRes.data.is_ready ?? true)
+      setCourseMissing(courseRes.data.missing_requirements ?? [])
     } catch {
       setError('Failed to load assignments.')
     } finally {
@@ -216,7 +221,14 @@ export default function AssignmentsPage() {
       {/* Assign Users */}
       <section className="mb-6 rounded-lg border border-gray-100 bg-white p-5">
         <h2 className="mb-3 text-sm font-semibold text-gray-700">Assign Users</h2>
-        {availableUsers.length === 0 ? (
+        {!courseReady ? (
+          <div className="rounded-md border border-orange-200 bg-orange-50 p-3">
+            <p className="text-sm font-medium text-orange-800">Course is not ready for assignment</p>
+            <ul className="mt-1 list-inside list-disc text-xs text-orange-700">
+              {courseMissing.map((m) => <li key={m}>{m}</li>)}
+            </ul>
+          </div>
+        ) : availableUsers.length === 0 ? (
           <p className="text-sm text-gray-400">No unassigned users available.</p>
         ) : (
           <>

@@ -20,6 +20,8 @@ interface Course {
   question_count: number
   passing_grade: number
   is_active: boolean
+  is_ready: boolean
+  missing_requirements: string[]
 }
 
 export default function TrainingDashboardPage() {
@@ -126,6 +128,11 @@ export default function TrainingDashboardPage() {
                         </span>
                         {!c.is_active && (
                           <span className="ml-1 text-[10px] text-gray-400">no new assigns</span>
+                        )}
+                        {c.is_active && !c.is_ready && (
+                          <span className="ml-1.5 inline-block rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700" title={c.missing_requirements.join(', ')}>
+                            Not Ready
+                          </span>
                         )}
                       </td>
                       <td className="flex gap-3 px-4 py-3">

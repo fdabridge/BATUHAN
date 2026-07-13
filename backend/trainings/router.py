@@ -154,7 +154,25 @@ def _validate_ext(filename: str, allowed: set[str], label: str) -> None:
         )
 
 
+def _check_readiness(course: TrainingCourse, question_count: int) -> list[str]:
+    """Return list of missing requirements. Empty list means course is ready."""
+    missing: list[str] = []
+    if not course.file_path:
+        missing.append("Training material not uploaded")
+    if not course.exam_file_path:
+        missing.append("Exam file not uploaded")
+    if question_count < 1:
+        missing.append("No exam questions")
+    pg = course.passing_grade
+    if pg is None or pg < 0 or pg > 100:
+        missing.append("Passing grade must be 0–100")
+    if not course.is_active:
+        missing.append("Course is inactive")
+    return missing
+
+
 def _course_to_dict(course: TrainingCourse, question_count: int = 0) -> dict:
+    missing = _check_readiness(course, question_count)
     return {
         "id": course.id,
         "title": course.title,
@@ -169,6 +187,8 @@ def _course_to_dict(course: TrainingCourse, question_count: int = 0) -> dict:
         "exam_kind": course.exam_kind,
         "passing_grade": course.passing_grade,
         "is_active": course.is_active,
+        "is_ready": len(missing) == 0,
+        "missing_requirements": missing,
         "created_by": course.created_by,
         "created_at": course.created_at.isoformat() if course.created_at else None,
         "updated_at": course.updated_at.isoformat() if course.updated_at else None,
@@ -414,8 +434,13 @@ def assign_training(
     db: Session = Depends(get_db),
 ):
     course = _get_course_or_404(db, course_id)
-    if not course.is_active:
-        raise HTTPException(status_code=400, detail="Cannot assign users to an inactive course")
+    q_count = db.query(TrainingExamQuestion).filter(TrainingExamQuestion.course_id == course_id).count()
+    missing = _check_readiness(course, q_count)
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Course is not ready for assignment. Missing: {'; '.join(missing)}",
+        )
     new_count = 0
     for uid in payload.user_ids:
         existing = (
