@@ -24,6 +24,7 @@ export default function CreateTrainingPage() {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [passingGrade, setPassingGrade] = useState(70)
+  const [examDurationMinutes, setExamDurationMinutes] = useState(30)
   const [materialFile, setMaterialFile] = useState<File | null>(null)
   const [examFile, setExamFile] = useState<File | null>(null)
   const [questions, setQuestions] = useState<QuestionForm[]>([emptyQuestion(1)])
@@ -67,6 +68,7 @@ export default function CreateTrainingPage() {
       const { data: course } = await api.post('/trainings/courses', {
         title,
         description,
+        exam_duration_minutes: examDurationMinutes,
       })
       const courseId = course.id
 
@@ -98,7 +100,10 @@ export default function CreateTrainingPage() {
       await api.post(`/trainings/courses/${courseId}/questions`, { questions: mapped })
 
       // 5. Update passing grade
-      await api.put(`/trainings/courses/${courseId}`, { passing_grade: passingGrade })
+      await api.put(`/trainings/courses/${courseId}`, {
+        passing_grade: passingGrade,
+        exam_duration_minutes: examDurationMinutes,
+      })
 
       router.push('/training/dashboard')
     } catch (err: any) {
@@ -153,12 +158,12 @@ export default function CreateTrainingPage() {
           <h2 className="mb-4 text-sm font-semibold text-gray-700">Training Material</h2>
           <input
             type="file"
-            accept=".pdf,.mp4,.mov,.webm,.ppt,.pptx,.doc,.docx"
+            accept=".pdf,.mp4,.mov,.webm"
             onChange={(e) => setMaterialFile(e.target.files?.[0] ?? null)}
             className="text-sm text-gray-600"
           />
           <p className="mt-1 text-xs text-gray-400">
-            {materialFile ? `Selected: ${materialFile.name}` : 'Accepted: PDF, MP4, MOV, WebM, PPT, PPTX, DOC, DOCX'}
+            {materialFile ? `Selected: ${materialFile.name}` : 'Accepted: PDF, MP4, MOV, WebM. For slide trainings, export PPT/PPTX to PDF first.'}
           </p>
         </section>
 
@@ -190,6 +195,24 @@ export default function CreateTrainingPage() {
             />
             <span className="text-sm text-gray-500">%</span>
           </div>
+        </section>
+
+        {/* Exam Timer */}
+        <section className="rounded-lg border border-gray-100 bg-white p-5">
+          <h2 className="mb-4 text-sm font-semibold text-gray-700">Exam Timer</h2>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              value={examDurationMinutes}
+              onChange={(e) => setExamDurationMinutes(Math.max(1, Number(e.target.value) || 1))}
+              className="w-24 rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-[#1A4731] focus:outline-none focus:ring-1 focus:ring-[#1A4731]"
+            />
+            <span className="text-sm text-gray-500">minutes</span>
+          </div>
+          <p className="mt-1 text-xs text-gray-400">
+            Countdown starts when the user opens the exam and does not reset on refresh.
+          </p>
         </section>
 
         {/* Answer Key / Questions */}

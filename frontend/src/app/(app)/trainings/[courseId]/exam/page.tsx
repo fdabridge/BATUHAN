@@ -24,11 +24,13 @@ interface ExamResult {
   passing_grade: number
   total_questions: number
   correct_count: number
+  timed_out?: boolean
 }
 
 interface CourseInfo {
   exam_kind: string | null
   exam_file_name: string | null
+  exam_duration_minutes: number | null
 }
 
 export default function ExamPage() {
@@ -45,6 +47,8 @@ export default function ExamPage() {
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<ExamResult | null>(null)
   const [error, setError] = useState('')
+  const [examDueAt, setExamDueAt] = useState<string | null>(null)
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -56,7 +60,13 @@ export default function ExamPage() {
         ])
         setCourse(courseRes.data)
         const myAssignment = myRes.data.find((a: any) => a.course_id === courseId)
-        if (myAssignment) setAssignment(myAssignment)
+        if (myAssignment) {
+          setAssignment(myAssignment)
+          if (!myAssignment.exam_completed && myAssignment.training_completed) {
+            const timerRes = await api.post(`/trainings/assignments/${myAssignment.id}/start-exam`)
+            setExamDueAt(timerRes.data.exam_due_at || null)
+          }
+        }
         setQuestions(qRes.data)
 
         try {
@@ -80,14 +90,27 @@ export default function ExamPage() {
     }
   }, [courseId])
 
+  useEffect(() => {
+    if (!examDueAt || result || assignment?.exam_completed) return
+    const id = setInterval(() => {
+      const remaining = Math.max(0, Math.floor((new Date(examDueAt).getTime() - Date.now()) / 1000))
+      setRemainingSeconds(remaining)
+      if (remaining <= 0) {
+        clearInterval(id)
+        handleSubmit(true)
+      }
+    }, 1000)
+    return () => clearInterval(id)
+  }, [examDueAt, result, assignment?.exam_completed, answers, questions])
+
   function selectAnswer(questionNumber: number, optionIndex: number) {
     if (result || assignment?.exam_completed) return
     setAnswers((prev) => ({ ...prev, [questionNumber]: optionIndex }))
   }
 
-  async function handleSubmit() {
+  async function handleSubmit(autoSubmit = false) {
     if (!assignment) return
-    if (Object.keys(answers).length < questions.length) {
+    if (!autoSubmit && Object.keys(answers).length < questions.length) {
       setError('Please answer all questions before submitting.')
       return
     }
@@ -102,9 +125,10 @@ export default function ExamPage() {
       }))
       const res = await api.post(
         `/trainings/assignments/${assignment.id}/submit-exam`,
-        { answers: payload },
+        { answers: payload, auto_submit: autoSubmit },
       )
       setResult(res.data)
+      if (autoSubmit) setError('')
     } catch (err: any) {
       setError(err?.response?.data?.detail || 'Failed to submit exam.')
     } finally {
@@ -115,6 +139,9 @@ export default function ExamPage() {
   const isDisabled = !!result || !!assignment?.exam_completed
   const backPath = '/trainings'
   const examKind = course?.exam_kind || 'pdf'
+  const timerText = remainingSeconds === null
+    ? null
+    : `${Math.floor(remainingSeconds / 60)}:${String(remainingSeconds % 60).padStart(2, '0')}`
 
   if (loading) {
     return (
@@ -126,7 +153,8 @@ export default function ExamPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
         <button
           onClick={() => router.push(backPath)}
           className="text-sm text-gray-400 hover:text-gray-600"
@@ -136,6 +164,16 @@ export default function ExamPage() {
         <h1 className="text-xl font-semibold" style={{ color: '#1A4731' }}>
           Exam
         </h1>
+        </div>
+        {timerText && !isDisabled && (
+          <div className={`rounded-md px-3 py-1.5 text-sm font-semibold ${
+            remainingSeconds !== null && remainingSeconds <= 60
+              ? 'bg-red-50 text-red-700'
+              : 'bg-amber-50 text-amber-700'
+          }`}>
+            Time left: {timerText}
+          </div>
+        )}
       </div>
 
       {error && (
@@ -149,7 +187,7 @@ export default function ExamPage() {
           }`}
         >
           <h2 className={`text-lg font-semibold ${result.passed ? 'text-green-800' : 'text-red-800'}`}>
-            {result.passed ? 'Congratulations! You passed!' : 'Unfortunately, you did not pass.'}
+            {result.timed_out ? 'Time is up. Your exam was submitted.' : result.passed ? 'Congratulations! You passed!' : 'Unfortunately, you did not pass.'}
           </h2>
           <div className="mt-2 space-y-1 text-sm">
             <p><span className="text-gray-600">Your Score: </span><span className="font-semibold">{result.score}%</span></p>
@@ -263,7 +301,7 @@ export default function ExamPage() {
           {!isDisabled && questions.length > 0 && (
             <div className="border-t border-gray-100 p-4">
               <button
-                onClick={handleSubmit}
+                onClick={() => handleSubmit()}
                 disabled={submitting}
                 className="w-full rounded-md py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                 style={{ background: '#D97706' }}

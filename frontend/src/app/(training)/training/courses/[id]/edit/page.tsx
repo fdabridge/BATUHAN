@@ -28,6 +28,7 @@ export default function EditTrainingPage() {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [passingGrade, setPassingGrade] = useState(70)
+  const [examDurationMinutes, setExamDurationMinutes] = useState(30)
   const [isActive, setIsActive] = useState(true)
   const [missing, setMissing] = useState<string[]>([])
   const [usage, setUsage] = useState({ assigned_count: 0, training_completed_count: 0, exam_completed_count: 0 })
@@ -46,6 +47,7 @@ export default function EditTrainingPage() {
         setTitle(course.title || '')
         setDescription(course.description || '')
         setPassingGrade(course.passing_grade ?? 70)
+        setExamDurationMinutes(course.exam_duration_minutes ?? 30)
         setIsActive(course.is_active ?? true)
         setMissing(course.missing_requirements ?? [])
         setUsage({
@@ -115,6 +117,7 @@ export default function EditTrainingPage() {
         title,
         description,
         passing_grade: passingGrade,
+        exam_duration_minutes: examDurationMinutes,
         is_active: isActive,
       })
 
@@ -253,12 +256,12 @@ export default function EditTrainingPage() {
             <>
               <input
                 type="file"
-                accept=".pdf,.mp4,.mov,.webm,.ppt,.pptx,.doc,.docx"
+                accept=".pdf,.mp4,.mov,.webm"
                 onChange={(e) => setMaterialFile(e.target.files?.[0] ?? null)}
                 className="text-sm text-gray-600"
               />
               <p className="mt-1 text-xs text-gray-400">
-                {materialFile ? `Selected: ${materialFile.name}` : 'Accepted: PDF, MP4, MOV, WebM, PPT, PPTX, DOC, DOCX'}
+                {materialFile ? `Selected: ${materialFile.name}` : 'Accepted: PDF, MP4, MOV, WebM. For slide trainings, export PPT/PPTX to PDF first.'}
               </p>
             </>
           )}
@@ -304,6 +307,28 @@ export default function EditTrainingPage() {
               <span className="text-xs text-gray-400">Locked after completed exams</span>
             )}
           </div>
+        </section>
+
+        {/* Exam Timer */}
+        <section className="rounded-lg border border-gray-100 bg-white p-5">
+          <h2 className="mb-4 text-sm font-semibold text-gray-700">Exam Timer</h2>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              value={examDurationMinutes}
+              readOnly={usage.exam_completed_count > 0}
+              onChange={(e) => setExamDurationMinutes(Math.max(1, Number(e.target.value) || 1))}
+              className={`w-24 rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-[#1A4731] focus:outline-none focus:ring-1 focus:ring-[#1A4731] ${usage.exam_completed_count > 0 ? 'bg-gray-50 text-gray-400' : ''}`}
+            />
+            <span className="text-sm text-gray-500">minutes</span>
+            {usage.exam_completed_count > 0 && (
+              <span className="text-xs text-gray-400">Locked after completed exams</span>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-gray-400">
+            Countdown starts when the user opens the exam and does not reset on refresh.
+          </p>
         </section>
 
         {/* Answer Key / Questions */}

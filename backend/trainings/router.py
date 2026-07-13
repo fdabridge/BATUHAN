@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from secrets import token_hex
 from typing import Optional
 
@@ -58,12 +58,14 @@ require_training_officer = require_role("admin", "training_officer")
 class CourseCreateRequest(BaseModel):
     title: str
     description: Optional[str] = None
+    exam_duration_minutes: Optional[int] = None
 
 
 class CourseUpdateRequest(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     passing_grade: Optional[int] = None
+    exam_duration_minutes: Optional[int] = None
     is_active: Optional[bool] = None
 
 
@@ -89,6 +91,11 @@ class ExamAnswerIn(BaseModel):
 
 class ExamSubmitRequest(BaseModel):
     answers: list[ExamAnswerIn]
+    auto_submit: bool = False
+
+
+class TrainingProgressRequest(BaseModel):
+    page_number: int
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +131,7 @@ def _require_course_access(
 # File-type helpers
 # ---------------------------------------------------------------------------
 
-MATERIAL_ALLOWED_EXTS = {".pdf", ".mp4", ".mov", ".webm", ".ppt", ".pptx", ".doc", ".docx"}
+MATERIAL_ALLOWED_EXTS = {".pdf", ".mp4", ".mov", ".webm"}
 EXAM_ALLOWED_EXTS = {".pdf", ".doc", ".docx"}
 
 def _classify_material(filename: str) -> str:
@@ -154,6 +161,16 @@ def _validate_ext(filename: str, allowed: set[str], label: str) -> None:
         )
 
 
+def _pdf_page_count(content: bytes) -> int | None:
+    try:
+        import fitz  # PyMuPDF
+        with fitz.open(stream=content, filetype="pdf") as doc:
+            return doc.page_count
+    except Exception as exc:
+        logger.warning("[Trainings] Could not count PDF pages: %s", exc)
+        return None
+
+
 def _get_usage(db: Session, course_id: str) -> dict:
     """Return usage counts for a course."""
     assignments = db.query(TrainingAssignment).filter(TrainingAssignment.course_id == course_id).all()
@@ -181,6 +198,54 @@ def _check_readiness(course: TrainingCourse, question_count: int) -> list[str]:
     return missing
 
 
+def _complete_exam_with_answers(
+    assignment: TrainingAssignment,
+    course: TrainingCourse,
+    questions: list[TrainingExamQuestion],
+    answers: list[ExamAnswerIn],
+    db: Session,
+) -> dict:
+    answer_key = {q.question_number: q.correct_option_index for q in questions}
+    option_counts = {q.question_number: len(json.loads(q.options)) for q in questions}
+    submitted_map = {a.question_number: a.selected_option_index for a in answers}
+
+    correct_count = 0
+    stored_answers: list[dict] = []
+    for qnum, correct_idx in answer_key.items():
+        selected = submitted_map.get(qnum, -1)
+        max_idx = option_counts.get(qnum, 0) - 1
+        if selected < 0 or selected > max_idx:
+            selected = -1
+        if selected == correct_idx:
+            correct_count += 1
+        stored_answers.append({
+            "question_number": qnum,
+            "selected_option_index": selected,
+        })
+
+    total_questions = len(answer_key)
+    score = (correct_count / total_questions) * 100 if total_questions > 0 else 0.0
+    passing_grade = course.passing_grade
+    passed = score >= passing_grade
+
+    assignment.exam_completed = True
+    assignment.exam_score = score
+    assignment.exam_passed = passed
+    assignment.exam_completed_at = datetime.utcnow()
+    assignment.exam_answers = json.dumps(stored_answers)
+    db.commit()
+    db.refresh(assignment)
+
+    return {
+        "status": "exam_completed",
+        "assignment_id": assignment.id,
+        "score": score,
+        "passed": passed,
+        "correct": correct_count,
+        "total": total_questions,
+    }
+
+
 def _course_to_dict(
     course: TrainingCourse,
     question_count: int = 0,
@@ -201,6 +266,8 @@ def _course_to_dict(
         "exam_content_type": course.exam_content_type,
         "exam_kind": course.exam_kind,
         "passing_grade": course.passing_grade,
+        "exam_duration_minutes": course.exam_duration_minutes,
+        "material_page_count": course.material_page_count,
         "is_active": course.is_active,
         "is_ready": len(missing) == 0,
         "missing_requirements": missing,
@@ -227,6 +294,7 @@ def create_course(
     course = TrainingCourse(
         title=payload.title,
         description=payload.description,
+        exam_duration_minutes=payload.exam_duration_minutes,
         created_by=current_user.id,
     )
     db.add(course)
@@ -396,6 +464,15 @@ def update_course(
                 detail="Passing grade cannot be changed after users have completed the exam.",
             )
         course.passing_grade = payload.passing_grade
+    if payload.exam_duration_minutes is not None and payload.exam_duration_minutes != course.exam_duration_minutes:
+        if usage["exam_completed_count"] > 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Exam timer cannot be changed after users have completed the exam.",
+            )
+        if payload.exam_duration_minutes < 1:
+            raise HTTPException(status_code=400, detail="Exam timer must be at least 1 minute.")
+        course.exam_duration_minutes = payload.exam_duration_minutes
     if payload.is_active is not None:
         course.is_active = payload.is_active
     db.commit()
@@ -423,12 +500,14 @@ async def upload_material(
     content = await file.read()
     ct = file.content_type or "application/octet-stream"
     kind = _classify_material(filename)
+    page_count = _pdf_page_count(content) if kind == "pdf" else None
     rel_path = f"training_materials/{course_id}/{token_hex(8)}_{filename}"
     ref = store_upload(rel_path, content, content_type=ct)
     course.file_path = ref
     course.material_file_name = filename
     course.material_content_type = ct
     course.material_kind = kind
+    course.material_page_count = page_count
     db.commit()
     db.refresh(course)
     logger.info("[Trainings] Material uploaded (%s) for course=%s by=%s", kind, course_id, current_user.id)
@@ -613,10 +692,13 @@ def get_course_assignments(
             "assigned_by": a.assigned_by,
             "training_completed": a.training_completed,
             "training_completed_at": a.training_completed_at.isoformat() if a.training_completed_at else None,
+            "training_last_page_seen": a.training_last_page_seen or 0,
             "exam_completed": a.exam_completed,
             "exam_score": a.exam_score,
             "exam_passed": a.exam_passed,
             "exam_completed_at": a.exam_completed_at.isoformat() if a.exam_completed_at else None,
+            "exam_started_at": a.exam_started_at.isoformat() if a.exam_started_at else None,
+            "exam_due_at": a.exam_due_at.isoformat() if a.exam_due_at else None,
             "assigned_at": a.assigned_at.isoformat() if a.assigned_at else None,
         })
     return result
@@ -785,10 +867,13 @@ def my_trainings(
             "course_description": course.description if course else None,
             "training_completed": a.training_completed,
             "training_completed_at": a.training_completed_at.isoformat() if a.training_completed_at else None,
+            "training_last_page_seen": a.training_last_page_seen or 0,
             "exam_completed": a.exam_completed,
             "exam_score": a.exam_score,
             "exam_passed": a.exam_passed,
             "exam_completed_at": a.exam_completed_at.isoformat() if a.exam_completed_at else None,
+            "exam_started_at": a.exam_started_at.isoformat() if a.exam_started_at else None,
+            "exam_due_at": a.exam_due_at.isoformat() if a.exam_due_at else None,
             "assigned_at": a.assigned_at.isoformat() if a.assigned_at else None,
         })
     return result
@@ -826,6 +911,35 @@ def download_exam_file(
     return FileResponse(local_path, filename=dl_name, media_type=media)
 
 
+@router.post("/assignments/{assignment_id}/training-progress")
+def record_training_progress(
+    assignment_id: str,
+    payload: TrainingProgressRequest,
+    current_user: PlatformUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    assignment = db.query(TrainingAssignment).filter(TrainingAssignment.id == assignment_id).first()
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    if assignment.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="This assignment is not assigned to you")
+    course = _get_course_or_404(db, assignment.course_id)
+    max_page = course.material_page_count or payload.page_number
+    page_number = max(1, min(payload.page_number, max_page))
+    assignment.training_last_page_seen = max(assignment.training_last_page_seen or 0, page_number)
+    db.commit()
+    return {
+        "assignment_id": assignment.id,
+        "last_page_seen": assignment.training_last_page_seen,
+        "material_page_count": course.material_page_count,
+        "can_complete": (
+            course.material_kind != "pdf"
+            or not course.material_page_count
+            or assignment.training_last_page_seen >= course.material_page_count
+        ),
+    }
+
+
 @router.post("/assignments/{assignment_id}/complete-training")
 def complete_training(
     assignment_id: str,
@@ -837,12 +951,61 @@ def complete_training(
         raise HTTPException(status_code=404, detail="Assignment not found")
     if assignment.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="This assignment is not assigned to you")
+    course = _get_course_or_404(db, assignment.course_id)
+    if (
+        course.material_kind == "pdf"
+        and course.material_page_count
+        and (assignment.training_last_page_seen or 0) < course.material_page_count
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="You must reach the final page of the training material before completing this training.",
+        )
     assignment.training_completed = True
     assignment.training_completed_at = datetime.utcnow()
     db.commit()
     db.refresh(assignment)
     logger.info("[Trainings] Training completed assignment=%s user=%s", assignment_id, current_user.id)
     return {"status": "training_completed", "assignment_id": assignment_id}
+
+
+@router.post("/assignments/{assignment_id}/start-exam")
+def start_exam(
+    assignment_id: str,
+    current_user: PlatformUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    assignment = db.query(TrainingAssignment).filter(TrainingAssignment.id == assignment_id).first()
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    if assignment.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="This assignment is not assigned to you")
+    if not assignment.training_completed:
+        raise HTTPException(status_code=400, detail="You must complete the training before taking the exam")
+    course = _get_course_or_404(db, assignment.course_id)
+    now = datetime.utcnow()
+    if assignment.exam_completed:
+        return {
+            "assignment_id": assignment.id,
+            "exam_completed": True,
+            "server_now": now.isoformat(),
+            "exam_started_at": assignment.exam_started_at.isoformat() if assignment.exam_started_at else None,
+            "exam_due_at": assignment.exam_due_at.isoformat() if assignment.exam_due_at else None,
+            "exam_duration_minutes": course.exam_duration_minutes,
+        }
+    if course.exam_duration_minutes and not assignment.exam_started_at:
+        assignment.exam_started_at = now
+        assignment.exam_due_at = now + timedelta(minutes=course.exam_duration_minutes)
+        db.commit()
+        db.refresh(assignment)
+    return {
+        "assignment_id": assignment.id,
+        "exam_completed": assignment.exam_completed,
+        "server_now": now.isoformat(),
+        "exam_started_at": assignment.exam_started_at.isoformat() if assignment.exam_started_at else None,
+        "exam_due_at": assignment.exam_due_at.isoformat() if assignment.exam_due_at else None,
+        "exam_duration_minutes": course.exam_duration_minutes,
+    }
 
 
 @router.post("/assignments/{assignment_id}/submit-exam")
@@ -861,6 +1024,16 @@ def submit_exam(
         raise HTTPException(status_code=400, detail="You must complete the training before taking the exam")
     if assignment.exam_completed:
         raise HTTPException(status_code=400, detail="Exam already submitted")
+    course = db.query(TrainingCourse).filter(TrainingCourse.id == assignment.course_id).first()
+    if not course:
+        raise HTTPException(status_code=500, detail="Course not found for assignment.")
+    now = datetime.utcnow()
+    if course.exam_duration_minutes and not assignment.exam_started_at:
+        assignment.exam_started_at = now
+        assignment.exam_due_at = now + timedelta(minutes=course.exam_duration_minutes)
+        db.commit()
+        db.refresh(assignment)
+    timed_out = bool(assignment.exam_due_at and now > assignment.exam_due_at)
 
     # Fetch answer key for the course
     questions = (
@@ -882,55 +1055,30 @@ def submit_exam(
 
     # Validate submitted answers cover every question exactly once
     submitted_qnums = [a.question_number for a in payload.answers]
-    if set(submitted_qnums) != set(answer_key.keys()):
+    if not payload.auto_submit and not timed_out and set(submitted_qnums) != set(answer_key.keys()):
         raise HTTPException(status_code=400, detail="All questions must be answered.")
     if len(submitted_qnums) != len(set(submitted_qnums)):
         raise HTTPException(status_code=400, detail="Duplicate answers submitted.")
+    allow_partial_answers = payload.auto_submit or timed_out
     for ans in payload.answers:
-        if ans.selected_option_index < 0:
+        if ans.selected_option_index < 0 and not allow_partial_answers:
             raise HTTPException(status_code=400, detail="All questions must be answered.")
         max_idx = option_counts.get(ans.question_number, 0) - 1
         if ans.selected_option_index > max_idx:
             raise HTTPException(status_code=400, detail="Invalid answer selected.")
 
-    # Grade the exam
-    correct_count = 0
-    for ans in payload.answers:
-        if ans.selected_option_index == answer_key[ans.question_number]:
-            correct_count += 1
-
-    score = (correct_count / total_questions) * 100 if total_questions > 0 else 0.0
-
-    # Fetch passing grade from course
-    course = db.query(TrainingCourse).filter(TrainingCourse.id == assignment.course_id).first()
-    if not course:
-        raise HTTPException(status_code=500, detail="Course not found for assignment.")
-    passing_grade = course.passing_grade
-
-    passed = score >= passing_grade
-
-    # Persist submitted answers for audit trail
-    assignment.exam_answers = json.dumps([
-        {"question_number": a.question_number, "selected_option_index": a.selected_option_index}
-        for a in payload.answers
-    ])
-    assignment.exam_completed = True
-    assignment.exam_score = round(score, 2)
-    assignment.exam_passed = passed
-    assignment.exam_completed_at = datetime.utcnow()
-    db.commit()
-    db.refresh(assignment)
-
+    result = _complete_exam_with_answers(assignment, course, questions, payload.answers, db)
     logger.info(
-        "[Trainings] Exam submitted assignment=%s user=%s score=%.1f passed=%s",
-        assignment_id, current_user.id, score, passed,
+        "[Trainings] Exam submitted assignment=%s user=%s score=%.1f passed=%s timed=%s",
+        assignment_id, current_user.id, result["score"], result["passed"], timed_out or payload.auto_submit,
     )
     return {
-        "score": round(score, 2),
-        "passed": passed,
-        "passing_grade": passing_grade,
+        "score": round(result["score"], 2),
+        "passed": result["passed"],
+        "passing_grade": course.passing_grade,
         "total_questions": total_questions,
-        "correct_count": correct_count,
+        "correct_count": result["correct"],
+        "timed_out": timed_out or payload.auto_submit,
     }
 
 
@@ -956,6 +1104,21 @@ def get_questions(
         )
         if not assignment:
             raise HTTPException(status_code=403, detail="You are not assigned to this course")
+        if (
+            assignment.exam_due_at
+            and not assignment.exam_completed
+            and datetime.utcnow() > assignment.exam_due_at
+        ):
+            course = _get_course_or_404(db, course_id)
+            expired_questions = (
+                db.query(TrainingExamQuestion)
+                .filter(TrainingExamQuestion.course_id == course_id)
+                .order_by(TrainingExamQuestion.question_number)
+                .all()
+            )
+            if expired_questions:
+                _complete_exam_with_answers(assignment, course, expired_questions, [], db)
+            raise HTTPException(status_code=400, detail="Exam time has expired.")
 
     questions = (
         db.query(TrainingExamQuestion)

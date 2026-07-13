@@ -46,6 +46,8 @@ class TrainingCourse(Base):
     exam_content_type      = Column(String, nullable=True)   # stored MIME type
     exam_kind              = Column(String, nullable=True)   # pdf | office | other
     passing_grade          = Column(Integer, default=70)     # percentage
+    exam_duration_minutes  = Column(Integer, nullable=True)  # null means no timer
+    material_page_count    = Column(Integer, nullable=True)  # for controlled PDF training viewer
     is_active       = Column(Boolean, default=True)
     created_by      = Column(String, nullable=False)       # user ID of training officer
     created_at      = Column(DateTime, default=datetime.utcnow)
@@ -81,6 +83,9 @@ class TrainingAssignment(Base):
     exam_passed           = Column(Boolean, nullable=True)
     exam_completed_at     = Column(DateTime, nullable=True)
     exam_answers          = Column(String, nullable=True)    # JSON: submitted answers for audit
+    training_last_page_seen = Column(Integer, default=0)
+    exam_started_at       = Column(DateTime, nullable=True)
+    exam_due_at           = Column(DateTime, nullable=True)
     assigned_at           = Column(DateTime, default=datetime.utcnow)
 
 
@@ -157,7 +162,12 @@ def create_tables() -> None:
         "exam_kind VARCHAR",
     ):
         _safe_add_column("training_courses", col)
+    _safe_add_column("training_courses", "exam_duration_minutes INTEGER")
+    _safe_add_column("training_courses", "material_page_count INTEGER")
     # Phase 4 — exam answers column for auditability
     _safe_add_column("training_assignments", "exam_answers TEXT")
+    _safe_add_column("training_assignments", "training_last_page_seen INTEGER DEFAULT 0")
+    _safe_add_column("training_assignments", "exam_started_at TIMESTAMP")
+    _safe_add_column("training_assignments", "exam_due_at TIMESTAMP")
     # Phase 10 — unique constraint on (course_id, user_id)
     _safe_create_unique_assignment_index()

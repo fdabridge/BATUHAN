@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import api from '@/lib/api'
+import { TrainingMaterialViewer } from '@/components/training/TrainingMaterialViewer'
 
 interface CourseInfo {
   id: string
@@ -10,6 +11,7 @@ interface CourseInfo {
   description: string
   material_kind: string | null
   material_file_name: string | null
+  material_page_count: number | null
 }
 
 interface MyAssignment {
@@ -17,6 +19,7 @@ interface MyAssignment {
   course_id: string
   course_title: string
   training_completed: boolean
+  training_last_page_seen?: number
 }
 
 export default function AuditorTakeTrainingPage() {
@@ -31,6 +34,7 @@ export default function AuditorTakeTrainingPage() {
   const [completing, setCompleting] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [canComplete, setCanComplete] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -107,11 +111,11 @@ export default function AuditorTakeTrainingPage() {
           {assignment && !assignment.training_completed && (
             <button
               onClick={handleComplete}
-              disabled={completing}
+              disabled={completing || !canComplete}
               className="rounded-md px-4 py-2 text-sm text-white transition-opacity hover:opacity-90 disabled:opacity-50"
               style={{ background: '#1A4731' }}
             >
-              {completing ? 'Marking...' : 'Mark as Completed'}
+              {completing ? 'Marking...' : canComplete ? 'Mark as Completed' : 'Reach final page to complete'}
             </button>
           )}
           {assignment?.training_completed && (
@@ -130,51 +134,16 @@ export default function AuditorTakeTrainingPage() {
       )}
 
       <div className="flex-1 rounded-lg border border-gray-100 bg-white">
-        {!blobUrl ? (
-          <div className="flex items-center justify-center p-12 text-sm text-gray-400">
-            No training material uploaded for this course.
-          </div>
-        ) : kind === 'video' ? (
-          <video src={blobUrl} controls className="h-[75vh] w-full rounded-lg bg-black">
-            Your browser does not support video playback.
-          </video>
-        ) : kind === 'pdf' ? (
-          <object data={blobUrl} type="application/pdf" className="h-[75vh] w-full rounded-lg">
-            <div className="flex items-center justify-center p-12 text-sm text-gray-400">
-              Unable to display PDF.{' '}
-              <a href={blobUrl} target="_blank" rel="noreferrer" className="ml-1 text-blue-600 hover:underline">
-                Download instead
-              </a>
-            </div>
-          </object>
-        ) : (
-          <div className="flex h-[75vh] flex-col items-center justify-center gap-4 text-center">
-            <div className="rounded-full bg-gray-100 p-4">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-gray-400">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <path d="M14 2v6h6" />
-                <path d="M12 18v-6" />
-                <path d="M9 15l3 3 3-3" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-700">
-                {course?.material_file_name || 'Training material'}
-              </p>
-              <p className="mt-1 text-xs text-gray-400">
-                This file type cannot be previewed in the browser.
-              </p>
-            </div>
-            <a
-              href={blobUrl}
-              download={course?.material_file_name || 'training_material'}
-              className="rounded-md px-5 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
-              style={{ background: '#1A4731' }}
-            >
-              Download File
-            </a>
-          </div>
-        )}
+        <TrainingMaterialViewer
+          blobUrl={blobUrl}
+          kind={kind}
+          fileName={course?.material_file_name}
+          assignmentId={assignment?.id}
+          materialPageCount={course?.material_page_count}
+          initialLastPageSeen={assignment?.training_last_page_seen || 0}
+          completed={assignment?.training_completed}
+          onCanCompleteChange={setCanComplete}
+        />
       </div>
     </div>
   )
