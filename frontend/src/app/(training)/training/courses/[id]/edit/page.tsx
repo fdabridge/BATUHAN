@@ -157,16 +157,21 @@ export default function EditTrainingPage() {
       const validQuestions = questions.filter((q) => q.question_text.trim())
       if (validQuestions.length > 0) {
         const mapped = validQuestions.map((q) => {
-          const raw = [q.option_a, q.option_b, q.option_c, q.option_d]
-          const filtered = raw.map((o) => o.trim()).filter(Boolean)
-          const originalIdx = { A: 0, B: 1, C: 2, D: 3 }[q.correct_answer] ?? 0
-          const correctText = raw[originalIdx]?.trim() || ''
-          const correctIndex = filtered.indexOf(correctText)
+          const slots = [
+            { slot: 0, text: q.option_a.trim() },
+            { slot: 1, text: q.option_b.trim() },
+            { slot: 2, text: q.option_c.trim() },
+            { slot: 3, text: q.option_d.trim() },
+          ]
+          const filtered = slots.filter((o) => o.text)
+          const originalSlot = { A: 0, B: 1, C: 2, D: 3 }[q.correct_answer] ?? 0
+          const correctIndex = filtered.findIndex((o) => o.slot === originalSlot)
+          if (correctIndex === -1) throw new Error(`Q${q.question_number}: correct answer slot is blank`)
           return {
             question_number: q.question_number,
             question_text: q.question_text.trim(),
-            options: filtered,
-            correct_option_index: correctIndex >= 0 ? correctIndex : 0,
+            options: filtered.map((o) => o.text),
+            correct_option_index: correctIndex,
           }
         })
         await api.post(`/trainings/courses/${courseId}/questions`, { questions: mapped })

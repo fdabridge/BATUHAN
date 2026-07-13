@@ -433,15 +433,26 @@ def replace_questions(
 
     # Delete existing questions for this course
     db.query(TrainingExamQuestion).filter(TrainingExamQuestion.course_id == course_id).delete()
-    # Insert new questions
+    # Insert new questions — recompute correct index after trimming blanks
     for q in payload.questions:
-        trimmed_options = [o.strip() for o in q.options if o.strip()]
+        slots = [(i, o.strip()) for i, o in enumerate(q.options)]
+        filtered = [(i, t) for i, t in slots if t]
+        # Map original correct_option_index to position in filtered list
+        new_idx = next(
+            (pos for pos, (orig_i, _) in enumerate(filtered) if orig_i == q.correct_option_index),
+            None,
+        )
+        if new_idx is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Q{q.question_number}: correct option (index {q.correct_option_index}) is blank after trimming",
+            )
         question = TrainingExamQuestion(
             course_id=course_id,
             question_number=q.question_number,
             question_text=q.question_text.strip(),
-            options=json.dumps(trimmed_options),
-            correct_option_index=q.correct_option_index,
+            options=json.dumps([t for _, t in filtered]),
+            correct_option_index=new_idx,
         )
         db.add(question)
     db.commit()
