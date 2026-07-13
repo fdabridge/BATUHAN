@@ -1,19 +1,19 @@
 {
-  "accreditation_body": "TURKAK",
-  "display_name": "TÜRKAK (Turkish Accreditation Agency)",
+  "accreditation_body": "IAF",
+  "display_name": "IAF-aligned baseline",
   "governing_standard": "ISO/IEC 17021-1:2015",
   "reference_basis": [
     "ISO/IEC 17021-1:2015-based certification audit report controls",
-    "TÜRKAK accreditation profile and internal certification procedures",
+    "IAF mandatory document themes for audit duration, multi-site sampling, ICT/remote auditing, and certification decision support",
     "Selected management system standard clause map",
-    "IAF mandatory document themes for audit duration, multi-site sampling, and ICT/remote audit evidence where applicable"
+    "Internal Certiva audit-report quality rules"
   ],
 
   "nc_classifications": {
-    "major": "A nonconformity that affects the ability of the management system to achieve its intended results. Must be classified with reference to the specific clause breached.",
-    "minor": "A nonconformity that does not affect the ability of the management system to achieve its intended results. Must state objective evidence and specific clause.",
-    "critical": "A situation contrary to legislation or regulatory requirement that may endanger human health or safety. Requires immediate notification.",
-    "observation": "A positive or negative opinion that may assist improvement. Must be clearly distinguished from nonconformities."
+    "major": "A nonconformity that affects the ability of the management system to achieve its intended results.",
+    "minor": "A nonconformity that does not affect the ability of the management system to achieve its intended results but requires correction and corrective action.",
+    "critical": "A legal, regulatory, product safety, food safety, health and safety, or certification-integrity issue that may require immediate escalation.",
+    "observation": "An evidence-based statement that may support improvement or next-audit planning but is not a nonconformity."
   },
 
   "required_report_elements": [
@@ -22,12 +22,11 @@
     "audit_criteria",
     "audit_dates_and_sites",
     "audit_team_members_and_roles",
-    "auditor_clause_assignments",
+    "audit_time_or_sampling_rationale_when_relevant",
     "findings_per_clause_with_evidence",
     "nc_list_with_classification_and_clause",
     "observations_list",
-    "certification_recommendation",
-    "evidence_references_per_finding"
+    "certification_or_continuation_recommendation"
   ],
 
   "stage_requirements": {
@@ -42,8 +41,7 @@
       ],
       "nc_types_allowed": ["major", "minor", "observation"],
       "site_visit_required": false,
-      "clause_coverage": "documentation_focused",
-      "language_requirements": "Findings must be written in objective, evidence-based language. No opinion statements without evidence reference."
+      "clause_coverage": "documentation_focused"
     },
     "stage_2": {
       "mandatory_coverage": [
@@ -52,26 +50,25 @@
         "internal_audit_and_management_review_evidence",
         "legal_regulatory_compliance_evidence",
         "management_responsibility_evidence",
-        "process_effectiveness_evidence"
+        "process_effectiveness_evidence",
+        "certification_recommendation_supported_by_findings"
       ],
       "nc_types_allowed": ["major", "minor", "critical", "observation"],
       "site_visit_required": true,
-      "clause_coverage": "all_clauses_mandatory",
-      "language_requirements": "Every finding must cite specific document numbers, record identifiers, or named interviewees as objective evidence. General statements not accepted."
+      "clause_coverage": "all_clauses_mandatory"
     },
     "surveillance": {
       "mandatory_coverage": [
         "continued_effectiveness_of_management_system",
-        "follow_up_of_previous_nonconformities_with_objective_evidence",
+        "follow_up_of_previous_nonconformities",
         "changes_to_scope_processes_sites_or_legal_requirements",
         "complaints_and_appeals_review",
         "internal_audit_and_management_review_evidence",
-        "certification_continuation_recommendation"
+        "certificate_continuation_recommendation_supported_by_findings"
       ],
       "nc_types_allowed": ["major", "minor", "critical", "observation"],
       "site_visit_required": true,
-      "clause_coverage": "sampled_clauses_plus_changes_and_previous_issues",
-      "language_requirements": "Surveillance conclusions must show objective evidence for continued effectiveness and previous NC follow-up."
+      "clause_coverage": "sampled_clauses_plus_changes_and_previous_issues"
     },
     "recertification": {
       "mandatory_coverage": [
@@ -79,33 +76,32 @@
         "continued_fulfilment_of_all_standard_requirements",
         "previous_cycle_nc_and_corrective_action_effectiveness",
         "changes_to_scope_processes_sites_or_legal_requirements",
-        "recertification_recommendation"
+        "recertification_recommendation_supported_by_findings"
       ],
       "nc_types_allowed": ["major", "minor", "critical", "observation"],
       "site_visit_required": true,
-      "clause_coverage": "all_clauses_mandatory",
-      "language_requirements": "Recertification recommendations must be supported by cycle-level performance evidence."
+      "clause_coverage": "all_clauses_mandatory"
     }
   },
 
   "audit_logic_checks": [
-    "The certification recommendation must be supported by clause findings and objective evidence.",
-    "The reported audit scope, sites, dates, audit team, and standards must be internally consistent.",
-    "Major nonconformities cannot be left open when the report recommends certification or certificate continuation.",
-    "Minor nonconformities must have correction/corrective action expectations or accepted plans.",
-    "Multi-site or remote/ICT audit claims must include sampling or remote-audit evidence when applicable.",
-    "Every NC must state the objective evidence, breached requirement, and why the chosen classification is appropriate."
+    "The recommendation must be supported by objective evidence and cannot contradict NC status.",
+    "Scope, standards, sites, dates, audit team, audit duration, and sampled activities must be internally consistent.",
+    "Major nonconformities cannot be left open when the report recommends certification, recertification, or continuation.",
+    "Multi-site reports must explain sampling logic and central function coverage when applicable.",
+    "Remote or ICT-assisted audits must identify the remote method and evidence reliability when applicable."
   ],
 
   "finding_depth_requirements": {
-    "minimum_finding_length_words": 30,
+    "minimum_finding_length_words": 25,
     "must_reference_evidence": true,
     "evidence_must_be_specific": true,
     "evidence_types_accepted": [
-      "named_document_with_version",
-      "record_with_identifier",
-      "named_interviewee_with_role",
-      "observation_of_specific_process_step",
+      "document_reference",
+      "record_reference",
+      "interview_reference",
+      "observation_of_process",
+      "site_observation",
       "measurement_or_test_result"
     ],
     "vague_finding_patterns": [
@@ -118,9 +114,7 @@
       "no issues found",
       "meets requirements",
       "generally conforming",
-      "appears to be",
-      "seems to be",
-      "it was noted that"
+      "appears to be"
     ]
   },
 
@@ -130,7 +124,6 @@
     "nc_must_reference_specific_clause": true,
     "nc_must_state_objective_evidence": true,
     "nc_must_not_be_vague": true,
-    "nc_must_state_why_it_is_major_or_minor": true,
     "nc_objective_evidence_must_be_specific": true
   },
 
@@ -139,16 +132,15 @@
       "required_statements": [
         "Explicit statement that continuous improvement of the EnMS has been achieved with supporting audit evidence.",
         "Explicit statement that continuous energy performance improvement has been achieved with supporting audit evidence.",
-        "EnPI values reviewed and compared against EnB baseline.",
         "SEUs audited with evidence of controls."
       ]
     },
     "ISMS": {
       "required_elements": [
-        "Statement of Applicability referenced and reviewed with version",
-        "Risk treatment plan evidence with named controls",
-        "Annex A control coverage addressed with applicability justification",
-        "Incident management records reviewed"
+        "Statement of Applicability referenced or reviewed",
+        "Risk treatment plan evidence",
+        "Annex A control coverage addressed",
+        "Incident management records reviewed where applicable"
       ]
     },
     "FSMS": {
@@ -156,16 +148,15 @@
         "PRP analysis and PRP verification evidence, not just a generic PRP mention",
         "Hazard analysis evidence including hazard identification and assessment",
         "HACCP/OPRP plan review with CCP/OPRP monitoring evidence where applicable",
-        "Traceability system tested with specific example",
-        "Food safety team records reviewed",
+        "Traceability system evidence with a specific tested example",
         "Verification related to PRPs and control measures"
       ]
     },
     "MDQMS": {
       "required_elements": [
         "Design and development exclusion justified if claimed",
-        "Post-market surveillance evidence if applicable",
-        "Regulatory compliance evidence (MDR/IVDR if applicable)"
+        "Regulatory compliance evidence where applicable",
+        "Post-market surveillance evidence where applicable"
       ]
     }
   },
@@ -186,8 +177,7 @@
     "fully compliant",
     "everything is in order",
     "appears compliant",
-    "generally conforming",
-    "it was noted that"
+    "generally conforming"
   ],
 
   "severity_levels": ["CRITICAL", "MAJOR", "MINOR", "WARNING", "OK"],

@@ -22,11 +22,11 @@ const MODULES = [
   },
   {
     title: 'Report Review',
-    description: 'AI-assisted review for consistency, missing clauses, evidence gaps, and document quality.',
+    description: 'Check written reports against accreditation references, ISO clause maps, evidence rules, and standard-specific gaps.',
     href: '/certivai/review',
     icon: FileSearch,
     accent: '#F59E0B',
-    status: 'Next',
+    status: 'Live',
   },
 ]
 
@@ -62,7 +62,7 @@ export default function CertivAIPage() {
               <div className="mb-5 flex items-center justify-between">
                 <span className="text-sm font-medium text-slate-300">System modules</span>
                 <span className="rounded bg-emerald-400/15 px-2 py-1 text-xs font-semibold text-emerald-200">
-                  2 active
+                  3 active
                 </span>
               </div>
               <div className="space-y-3">

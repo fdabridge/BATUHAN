@@ -2,6 +2,12 @@
   "accreditation_body": "UAF",
   "display_name": "UAF (United Accreditation Foundation)",
   "governing_standard": "ISO/IEC 17021-1:2015",
+  "reference_basis": [
+    "ISO/IEC 17021-1:2015-based certification audit report controls",
+    "UAF accreditation profile and internal certification procedures",
+    "Selected management system standard clause map",
+    "IAF mandatory document themes for audit duration, multi-site sampling, and ICT/remote audit evidence where applicable"
+  ],
 
   "nc_classifications": {
     "major": "A nonconformity that affects the ability of the management system to achieve its intended results.",
@@ -46,8 +52,41 @@
       "nc_types_allowed": ["major", "minor", "critical", "observation"],
       "site_visit_required": true,
       "clause_coverage": "all_clauses_mandatory"
+    },
+    "surveillance": {
+      "mandatory_coverage": [
+        "continued_effectiveness_of_management_system",
+        "follow_up_of_previous_nonconformities",
+        "changes_to_scope_processes_sites_or_legal_requirements",
+        "complaints_and_appeals_review",
+        "internal_audit_and_management_review_evidence",
+        "certification_continuation_recommendation"
+      ],
+      "nc_types_allowed": ["major", "minor", "critical", "observation"],
+      "site_visit_required": true,
+      "clause_coverage": "sampled_clauses_plus_changes_and_previous_issues"
+    },
+    "recertification": {
+      "mandatory_coverage": [
+        "full_cycle_performance_review",
+        "continued_fulfilment_of_all_standard_requirements",
+        "previous_cycle_nc_and_corrective_action_effectiveness",
+        "changes_to_scope_processes_sites_or_legal_requirements",
+        "recertification_recommendation"
+      ],
+      "nc_types_allowed": ["major", "minor", "critical", "observation"],
+      "site_visit_required": true,
+      "clause_coverage": "all_clauses_mandatory"
     }
   },
+
+  "audit_logic_checks": [
+    "The certification recommendation must be supported by clause findings and objective evidence.",
+    "The reported audit scope, sites, dates, audit team, and standards must be internally consistent.",
+    "Major nonconformities cannot be left open when the report recommends certification or certificate continuation.",
+    "Minor nonconformities must have correction/corrective action expectations or accepted plans.",
+    "Multi-site or remote/ICT audit claims must include sampling or remote-audit evidence when applicable."
+  ],
 
   "finding_depth_requirements": {
     "minimum_finding_length_words": 20,
@@ -95,9 +134,11 @@
     },
     "FSMS": {
       "required_elements": [
-        "HACCP plan review evidence",
-        "PRP verification evidence",
-        "Traceability system evidence"
+        "PRP analysis and PRP verification evidence, not just a generic PRP mention",
+        "Hazard analysis evidence including hazard identification and assessment",
+        "HACCP/OPRP plan review with CCP/OPRP monitoring evidence where applicable",
+        "Traceability system evidence with a specific tested example",
+        "Verification related to PRPs and control measures"
       ]
     }
   },

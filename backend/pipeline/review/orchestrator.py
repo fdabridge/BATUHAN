@@ -34,27 +34,36 @@ def _profile_to_text(profile: dict) -> str:
     lines = []
     lines.append(f"Accreditation Body: {profile['display_name']}")
     lines.append(f"Governing Standard: {profile['governing_standard']}")
+    if profile.get("reference_basis"):
+        lines.append("")
+        lines.append("REFERENCE BASIS:")
+        for item in profile["reference_basis"]:
+            lines.append(f"  - {item}")
+    if profile.get("required_report_elements"):
+        lines.append("")
+        lines.append("REQUIRED REPORT ELEMENTS:")
+        for item in profile["required_report_elements"]:
+            lines.append(f"  - {item}")
     lines.append("")
     lines.append("NC CLASSIFICATIONS:")
     for nc_type, definition in profile["nc_classifications"].items():
         lines.append(f"  {nc_type.upper()}: {definition}")
     lines.append("")
 
-    # Include both stage blocks so Claude has full context
-    lines.append("STAGE REQUIREMENTS (Stage 1):")
-    s1 = profile["stage_requirements"]["stage_1"]
-    for item in s1.get("mandatory_coverage", []):
-        lines.append(f"  - {item}")
-    if "language_requirements" in s1:
-        lines.append(f"  Language: {s1['language_requirements']}")
+    lines.append("STAGE REQUIREMENTS:")
+    for stage_key, rules in profile["stage_requirements"].items():
+        title = stage_key.replace("_", " ").title()
+        lines.append(f"  {title}:")
+        for item in rules.get("mandatory_coverage", []):
+            lines.append(f"    - {item}")
+        if "language_requirements" in rules:
+            lines.append(f"    Language: {rules['language_requirements']}")
 
-    lines.append("")
-    lines.append("STAGE REQUIREMENTS (Stage 2):")
-    s2 = profile["stage_requirements"]["stage_2"]
-    for item in s2.get("mandatory_coverage", []):
-        lines.append(f"  - {item}")
-    if "language_requirements" in s2:
-        lines.append(f"  Language: {s2['language_requirements']}")
+    if profile.get("audit_logic_checks"):
+        lines.append("")
+        lines.append("AUDIT LOGIC CHECKS:")
+        for item in profile["audit_logic_checks"]:
+            lines.append(f"  - {item}")
 
     lines.append("")
     lines.append("FINDING DEPTH REQUIREMENTS:")
@@ -78,9 +87,26 @@ def _profile_to_text(profile: dict) -> str:
     return "\n".join(lines)
 
 
+def _stage_to_key(stage: str) -> str:
+    normalized = stage.strip().lower().replace("-", " ")
+    if "stage 1" in normalized:
+        return "stage_1"
+    if "stage 2" in normalized:
+        return "stage_2"
+    if "surveillance" in normalized:
+        return "surveillance"
+    if "recert" in normalized:
+        return "recertification"
+    return "stage_2"
+
+
 def _get_stage_specific_rules(profile: dict, stage: str) -> str:
-    stage_key = "stage_1" if "1" in stage else "stage_2"
-    stage_rules = profile["stage_requirements"].get(stage_key, {})
+    stage_key = _stage_to_key(stage)
+    stage_rules = (
+        profile["stage_requirements"].get(stage_key)
+        or profile["stage_requirements"].get("stage_2")
+        or {}
+    )
     lines = [f"\nACTIVE STAGE RULES ({stage}):"]
     for item in stage_rules.get("mandatory_coverage", []):
         lines.append(f"  - {item}")

@@ -15,25 +15,53 @@ import datetime
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
-from schemas.models import ReviewJobStatus, ReviewJobState, AccreditationBody
+from schemas.models import ReviewJobStatus, ReviewJobState
 from config.review_profiles.loader import load_review_profile, list_available_profiles
 from storage.file_store import save_text_artifact, read_text_artifact, read_binary_artifact
 from auth.db_models import PlatformUser
-from auth.dependencies import require_auditor, require_any
+from auth.dependencies import require_any
 
 router = APIRouter(prefix="/review", tags=["review"])
 logger = logging.getLogger(__name__)
 
 _VALID_STANDARDS = ["QMS", "EMS", "OHSMS", "FSMS", "MDQMS", "ISMS", "ABMS", "ENMS"]
+_VALID_STAGES = ["Stage 1", "Stage 2", "Surveillance", "Recertification"]
+
+
+def _reference_summary(profile: dict) -> dict:
+    return {
+        "code": profile.get("accreditation_body", "").upper(),
+        "display_name": profile.get("display_name", ""),
+        "governing_standard": profile.get("governing_standard", ""),
+        "reference_basis": profile.get("reference_basis", []),
+        "required_report_elements": profile.get("required_report_elements", []),
+    }
+
+
+@router.get("/references")
+async def list_review_references(_: PlatformUser = Depends(require_any)):
+    """Return the supported report-review reference profiles and inputs."""
+    profiles = []
+    for code in sorted(list_available_profiles()):
+        try:
+            profiles.append(_reference_summary(load_review_profile(code)))
+        except Exception as exc:
+            logger.warning("Could not load review profile %s: %s", code, exc)
+    return {
+        "profiles": profiles,
+        "standards": _VALID_STANDARDS,
+        "stages": _VALID_STAGES,
+        "file_types": [".docx"],
+    }
 
 
 @router.post("/submit")
 async def submit_review(
     report: UploadFile = File(..., description="The audit report DOCX to review"),
     standard: str = Form(..., description="Standard code: QMS, EMS, OHSMS, FSMS, MDQMS, ISMS, ABMS, ENMS"),
-    stage: str = Form(..., description="Stage 1 or Stage 2"),
-    accreditation_body: str = Form(..., description="UAF or TURKAK"),
-    _: PlatformUser = Depends(require_auditor),
+    stage: str = Form(..., description="Stage 1, Stage 2, Surveillance, or Recertification"),
+    accreditation_body: str = Form(..., description="UAF, IAF, or TURKAK"),
+    _: PlatformUser = Depends(require_any),
 ):
     """Submit a completed audit report DOCX for AI-powered review against accreditation rules."""
 
@@ -55,10 +83,10 @@ async def submit_review(
         )
 
     # Validate stage
-    if stage not in ["Stage 1", "Stage 2"]:
+    if stage not in _VALID_STAGES:
         raise HTTPException(
             status_code=400,
-            detail="stage must be 'Stage 1' or 'Stage 2'",
+            detail=f"stage must be one of {_VALID_STAGES}",
         )
 
     # Validate file type
@@ -104,6 +132,19 @@ async def submit_review(
         )
     except Exception as e:
         logger.warning("Could not queue review job %s via Celery: %s", review_job_id, e)
+        failed_status = ReviewJobStatus(
+            review_job_id=review_job_id,
+            state=ReviewJobState.FAILED,
+            standard_code=standard.upper(),
+            accreditation_body=accreditation_body.upper(),
+            error_message="Could not queue the report review job.",
+            created_at=initial_status.created_at,
+            completed_at=datetime.datetime.utcnow().isoformat(),
+        )
+        save_text_artifact(
+            review_job_id, "review_status.json", failed_status.model_dump_json(indent=2)
+        )
+        raise HTTPException(status_code=503, detail="Could not queue the report review job.")
 
     return {"review_job_id": review_job_id, "state": "QUEUED"}
 
