@@ -15,14 +15,269 @@ from sqlalchemy.orm import Session
 
 from audit_set.db_models import (
     AuditDocumentSignature, AuditSet, AuditSetSharedDocument,
-    AuditSetStage, AuditSetStatusEvent, get_db,
+    AuditSetAuditReport, AuditSetNCForm, AuditSetStage, AuditSetStatusEvent,
+    VisualSignaturePlacement, get_db,
 )
+from audit_set.committee_slots import (
+    committee_member_auditor_id,
+    committee_member_name,
+    expected_committee_sig_keys,
+    planned_committee_chair,
+    planned_committee_slots,
+)
+from storage.document_store import resolve_docx_key
 from auth.db_models import PlatformUser
 from auth.dependencies import get_current_user
 
 router = APIRouter(prefix="/audit-sets", tags=["signatures"])
 
 CB_ROLES = {"admin", "planner", "planner_us", "officer", "executive", "gm", "certification_manager"}
+FR233_CERT_MANAGER_KEYS = {"CB_CERT_MANAGER", "CERT_MANAGER_FR233", "CERT_MANAGER_REVIEW"}
+
+
+def _stage_lead_for(
+    db: Session,
+    audit_set_id: str,
+    stage_type: str | None,
+) -> str | None:
+    q = db.query(AuditSetStage).filter_by(audit_set_id=audit_set_id)
+    if stage_type:
+        stage = q.filter_by(stage_type=stage_type).order_by(AuditSetStage.stage_order).first()
+        if stage:
+            return stage.lead_auditor_id
+    stage = q.order_by(AuditSetStage.stage_order).first()
+    return stage.lead_auditor_id if stage else None
+
+
+def _report_sig_document_type(report: AuditSetAuditReport) -> str:
+    return "stage1_report" if report.stage_type == "stage_1" else "stage2_report"
+
+
+def _add_unique(result: list[dict], seen: set[str], item: dict) -> None:
+    key = item["id"]
+    if key not in seen:
+        seen.add(key)
+        result.append(item)
+
+
+def _virtual_sig(
+    *,
+    key: str,
+    audit_set: AuditSet | None,
+    document_id: str,
+    document_type: str,
+    document_label: str,
+    signer_role_label: str,
+    signer_name: str | None = None,
+) -> dict:
+    return {
+        "id": key,
+        "audit_set_id": audit_set.id if audit_set else "",
+        "document_id": document_id,
+        "document_type": document_type,
+        "document_label": document_label,
+        "signer_role_label": signer_role_label,
+        "signer_name": signer_name,
+        "company_name": audit_set.company_name if audit_set else "",
+        "plan_number": audit_set.plan_number if audit_set else None,
+        "required": True,
+        "order_index": 0,
+        "signed_at": None,
+        "is_signed": False,
+        "created_at": None,
+    }
+
+
+def _fr233_document_keys(doc: AuditSetSharedDocument, db: Session) -> set[str]:
+    if not doc.file_path:
+        return set()
+    try:
+        docx_key = resolve_docx_key(doc.file_path)
+    except Exception:
+        docx_key = doc.file_path
+    try:
+        from audit_set.db_models import DocumentSignatureField
+        return {
+            key for (key,) in
+            db.query(DocumentSignatureField.sig_key)
+            .filter_by(docx_path=docx_key)
+            .all()
+        }
+    except Exception:
+        return set()
+
+
+def _vsp_signed(db: Session, document_type: str, doc_id: str, sig_key: str) -> bool:
+    return (
+        db.query(VisualSignaturePlacement.id)
+        .filter_by(document_type=document_type, doc_id=doc_id, sig_key=sig_key)
+        .filter(VisualSignaturePlacement.signed_at.isnot(None))
+        .first()
+        is not None
+    )
+
+
+def _append_report_and_nc_tasks(
+    result: list[dict],
+    seen: set[str],
+    db: Session,
+    current_user: PlatformUser,
+) -> None:
+    reports = db.query(AuditSetAuditReport).all()
+    audit_sets = {
+        a.id: a for a in db.query(AuditSet).filter(
+            AuditSet.id.in_({r.audit_set_id for r in reports} or {""})
+        ).all()
+    } if reports else {}
+
+    for report in reports:
+        audit_set = audit_sets.get(report.audit_set_id)
+        doc_type = _report_sig_document_type(report)
+        if (
+            current_user.role == "auditor"
+            and current_user.auditor_id
+            and not report.la_signed_at
+            and _stage_lead_for(db, report.audit_set_id, report.stage_type) == current_user.auditor_id
+        ):
+            _add_unique(result, seen, _virtual_sig(
+                key=f"virtual:audit-report-la:{report.id}",
+                audit_set=audit_set,
+                document_id=report.id,
+                document_type=doc_type,
+                document_label=report.label or report.report_form or "Audit Report",
+                signer_role_label="lead_auditor",
+            ))
+
+        if (
+            current_user.role == "auditor"
+            and current_user.auditor_id
+            and report.la_signed_at
+            and not report.appointed_reviewer_signed_at
+        ):
+            chair = planned_committee_chair(audit_set) if audit_set else None
+            if committee_member_auditor_id(chair) == current_user.auditor_id:
+                _add_unique(result, seen, _virtual_sig(
+                    key=f"virtual:audit-report-chair:{report.id}",
+                    audit_set=audit_set,
+                    document_id=report.id,
+                    document_type=doc_type,
+                    document_label=report.label or report.report_form or "Audit Report",
+                    signer_role_label="appointed_reviewer",
+                    signer_name=committee_member_name(chair),
+                ))
+
+        if (
+            current_user.role in ("certification_manager", "admin")
+            and report.la_signed_at
+            and not report.reviewer_signed_at
+        ):
+            _add_unique(result, seen, _virtual_sig(
+                key=f"virtual:audit-report-cm:{report.id}",
+                audit_set=audit_set,
+                document_id=report.id,
+                document_type=doc_type,
+                document_label=report.label or report.report_form or "Audit Report",
+                signer_role_label="cb_cert_manager",
+                signer_name=current_user.full_name,
+            ))
+
+    nc_forms = db.query(AuditSetNCForm).all()
+    nc_audit_sets = {
+        a.id: a for a in db.query(AuditSet).filter(
+            AuditSet.id.in_({n.audit_set_id for n in nc_forms} or {""})
+        ).all()
+    } if nc_forms else {}
+    for nc in nc_forms:
+        audit_set = nc_audit_sets.get(nc.audit_set_id)
+        if (
+            current_user.role == "auditor"
+            and current_user.auditor_id
+            and not nc.la_signed_at
+            and _stage_lead_for(db, nc.audit_set_id, nc.stage_type) == current_user.auditor_id
+        ):
+            _add_unique(result, seen, _virtual_sig(
+                key=f"virtual:nc-la:{nc.id}",
+                audit_set=audit_set,
+                document_id=nc.id,
+                document_type="nc_form",
+                document_label=f"NC Form: {nc.label}",
+                signer_role_label="lead_auditor",
+            ))
+        if (
+            current_user.role == "client"
+            and current_user.audit_set_id == nc.audit_set_id
+            and nc.status == "pending_client"
+            and nc.la_signed_at
+            and not nc.client_signed_at
+        ):
+            _add_unique(result, seen, _virtual_sig(
+                key=f"virtual:nc-client:{nc.id}",
+                audit_set=audit_set,
+                document_id=nc.id,
+                document_type="nc_form",
+                document_label=f"NC Form: {nc.label}",
+                signer_role_label="client",
+            ))
+
+
+def _append_fr233_field_tasks(
+    result: list[dict],
+    seen: set[str],
+    db: Session,
+    current_user: PlatformUser,
+) -> None:
+    docs = db.query(AuditSetSharedDocument).filter_by(document_type="fr233").all()
+    if not docs:
+        return
+    audit_sets = {
+        a.id: a for a in db.query(AuditSet).filter(
+            AuditSet.id.in_({d.audit_set_id for d in docs})
+        ).all()
+    }
+    for doc in docs:
+        audit_set = audit_sets.get(doc.audit_set_id)
+        if not audit_set:
+            continue
+        document_keys = _fr233_document_keys(doc, db)
+        expected_keys = expected_committee_sig_keys(audit_set, document_keys)
+
+        if current_user.role == "auditor" and current_user.auditor_id:
+            candidate_keys = {
+                f"COMMITTEE_MEMBER_{current_user.auditor_id}",
+                *[
+                    key for key, member in planned_committee_slots(audit_set).items()
+                    if committee_member_auditor_id(member) == current_user.auditor_id
+                ],
+            }
+            for sig_key in sorted(candidate_keys & expected_keys):
+                if not _vsp_signed(db, "shared_doc", doc.id, sig_key):
+                    _add_unique(result, seen, _virtual_sig(
+                        key=f"virtual:fr233:{doc.id}:{sig_key}",
+                        audit_set=audit_set,
+                        document_id=doc.id,
+                        document_type="fr233",
+                        document_label=doc.label or "FR.233 Review & Decision",
+                        signer_role_label="committee_member",
+                    ))
+
+        if current_user.role in ("certification_manager", "admin", "executive"):
+            cm_keys = FR233_CERT_MANAGER_KEYS & (document_keys or FR233_CERT_MANAGER_KEYS)
+            if not cm_keys:
+                cm_keys = {"CB_CERT_MANAGER"}
+            committee_done = bool(expected_keys) and all(
+                _vsp_signed(db, "shared_doc", doc.id, key) for key in expected_keys
+            )
+            for sig_key in sorted(cm_keys):
+                if committee_done and not _vsp_signed(db, "shared_doc", doc.id, sig_key):
+                    _add_unique(result, seen, _virtual_sig(
+                        key=f"virtual:fr233:{doc.id}:{sig_key}",
+                        audit_set=audit_set,
+                        document_id=doc.id,
+                        document_type="fr233",
+                        document_label=doc.label or "FR.233 Review & Decision",
+                        signer_role_label="cb_cert_manager",
+                        signer_name=current_user.full_name,
+                    ))
 
 
 class SignDirectBody(BaseModel):
@@ -68,10 +323,15 @@ def get_my_pending_signatures(
     covering future cases where slots are pre-assigned at appointment time).
     """
 
+    seen_result_ids: set[str] = set()
+    supplemental_results: list[dict] = []
+    _append_report_and_nc_tasks(supplemental_results, seen_result_ids, db, current_user)
+    _append_fr233_field_tasks(supplemental_results, seen_result_ids, db, current_user)
+
     # ── Auditor path ────────────────────────────────────────────────────────────
     if current_user.role == "auditor":
         if not current_user.auditor_id:
-            return []
+            return supplemental_results
 
         auditor_id = current_user.auditor_id
         seen_ids: set[str] = set()
@@ -192,9 +452,15 @@ def get_my_pending_signatures(
                 company_name=audit_set.company_name if audit_set else "",
                 plan_number=audit_set.plan_number if audit_set else None,
             ))
+        result_seen = {r["id"] for r in results}
+        for item in supplemental_results:
+            _add_unique(results, result_seen, item)
         return results
 
     # ── CB staff path (unchanged) ───────────────────────────────────────────────
+    if current_user.role == "client":
+        return supplemental_results
+
     if current_user.role not in CB_ROLES:
         raise HTTPException(403, "Not authorized")
 
@@ -242,6 +508,9 @@ def get_my_pending_signatures(
             company_name=audit_set.company_name if audit_set else "",
             plan_number=audit_set.plan_number if audit_set else None,
         ))
+    result_seen = {r["id"] for r in results}
+    for item in supplemental_results:
+        _add_unique(results, result_seen, item)
     return results
 
 

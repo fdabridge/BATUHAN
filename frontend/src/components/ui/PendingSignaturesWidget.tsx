@@ -14,15 +14,20 @@ interface PendingSig {
   signer_role_label: string
 }
 
-/** Map AuditDocumentSignature.document_type to the viewer URL segment. */
-function viewerDocType(documentType: string): 'shared_doc' | 'audit_report' {
+/** Map notification document_type to the viewer URL segment. */
+function viewerDocType(documentType: string): 'shared_doc' | 'audit_report' | 'nc_form' {
+  if (documentType === 'nc_form') return 'nc_form'
   if (documentType === 'stage1_report' || documentType === 'stage2_report') {
     return 'audit_report'
   }
   return 'shared_doc'
 }
 
-export function PendingSignaturesWidget() {
+interface PendingSignaturesWidgetProps {
+  viewerBasePath?: string
+}
+
+export function PendingSignaturesWidget({ viewerBasePath = '/viewer' }: PendingSignaturesWidgetProps = {}) {
   const [sigs, setSigs]                       = useState<PendingSig[]>([])
   const [loading, setLoading]                 = useState(true)
   const [busy, setBusy]                       = useState(false)
@@ -44,7 +49,11 @@ export function PendingSignaturesWidget() {
     }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    const id = setInterval(load, 60_000)
+    return () => clearInterval(id)
+  }, [])
 
   async function openDirectSign(sig: PendingSig) {
     setError('')
@@ -83,20 +92,32 @@ export function PendingSignaturesWidget() {
     }
   }
 
-  if (loading || sigs.length === 0) return null
+  const visibleSigs = sigs.filter(sig => !(sig.document_type === 'FR218' && !sig.document_id))
 
+  if (loading || visibleSigs.length === 0) return null
 
   return (
     <>
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-5">
-        <h2 className="mb-3 text-sm font-semibold text-amber-900">
-          ✍ Pending Signatures ({sigs.length})
-        </h2>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-amber-900">
+              Signature Action Center ({visibleSigs.length})
+            </h2>
+            <p className="mt-0.5 text-xs text-amber-800/70">
+              Documents ready for your signature are refreshed automatically.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={load}
+            className="rounded-md border border-amber-200 bg-white px-2.5 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100"
+          >
+            Refresh
+          </button>
+        </div>
         <div className="space-y-3">
-          {sigs
-            // Filter out legacy FR.218 slots that have no backing document
-            .filter(sig => !(sig.document_type === 'FR218' && !sig.document_id))
-            .map((sig) => {
+          {visibleSigs.map((sig) => {
             const isViewer = !!sig.document_id
             return (
               <div key={sig.id} className="rounded-lg border border-amber-100 bg-white p-4">
@@ -105,12 +126,13 @@ export function PendingSignaturesWidget() {
                     <p className="text-sm font-medium text-gray-900">{sig.document_label}</p>
                     <p className="mt-0.5 text-xs text-gray-400">
                       {sig.plan_number ? `#${sig.plan_number} · ` : ''}{sig.company_name}
+                      {sig.signer_role_label ? ` · ${sig.signer_role_label.replace(/_/g, ' ')}` : ''}
                     </p>
                   </div>
 
                   {isViewer && sig.document_id && (
                     <a
-                      href={`/viewer/${viewerDocType(sig.document_type)}/${sig.document_id}`}
+                      href={`${viewerBasePath}/${viewerDocType(sig.document_type)}/${sig.document_id}`}
                       className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#143828]"
                     >
                       Open to Sign

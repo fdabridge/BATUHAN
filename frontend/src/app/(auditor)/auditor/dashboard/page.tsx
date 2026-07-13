@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
+import { PendingSignaturesWidget } from '@/components/ui/PendingSignaturesWidget'
 
 const STANDARD_NAMES: Record<string, string> = {
   QMS:   'ISO 9001',
@@ -82,6 +83,10 @@ export default function AuditorDashboard() {
         <p className="mt-0.5 text-sm text-gray-400">
           {assignments.length} audit{assignments.length !== 1 ? 's' : ''} assigned
         </p>
+      </div>
+
+      <div className="mb-8">
+        <PendingSignaturesWidget viewerBasePath="/auditor/viewer" />
       </div>
 
       {committeeReviews.length > 0 && (
