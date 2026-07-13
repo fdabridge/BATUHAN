@@ -13,7 +13,7 @@ import logging
 from datetime import date, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -169,6 +169,10 @@ class CRMClientRow(BaseModel):
         from_attributes = True
 
 
+class ConsultantAssignmentRequest(BaseModel):
+    consultant_id: Optional[str] = None
+
+
 class KPIs(BaseModel):
     active_certifications: int
     expiring_90_days: int
@@ -310,6 +314,42 @@ def crm_client_detail(
         raise HTTPException(404, "Audit set not found")
 
     return CRMClientRow(**_serialise(a, auth_db))
+
+
+@router.patch("/crm/clients/{audit_set_id}/consultant", response_model=CRMClientRow)
+def update_client_consultant(
+    audit_set_id: str,
+    body: ConsultantAssignmentRequest,
+    db:      Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """Admin-only: attach, change, or clear a consultant for an existing client."""
+    if current_user.role != "admin":
+        raise HTTPException(403, "Only admins can change client consultant assignments")
+
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    if not audit_set:
+        raise HTTPException(404, "Audit set not found")
+
+    consultant_id = (body.consultant_id or "").strip() or None
+    if consultant_id:
+        consultant = (
+            auth_db.query(PlatformUser)
+            .filter(
+                PlatformUser.id == consultant_id,
+                PlatformUser.role == "consultant",
+                PlatformUser.is_active == True,
+            )
+            .first()
+        )
+        if not consultant:
+            raise HTTPException(400, "Selected consultant is not an active consultant user")
+
+    audit_set.consultant_id = consultant_id
+    db.commit()
+    db.refresh(audit_set)
+    return CRMClientRow(**_serialise(audit_set, auth_db))
 
 
 # ── Portal 92 — Auditor Calendar ──────────────────────────────────────────────

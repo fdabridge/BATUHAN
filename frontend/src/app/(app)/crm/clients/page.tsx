@@ -53,11 +53,14 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 export default function CRMClients() {
+  const { user } = useAuth()
   const [clients, setClients] = useState<CRMClient[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch]   = useState('')
   const [consultantFilter, setConsultantFilter] = useState<string>('all')
   const [consultantOptions, setConsultantOptions] = useState<{ id: string; full_name: string }[]>([])
+  const [savingConsultantId, setSavingConsultantId] = useState<string | null>(null)
+  const [consultantError, setConsultantError] = useState<string | null>(null)
 
   useEffect(() => {
     api.get<CRMClient[]>('/crm/clients')
@@ -83,6 +86,23 @@ export default function CRMClients() {
     return matchSearch && matchConsultant
   })
 
+  const isAdmin = user?.role === 'admin'
+
+  async function updateConsultant(clientId: string, consultantId: string) {
+    setSavingConsultantId(clientId)
+    setConsultantError(null)
+    try {
+      const res = await api.patch<CRMClient>(`/crm/clients/${clientId}/consultant`, {
+        consultant_id: consultantId || null,
+      })
+      setClients((rows) => rows.map((row) => (row.id === clientId ? res.data : row)))
+    } catch (err: any) {
+      setConsultantError(err?.response?.data?.detail || 'Could not update consultant.')
+    } finally {
+      setSavingConsultantId(null)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -105,6 +125,12 @@ export default function CRMClients() {
           ))}
         </select>
       </div>
+
+      {consultantError && (
+        <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-2 text-sm text-red-700">
+          {consultantError}
+        </div>
+      )}
 
       {loading ? (
         <p className="text-sm text-gray-400">Loading…</p>
@@ -154,13 +180,29 @@ export default function CRMClients() {
                     {c.contact_phone && <div className="text-xs text-gray-400">{c.contact_phone}</div>}
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                      c.consultant_name === 'IFC Global' || !c.consultant_id
-                        ? 'bg-gray-100 text-gray-500'
-                        : 'bg-emerald-100 text-emerald-700'
-                    }`}>
-                      {c.consultant_name || 'IFC Global'}
-                    </span>
+                    {isAdmin ? (
+                      <select
+                        value={c.consultant_id || ''}
+                        disabled={savingConsultantId === c.id}
+                        onChange={(e) => updateConsultant(c.id, e.target.value)}
+                        className="min-w-[160px] rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-60"
+                      >
+                        <option value="">IFC Global (direct)</option>
+                        {consultantOptions.map((consultant) => (
+                          <option key={consultant.id} value={consultant.id}>
+                            {consultant.full_name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                        c.consultant_name === 'IFC Global' || !c.consultant_id
+                          ? 'bg-gray-100 text-gray-500'
+                          : 'bg-emerald-100 text-emerald-700'
+                      }`}>
+                        {c.consultant_name || 'IFC Global'}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <Link href={`/crm/clients/${c.id}`} className="text-xs text-emerald-700 hover:underline">View →</Link>
