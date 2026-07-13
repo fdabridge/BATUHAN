@@ -157,13 +157,16 @@ export default function EditTrainingPage() {
       const validQuestions = questions.filter((q) => q.question_text.trim())
       if (validQuestions.length > 0) {
         const mapped = validQuestions.map((q) => {
-          const opts = [q.option_a, q.option_b, q.option_c, q.option_d]
-          const correctIndex = { A: 0, B: 1, C: 2, D: 3 }[q.correct_answer] ?? 0
+          const raw = [q.option_a, q.option_b, q.option_c, q.option_d]
+          const filtered = raw.map((o) => o.trim()).filter(Boolean)
+          const originalIdx = { A: 0, B: 1, C: 2, D: 3 }[q.correct_answer] ?? 0
+          const correctText = raw[originalIdx]?.trim() || ''
+          const correctIndex = filtered.indexOf(correctText)
           return {
             question_number: q.question_number,
-            question_text: q.question_text,
-            options: opts.filter(Boolean),
-            correct_option_index: correctIndex,
+            question_text: q.question_text.trim(),
+            options: filtered,
+            correct_option_index: correctIndex >= 0 ? correctIndex : 0,
           }
         })
         await api.post(`/trainings/courses/${courseId}/questions`, { questions: mapped })

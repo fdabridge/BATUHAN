@@ -435,11 +435,12 @@ def replace_questions(
     db.query(TrainingExamQuestion).filter(TrainingExamQuestion.course_id == course_id).delete()
     # Insert new questions
     for q in payload.questions:
+        trimmed_options = [o.strip() for o in q.options if o.strip()]
         question = TrainingExamQuestion(
             course_id=course_id,
             question_number=q.question_number,
-            question_text=q.question_text,
-            options=json.dumps(q.options),
+            question_text=q.question_text.strip(),
+            options=json.dumps(trimmed_options),
             correct_option_index=q.correct_option_index,
         )
         db.add(question)
