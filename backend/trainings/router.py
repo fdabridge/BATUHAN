@@ -242,22 +242,38 @@ def list_courses(
     db: Session = Depends(get_db),
 ):
     courses = db.query(TrainingCourse).order_by(TrainingCourse.created_at.desc()).all()
-    # Batch-load assignment stats per course
+    # Batch-load assignment stats per course (single query, no N+1)
     all_assignments = db.query(TrainingAssignment).all()
     stats: dict[str, dict] = {}
     for a in all_assignments:
-        s = stats.setdefault(a.course_id, {"total": 0, "passed": 0, "failed": 0})
-        s["total"] += 1
+        s = stats.setdefault(a.course_id, {
+            "assigned_count": 0, "training_completed_count": 0,
+            "exam_completed_count": 0, "passed": 0, "failed": 0,
+        })
+        s["assigned_count"] += 1
+        if a.training_completed:
+            s["training_completed_count"] += 1
+        if a.exam_completed:
+            s["exam_completed_count"] += 1
         if a.exam_passed is True:
             s["passed"] += 1
         elif a.exam_passed is False:
             s["failed"] += 1
+    _empty_stats = {
+        "assigned_count": 0, "training_completed_count": 0,
+        "exam_completed_count": 0, "passed": 0, "failed": 0,
+    }
     result = []
     for c in courses:
         q_count = db.query(TrainingExamQuestion).filter(TrainingExamQuestion.course_id == c.id).count()
-        d = _course_to_dict(c, question_count=q_count)
-        cs = stats.get(c.id, {"total": 0, "passed": 0, "failed": 0})
-        d["assignment_count"] = cs["total"]
+        cs = stats.get(c.id, _empty_stats)
+        usage = {
+            "assigned_count": cs["assigned_count"],
+            "training_completed_count": cs["training_completed_count"],
+            "exam_completed_count": cs["exam_completed_count"],
+        }
+        d = _course_to_dict(c, question_count=q_count, usage=usage)
+        d["assignment_count"] = cs["assigned_count"]
         d["passed_count"] = cs["passed"]
         d["failed_count"] = cs["failed"]
         result.append(d)
@@ -368,11 +384,17 @@ def update_course(
     db: Session = Depends(get_db),
 ):
     course = _get_course_or_404(db, course_id)
+    usage = _get_usage(db, course_id)
     if payload.title is not None:
         course.title = payload.title
     if payload.description is not None:
         course.description = payload.description
-    if payload.passing_grade is not None:
+    if payload.passing_grade is not None and payload.passing_grade != course.passing_grade:
+        if usage["exam_completed_count"] > 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Passing grade cannot be changed after users have completed the exam.",
+            )
         course.passing_grade = payload.passing_grade
     if payload.is_active is not None:
         course.is_active = payload.is_active

@@ -333,10 +333,14 @@ export default function EditTrainingPage() {
               min={0}
               max={100}
               value={passingGrade}
+              readOnly={usage.exam_completed_count > 0}
               onChange={(e) => setPassingGrade(Number(e.target.value))}
-              className="w-24 rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-[#1A4731] focus:outline-none focus:ring-1 focus:ring-[#1A4731]"
+              className={`w-24 rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-[#1A4731] focus:outline-none focus:ring-1 focus:ring-[#1A4731] ${usage.exam_completed_count > 0 ? 'bg-gray-50 text-gray-400' : ''}`}
             />
             <span className="text-sm text-gray-500">%</span>
+            {usage.exam_completed_count > 0 && (
+              <span className="text-xs text-gray-400">Locked after completed exams</span>
+            )}
           </div>
         </section>
 
