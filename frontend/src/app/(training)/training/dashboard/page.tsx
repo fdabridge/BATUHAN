@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
 import api from '@/lib/api'
 
@@ -17,17 +17,25 @@ interface Summary {
 interface Course {
   id: string
   title: string
+  description: string | null
   question_count: number
   passing_grade: number
   is_active: boolean
   is_ready: boolean
   missing_requirements: string[]
+  assignment_count: number
+  passed_count: number
+  failed_count: number
 }
+
+type CourseFilter = 'all' | 'ready' | 'not_ready' | 'active' | 'inactive'
 
 export default function TrainingDashboardPage() {
   const [summary, setSummary] = useState<Summary | null>(null)
   const [courses, setCourses] = useState<Course[]>([])
   const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [courseFilter, setCourseFilter] = useState<CourseFilter>('all')
 
   useEffect(() => {
     Promise.all([
@@ -42,17 +50,42 @@ export default function TrainingDashboardPage() {
       .finally(() => setLoading(false))
   }, [])
 
+  const filtered = useMemo(() => {
+    let list = courses
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      list = list.filter(
+        (c) =>
+          c.title.toLowerCase().includes(q) ||
+          (c.description ?? '').toLowerCase().includes(q),
+      )
+    }
+    if (courseFilter === 'ready') list = list.filter((c) => c.is_ready)
+    else if (courseFilter === 'not_ready') list = list.filter((c) => !c.is_ready)
+    else if (courseFilter === 'active') list = list.filter((c) => c.is_active)
+    else if (courseFilter === 'inactive') list = list.filter((c) => !c.is_active)
+    return list
+  }, [courses, search, courseFilter])
+
   const cards: { label: string; value: number | string; color: string }[] = summary
     ? [
-        { label: 'Courses',       value: summary.total_courses,                      color: 'bg-blue-50 text-blue-700' },
-        { label: 'Active',        value: summary.active_courses,                     color: 'bg-green-50 text-green-700' },
-        { label: 'Assignments',   value: summary.total_assignments,                  color: 'bg-purple-50 text-purple-700' },
-        { label: 'Pending',       value: summary.pending_training,                   color: 'bg-yellow-50 text-yellow-700' },
-        { label: 'Exam Pending',  value: summary.training_completed_exam_pending,    color: 'bg-orange-50 text-orange-700' },
-        { label: 'Passed',        value: summary.passed_count,                       color: 'bg-emerald-50 text-emerald-700' },
-        { label: 'Failed',        value: summary.failed_count,                       color: 'bg-red-50 text-red-700' },
+        { label: 'Courses',       value: summary.total_courses,                   color: 'bg-blue-50 text-blue-700' },
+        { label: 'Active',        value: summary.active_courses,                  color: 'bg-green-50 text-green-700' },
+        { label: 'Assignments',   value: summary.total_assignments,               color: 'bg-purple-50 text-purple-700' },
+        { label: 'Pending',       value: summary.pending_training,                color: 'bg-yellow-50 text-yellow-700' },
+        { label: 'Exam Pending',  value: summary.training_completed_exam_pending, color: 'bg-orange-50 text-orange-700' },
+        { label: 'Passed',        value: summary.passed_count,                    color: 'bg-emerald-50 text-emerald-700' },
+        { label: 'Failed',        value: summary.failed_count,                    color: 'bg-red-50 text-red-700' },
       ]
     : []
+
+  const FILTERS: { key: CourseFilter; label: string }[] = [
+    { key: 'all',       label: 'All' },
+    { key: 'ready',     label: 'Ready' },
+    { key: 'not_ready', label: 'Not Ready' },
+    { key: 'active',    label: 'Active' },
+    { key: 'inactive',  label: 'Inactive' },
+  ]
 
   return (
     <div className="p-6">
@@ -87,6 +120,32 @@ export default function TrainingDashboardPage() {
         </div>
       )}
 
+      {/* Search + filter */}
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search courses..."
+          className="w-56 rounded-md border border-gray-200 px-3 py-1.5 text-sm focus:border-[#1A4731] focus:outline-none focus:ring-1 focus:ring-[#1A4731]"
+        />
+        <div className="flex gap-1">
+          {FILTERS.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setCourseFilter(f.key)}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                courseFilter === f.key
+                  ? 'bg-[#1A4731] text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Courses table */}
       <div className="rounded-lg border border-gray-100 bg-white">
         <div className="overflow-x-auto">
@@ -95,7 +154,9 @@ export default function TrainingDashboardPage() {
               <tr className="border-b border-gray-100 text-left text-xs font-medium uppercase tracking-wide text-gray-400">
                 <th className="px-4 py-3">Title</th>
                 <th className="px-4 py-3">Questions</th>
-                <th className="px-4 py-3">Passing Grade</th>
+                <th className="px-4 py-3">Grade</th>
+                <th className="px-4 py-3">Assigned</th>
+                <th className="px-4 py-3">Passed/Failed</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Actions</th>
               </tr>
@@ -104,18 +165,24 @@ export default function TrainingDashboardPage() {
               {loading
                 ? Array.from({ length: 4 }).map((_, i) => (
                     <tr key={i}>
-                      {Array.from({ length: 5 }).map((_, j) => (
+                      {Array.from({ length: 7 }).map((_, j) => (
                         <td key={j} className="px-4 py-3">
-                          <div className="h-3 w-24 animate-pulse rounded bg-gray-100" />
+                          <div className="h-3 w-16 animate-pulse rounded bg-gray-100" />
                         </td>
                       ))}
                     </tr>
                   ))
-                : courses.map((c) => (
+                : filtered.map((c) => (
                     <tr key={c.id} className="hover:bg-gray-50/40">
                       <td className="px-4 py-3 font-medium">{c.title}</td>
                       <td className="px-4 py-3 text-gray-500">{c.question_count ?? '—'}</td>
                       <td className="px-4 py-3 text-gray-500">{c.passing_grade}%</td>
+                      <td className="px-4 py-3 tabular-nums text-gray-500">{c.assignment_count}</td>
+                      <td className="px-4 py-3 tabular-nums">
+                        <span className="text-emerald-700">{c.passed_count}</span>
+                        <span className="text-gray-300"> / </span>
+                        <span className="text-red-600">{c.failed_count}</span>
+                      </td>
                       <td className="px-4 py-3">
                         <span
                           className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${
@@ -140,24 +207,13 @@ export default function TrainingDashboardPage() {
                         )}
                       </td>
                       <td className="flex gap-3 px-4 py-3">
-                        <Link
-                          href={`/training/courses/${c.id}/preview`}
-                          className="text-sm hover:underline"
-                          style={{ color: '#1A4731' }}
-                        >
+                        <Link href={`/training/courses/${c.id}/preview`} className="text-sm hover:underline" style={{ color: '#1A4731' }}>
                           Preview
                         </Link>
-                        <Link
-                          href={`/training/courses/${c.id}/assignments`}
-                          className="text-sm text-blue-600 hover:underline"
-                        >
+                        <Link href={`/training/courses/${c.id}/assignments`} className="text-sm text-blue-600 hover:underline">
                           Assignments
                         </Link>
-                        <Link
-                          href={`/training/courses/${c.id}/edit`}
-                          className="text-sm hover:underline"
-                          style={{ color: '#D97706' }}
-                        >
+                        <Link href={`/training/courses/${c.id}/edit`} className="text-sm hover:underline" style={{ color: '#D97706' }}>
                           Edit
                         </Link>
                       </td>
@@ -166,16 +222,18 @@ export default function TrainingDashboardPage() {
             </tbody>
           </table>
 
-          {!loading && courses.length === 0 && (
+          {!loading && filtered.length === 0 && (
             <div className="py-16 text-center text-gray-400">
-              <p>No training courses yet.</p>
-              <Link
-                href="/training/courses/new"
-                className="mt-2 inline-block text-sm hover:underline"
-                style={{ color: '#1A4731' }}
-              >
-                + Create your first training
-              </Link>
+              {courses.length === 0 ? (
+                <>
+                  <p>No training courses yet.</p>
+                  <Link href="/training/courses/new" className="mt-2 inline-block text-sm hover:underline" style={{ color: '#1A4731' }}>
+                    + Create your first training
+                  </Link>
+                </>
+              ) : (
+                <p>No courses match your search or filter.</p>
+              )}
             </div>
           )}
         </div>

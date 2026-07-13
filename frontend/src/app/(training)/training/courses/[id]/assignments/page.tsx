@@ -190,12 +190,20 @@ export default function AssignmentsPage() {
   const assignedIds = new Set(assignments.map((a) => a.user_id))
   const availableUsers = users.filter((u) => !assignedIds.has(u.id))
 
+  const counts = useMemo(() => ({
+    all: assignments.length,
+    pending: assignments.filter((a) => !a.training_completed).length,
+    training_done: assignments.filter((a) => a.training_completed && !a.exam_completed).length,
+    passed: assignments.filter((a) => a.exam_passed === true).length,
+    failed: assignments.filter((a) => a.exam_passed === false).length,
+  }), [assignments])
+
   const FILTERS: { key: Filter; label: string }[] = [
-    { key: 'all',           label: 'All' },
-    { key: 'pending',       label: 'Pending' },
-    { key: 'training_done', label: 'Exam Pending' },
-    { key: 'passed',        label: 'Passed' },
-    { key: 'failed',        label: 'Failed' },
+    { key: 'all',           label: `All (${counts.all})` },
+    { key: 'pending',       label: `Pending (${counts.pending})` },
+    { key: 'training_done', label: `Exam Pending (${counts.training_done})` },
+    { key: 'passed',        label: `Passed (${counts.passed})` },
+    { key: 'failed',        label: `Failed (${counts.failed})` },
   ]
 
   return (

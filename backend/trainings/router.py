@@ -224,10 +224,25 @@ def list_courses(
     db: Session = Depends(get_db),
 ):
     courses = db.query(TrainingCourse).order_by(TrainingCourse.created_at.desc()).all()
+    # Batch-load assignment stats per course
+    all_assignments = db.query(TrainingAssignment).all()
+    stats: dict[str, dict] = {}
+    for a in all_assignments:
+        s = stats.setdefault(a.course_id, {"total": 0, "passed": 0, "failed": 0})
+        s["total"] += 1
+        if a.exam_passed is True:
+            s["passed"] += 1
+        elif a.exam_passed is False:
+            s["failed"] += 1
     result = []
     for c in courses:
         q_count = db.query(TrainingExamQuestion).filter(TrainingExamQuestion.course_id == c.id).count()
-        result.append(_course_to_dict(c, question_count=q_count))
+        d = _course_to_dict(c, question_count=q_count)
+        cs = stats.get(c.id, {"total": 0, "passed": 0, "failed": 0})
+        d["assignment_count"] = cs["total"]
+        d["passed_count"] = cs["passed"]
+        d["failed_count"] = cs["failed"]
+        result.append(d)
     return result
 
 

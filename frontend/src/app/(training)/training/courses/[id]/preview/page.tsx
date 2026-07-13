@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import api from '@/lib/api'
@@ -36,6 +36,8 @@ export default function CoursePreviewPage() {
   const [materialUrl, setMaterialUrl] = useState<string | null>(null)
   const [examUrl, setExamUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const materialUrlRef = useRef<string | null>(null)
+  const examUrlRef = useRef<string | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -47,16 +49,18 @@ export default function CoursePreviewPage() {
         setCourse(cRes.data)
         setQuestions(Array.isArray(qRes.data) ? qRes.data : [])
 
-        // Fetch material blob
         try {
           const mRes = await api.get(`/trainings/courses/${courseId}/material`, { responseType: 'blob' })
-          setMaterialUrl(URL.createObjectURL(mRes.data))
+          const url = URL.createObjectURL(mRes.data)
+          materialUrlRef.current = url
+          setMaterialUrl(url)
         } catch { /* not uploaded */ }
 
-        // Fetch exam blob
         try {
           const eRes = await api.get(`/trainings/courses/${courseId}/exam-file`, { responseType: 'blob' })
-          setExamUrl(URL.createObjectURL(eRes.data))
+          const url = URL.createObjectURL(eRes.data)
+          examUrlRef.current = url
+          setExamUrl(url)
         } catch { /* not uploaded */ }
       } catch { /* */ }
       finally { setLoading(false) }
@@ -64,8 +68,8 @@ export default function CoursePreviewPage() {
     load()
 
     return () => {
-      if (materialUrl) URL.revokeObjectURL(materialUrl)
-      if (examUrl) URL.revokeObjectURL(examUrl)
+      if (materialUrlRef.current) URL.revokeObjectURL(materialUrlRef.current)
+      if (examUrlRef.current) URL.revokeObjectURL(examUrlRef.current)
     }
   }, [courseId])
 
