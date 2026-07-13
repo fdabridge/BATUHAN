@@ -141,6 +141,13 @@ export default function TrainingDashboardPage() {
                       </td>
                       <td className="flex gap-3 px-4 py-3">
                         <Link
+                          href={`/training/courses/${c.id}/preview`}
+                          className="text-sm hover:underline"
+                          style={{ color: '#1A4731' }}
+                        >
+                          Preview
+                        </Link>
+                        <Link
                           href={`/training/courses/${c.id}/assignments`}
                           className="text-sm text-blue-600 hover:underline"
                         >
