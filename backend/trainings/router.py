@@ -741,6 +741,22 @@ def unassign_user(
 # User / Auditor endpoints (any authenticated user)
 # ---------------------------------------------------------------------------
 
+@router.get("/my/counts")
+def my_training_counts(
+    current_user: PlatformUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Lightweight counts for sidebar badges."""
+    assignments = (
+        db.query(TrainingAssignment)
+        .filter(TrainingAssignment.user_id == current_user.id)
+        .all()
+    )
+    pending = sum(1 for a in assignments if not a.training_completed)
+    exam_ready = sum(1 for a in assignments if a.training_completed and not a.exam_completed)
+    return {"pending_training": pending, "exam_ready": exam_ready, "total": pending + exam_ready}
+
+
 @router.get("/my")
 def my_trainings(
     current_user: PlatformUser = Depends(get_current_user),

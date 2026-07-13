@@ -146,6 +146,7 @@ export function Sidebar() {
   const pathname = usePathname()
   const { user } = useAuth()
   const [pendingCount, setPendingCount] = useState<number>(0)
+  const [trainingCount, setTrainingCount] = useState<number>(0)
 
   const isActive = (href: string) => pathname.startsWith(href)
 
@@ -164,6 +165,20 @@ export function Sidebar() {
         .catch(() => {})
     fetchCount()
     const id = setInterval(fetchCount, 60_000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [user])
+
+  // Poll training assignment counts for the Trainings badge
+  useEffect(() => {
+    if (!user || user.role === 'client' || user.role === 'training_officer') return
+    let cancelled = false
+    const fetch = () =>
+      api
+        .get<{ total: number }>('/trainings/my/counts')
+        .then((r) => { if (!cancelled) setTrainingCount(r.data?.total ?? 0) })
+        .catch(() => {})
+    fetch()
+    const id = setInterval(fetch, 60_000)
     return () => { cancelled = true; clearInterval(id) }
   }, [user])
 
@@ -192,7 +207,11 @@ export function Sidebar() {
             key={item.href}
             {...item}
             active={isActive(item.href)}
-            badgeCount={item.href === '/applications' ? pendingCount : undefined}
+            badgeCount={
+              item.href === '/applications' ? pendingCount
+                : item.href === '/trainings' ? trainingCount
+                : undefined
+            }
           />
         ))
       )}

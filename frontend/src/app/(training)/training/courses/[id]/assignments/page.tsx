@@ -12,9 +12,12 @@ interface Assignment {
   user_email: string | null
   user_role: string | null
   training_completed: boolean
+  training_completed_at: string | null
   exam_completed: boolean
+  exam_completed_at: string | null
   exam_score: number | null
   exam_passed: boolean | null
+  assigned_at: string | null
 }
 
 interface UserOption {
@@ -286,6 +289,7 @@ export default function AssignmentsPage() {
               <tr className="border-b border-gray-100 text-left text-xs font-medium uppercase tracking-wide text-gray-400">
                 <th className="px-4 py-2.5">User</th>
                 <th className="px-4 py-2.5">Role</th>
+                <th className="px-4 py-2.5">Assigned</th>
                 <th className="px-4 py-2.5">Training</th>
                 <th className="px-4 py-2.5">Exam</th>
                 <th className="px-4 py-2.5">Score</th>
@@ -297,13 +301,18 @@ export default function AssignmentsPage() {
               {loading
                 ? Array.from({ length: 3 }).map((_, i) => (
                     <tr key={i}>
-                      {Array.from({ length: 7 }).map((_, j) => (
+                      {Array.from({ length: 8 }).map((_, j) => (
                         <td key={j} className="px-4 py-3"><div className="h-3 w-16 animate-pulse rounded bg-gray-100" /></td>
                       ))}
                     </tr>
                   ))
-                : filtered.map((a) => (
-                    <tr key={a.id} className="hover:bg-gray-50/40">
+                : filtered.map((a) => {
+                    const daysPending = a.assigned_at && !a.training_completed
+                      ? Math.floor((Date.now() - new Date(a.assigned_at).getTime()) / 86400000)
+                      : null
+                    const overdue = daysPending !== null && daysPending > 30
+                    return (
+                    <tr key={a.id} className={`hover:bg-gray-50/40 ${overdue ? 'bg-red-50/30' : ''}`}>
                       <td className="px-4 py-3">
                         <div className="font-medium">{a.user_full_name}</div>
                         {a.user_email && <div className="text-xs text-gray-400">{a.user_email}</div>}
@@ -312,14 +321,32 @@ export default function AssignmentsPage() {
                         {a.user_role && <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">{a.user_role}</span>}
                       </td>
                       <td className="px-4 py-3">
+                        {a.assigned_at ? (
+                          <div>
+                            <div className="text-xs text-gray-500">{new Date(a.assigned_at).toLocaleDateString()}</div>
+                            {daysPending !== null && (
+                              <span className={`text-[10px] ${overdue ? 'font-semibold text-red-600' : 'text-gray-400'}`}>
+                                {daysPending}d {overdue ? '— overdue' : 'ago'}
+                              </span>
+                            )}
+                          </div>
+                        ) : '—'}
+                      </td>
+                      <td className="px-4 py-3">
                         <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${a.training_completed ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
                           {a.training_completed ? 'Done' : 'Pending'}
                         </span>
+                        {a.training_completed_at && (
+                          <div className="mt-0.5 text-[10px] text-gray-400">{new Date(a.training_completed_at).toLocaleDateString()}</div>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${a.exam_completed ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                           {a.exam_completed ? 'Done' : 'Pending'}
                         </span>
+                        {a.exam_completed_at && (
+                          <div className="mt-0.5 text-[10px] text-gray-400">{new Date(a.exam_completed_at).toLocaleDateString()}</div>
+                        )}
                       </td>
                       <td className="px-4 py-3 font-medium tabular-nums">
                         {a.exam_score !== null ? `${a.exam_score}%` : '—'}
@@ -351,7 +378,8 @@ export default function AssignmentsPage() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    )
+                  })}
             </tbody>
           </table>
           {!loading && filtered.length === 0 && (
