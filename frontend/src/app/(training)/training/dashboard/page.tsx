@@ -129,7 +129,11 @@ export default function TrainingDashboardPage() {
                         {!c.is_active && (
                           <span className="ml-1 text-[10px] text-gray-400">no new assigns</span>
                         )}
-                        {c.is_active && !c.is_ready && (
+                        {c.is_ready ? (
+                          <span className="ml-1.5 inline-block rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+                            Ready
+                          </span>
+                        ) : (
                           <span className="ml-1.5 inline-block rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700" title={c.missing_requirements.join(', ')}>
                             Not Ready
                           </span>
