@@ -124,6 +124,9 @@ export default function TrainingDashboardPage() {
                         >
                           {c.is_active ? 'Active' : 'Inactive'}
                         </span>
+                        {!c.is_active && (
+                          <span className="ml-1 text-[10px] text-gray-400">no new assigns</span>
+                        )}
                       </td>
                       <td className="flex gap-3 px-4 py-3">
                         <Link

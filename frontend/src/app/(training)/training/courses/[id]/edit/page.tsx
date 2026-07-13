@@ -38,6 +38,7 @@ export default function EditTrainingPage() {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [passingGrade, setPassingGrade] = useState(70)
+  const [isActive, setIsActive] = useState(true)
   const [materialFile, setMaterialFile] = useState<File | null>(null)
   const [examFile, setExamFile] = useState<File | null>(null)
   const [questions, setQuestions] = useState<QuestionForm[]>([emptyQuestion(1)])
@@ -53,6 +54,7 @@ export default function EditTrainingPage() {
         setTitle(course.title || '')
         setDescription(course.description || '')
         setPassingGrade(course.passing_grade ?? 70)
+        setIsActive(course.is_active ?? true)
 
         const qs = questionsRes.data
         if (Array.isArray(qs) && qs.length > 0) {
@@ -111,6 +113,7 @@ export default function EditTrainingPage() {
         title,
         description,
         passing_grade: passingGrade,
+        is_active: isActive,
       })
 
       // 2. Upload material if selected
@@ -197,6 +200,21 @@ export default function EditTrainingPage() {
                 rows={3}
                 className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-[#1A4731] focus:outline-none focus:ring-1 focus:ring-[#1A4731]"
               />
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="relative inline-flex cursor-pointer items-center">
+                <input
+                  type="checkbox"
+                  checked={isActive}
+                  onChange={(e) => setIsActive(e.target.checked)}
+                  className="peer sr-only"
+                />
+                <div className="h-5 w-9 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-all peer-checked:bg-[#1A4731] peer-checked:after:translate-x-full" />
+              </label>
+              <span className="text-sm text-gray-700">
+                {isActive ? 'Active' : 'Inactive'}
+                {!isActive && <span className="ml-1 text-xs text-gray-400">— new assignments blocked</span>}
+              </span>
             </div>
           </div>
         </section>
