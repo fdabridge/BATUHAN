@@ -77,7 +77,7 @@ export default function EditTrainingPage() {
                 option_b: opts[1] || '',
                 option_c: opts[2] || '',
                 option_d: opts[3] || '',
-                correct_answer: LETTERS[q.correct_option_index ?? 0] || 'A',
+                correct_answer: LETTERS[Math.max(0, Math.min(q.correct_option_index ?? 0, 3))] || 'A',
               }
             }),
           )
@@ -283,7 +283,7 @@ export default function EditTrainingPage() {
         {/* Training Material */}
         <section className="rounded-lg border border-gray-100 bg-white p-5">
           <h2 className="mb-4 text-sm font-semibold text-gray-700">
-            Training Material — upload to replace
+            Training Material — upload or replace
           </h2>
           {usage.training_completed_count > 0 ? (
             <p className="text-sm text-gray-400">Locked — {usage.training_completed_count} user(s) completed training.</p>
@@ -305,7 +305,7 @@ export default function EditTrainingPage() {
         {/* Exam File */}
         <section className="rounded-lg border border-gray-100 bg-white p-5">
           <h2 className="mb-4 text-sm font-semibold text-gray-700">
-            Exam File — upload to replace
+            Exam File — upload or replace
           </h2>
           {usage.exam_completed_count > 0 ? (
             <p className="text-sm text-gray-400">Locked — {usage.exam_completed_count} user(s) completed the exam.</p>

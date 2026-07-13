@@ -871,22 +871,41 @@ def submit_exam(
     if not questions:
         raise HTTPException(status_code=400, detail="No exam questions configured for this course")
 
-    # Build answer key map: question_number -> correct_option_index
-    answer_key = {q.question_number: q.correct_option_index for q in questions}
+    # Build answer key: question_number -> (correct_option_index, option_count)
+    answer_key: dict[int, int] = {}
+    option_counts: dict[int, int] = {}
+    for q in questions:
+        answer_key[q.question_number] = q.correct_option_index
+        option_counts[q.question_number] = len(json.loads(q.options))
+
+    total_questions = len(answer_key)
+
+    # Validate submitted answers cover every question exactly once
+    submitted_qnums = [a.question_number for a in payload.answers]
+    if set(submitted_qnums) != set(answer_key.keys()):
+        raise HTTPException(status_code=400, detail="All questions must be answered.")
+    if len(submitted_qnums) != len(set(submitted_qnums)):
+        raise HTTPException(status_code=400, detail="Duplicate answers submitted.")
+    for ans in payload.answers:
+        if ans.selected_option_index < 0:
+            raise HTTPException(status_code=400, detail="All questions must be answered.")
+        max_idx = option_counts.get(ans.question_number, 0) - 1
+        if ans.selected_option_index > max_idx:
+            raise HTTPException(status_code=400, detail="Invalid answer selected.")
 
     # Grade the exam
-    total_questions = len(answer_key)
     correct_count = 0
     for ans in payload.answers:
-        correct_idx = answer_key.get(ans.question_number)
-        if correct_idx is not None and ans.selected_option_index == correct_idx:
+        if ans.selected_option_index == answer_key[ans.question_number]:
             correct_count += 1
 
     score = (correct_count / total_questions) * 100 if total_questions > 0 else 0.0
 
     # Fetch passing grade from course
     course = db.query(TrainingCourse).filter(TrainingCourse.id == assignment.course_id).first()
-    passing_grade = course.passing_grade if course else 70
+    if not course:
+        raise HTTPException(status_code=500, detail="Course not found for assignment.")
+    passing_grade = course.passing_grade
 
     passed = score >= passing_grade
 

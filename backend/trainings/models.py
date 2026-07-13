@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, Float, Integer, String,
+    Boolean, Column, DateTime, Float, Integer, String, UniqueConstraint,
     create_engine,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -66,6 +66,9 @@ class TrainingExamQuestion(Base):
 
 class TrainingAssignment(Base):
     __tablename__ = "training_assignments"
+    __table_args__ = (
+        UniqueConstraint('course_id', 'user_id', name='uq_training_assignment_course_user'),
+    )
 
     id                    = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     course_id             = Column(String, nullable=False)   # soft FK -> training_courses.id
@@ -92,6 +95,54 @@ def _safe_add_column(table: str, col_def: str) -> None:
             pass  # column already exists
 
 
+def _safe_create_unique_assignment_index() -> None:
+    """Deduplicate assignments then create unique index. Safe for every startup."""
+    import logging as _log
+    import sqlalchemy as sa
+    _logger = _log.getLogger("batuhan.trainings")
+    with engine.connect() as conn:
+        # Detect duplicates: keep the row with the most progress (prefer exam > training > latest)
+        try:
+            dupes = conn.execute(sa.text(
+                "SELECT course_id, user_id, COUNT(*) AS cnt "
+                "FROM training_assignments "
+                "GROUP BY course_id, user_id HAVING cnt > 1"
+            )).fetchall()
+        except Exception:
+            dupes = []
+        for row in dupes:
+            cid, uid = row[0], row[1]
+            # Fetch all assignments for this pair, ordered by progress desc
+            rows = conn.execute(sa.text(
+                "SELECT id, exam_completed, training_completed, assigned_at "
+                "FROM training_assignments "
+                "WHERE course_id = :cid AND user_id = :uid "
+                "ORDER BY exam_completed DESC, training_completed DESC, assigned_at DESC"
+            ), {"cid": cid, "uid": uid}).fetchall()
+            if len(rows) > 1:
+                keep_id = rows[0][0]
+                delete_ids = [r[0] for r in rows[1:]]
+                for did in delete_ids:
+                    conn.execute(sa.text(
+                        "DELETE FROM training_assignments WHERE id = :did"
+                    ), {"did": did})
+                _logger.warning(
+                    "[Trainings] Removed %d duplicate assignment(s) for course=%s user=%s, kept id=%s",
+                    len(delete_ids), cid, uid, keep_id,
+                )
+        if dupes:
+            conn.commit()
+        # Now create the unique index
+        try:
+            conn.execute(sa.text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_training_assignment_course_user "
+                "ON training_assignments (course_id, user_id)"
+            ))
+            conn.commit()
+        except Exception as exc:
+            _logger.warning("[Trainings] Could not create unique assignment index: %s", exc)
+
+
 def create_tables() -> None:
     """Create training tables if they do not exist. Safe to call on every startup."""
     Base.metadata.create_all(bind=engine, checkfirst=True)
@@ -107,3 +158,5 @@ def create_tables() -> None:
         _safe_add_column("training_courses", col)
     # Phase 4 — exam answers column for auditability
     _safe_add_column("training_assignments", "exam_answers TEXT")
+    # Phase 10 — unique constraint on (course_id, user_id)
+    _safe_create_unique_assignment_index()

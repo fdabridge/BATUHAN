@@ -38,7 +38,7 @@ function TrainingCard({ t, linkBase }: { t: MyTraining; linkBase: string }) {
                 : examReady ? 'bg-orange-100 text-orange-700'
                 : 'bg-gray-100 text-gray-500'
             }`}>
-              {t.exam_passed === true ? 'Passed' : t.exam_passed === false ? 'Failed' : examReady ? 'Ready' : 'Not taken'}
+              {t.exam_passed === true ? 'Passed' : t.exam_passed === false ? 'Failed' : examReady ? 'Ready' : 'Pending'}
             </span>
           </div>
           {t.exam_score !== null && (
