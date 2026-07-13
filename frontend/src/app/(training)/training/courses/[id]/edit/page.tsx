@@ -40,6 +40,7 @@ export default function EditTrainingPage() {
   const [passingGrade, setPassingGrade] = useState(70)
   const [isActive, setIsActive] = useState(true)
   const [missing, setMissing] = useState<string[]>([])
+  const [usage, setUsage] = useState({ assigned_count: 0, training_completed_count: 0, exam_completed_count: 0 })
   const [materialFile, setMaterialFile] = useState<File | null>(null)
   const [examFile, setExamFile] = useState<File | null>(null)
   const [questions, setQuestions] = useState<QuestionForm[]>([emptyQuestion(1)])
@@ -57,6 +58,11 @@ export default function EditTrainingPage() {
         setPassingGrade(course.passing_grade ?? 70)
         setIsActive(course.is_active ?? true)
         setMissing(course.missing_requirements ?? [])
+        setUsage({
+          assigned_count: course.assigned_count ?? 0,
+          training_completed_count: course.training_completed_count ?? 0,
+          exam_completed_count: course.exam_completed_count ?? 0,
+        })
 
         const qs = questionsRes.data
         if (Array.isArray(qs) && qs.length > 0) {
@@ -246,13 +252,31 @@ export default function EditTrainingPage() {
           </div>
         </section>
 
-        {/* Readiness panel */}
-        {missing.length > 0 && (
-          <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
-            <p className="text-xs font-semibold text-orange-800">Not ready for assignment</p>
-            <ul className="mt-1 list-inside list-disc text-xs text-orange-700">
-              {missing.map((m) => <li key={m}>{m}</li>)}
-            </ul>
+        {/* Readiness + Usage panel */}
+        {(missing.length > 0 || usage.assigned_count > 0) && (
+          <div className="space-y-2">
+            {missing.length > 0 && (
+              <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
+                <p className="text-xs font-semibold text-orange-800">Not ready for assignment</p>
+                <ul className="mt-1 list-inside list-disc text-xs text-orange-700">
+                  {missing.map((m) => <li key={m}>{m}</li>)}
+                </ul>
+              </div>
+            )}
+            {usage.assigned_count > 0 && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                <p className="text-xs font-semibold text-blue-800">Course usage</p>
+                <p className="mt-1 text-xs text-blue-700">
+                  {usage.assigned_count} assigned &middot; {usage.training_completed_count} training completed &middot; {usage.exam_completed_count} exams completed
+                </p>
+                {usage.training_completed_count > 0 && (
+                  <p className="mt-1 text-xs text-blue-600">Training material upload is locked.</p>
+                )}
+                {usage.exam_completed_count > 0 && (
+                  <p className="text-xs text-blue-600">Exam file and answer key changes are locked.</p>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -261,15 +285,21 @@ export default function EditTrainingPage() {
           <h2 className="mb-4 text-sm font-semibold text-gray-700">
             Training Material — upload to replace
           </h2>
-          <input
-            type="file"
-            accept=".pdf,.mp4,.mov,.webm,.ppt,.pptx,.doc,.docx"
-            onChange={(e) => setMaterialFile(e.target.files?.[0] ?? null)}
-            className="text-sm text-gray-600"
-          />
-          <p className="mt-1 text-xs text-gray-400">
-            {materialFile ? `Selected: ${materialFile.name}` : 'Accepted: PDF, MP4, MOV, WebM, PPT, PPTX, DOC, DOCX'}
-          </p>
+          {usage.training_completed_count > 0 ? (
+            <p className="text-sm text-gray-400">Locked — {usage.training_completed_count} user(s) completed training.</p>
+          ) : (
+            <>
+              <input
+                type="file"
+                accept=".pdf,.mp4,.mov,.webm,.ppt,.pptx,.doc,.docx"
+                onChange={(e) => setMaterialFile(e.target.files?.[0] ?? null)}
+                className="text-sm text-gray-600"
+              />
+              <p className="mt-1 text-xs text-gray-400">
+                {materialFile ? `Selected: ${materialFile.name}` : 'Accepted: PDF, MP4, MOV, WebM, PPT, PPTX, DOC, DOCX'}
+              </p>
+            </>
+          )}
         </section>
 
         {/* Exam File */}
@@ -277,15 +307,21 @@ export default function EditTrainingPage() {
           <h2 className="mb-4 text-sm font-semibold text-gray-700">
             Exam File — upload to replace
           </h2>
-          <input
-            type="file"
-            accept=".pdf,.doc,.docx"
-            onChange={(e) => setExamFile(e.target.files?.[0] ?? null)}
-            className="text-sm text-gray-600"
-          />
-          <p className="mt-1 text-xs text-gray-400">
-            {examFile ? `Selected: ${examFile.name}` : 'Accepted: PDF, DOC, DOCX'}
-          </p>
+          {usage.exam_completed_count > 0 ? (
+            <p className="text-sm text-gray-400">Locked — {usage.exam_completed_count} user(s) completed the exam.</p>
+          ) : (
+            <>
+              <input
+                type="file"
+                accept=".pdf,.doc,.docx"
+                onChange={(e) => setExamFile(e.target.files?.[0] ?? null)}
+                className="text-sm text-gray-600"
+              />
+              <p className="mt-1 text-xs text-gray-400">
+                {examFile ? `Selected: ${examFile.name}` : 'Accepted: PDF, DOC, DOCX'}
+              </p>
+            </>
+          )}
         </section>
 
         {/* Passing Grade */}
@@ -308,6 +344,9 @@ export default function EditTrainingPage() {
         <section className="rounded-lg border border-gray-100 bg-white p-5">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-700">Answer Key</h2>
+            {usage.exam_completed_count > 0 ? (
+              <span className="text-xs text-gray-400">Locked — {usage.exam_completed_count} exam(s) completed</span>
+            ) : (
             <button
               type="button"
               onClick={addQuestion}
@@ -316,16 +355,17 @@ export default function EditTrainingPage() {
             >
               + Add Question
             </button>
+            )}
           </div>
 
-          <div className="space-y-4">
+          <div className={`space-y-4 ${usage.exam_completed_count > 0 ? 'pointer-events-none opacity-60' : ''}`}>
             {questions.map((q, idx) => (
               <div key={idx} className="rounded-md border border-gray-100 bg-gray-50 p-4">
                 <div className="mb-3 flex items-center justify-between">
                   <span className="text-xs font-semibold text-gray-500">
                     Question {q.question_number}
                   </span>
-                  {questions.length > 1 && (
+                  {questions.length > 1 && usage.exam_completed_count === 0 && (
                     <button
                       type="button"
                       onClick={() => removeQuestion(idx)}
@@ -339,6 +379,7 @@ export default function EditTrainingPage() {
                 <input
                   type="text"
                   value={q.question_text}
+                  readOnly={usage.exam_completed_count > 0}
                   onChange={(e) => updateQuestion(idx, 'question_text', e.target.value)}
                   placeholder="Question text"
                   className="mb-3 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm focus:border-[#1A4731] focus:outline-none focus:ring-1 focus:ring-[#1A4731]"
@@ -353,6 +394,7 @@ export default function EditTrainingPage() {
                           type="radio"
                           name={`correct_${idx}`}
                           checked={q.correct_answer === letter}
+                          disabled={usage.exam_completed_count > 0}
                           onChange={() => updateQuestion(idx, 'correct_answer', letter)}
                           className="accent-[#1A4731]"
                         />
@@ -360,6 +402,7 @@ export default function EditTrainingPage() {
                         <input
                           type="text"
                           value={q[field] as string}
+                          readOnly={usage.exam_completed_count > 0}
                           onChange={(e) => updateQuestion(idx, field, e.target.value)}
                           placeholder={`Option ${letter}`}
                           className="flex-1 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm focus:border-[#1A4731] focus:outline-none focus:ring-1 focus:ring-[#1A4731]"

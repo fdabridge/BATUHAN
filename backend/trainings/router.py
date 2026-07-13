@@ -154,6 +154,16 @@ def _validate_ext(filename: str, allowed: set[str], label: str) -> None:
         )
 
 
+def _get_usage(db: Session, course_id: str) -> dict:
+    """Return usage counts for a course."""
+    assignments = db.query(TrainingAssignment).filter(TrainingAssignment.course_id == course_id).all()
+    return {
+        "assigned_count": len(assignments),
+        "training_completed_count": sum(1 for a in assignments if a.training_completed),
+        "exam_completed_count": sum(1 for a in assignments if a.exam_completed),
+    }
+
+
 def _check_readiness(course: TrainingCourse, question_count: int) -> list[str]:
     """Return list of missing requirements. Empty list means course is ready."""
     missing: list[str] = []
@@ -171,8 +181,13 @@ def _check_readiness(course: TrainingCourse, question_count: int) -> list[str]:
     return missing
 
 
-def _course_to_dict(course: TrainingCourse, question_count: int = 0) -> dict:
+def _course_to_dict(
+    course: TrainingCourse,
+    question_count: int = 0,
+    usage: dict | None = None,
+) -> dict:
     missing = _check_readiness(course, question_count)
+    u = usage or {"assigned_count": 0, "training_completed_count": 0, "exam_completed_count": 0}
     return {
         "id": course.id,
         "title": course.title,
@@ -193,6 +208,9 @@ def _course_to_dict(course: TrainingCourse, question_count: int = 0) -> dict:
         "created_at": course.created_at.isoformat() if course.created_at else None,
         "updated_at": course.updated_at.isoformat() if course.updated_at else None,
         "question_count": question_count,
+        "assigned_count": u["assigned_count"],
+        "training_completed_count": u["training_completed_count"],
+        "exam_completed_count": u["exam_completed_count"],
     }
 
 
@@ -338,7 +356,8 @@ def get_course(
     course = _get_course_or_404(db, course_id)
     _require_course_access(course_id, current_user, db)
     q_count = db.query(TrainingExamQuestion).filter(TrainingExamQuestion.course_id == course_id).count()
-    return _course_to_dict(course, question_count=q_count)
+    usage = _get_usage(db, course_id)
+    return _course_to_dict(course, question_count=q_count, usage=usage)
 
 
 @router.put("/courses/{course_id}")
@@ -371,6 +390,12 @@ async def upload_material(
     db: Session = Depends(get_db),
 ):
     course = _get_course_or_404(db, course_id)
+    usage = _get_usage(db, course_id)
+    if usage["training_completed_count"] > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot replace training material — {usage['training_completed_count']} user(s) have already completed training",
+        )
     filename = file.filename or "material.bin"
     _validate_ext(filename, MATERIAL_ALLOWED_EXTS, "training material")
     content = await file.read()
@@ -396,6 +421,12 @@ async def upload_exam_file(
     db: Session = Depends(get_db),
 ):
     course = _get_course_or_404(db, course_id)
+    usage = _get_usage(db, course_id)
+    if usage["exam_completed_count"] > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot replace exam file — {usage['exam_completed_count']} user(s) have already completed the exam",
+        )
     filename = file.filename or "exam.bin"
     _validate_ext(filename, EXAM_ALLOWED_EXTS, "exam")
     content = await file.read()
@@ -421,6 +452,12 @@ def replace_questions(
     db: Session = Depends(get_db),
 ):
     _get_course_or_404(db, course_id)
+    usage = _get_usage(db, course_id)
+    if usage["exam_completed_count"] > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot change answer key — {usage['exam_completed_count']} user(s) have already completed the exam",
+        )
 
     # Validate questions before persisting
     errors: list[str] = []
