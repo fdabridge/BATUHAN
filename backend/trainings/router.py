@@ -69,7 +69,7 @@ class CourseUpdateRequest(BaseModel):
 
 class QuestionIn(BaseModel):
     question_number: int
-    question_text: str
+    question_text: str = ""
     options: list[str]
     correct_option_index: int
 
@@ -486,14 +486,13 @@ def replace_questions(
     seen_numbers: set[int] = set()
     for i, q in enumerate(payload.questions, 1):
         label = f"Q{i}"
-        if not q.question_text.strip():
-            errors.append(f"{label}: question text is blank")
-        non_empty = [o for o in q.options if o.strip()]
+        options = q.options or ["A", "B", "C", "D"]
+        non_empty = [o for o in options if o.strip()]
         if len(non_empty) < 2:
             errors.append(f"{label}: at least 2 non-empty options required (got {len(non_empty)})")
-        if q.correct_option_index < 0 or q.correct_option_index >= len(q.options):
+        if q.correct_option_index < 0 or q.correct_option_index >= len(options):
             errors.append(f"{label}: correct_option_index {q.correct_option_index} out of range")
-        elif not q.options[q.correct_option_index].strip():
+        elif not options[q.correct_option_index].strip():
             errors.append(f"{label}: correct answer option is blank")
         if q.question_number in seen_numbers:
             errors.append(f"{label}: duplicate question_number {q.question_number}")
@@ -509,7 +508,8 @@ def replace_questions(
     db.query(TrainingExamQuestion).filter(TrainingExamQuestion.course_id == course_id).delete()
     # Insert new questions — recompute correct index after trimming blanks
     for q in payload.questions:
-        slots = [(i, o.strip()) for i, o in enumerate(q.options)]
+        source_options = q.options or ["A", "B", "C", "D"]
+        slots = [(i, o.strip()) for i, o in enumerate(source_options)]
         filtered = [(i, t) for i, t in slots if t]
         # Map original correct_option_index to position in filtered list
         new_idx = next(
@@ -524,7 +524,7 @@ def replace_questions(
         question = TrainingExamQuestion(
             course_id=course_id,
             question_number=q.question_number,
-            question_text=q.question_text.strip(),
+            question_text=q.question_text.strip() or f"Question {q.question_number}",
             options=json.dumps([t for _, t in filtered]),
             correct_option_index=new_idx,
         )

@@ -6,22 +6,12 @@ import api from '@/lib/api'
 
 interface QuestionForm {
   question_number: number
-  question_text: string
-  option_a: string
-  option_b: string
-  option_c: string
-  option_d: string
   correct_answer: string
 }
 
 function emptyQuestion(num: number): QuestionForm {
   return {
     question_number: num,
-    question_text: '',
-    option_a: '',
-    option_b: '',
-    option_c: '',
-    option_d: '',
     correct_answer: 'A',
   }
 }
@@ -55,14 +45,7 @@ export default function CreateTrainingPage() {
   }
 
   function validateQuestions(): string | null {
-    const filled = questions.filter((q) => q.question_text.trim())
-    for (const q of filled) {
-      const opts = [q.option_a, q.option_b, q.option_c, q.option_d]
-      const nonEmpty = opts.filter((o) => o.trim())
-      if (nonEmpty.length < 2) return `Q${q.question_number}: at least 2 options required`
-      const correctField = `option_${q.correct_answer.toLowerCase()}` as keyof QuestionForm
-      if (!(q[correctField] as string).trim()) return `Q${q.question_number}: selected correct answer is blank`
-    }
+    if (questions.length === 0) return 'Add at least one answer key row.'
     return null
   }
 
@@ -105,29 +88,14 @@ export default function CreateTrainingPage() {
         })
       }
 
-      // 4. Save questions
-      const validQuestions = questions.filter((q) => q.question_text.trim())
-      if (validQuestions.length > 0) {
-        const mapped = validQuestions.map((q) => {
-          const slots = [
-            { slot: 0, text: q.option_a.trim() },
-            { slot: 1, text: q.option_b.trim() },
-            { slot: 2, text: q.option_c.trim() },
-            { slot: 3, text: q.option_d.trim() },
-          ]
-          const filtered = slots.filter((o) => o.text)
-          const originalSlot = { A: 0, B: 1, C: 2, D: 3 }[q.correct_answer] ?? 0
-          const correctIndex = filtered.findIndex((o) => o.slot === originalSlot)
-          if (correctIndex === -1) throw new Error(`Q${q.question_number}: correct answer slot is blank`)
-          return {
-            question_number: q.question_number,
-            question_text: q.question_text.trim(),
-            options: filtered.map((o) => o.text),
-            correct_option_index: correctIndex,
-          }
-        })
-        await api.post(`/trainings/courses/${courseId}/questions`, { questions: mapped })
-      }
+      // 4. Save answer key. The uploaded exam file contains the actual question text.
+      const mapped = questions.map((q) => ({
+        question_number: q.question_number,
+        question_text: `Question ${q.question_number}`,
+        options: ['A', 'B', 'C', 'D'],
+        correct_option_index: ({ A: 0, B: 1, C: 2, D: 3 } as Record<string, number>)[q.correct_answer] ?? 0,
+      }))
+      await api.post(`/trainings/courses/${courseId}/questions`, { questions: mapped })
 
       // 5. Update passing grade
       await api.put(`/trainings/courses/${courseId}`, { passing_grade: passingGrade })
@@ -227,7 +195,12 @@ export default function CreateTrainingPage() {
         {/* Answer Key / Questions */}
         <section className="rounded-lg border border-gray-100 bg-white p-5">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-700">Answer Key</h2>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-700">Answer Key</h2>
+              <p className="mt-1 text-xs text-gray-400">
+                The exam file is the question paper. Add one row per question and mark the correct answer.
+              </p>
+            </div>
             <button
               type="button"
               onClick={addQuestion}
@@ -256,19 +229,17 @@ export default function CreateTrainingPage() {
                   )}
                 </div>
 
-                <input
-                  type="text"
-                  value={q.question_text}
-                  onChange={(e) => updateQuestion(idx, 'question_text', e.target.value)}
-                  placeholder="Question text"
-                  className="mb-3 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm focus:border-[#1A4731] focus:outline-none focus:ring-1 focus:ring-[#1A4731]"
-                />
-
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-4 gap-2">
                   {(['A', 'B', 'C', 'D'] as const).map((letter) => {
-                    const field = `option_${letter.toLowerCase()}` as keyof QuestionForm
                     return (
-                      <div key={letter} className="flex items-center gap-2">
+                      <label
+                        key={letter}
+                        className={`flex cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm ${
+                          q.correct_answer === letter
+                            ? 'border-[#1A4731] bg-emerald-50 font-semibold text-[#1A4731]'
+                            : 'border-gray-200 bg-white text-gray-600'
+                        }`}
+                      >
                         <input
                           type="radio"
                           name={`correct_${idx}`}
@@ -276,15 +247,8 @@ export default function CreateTrainingPage() {
                           onChange={() => updateQuestion(idx, 'correct_answer', letter)}
                           className="accent-[#1A4731]"
                         />
-                        <span className="text-xs font-medium text-gray-500">{letter}.</span>
-                        <input
-                          type="text"
-                          value={q[field] as string}
-                          onChange={(e) => updateQuestion(idx, field, e.target.value)}
-                          placeholder={`Option ${letter}`}
-                          className="flex-1 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm focus:border-[#1A4731] focus:outline-none focus:ring-1 focus:ring-[#1A4731]"
-                        />
-                      </div>
+                        {letter}
+                      </label>
                     )
                   })}
                 </div>

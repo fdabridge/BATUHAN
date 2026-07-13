@@ -226,11 +226,12 @@ export default function ExamPage() {
               questions.map((q) => (
                 <div key={q.id} className="rounded-md border border-gray-100 bg-gray-50 p-4">
                   <p className="mb-2 text-sm font-medium text-gray-700">
-                    {q.question_number}. {q.question_text}
+                    Question {q.question_number}
                   </p>
                   <div className="space-y-1.5">
                     {q.options.map((opt, idx) => {
                       const selected = answers[q.question_number] === idx
+                      const letter = ['A', 'B', 'C', 'D'][idx] ?? String(idx + 1)
                       return (
                         <label
                           key={idx}
@@ -246,7 +247,10 @@ export default function ExamPage() {
                             disabled={isDisabled}
                             className="accent-[#1A4731]"
                           />
-                          {opt}
+                          <span className="font-medium">{letter}</span>
+                          {opt && opt !== letter && (
+                            <span className="text-gray-500">- {opt}</span>
+                          )}
                         </label>
                       )
                     })}

@@ -185,26 +185,30 @@ export default function CoursePreviewPage() {
             {questions.map((q) => (
               <div key={q.question_number} className="rounded-md border border-gray-100 bg-gray-50 p-4">
                 <p className="mb-2 text-sm font-medium text-gray-700">
-                  {q.question_number}. {q.question_text}
+                  Question {q.question_number}
                 </p>
                 <div className="space-y-1">
-                  {q.options.map((opt, idx) => (
-                    <div
-                      key={idx}
-                      className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-sm ${
-                        idx === q.correct_option_index
-                          ? 'bg-emerald-50 font-medium text-emerald-800'
-                          : 'text-gray-600'
-                      }`}
-                    >
-                      {idx === q.correct_option_index ? (
-                        <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-[10px] text-white">&#10003;</span>
-                      ) : (
-                        <span className="h-4 w-4 rounded-full border border-gray-300" />
-                      )}
-                      {opt}
-                    </div>
-                  ))}
+                  {q.options.map((opt, idx) => {
+                    const letter = ['A', 'B', 'C', 'D'][idx] ?? String(idx + 1)
+                    return (
+                      <div
+                        key={idx}
+                        className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-sm ${
+                          idx === q.correct_option_index
+                            ? 'bg-emerald-50 font-medium text-emerald-800'
+                            : 'text-gray-600'
+                        }`}
+                      >
+                        {idx === q.correct_option_index ? (
+                          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-[10px] text-white">&#10003;</span>
+                        ) : (
+                          <span className="h-4 w-4 rounded-full border border-gray-300" />
+                        )}
+                        <span>{letter}</span>
+                        {opt && opt !== letter && <span className="text-gray-500">- {opt}</span>}
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             ))}

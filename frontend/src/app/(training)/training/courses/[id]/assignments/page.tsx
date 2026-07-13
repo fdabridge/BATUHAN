@@ -423,12 +423,12 @@ export default function AssignmentsPage() {
                     {answersData.questions.map((q) => (
                       <tr key={q.question_number} className={q.is_correct ? '' : 'bg-red-50/40'}>
                         <td className="px-3 py-2 text-gray-400">{q.question_number}</td>
-                        <td className="px-3 py-2 font-medium">{q.question_text}</td>
+                        <td className="px-3 py-2 font-medium">Question {q.question_number}</td>
                         <td className="px-3 py-2">
-                          {q.selected_option_index !== null ? q.options[q.selected_option_index] ?? '—' : '—'}
+                          {q.selected_option_index !== null ? ['A', 'B', 'C', 'D'][q.selected_option_index] ?? '—' : '—'}
                         </td>
                         <td className="px-3 py-2 text-gray-500">
-                          {q.options[q.correct_option_index] ?? '—'}
+                          {['A', 'B', 'C', 'D'][q.correct_option_index] ?? '—'}
                         </td>
                         <td className="px-3 py-2">
                           {q.is_correct ? (
