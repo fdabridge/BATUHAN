@@ -406,6 +406,31 @@ def replace_questions(
     db: Session = Depends(get_db),
 ):
     _get_course_or_404(db, course_id)
+
+    # Validate questions before persisting
+    errors: list[str] = []
+    seen_numbers: set[int] = set()
+    for i, q in enumerate(payload.questions, 1):
+        label = f"Q{i}"
+        if not q.question_text.strip():
+            errors.append(f"{label}: question text is blank")
+        non_empty = [o for o in q.options if o.strip()]
+        if len(non_empty) < 2:
+            errors.append(f"{label}: at least 2 non-empty options required (got {len(non_empty)})")
+        if q.correct_option_index < 0 or q.correct_option_index >= len(q.options):
+            errors.append(f"{label}: correct_option_index {q.correct_option_index} out of range")
+        elif not q.options[q.correct_option_index].strip():
+            errors.append(f"{label}: correct answer option is blank")
+        if q.question_number in seen_numbers:
+            errors.append(f"{label}: duplicate question_number {q.question_number}")
+        seen_numbers.add(q.question_number)
+    if errors:
+        raise HTTPException(status_code=400, detail=f"Invalid questions: {'; '.join(errors)}")
+
+    # Normalize question numbers to sequential 1..N
+    for idx, q in enumerate(payload.questions):
+        q.question_number = idx + 1
+
     # Delete existing questions for this course
     db.query(TrainingExamQuestion).filter(TrainingExamQuestion.course_id == course_id).delete()
     # Insert new questions

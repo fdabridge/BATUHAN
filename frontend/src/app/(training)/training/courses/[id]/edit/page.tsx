@@ -101,9 +101,26 @@ export default function EditTrainingPage() {
     )
   }
 
+  function validateQuestions(): string | null {
+    const filled = questions.filter((q) => q.question_text.trim())
+    for (const q of filled) {
+      const opts = [q.option_a, q.option_b, q.option_c, q.option_d]
+      const nonEmpty = opts.filter((o) => o.trim())
+      if (nonEmpty.length < 2) return `Q${q.question_number}: at least 2 options required`
+      const correctField = `option_${q.correct_answer.toLowerCase()}` as keyof QuestionForm
+      if (!(q[correctField] as string).trim()) return `Q${q.question_number}: selected correct answer is blank`
+    }
+    return null
+  }
+
   async function handleSave() {
     if (!title.trim()) {
       setError('Title is required.')
+      return
+    }
+    const qErr = validateQuestions()
+    if (qErr) {
+      setError(qErr)
       return
     }
     setSaving(true)
@@ -140,12 +157,12 @@ export default function EditTrainingPage() {
       const validQuestions = questions.filter((q) => q.question_text.trim())
       if (validQuestions.length > 0) {
         const mapped = validQuestions.map((q) => {
-          const options = [q.option_a, q.option_b, q.option_c, q.option_d].filter(Boolean)
+          const opts = [q.option_a, q.option_b, q.option_c, q.option_d]
           const correctIndex = { A: 0, B: 1, C: 2, D: 3 }[q.correct_answer] ?? 0
           return {
             question_number: q.question_number,
             question_text: q.question_text,
-            options,
+            options: opts.filter(Boolean),
             correct_option_index: correctIndex,
           }
         })
