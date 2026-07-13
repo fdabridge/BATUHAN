@@ -411,51 +411,10 @@ def run_pipeline(
             files_used=files_used,
             org_info=_org_info,
             language=language,
-        )
-
-        # -----------------------------------------------------------
-        # Coverage validation — check all mandatory clauses are filled
-        # -----------------------------------------------------------
-        from assembly.coverage_validator import (
-            validate_and_repair_coverage,
-            generate_coverage_report_text,
-        )
-        from storage.file_store import read_text_artifact
-
-        template_structure_text = ""
-        try:
-            structure_artifact = read_text_artifact(job_id, "assembly_template_structure_chunk1.txt")
-            if structure_artifact:
-                template_structure_text = structure_artifact
-        except Exception:
-            pass
-
-        report_content_text = ""
-        try:
-            report_content_text = read_text_artifact(job_id, "step_c_formatted.txt") or ""
-        except Exception:
-            pass
-        if not report_content_text:
-            try:
-                report_content_text = read_text_artifact(job_id, "step_b_formatted.txt") or ""
-            except Exception:
-                pass
-
-        _cell_mapping, coverage_report_lines = validate_and_repair_coverage(
-            cell_mapping={},
-            template_structure_text=template_structure_text,
             scope_analysis=scope_analysis,
-            report_content=report_content_text,
-            client=anthropic_client,
-            model=settings.claude_model,
-            max_tokens=settings.claude_max_tokens,
-            temperature=settings.claude_temperature,
-            selected_standards=[s.value for s in standards],
         )
 
-        coverage_report_text = generate_coverage_report_text(coverage_report_lines)
-        save_text_artifact(job_id, "coverage_validation_report.txt", coverage_report_text)
-        logger.info("[Pipeline] Coverage validation complete. | job=%s", job_id)
+        logger.info("[Pipeline] DOCX assembly and coverage validation complete. | job=%s", job_id)
 
         # -----------------------------------------------------------
         # T30: Write audit trail, then mark COMPLETE
@@ -476,4 +435,3 @@ def run_pipeline(
         if tmp_root.exists():
             shutil.rmtree(tmp_root, ignore_errors=True)
             logger.debug(f"[Pipeline] Cleaned up temp dir: {tmp_root}")
-

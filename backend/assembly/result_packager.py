@@ -43,6 +43,7 @@ def _assemble_with_llm_mapper(
     org_info: dict | None = None,
     job_id: str | None = None,
     language=None,
+    scope_analysis=None,
 ) -> None:
     """
     Assemble a DOCX report using the coordinate-based LLM mapper.
@@ -96,6 +97,48 @@ def _assemble_with_llm_mapper(
         language=language,
         semantic_map=semantic_map,
     )
+
+    try:
+        from assembly.coverage_validator import (
+            validate_and_repair_coverage,
+            generate_coverage_report_text,
+        )
+        from storage.file_store import save_text_artifact
+
+        mapping, coverage_report_lines = validate_and_repair_coverage(
+            cell_mapping=mapping,
+            template_structure_text=template_structure_text,
+            scope_analysis=scope_analysis,
+            report_content=_format_report_sections(validated_report),
+            client=_client,
+            model=_settings.claude_model,
+            max_tokens=_settings.claude_max_tokens,
+            temperature=_settings.claude_temperature,
+            selected_standards=[s.value for s in selected_standards],
+        )
+        if job_id:
+            save_text_artifact(
+                job_id,
+                "coverage_validation_report.txt",
+                generate_coverage_report_text(coverage_report_lines),
+            )
+            save_text_artifact(
+                job_id,
+                "assembly_cell_mapping_final.json",
+                json.dumps(mapping, indent=2, ensure_ascii=False),
+            )
+    except Exception as coverage_err:
+        logger.warning(
+            "[Packager] Coverage validation/repair failed (%s); continuing with original mapping. | job=%s",
+            coverage_err, job_id,
+        )
+        if job_id:
+            from storage.file_store import save_text_artifact
+            save_text_artifact(
+                job_id,
+                "coverage_validation_report.txt",
+                f"Coverage validation failed before DOCX save: {coverage_err}",
+            )
 
     doc = Document(template_path)
     body = doc.element.body
@@ -167,6 +210,7 @@ def package_results(
     files_used: list[str],
     org_info: dict | None = None,
     language=None,
+    scope_analysis=None,
 ) -> JobResult:
     """
     Assemble all deliverables and return a JobResult.
@@ -209,11 +253,17 @@ def package_results(
                     org_info=org_info,
                     job_id=job_id,
                     language=language,
+                    scope_analysis=scope_analysis,
                 )
             except Exception as llm_err:
                 logger.warning(
                     "[Packager] LLM mapper failed (%s), falling back to heuristic | job=%s",
                     llm_err, job_id,
+                )
+                save_text_artifact(
+                    job_id,
+                    "coverage_validation_report.txt",
+                    "Coverage validation skipped: LLM coordinate mapper failed and heuristic assembly was used.",
                 )
                 assemble_docx(
                     template_path=template_path,
@@ -223,6 +273,11 @@ def package_results(
                 )
         else:
             logger.info("[Packager] Heading-based template → heuristic assembler | job=%s", job_id)
+            save_text_artifact(
+                job_id,
+                "coverage_validation_report.txt",
+                "Coverage validation skipped: heading-based templates do not have table cell coordinates.",
+            )
             assemble_docx(
                 template_path=template_path,
                 validated_report=validated_report,
@@ -269,4 +324,3 @@ def package_results(
         files_used=files_used,
         correction_count=correction_log.correction_count,
     )
-

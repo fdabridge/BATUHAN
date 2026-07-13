@@ -101,6 +101,25 @@ def validate_and_repair_coverage(
     coverage_report.append(
         f"Coverage repair complete. {repaired} cells filled across {len(uncovered)} clauses."
     )
+
+    remaining = []
+    for cid, coords in uncovered:
+        still_empty = [
+            coord for coord in coords
+            if not str(updated_mapping.get(coord, "")).strip()
+        ]
+        if still_empty:
+            remaining.append((cid, still_empty))
+
+    if remaining:
+        coverage_report.append(
+            f"Coverage repair incomplete: {len(remaining)} mandatory clause(s) still have empty cells."
+        )
+        for cid, coords in remaining:
+            coverage_report.append(f"  Still empty [{cid}]: {', '.join(coords)}")
+    else:
+        coverage_report.append("Coverage repair verified: all targeted mandatory clause cells are filled.")
+
     return updated_mapping, coverage_report
 
 
