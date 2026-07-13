@@ -106,9 +106,10 @@ def _safe_create_unique_assignment_index() -> None:
             dupes = conn.execute(sa.text(
                 "SELECT course_id, user_id, COUNT(*) AS cnt "
                 "FROM training_assignments "
-                "GROUP BY course_id, user_id HAVING cnt > 1"
+                "GROUP BY course_id, user_id HAVING COUNT(*) > 1"
             )).fetchall()
-        except Exception:
+        except Exception as exc:
+            _logger.warning("[Trainings] Duplicate detection query failed: %s", exc)
             dupes = []
         for row in dupes:
             cid, uid = row[0], row[1]
