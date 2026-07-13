@@ -2623,13 +2623,6 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
             {downloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
             Download audit package
           </button>
-          <Link
-            href={`/reports/new?client_id=${id}`}
-            className="flex items-center rounded-lg px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
-            style={{ background: '#1A4731' }}
-          >
-            Generate AI report
-          </Link>
           {canDelete && (
             <button
               type="button"
