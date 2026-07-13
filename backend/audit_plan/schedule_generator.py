@@ -14,7 +14,7 @@ import anthropic
 
 from config.settings import get_settings
 from .clause_map import CLAUSE_MAP
-from .template_reader import AuditPlanContext
+from .template_reader import AuditPlanContext, DayWindow
 
 logger = logging.getLogger(__name__)
 
@@ -51,12 +51,14 @@ RULES — FOLLOW EXACTLY:
 1. Time format: "HH.MM – HH.MM" (dot separator, en-dash, 24-hour).
    CORRECT: "09.00 – 10.00", "13.00 – 14.00", "14.30 – 15.30"
    WRONG:   "0900 – 1000", "09:00 – 10:00", "9.00 – 10.00"
-2. Working day: 09.00 to approximately 17.00.
-   Every day MUST include ONE lunch break slot:
-     time="13.00 – 14.00", is_break=true, standard="", clauses="", activity="Lunch Break", auditors="".
-   Lunch is ALWAYS exactly 60 minutes. The slot immediately after lunch MUST start at 14.00.
+2. Working windows are provided in the user instructions and are AUTHORITATIVE.
+   Never schedule before the given day start time or after the given day end time.
+   Every day MUST include ONE lunch break slot using that day's lunch window:
+     is_break=true, standard="", clauses="", activity="Lunch Break", auditors="".
+   The slot immediately after lunch MUST start at that day's lunch end time.
 3. Day 1 ONLY starts with an Opening Meeting:
-     time="09.00 – 09.30", is_break=false, standard="", clauses="", activity="Opening Meeting", auditors=<whole-team string>.
+     starts exactly at the provided Day 1 start time, lasts about 30 minutes,
+     is_break=false, standard="", clauses="", activity="Opening Meeting", auditors=<whole-team string>.
 4. The LAST day ends with ONLY a Closing Meeting (~30 min):
      standard="", clauses="", activity="Closing Meeting", auditors=<whole-team string>.
    DO NOT add "Write Draft Report", "Wash-up Meeting", or any similar internal slot.
@@ -158,6 +160,24 @@ def _count_audit_days(dates_str: str) -> int:
     return 1
 
 
+def _day_windows_for_prompt(ctx: AuditPlanContext) -> tuple[int, str]:
+    if not ctx.day_windows:
+        total_days = _count_audit_days(ctx.audit_dates)
+        return total_days, (
+            "No explicit day windows were supplied. Use the audit date text as best as possible, "
+            "with 09.00 start, 17.00 end, and 13.00-14.00 lunch."
+        )
+
+    lines: list[str] = []
+    for index, window in enumerate(ctx.day_windows, start=1):
+        site = window.site or ctx.address or "HQ"
+        lines.append(
+            f"  Day {index}: date={window.date}; start={window.start_time}; "
+            f"lunch={window.lunch_start}-{window.lunch_end}; end={window.end_time}; site={site}"
+        )
+    return len(ctx.day_windows), "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # Auditor track builder
 # ---------------------------------------------------------------------------
@@ -250,6 +270,33 @@ def _normalise_time(raw: str) -> str:
     return raw
 
 
+def _repair_days_from_windows(
+    days: list[DaySchedule],
+    windows: list[DayWindow],
+    fallback_site: str,
+) -> list[DaySchedule]:
+    if not windows:
+        return days
+
+    repaired = days[:len(windows)]
+    while len(repaired) < len(windows):
+        repaired.append(DaySchedule(
+            day_number=len(repaired) + 1,
+            date="",
+            site=fallback_site,
+            slots=[],
+        ))
+
+    for index, window in enumerate(windows):
+        day = repaired[index]
+        day.day_number = index + 1
+        if not day.date:
+            day.date = window.date
+        if not day.site:
+            day.site = window.site or fallback_site
+    return repaired
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -282,7 +329,7 @@ def generate_schedule(ctx: AuditPlanContext) -> list[DaySchedule]:
     track_summary, whole_team_str, strategy_note = _build_auditor_tracks(ctx)
 
     # Determine integrated audit strategy (block vs simultaneous)
-    total_days   = _count_audit_days(ctx.audit_dates)
+    total_days, day_window_summary = _day_windows_for_prompt(ctx)
     num_stds     = len(ctx.standards)
     if num_stds >= 2 and total_days > 0:
         days_per_std = total_days / num_stds
@@ -300,8 +347,9 @@ def generate_schedule(ctx: AuditPlanContext) -> list[DaySchedule]:
             f"INTEGRATED MODE: BLOCK — cover each standard in its own day block. "
             f"Complete ALL clauses for {ctx.standards[0] if ctx.standards else 'Standard A'} first, "
             f"then ALL clauses for the remaining standard(s). "
-            "The FIRST day of each new standard block gets its own Opening Meeting (09.00–09.30) "
-            f"and Site Tour (09.30–10.00), auditors=\"{whole_team_str}\", standard=\"\", clauses=\"\"."
+            "The FIRST day of each new standard block gets its own Opening Meeting at that day's "
+            f"provided start time and a Site Tour immediately after, auditors=\"{whole_team_str}\", "
+            "standard=\"\", clauses=\"\"."
         ),
         "SINGLE": "Single standard audit — no integration strategy needed.",
     }[int_mode]
@@ -322,6 +370,8 @@ AUDIT DURATION: {ctx.audit_time}
 SHIFT NUMBER: {ctx.shift_number}
 LANGUAGE: {ctx.language}
 SCOPE: {ctx.scope}
+EA / IAF CODE: {ctx.ea_code}
+CATEGORY / TECHNICAL AREA: {ctx.category}
 NOT APPLICABLE CLAUSES: {ctx.not_applicable}
 
 AUDIT TEAM TRACKS (use EXACTLY these strings in auditor fields):
@@ -332,15 +382,20 @@ AUDIT TEAM TRACKS (use EXACTLY these strings in auditor fields):
 SITES:
 {site_summary}
 
+DAY WINDOWS — AUTHORITATIVE:
+{day_window_summary}
+
 CLAUSES TO AUDIT (from FR.222 — do not change):
 {clause_summary}
 
 INSTRUCTIONS:
-- Parse "{ctx.audit_dates}" → {total_days} day(s). Create one "days" entry per calendar day.
-- Day 1: first slot = Opening Meeting (09.00–09.30, auditors="{whole_team_str}").
-- Every day: one Lunch Break — is_break=true, time="13.00 – 14.00" (60 min), activity="Lunch Break".
-  The slot after lunch MUST start at 14.00.
+- Create exactly {total_days} day(s). If explicit day windows are listed above, create exactly one day
+  per listed window and use that listed date/site/start/lunch/end.
+- Day 1: first slot = Opening Meeting, starting exactly at Day 1 start time, auditors="{whole_team_str}".
+- Every day: one Lunch Break — is_break=true, time=<that day's lunch window>, activity="Lunch Break".
+  The slot after lunch MUST start at that day's lunch end time.
 - Last day: final slot = Closing Meeting (~30 min, auditors="{whole_team_str}").
+  It should end exactly at that day's end time unless the provided day is too short.
   NO Write Draft Report. NO Wash-up Meeting.
 - Intermediate days: end with the last audit clause slot only.
 - {int_mode_instruction}
@@ -412,6 +467,8 @@ INSTRUCTIONS:
             site=d.get("site", ctx.address),
             slots=slots,
         ))
+
+    days = _repair_days_from_windows(days, ctx.day_windows, ctx.address)
 
     logger.info(f"[AuditPlan] Schedule generated: {len(days)} day(s), "
                 f"{sum(len(d.slots) for d in days)} total slots.")

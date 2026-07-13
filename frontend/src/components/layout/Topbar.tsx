@@ -9,6 +9,7 @@ import { useAuth } from '@/lib/auth'
 const TITLES: Record<string, string> = {
   dashboard:  'Dashboard',
   clients:    'Clients',
+  certivai:   'Certiv.AI',
   reports:    'AI Reports',
   auditors:   'Auditors',
   calculator: 'Calculator',

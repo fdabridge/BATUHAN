@@ -39,6 +39,16 @@ class SiteEntry:
 
 
 @dataclass
+class DayWindow:
+    date: str
+    start_time: str
+    end_time: str
+    lunch_start: str = "13.00"
+    lunch_end: str = "14.00"
+    site: str = ""
+
+
+@dataclass
 class AuditPlanContext:
     # Header fields
     date: str
@@ -51,6 +61,7 @@ class AuditPlanContext:
     standards_raw: str          # raw text, e.g. "ISO 9001:2015, ISO 14001:2015"
     standards: list[str]        # normalised CLAUSE_MAP keys
     ea_code: str
+    category: str
     scope: str
     not_applicable: str
     audit_type_raw: str         # raw text from template
@@ -65,6 +76,7 @@ class AuditPlanContext:
     # Team & sites
     auditors: list[AuditorEntry] = field(default_factory=list)
     sites: list[SiteEntry] = field(default_factory=list)
+    day_windows: list[DayWindow] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +220,7 @@ def read_template(docx_bytes: bytes) -> AuditPlanContext:
         date=date, project_number=project_number, org_name=org_name,
         address=address, telephone=telephone, email=email,
         org_representative=org_rep, standards_raw=standards_raw,
-        standards=standards, ea_code=ea_code, scope=scope,
+        standards=standards, ea_code=ea_code, category="", scope=scope,
         not_applicable=not_applicable, audit_type_raw=audit_type_raw,
         audit_type=audit_type, audit_dates=audit_dates,
         num_employees=num_employees, audit_time=audit_time,

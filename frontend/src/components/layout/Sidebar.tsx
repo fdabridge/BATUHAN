@@ -114,7 +114,7 @@ const NAV_TOP: NavItemProps[] = [
   { icon: LayoutDashboard, label: 'Dashboard',    href: '/dashboard',    active: false },
   { icon: Inbox,           label: 'Applications', href: '/applications', active: false },
   { icon: Building2,       label: 'Clients',      href: '/clients',      active: false },
-  { icon: Sparkles,        label: 'AI Reports',   href: '/reports',      active: false },
+  { icon: Sparkles,        label: 'Certiv.AI',    href: '/certivai',     active: false },
   { icon: Users,           label: 'Auditors',     href: '/auditors',     active: false },
   { icon: Calculator,      label: 'Calculator',   href: '/calculator',   active: false },
   { icon: ClipboardList,   label: 'NC Management',  href: '/nc-management',   active: false },
