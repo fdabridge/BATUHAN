@@ -42,9 +42,7 @@ AUDIT_TYPE_DISPLAY = {
 }
 
 # FR-numbers rendered once per team member (all other forms render once).
-# Portal 58 — FR.211 is now rendered once per stage with the lead auditor
-# pre-filled as the assessed person; the client uploads + signs one per stage.
-PER_PERSON_FORMS = {"FR.224"}
+PER_PERSON_FORMS = {"FR.224", "FR.211"}
 
 # Approximate per-standard clause coverage by stage. The authoritative source
 # is the pre-printed FR.222 table; these strings feed FR.211/FR.224 per person.
@@ -275,12 +273,8 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
         surv2_estimated = add_years_minus_one_day(stage.audit_date_end)
         recert_estimated = add_years_minus_one_day(surv2_estimated)
 
-    if is_initial or is_recertification:
-        opening_meeting_date = stage1.audit_date_start if stage1 else None
-        closing_meeting_date = stage2.audit_date_end if stage2 else None
-    else:
-        opening_meeting_date = stage.audit_date_start
-        closing_meeting_date = stage.audit_date_end
+    opening_meeting_date = stage.audit_date_start
+    closing_meeting_date = stage.audit_date_end
 
     # Per-standard rows enriched with template-friendly column names.
     # Engine stores `standard` as the bare name ("ISO 9001"), but templates

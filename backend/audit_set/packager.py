@@ -354,9 +354,8 @@ def build_audit_set_zip(audit_set, db) -> bytes:
                             out = _person_output_name(base_out, person["name"])
                             zf.writestr(f"{company_slug}/{output_folder}/{out}", data)
                     else:
-                        # Portal 58 — FR.211 (per-stage auditor assessment):
-                        # pre-fill `assessed_person_name` with the stage lead
-                        # auditor; client uploads + signs one per stage.
+                        # Fallback only: normal FR.211 packaging is per team
+                        # member via PER_PERSON_FORMS when the stage has a team.
                         if doc.fr_number == "FR.211":
                             rctx = {
                                 **ctx,
