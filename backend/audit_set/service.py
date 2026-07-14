@@ -4,6 +4,7 @@ BATUHAN — Audit Set: Service layer (CRUD + calculation bridge).
 from __future__ import annotations
 import json
 import math
+import re
 import uuid
 import logging
 from datetime import date
@@ -142,6 +143,104 @@ _SECTOR_KW: dict[str, tuple[str, ...]] = {
 
 _ENERGY_HIGH_KW = ("chemical", "steel", "cement", "refinery", "petrochemical", "mining", "smelting")
 _ENERGY_MED_KW  = ("manufacturing", "production", "industrial", "plant", "factory", "assembly")
+
+_ISMS_TA_KW: dict[str, tuple[str, ...]] = {
+    "D": (
+        "data centre", "data center", "critical infrastructure", "cryptography",
+        "crypto", "blockchain", "medical device", "payment processing", "fintech",
+        "telecom core", "cloud provider", "managed security", "soc service",
+        "industrial control", "scada", "ics",
+    ),
+    "C": (
+        "telecom", "telecommunication", "internet service provider", "isp",
+        "network operator", "mobile operator", "service provider infrastructure",
+        "carrier", "broadband", "hosting provider",
+    ),
+    "B": (
+        "industrial", "manufacturing", "factory", "production", "ot system",
+        "operational technology", "automation", "plc", "plant network",
+        "warehouse automation",
+    ),
+    "A": (
+        "office", "administrative", "consulting", "software", "it service",
+        "human resources", "finance", "accounting", "cloud application",
+        "desktop", "server", "business system",
+    ),
+}
+
+
+def _unique_preserve(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in values:
+        value = str(raw or "").strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+    return out
+
+
+def _normalize_ea_code(raw: str | None) -> str | None:
+    value = str(raw or "").strip().upper()
+    if not value:
+        return None
+    value = value.replace("IAF", "").replace("EA", "").strip()
+    try:
+        return f"EA {int(value)}"
+    except ValueError:
+        return str(raw or "").strip()
+
+
+def _split_codes(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    parts = [p.strip() for p in re.split(r"[,;/|\n]+", str(raw))]
+    return _unique_preserve([p for p in parts if p])
+
+
+def _split_ea_codes(raw: str | None) -> list[str]:
+    return _unique_preserve([
+        code for code in (_normalize_ea_code(part) for part in _split_codes(raw))
+        if code
+    ])
+
+
+def _as_list(value) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return _unique_preserve([str(v) for v in value])
+    return _split_codes(str(value))
+
+
+def _infer_isms_technical_area(haystack: str) -> str | None:
+    for code in ("D", "C", "B", "A"):
+        if any(kw in haystack for kw in _ISMS_TA_KW[code]):
+            return code
+    return None
+
+
+def _derive_energy_complexity(application_data: dict | None, haystack: str) -> str:
+    app = application_data or {}
+    try:
+        annual_tj = float(app.get("enms_annual_energy_tj") or 0)
+    except (TypeError, ValueError):
+        annual_tj = 0
+    try:
+        energy_types = int(app.get("enms_num_energy_types") or 0)
+    except (TypeError, ValueError):
+        energy_types = 0
+    try:
+        seu_count = int(app.get("enms_num_seus") or 0)
+    except (TypeError, ValueError):
+        seu_count = 0
+
+    if energy_types >= 4 or seu_count >= 6 or annual_tj >= 100 or any(kw in haystack for kw in _ENERGY_HIGH_KW):
+        return "High"
+    if energy_types >= 2 or seu_count >= 3 or annual_tj > 0 or any(kw in haystack for kw in _ENERGY_MED_KW):
+        return "Medium"
+    return "Low"
 
 # Scope text → EA code keyword map (IAF EA 1–39, per TÜRKAK R40.01 / IAF MD 1)
 # Keys are the official IAF EA code numbers. Keyword sets derived from NACE Rev.2 sub-sectors.
@@ -500,6 +599,33 @@ def _first_ea_code_from_scope(required_scope: dict | None) -> str | None:
     return None
 
 
+def _derived_category_displays(required_scope: dict | None) -> tuple[str | None, str | None]:
+    """Return display values for the legacy EA Category / Technical Area fields.
+
+    `required_scope` is the authoritative machine-readable value. These strings
+    are only for forms and UI cells that still expect top-level display fields.
+    """
+    categories: list[str] = []
+    technical_areas: list[str] = []
+    for iso, entry in (required_scope or {}).items():
+        if not isinstance(entry, dict):
+            continue
+        codes = _unique_preserve([str(c) for c in (entry.get("codes") or [])])
+        if not codes:
+            continue
+        scope_type = entry.get("type")
+        value = ", ".join(codes)
+        labelled = f"{iso}: {value}"
+        if scope_type in ("food", "sector", "energy"):
+            categories.append(labelled)
+        elif scope_type in ("medical", "isms"):
+            technical_areas.append(labelled)
+    return (
+        "; ".join(categories) if categories else None,
+        "; ".join(technical_areas) if technical_areas else None,
+    )
+
+
 def _auto_populate_ea_fields(audit_set: AuditSet) -> None:
     """Populate `audit_set.ea_code` from required_scope when no manual code is set.
     Re-derives required_scope first if it is empty but scope + standards are
@@ -520,6 +646,11 @@ def _auto_populate_ea_fields(audit_set: AuditSet) -> None:
         inferred = _first_ea_code_from_scope(audit_set.required_scope)
         if inferred:
             audit_set.ea_code = inferred
+    derived_category, derived_technical_area = _derived_category_displays(audit_set.required_scope)
+    if not audit_set.ea_category and derived_category:
+        audit_set.ea_category = derived_category
+    if not audit_set.ea_technical_area and derived_technical_area:
+        audit_set.ea_technical_area = derived_technical_area
 
 
 def derive_required_scope(
@@ -536,6 +667,7 @@ def derive_required_scope(
       {"ISO 22000": {"type": "food", "codes": ["CI", "CIV"]}, ...}
     """
     haystack = f"{scope_tr or ''} {scope_en or ''}".lower()
+    app_data = application_data or {}
     result: dict = {}
 
     for abbr in (standards or []):
@@ -543,7 +675,11 @@ def derive_required_scope(
         norm = iso.lower().replace("iso ", "").replace(" ", "")
 
         if "22000" in norm or "fssc" in norm:
-            codes = [c for c, kws in _FOOD_CHAIN_KW.items() if any(kw in haystack for kw in kws)]
+            explicit = _as_list(app_data.get("fsms_food_chain_categories"))
+            codes = explicit or [
+                c for c, kws in _FOOD_CHAIN_KW.items()
+                if any(kw in haystack for kw in kws)
+            ]
             result[iso] = {"type": "food", "codes": codes}
 
         elif "13485" in norm:
@@ -559,16 +695,11 @@ def derive_required_scope(
             result[iso] = {"type": "sector", "codes": [sector]}
 
         elif "50001" in norm:
-            if any(kw in haystack for kw in _ENERGY_HIGH_KW):
-                complexity = "High"
-            elif any(kw in haystack for kw in _ENERGY_MED_KW):
-                complexity = "Medium"
-            else:
-                complexity = "Low"
+            complexity = _derive_energy_complexity(app_data, haystack)
             result[iso] = {"type": "energy", "codes": [complexity]}
 
         elif "27001" in norm:
-            technical_area = (application_data or {}).get("isms_technical_area")
+            technical_area = app_data.get("isms_technical_area") or _infer_isms_technical_area(haystack)
             result[iso] = {
                 "type": "isms",
                 "codes": [technical_area] if technical_area else [],
@@ -577,7 +708,7 @@ def derive_required_scope(
         elif any(n in norm for n in ("9001", "14001", "45001")):
             # Use stored ea_code if available, otherwise infer from scope text
             if ea_code:
-                codes = [ea_code]
+                codes = _split_ea_codes(ea_code)
             else:
                 codes = [
                     ea for ea, kws in _SCOPE_TO_EA_KW.items()
@@ -597,9 +728,9 @@ def derive_required_scope(
             risk = "Medium"  # IAF-recommended default when sector is unclassified
 
             # Step 1: EA-code lookup (most reliable — planner-set code)
-            if ea_code and ea_table:
+            if codes and ea_table:
                 try:
-                    ea_int = int(ea_code.strip().upper().replace("EA", "").replace(" ", ""))
+                    ea_int = int(codes[0].strip().upper().replace("EA", "").replace(" ", ""))
                     risk = ea_table.get(ea_int, "Medium")
                 except (ValueError, AttributeError):
                     pass  # malformed ea_code — fall through

@@ -270,6 +270,19 @@ def _normalise_time(raw: str) -> str:
     return raw
 
 
+def _extract_clause_ids(raw: str) -> list[str]:
+    """Extract clause ids from free text such as '8.3, A.5.8 (N/A)'."""
+    ids = re.findall(r"\bA\.\d+(?:\.\d+)*\b|\b\d+(?:\.\d+){1,3}\b", raw or "")
+    seen: set[str] = set()
+    out: list[str] = []
+    for clause_id in ids:
+        if clause_id in seen:
+            continue
+        seen.add(clause_id)
+        out.append(clause_id)
+    return out
+
+
 def _repair_days_from_windows(
     days: list[DaySchedule],
     windows: list[DayWindow],
@@ -324,6 +337,12 @@ def generate_schedule(ctx: AuditPlanContext) -> list[DaySchedule]:
         if clauses:
             clause_blocks.append(f"  {std} ({ctx.audit_type}): {clauses}")
     clause_summary = "\n".join(clause_blocks) if clause_blocks else "  (no matching clauses found)"
+    excluded_clause_ids = _extract_clause_ids(ctx.not_applicable)
+    excluded_clause_summary = (
+        ", ".join(excluded_clause_ids)
+        if excluded_clause_ids
+        else "None"
+    )
 
     # Build auditor tracks and whole-team string
     track_summary, whole_team_str, strategy_note = _build_auditor_tracks(ctx)
@@ -373,6 +392,7 @@ SCOPE: {ctx.scope}
 EA / IAF CODE: {ctx.ea_code}
 CATEGORY / TECHNICAL AREA: {ctx.category}
 NOT APPLICABLE CLAUSES: {ctx.not_applicable}
+NORMALIZED N/A CLAUSE IDS TO EXCLUDE: {excluded_clause_summary}
 
 AUDIT TEAM TRACKS (use EXACTLY these strings in auditor fields):
 {track_summary}
@@ -404,6 +424,8 @@ INSTRUCTIONS:
   Only whole-team slots (Opening/Closing Meeting, Site Tour) synchronise all tracks.
 - Every clause must appear EXACTLY ONCE. Fill spare time with "Production Floor Walkthrough"
   or "Document Review and Records Verification" — never re-audit a covered clause.
+- Do NOT schedule any clause listed in NORMALIZED N/A CLAUSE IDS TO EXCLUDE.
+  If the legacy FR.222 clause list includes an excluded clause, the N/A exclusion wins.
 - Group sub-clauses: never one sub-clause alone in a slot unless it genuinely needs a full slot.
 - Site for each day: use HQ address unless additional sites are listed above.
 - Time format: "HH.MM – HH.MM" (dot separator). Example: "09.00 – 10.30".
