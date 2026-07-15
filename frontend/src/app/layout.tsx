@@ -6,8 +6,17 @@ import { Providers } from '@/components/providers'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'BATUHAN',
-  description: 'AI-powered ISO audit report platform',
+  title: {
+    default: 'Certiva',
+    template: '%s | Certiva',
+  },
+  applicationName: 'Certiva',
+  description: 'Certification, audit planning, document signing, and compliance workflow platform',
+  icons: {
+    icon: '/favicon.svg',
+    shortcut: '/favicon.svg',
+    apple: '/favicon.svg',
+  },
 }
 
 export default function RootLayout({

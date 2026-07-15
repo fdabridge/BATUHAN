@@ -19,7 +19,7 @@ const TITLES: Record<string, string> = {
 
 function getPageTitle(pathname: string): string {
   const segment = pathname.split('/').filter(Boolean)[0] ?? ''
-  return TITLES[segment] ?? 'BATUHAN'
+  return TITLES[segment] ?? 'Certiva'
 }
 
 // ── User avatar (initials) ────────────────────────────────────────────────────
