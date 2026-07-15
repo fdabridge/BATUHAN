@@ -129,11 +129,22 @@ export default function LoginPage() {
             Certiva Portal
           </p>
           <h1 className="max-w-xl text-5xl font-semibold leading-tight">
-            Certification work, documents, signatures and audits in one controlled place.
+            Certiva: The Certification Body Super-App.
           </h1>
           <p className="mt-5 max-w-lg text-base leading-7 text-white/72">
-            A quiet workspace for planning, auditor coordination, client signatures and certification decisions.
+            Run certification work from application to certificate maintenance: planning, document signing,
+            auditor coordination, training, CRM follow-up, Certiv.AI audit plans, report writing, and report review.
           </p>
+          <div className="mt-7 flex max-w-lg flex-wrap gap-2">
+            {['Audit planning', 'Certiv.AI reports', 'Training records', 'Client CRM'].map((item) => (
+              <span
+                key={item}
+                className="rounded-full border border-white/25 bg-white/10 px-3 py-1 text-xs font-medium text-white/82 backdrop-blur"
+              >
+                {item}
+              </span>
+            ))}
+          </div>
         </section>
 
         <div className="w-full rounded-2xl border border-white/35 bg-white/95 px-10 py-10 shadow-2xl shadow-emerald-950/20 backdrop-blur">

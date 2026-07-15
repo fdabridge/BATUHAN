@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import api from '@/lib/api'
+import { CertivaAdSlot } from '@/components/ads/CertivaAdSlot'
 
 const WORKFLOW_STEPS = [
   {
@@ -342,6 +343,8 @@ export default function ClientOverviewPage() {
           </Link>
         )}
       </div>
+
+      <CertivaAdSlot placement="client_overview" />
 
       {/* Setup Checklist */}
       <div className="rounded-xl border bg-white p-5">

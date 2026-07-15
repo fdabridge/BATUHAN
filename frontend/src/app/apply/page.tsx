@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import axios from 'axios'
+import { CertivaAdSlot } from '@/components/ads/CertivaAdSlot'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -324,13 +325,34 @@ export default function ApplyPage() {
           backgroundSize: '52px 52px',
         }}
       />
-      <div className="relative max-w-2xl mx-auto">
+      <div className="relative mx-auto max-w-6xl">
         {/* Header */}
-        <div className="text-center mb-8 rounded-2xl border border-white/70 bg-white/80 px-6 py-6 shadow-sm backdrop-blur">
-          <h1 className="text-2xl font-bold text-[#1A4731]">IFC Global LLC</h1>
-          <p className="text-gray-500 mt-1">Certification Application Form</p>
+        <div className="mb-8 overflow-hidden rounded-2xl border border-white/70 bg-[#123829] shadow-xl shadow-emerald-950/10">
+          <div
+            className="grid gap-5 p-6 text-white md:grid-cols-[1fr_330px] md:p-8"
+            style={{
+              backgroundImage:
+                'linear-gradient(135deg, rgba(18,56,41,0.98), rgba(26,71,49,0.88)), radial-gradient(circle at 82% 22%, rgba(255,255,255,0.25), transparent 28%)',
+            }}
+          >
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/60">
+                IFC Global LLC Certification Application
+              </p>
+              <h1 className="mt-3 max-w-2xl text-3xl font-semibold leading-tight md:text-4xl">
+                You have made the right choice. Start with a file built to move.
+              </h1>
+              <p className="mt-4 max-w-2xl text-sm leading-6 text-white/72">
+                Certiva carries your application into planning, audit duration logic, auditor assignment,
+                document signing, audit reporting, committee decision, certificate lifecycle, CRM follow-up,
+                and training visibility.
+              </p>
+            </div>
+            <CertivaAdSlot placement="apply_top" className="self-start border-white/30 bg-white/95 text-slate-950" />
+          </div>
         </div>
 
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,680px)_320px] lg:justify-center">
         <form onSubmit={handleSubmit} className="space-y-6">
 
           {/* ── 1. Company Information ─────────────────────────────────── */}
@@ -736,6 +758,20 @@ export default function ApplyPage() {
           </div>
 
         </form>
+        <aside className="space-y-4 lg:sticky lg:top-6">
+          <div className="rounded-xl border border-white/70 bg-white/90 p-5 shadow-sm backdrop-blur">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#1A4731]/65">
+              What happens next
+            </p>
+            <div className="mt-4 space-y-3 text-sm text-gray-600">
+              <p><span className="font-semibold text-gray-900">1.</span> Your portal account is created.</p>
+              <p><span className="font-semibold text-gray-900">2.</span> The certification team reviews scope and audit duration.</p>
+              <p><span className="font-semibold text-gray-900">3.</span> Planning, documents, signatures, and decisions continue inside Certiva.</p>
+            </div>
+          </div>
+          <CertivaAdSlot placement="apply_sidebar" />
+        </aside>
+        </div>
       </div>
     </div>
   )

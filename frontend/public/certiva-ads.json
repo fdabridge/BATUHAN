@@ -1,0 +1,31 @@
+{
+  "ads": [
+    {
+      "id": "apply-certiva-file",
+      "placement": "apply_top",
+      "active": true,
+      "label": "Certiva operating layer",
+      "title": "Your certification file starts clean here.",
+      "body": "This application feeds planning, auditor assignment, document signing, reports, committee decision, CRM follow-up, and training records.",
+      "tone": "gold"
+    },
+    {
+      "id": "apply-certivai-sidebar",
+      "placement": "apply_sidebar",
+      "active": true,
+      "label": "Built into Certiva",
+      "title": "Certiv.AI helps turn audit data into controlled plans and reports.",
+      "body": "Audit plan writing, report drafting, and report review are becoming part of the same certification workflow.",
+      "tone": "emerald"
+    },
+    {
+      "id": "client-certivai",
+      "placement": "client_overview",
+      "active": true,
+      "label": "Available in the portal",
+      "title": "One place for documents, signatures, audits, CRM signals, and training records.",
+      "body": "Certiva keeps your certification cycle visible from application to certificate maintenance.",
+      "tone": "slate"
+    }
+  ]
+}
