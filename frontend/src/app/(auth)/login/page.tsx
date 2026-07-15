@@ -2,7 +2,7 @@
 
 import { useState, useEffect, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2 } from 'lucide-react'
+import { ArrowRight, Loader2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import api from '@/lib/api'
 import { useAuth } from '@/lib/auth'
@@ -104,8 +104,39 @@ export default function LoginPage() {
   if (isLoading) return null
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-certiva-surface">
-      <div className="w-full max-w-[400px] rounded-xl bg-white px-10 py-10 shadow-sm">
+    <div
+      className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10"
+      style={{
+        backgroundColor: '#102A20',
+        backgroundImage: `
+          linear-gradient(135deg, rgba(16,42,32,0.94), rgba(22,70,49,0.78) 48%, rgba(231,242,236,0.72)),
+          radial-gradient(circle at 16% 18%, rgba(197,226,211,0.35), transparent 28%),
+          radial-gradient(circle at 82% 24%, rgba(255,255,255,0.55), transparent 23%),
+          radial-gradient(circle at 62% 86%, rgba(209,167,87,0.22), transparent 30%)
+        `,
+      }}
+    >
+      <div className="absolute inset-0 opacity-[0.14]"
+        style={{
+          backgroundImage:
+            'linear-gradient(rgba(255,255,255,.45) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.45) 1px, transparent 1px)',
+          backgroundSize: '44px 44px',
+        }}
+      />
+      <div className="relative grid w-full max-w-5xl items-center gap-8 md:grid-cols-[1fr_400px]">
+        <section className="hidden text-white md:block">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.24em] text-white/65">
+            Certiva Portal
+          </p>
+          <h1 className="max-w-xl text-5xl font-semibold leading-tight">
+            Certification work, documents, signatures and audits in one controlled place.
+          </h1>
+          <p className="mt-5 max-w-lg text-base leading-7 text-white/72">
+            A quiet workspace for planning, auditor coordination, client signatures and certification decisions.
+          </p>
+        </section>
+
+        <div className="w-full rounded-2xl border border-white/35 bg-white/95 px-10 py-10 shadow-2xl shadow-emerald-950/20 backdrop-blur">
 
         {/* 1 — Logo block */}
         <div className="mb-6 flex flex-col items-center gap-2">
@@ -176,6 +207,7 @@ export default function LoginPage() {
           >
             {submitting && <Loader2 size={15} className="animate-spin" />}
             Sign in
+            {!submitting && <ArrowRight size={15} />}
           </button>
 
           {/* 4 — Error state */}
@@ -186,6 +218,7 @@ export default function LoginPage() {
           )}
 
         </form>
+        </div>
       </div>
     </div>
   )

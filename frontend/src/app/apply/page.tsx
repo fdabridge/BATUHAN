@@ -104,6 +104,15 @@ function pFloat(s: string): number | null {
 
 const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A4731]/30 focus:border-[#1A4731]"
 const sectionHdCls = "text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4"
+const applicationBackdrop = {
+  backgroundColor: '#F3F8F5',
+  backgroundImage: `
+    linear-gradient(145deg, rgba(240,248,244,0.96), rgba(224,239,231,0.88) 46%, rgba(255,255,255,0.94)),
+    radial-gradient(circle at 13% 9%, rgba(26,71,49,0.16), transparent 27%),
+    radial-gradient(circle at 88% 18%, rgba(199,164,96,0.18), transparent 24%),
+    radial-gradient(circle at 50% 100%, rgba(26,71,49,0.11), transparent 30%)
+  `,
+}
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -222,8 +231,15 @@ export default function ApplyPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-        <div className="bg-white rounded-xl shadow-sm border p-10 max-w-lg w-full">
+      <div className="relative flex min-h-screen items-center justify-center overflow-hidden p-6" style={applicationBackdrop}>
+        <div className="absolute inset-0 opacity-[0.18]"
+          style={{
+            backgroundImage:
+              'linear-gradient(rgba(26,71,49,.22) 1px, transparent 1px), linear-gradient(90deg, rgba(26,71,49,.22) 1px, transparent 1px)',
+            backgroundSize: '52px 52px',
+          }}
+        />
+        <div className="relative bg-white/95 rounded-xl shadow-xl shadow-emerald-900/10 border border-white/70 p-10 max-w-lg w-full backdrop-blur">
           {/* Header */}
           <div className="flex flex-col items-center text-center mb-8">
             <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mb-4">
@@ -300,10 +316,17 @@ export default function ApplyPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4">
-      <div className="max-w-2xl mx-auto">
+    <div className="relative min-h-screen overflow-hidden py-10 px-4" style={applicationBackdrop}>
+      <div className="absolute inset-0 opacity-[0.14]"
+        style={{
+          backgroundImage:
+            'linear-gradient(rgba(26,71,49,.22) 1px, transparent 1px), linear-gradient(90deg, rgba(26,71,49,.22) 1px, transparent 1px)',
+          backgroundSize: '52px 52px',
+        }}
+      />
+      <div className="relative max-w-2xl mx-auto">
         {/* Header */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-8 rounded-2xl border border-white/70 bg-white/80 px-6 py-6 shadow-sm backdrop-blur">
           <h1 className="text-2xl font-bold text-[#1A4731]">IFC Global LLC</h1>
           <p className="text-gray-500 mt-1">Certification Application Form</p>
         </div>

@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { Bell } from 'lucide-react'
+import { Bell, LogOut } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -68,11 +68,18 @@ export function Topbar() {
           <Bell size={20} />
         </button>
 
-        {/* User avatar — click to log out */}
         {user && (
-          <button onClick={logout} title="Log out" className="rounded-full">
+          <div className="flex items-center gap-2">
             <UserAvatar fullName={user.full_name} />
-          </button>
+            <button
+              type="button"
+              onClick={logout}
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-[#1A4731]/30 hover:bg-[#F0FAF4] hover:text-[#1A4731]"
+            >
+              <LogOut size={14} />
+              Log out
+            </button>
+          </div>
         )}
       </div>
     </header>
