@@ -1,31 +1,64 @@
 {
   "ads": [
     {
-      "id": "apply-certiva-file",
+      "id": "ifc-fda-us-entry",
       "placement": "apply_top",
       "active": true,
-      "label": "Certiva operating layer",
-      "title": "Your certification file starts clean here.",
-      "body": "This application feeds planning, auditor assignment, document signing, reports, committee decision, CRM follow-up, and training records.",
+      "label": "IFC Global service",
+      "title": "Exporting to the United States?",
+      "body": "FDA registration, U.S. agent support, labeling checks, and market-entry guidance for exporters.",
+      "cta": "Ask IFC Global",
+      "href": "https://www.ifcglobal.us/contact/",
+      "image": "/ads/ifc-global-logo.jpg",
       "tone": "gold"
     },
     {
-      "id": "apply-certivai-sidebar",
-      "placement": "apply_sidebar",
+      "id": "ifc-cpnp-europe",
+      "placement": "apply_top",
       "active": true,
-      "label": "Built into Certiva",
-      "title": "Certiv.AI helps turn audit data into controlled plans and reports.",
-      "body": "Audit plan writing, report drafting, and report review are becoming part of the same certification workflow.",
+      "label": "IFC Global service",
+      "title": "Exporting cosmetics to Europe?",
+      "body": "CPNP notification and EU cosmetics compliance support before products enter the European market.",
+      "cta": "Ask IFC Global",
+      "href": "https://www.ifcglobal.us/contact/",
+      "image": "/ads/ifc-global-logo.jpg",
       "tone": "emerald"
     },
     {
-      "id": "client-certivai",
+      "id": "ifc-watercraft-certification",
+      "placement": "apply_sidebar",
+      "active": true,
+      "label": "IFC Global service",
+      "title": "Recreational craft or personal watercraft?",
+      "body": "Certification and compliance support for craft manufacturers preparing for regulated markets.",
+      "cta": "Contact IFC Global",
+      "href": "https://www.ifcglobal.us/contact/",
+      "image": "/ads/ifc-global-logo.jpg",
+      "tone": "slate"
+    },
+    {
+      "id": "ifc-fda-client",
       "placement": "client_overview",
       "active": true,
-      "label": "Available in the portal",
-      "title": "One place for documents, signatures, audits, CRM signals, and training records.",
-      "body": "Certiva keeps your certification cycle visible from application to certificate maintenance.",
-      "tone": "slate"
+      "label": "IFC Global service",
+      "title": "Need U.S. FDA support alongside certification?",
+      "body": "IFC Global can help with FDA registration, labeling, and export readiness for the U.S. market.",
+      "cta": "Contact IFC Global",
+      "href": "https://www.ifcglobal.us/contact/",
+      "image": "/ads/ifc-global-logo.jpg",
+      "tone": "gold"
+    },
+    {
+      "id": "ifc-cpnp-client",
+      "placement": "client_overview",
+      "active": true,
+      "label": "IFC Global service",
+      "title": "Cosmetics going to Europe?",
+      "body": "CPNP registration and cosmetics compliance support can be coordinated with IFC Global.",
+      "cta": "Contact IFC Global",
+      "href": "https://www.ifcglobal.us/contact/",
+      "image": "/ads/ifc-global-logo.jpg",
+      "tone": "emerald"
     }
   ]
 }
