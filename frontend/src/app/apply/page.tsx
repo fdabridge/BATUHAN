@@ -103,23 +103,24 @@ function pFloat(s: string): number | null {
 
 // ── Shared components ─────────────────────────────────────────────────────────
 
-const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A4731]/30 focus:border-[#1A4731]"
-const sectionHdCls = "text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4"
+const inputCls = "w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-2.5 text-sm text-slate-900 transition focus:outline-none focus:ring-2 focus:ring-[#1A4731]/25 focus:border-[#1A4731] focus:bg-white"
+const sectionHdCls = "text-xs font-semibold text-[#1A4731] uppercase tracking-[0.18em] mb-4"
+const formSectionCls = "border-b border-slate-100 px-5 py-6 md:px-7"
 const applicationBackdrop = {
-  backgroundColor: '#F3F8F5',
+  backgroundColor: '#071E25',
   backgroundImage: `
-    linear-gradient(145deg, rgba(240,248,244,0.96), rgba(224,239,231,0.88) 46%, rgba(255,255,255,0.94)),
-    radial-gradient(circle at 13% 9%, rgba(26,71,49,0.16), transparent 27%),
-    radial-gradient(circle at 88% 18%, rgba(199,164,96,0.18), transparent 24%),
-    radial-gradient(circle at 50% 100%, rgba(26,71,49,0.11), transparent 30%)
+    linear-gradient(115deg, rgba(7,30,37,0.98), rgba(14,58,44,0.94) 42%, rgba(227,237,232,0.92) 42.2%, rgba(246,249,247,0.98)),
+    radial-gradient(circle at 18% 16%, rgba(210,174,94,0.35), transparent 24%),
+    radial-gradient(circle at 70% 8%, rgba(255,255,255,0.5), transparent 18%),
+    radial-gradient(circle at 8% 85%, rgba(65,128,104,0.45), transparent 28%)
   `,
 }
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-      {hint && <p className="text-xs text-gray-400 mb-1">{hint}</p>}
+      <label className="block text-sm font-semibold text-slate-700 mb-1">{label}</label>
+      {hint && <p className="text-xs text-slate-400 mb-1.5">{hint}</p>}
       {children}
     </div>
   )
@@ -127,8 +128,8 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 
 function SectionPanel({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-5">
-      <h3 className="flex items-center gap-2 text-sm font-semibold text-blue-900 mb-4">
+    <div className={formSectionCls}>
+      <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#1A4731] mb-4">
         <span className="text-base">{icon}</span>{title}
       </h3>
       <div className="space-y-4">{children}</div>
@@ -317,46 +318,49 @@ export default function ApplyPage() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden py-10 px-4" style={applicationBackdrop}>
-      <div className="absolute inset-0 opacity-[0.14]"
+    <div className="relative min-h-screen overflow-hidden px-4 py-8 md:px-6 md:py-12" style={applicationBackdrop}>
+      <div className="absolute inset-0 opacity-[0.16]"
         style={{
           backgroundImage:
-            'linear-gradient(rgba(26,71,49,.22) 1px, transparent 1px), linear-gradient(90deg, rgba(26,71,49,.22) 1px, transparent 1px)',
-          backgroundSize: '52px 52px',
+            'linear-gradient(rgba(255,255,255,.24) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.18) 1px, transparent 1px)',
+          backgroundSize: '56px 56px',
         }}
       />
+      <div className="pointer-events-none absolute left-[-12%] top-[18%] h-[460px] w-[460px] rounded-full border border-white/10" />
+      <div className="pointer-events-none absolute left-[4%] top-[34%] h-[220px] w-[220px] rounded-full border border-white/10" />
       <div className="relative mx-auto max-w-6xl">
         {/* Header */}
-        <div className="mb-8 overflow-hidden rounded-2xl border border-white/70 bg-[#123829] shadow-xl shadow-emerald-950/10">
-          <div
-            className="grid gap-5 p-6 text-white md:grid-cols-[1fr_330px] md:p-8"
-            style={{
-              backgroundImage:
-                'linear-gradient(135deg, rgba(18,56,41,0.98), rgba(26,71,49,0.88)), radial-gradient(circle at 82% 22%, rgba(255,255,255,0.25), transparent 28%)',
-            }}
-          >
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/60">
-                IFC Global LLC Certification Application
-              </p>
-              <h1 className="mt-3 max-w-2xl text-3xl font-semibold leading-tight md:text-4xl">
-                You have made the right choice. Start with a file built to move.
-              </h1>
-              <p className="mt-4 max-w-2xl text-sm leading-6 text-white/72">
-                Certiva carries your application into planning, audit duration logic, auditor assignment,
-                document signing, audit reporting, committee decision, certificate lifecycle, CRM follow-up,
-                and training visibility.
-              </p>
-            </div>
-            <CertivaAdSlot placement="apply_top" className="self-start border-white/30 bg-white/95 text-slate-950" />
+        <div className="mb-7 grid gap-6 text-white lg:grid-cols-[minmax(0,1fr)_360px] lg:items-end">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/60">
+              IFC Global LLC Certification Application
+            </p>
+            <h1 className="mt-4 max-w-3xl text-4xl font-semibold leading-tight md:text-6xl">
+              You have made the right choice.
+            </h1>
+            <p className="mt-4 max-w-2xl text-base leading-7 text-white/74">
+              Begin certification with a system that carries the file forward: scope, planning,
+              audit duration, documents, signatures, reports, committee decision, certificate lifecycle,
+              CRM follow-up, and training visibility.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-white/20 bg-white/10 p-2 shadow-2xl shadow-black/20 backdrop-blur-md">
+            <CertivaAdSlot placement="apply_top" className="border-white/35 bg-white/95 text-slate-950" />
           </div>
         </div>
 
-        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,680px)_320px] lg:justify-center">
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="mx-auto max-w-4xl overflow-hidden rounded-[2rem] border border-white/75 bg-white/95 shadow-2xl shadow-emerald-950/20 backdrop-blur">
+          <div className="border-b border-slate-100 px-5 py-5 md:px-7">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+              Application intake
+            </p>
+            <p className="mt-1 text-sm text-slate-500">
+              Complete the essentials below. The platform will use this information to prepare the certification workflow.
+            </p>
+          </div>
 
           {/* ── 1. Company Information ─────────────────────────────────── */}
-          <div className="bg-white rounded-xl shadow-sm border p-6 space-y-4">
+          <div className={`${formSectionCls} space-y-4`}>
             <h2 className={sectionHdCls}>Company Information</h2>
             <Field label="Company Name *">
               <input className={inputCls} value={form.company_name}
@@ -366,7 +370,7 @@ export default function ApplyPage() {
               <input className={inputCls} value={form.company_address}
                 onChange={e => sel({ company_address: e.target.value })} required />
             </Field>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 md:grid-cols-2">
               <Field label="City">
                 <input className={inputCls} value={form.city} onChange={e => sel({ city: e.target.value })} />
               </Field>
@@ -374,7 +378,7 @@ export default function ApplyPage() {
                 <input className={inputCls} value={form.country} onChange={e => sel({ country: e.target.value })} />
               </Field>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 md:grid-cols-2">
               <Field label="Phone">
                 <input className={inputCls} type="tel" value={form.phone} onChange={e => sel({ phone: e.target.value })} />
               </Field>
@@ -386,7 +390,7 @@ export default function ApplyPage() {
           </div>
 
           {/* ── 2. Contact Person ─────────────────────────────────────── */}
-          <div className="bg-white rounded-xl shadow-sm border p-6 space-y-4">
+          <div className={`${formSectionCls} space-y-4`}>
             <h2 className={sectionHdCls}>Contact Person</h2>
             <Field label="Full Name *">
               <input className={inputCls} value={form.representative_name}
@@ -399,9 +403,9 @@ export default function ApplyPage() {
           </div>
 
           {/* ── 3. Standards Requested ────────────────────────────────── */}
-          <div className="bg-white rounded-xl shadow-sm border p-6">
+          <div className={formSectionCls}>
             <h2 className={sectionHdCls}>Standards Requested *</h2>
-            <div className="grid grid-cols-1 gap-2">
+            <div className="grid gap-2 md:grid-cols-2">
               {STANDARDS.map(s => (
                 <label key={s.code} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
                   hasStd(s.code) ? 'border-[#1A4731] bg-[#1A4731]/5' : 'border-gray-200 hover:bg-gray-50'
@@ -418,9 +422,9 @@ export default function ApplyPage() {
           </div>
 
           {/* ── 4. Audit Type ─────────────────────────────────────────── */}
-          <div className="bg-white rounded-xl shadow-sm border p-6">
+          <div className={formSectionCls}>
             <h2 className={sectionHdCls}>Audit Type *</h2>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid gap-3 md:grid-cols-3">
               {[
                 { v: 'initial',          l: 'Initial Certification' },
                 { v: 'surveillance',     l: 'Surveillance' },
@@ -438,7 +442,7 @@ export default function ApplyPage() {
           </div>
 
           {/* ── 5. Scope ──────────────────────────────────────────────── */}
-          <div className="bg-white rounded-xl shadow-sm border p-6">
+          <div className={formSectionCls}>
             <h2 className={sectionHdCls}>What Does Your Company Do? *</h2>
             <p className="text-xs text-gray-400 mb-3">
               Describe your main activities (e.g. &ldquo;Manufacturing and sales of dried fruits&rdquo;).
@@ -449,12 +453,12 @@ export default function ApplyPage() {
           </div>
 
           {/* ── 6. Personnel ──────────────────────────────────────────── */}
-          <div className="bg-white rounded-xl shadow-sm border p-6 space-y-4">
+          <div className={`${formSectionCls} space-y-4`}>
             <h2 className={sectionHdCls}>Personnel</h2>
             <p className="text-xs text-gray-500 -mt-2 mb-2">
               Accurate personnel data is required to calculate your audit duration per IAF MD5.
             </p>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 md:grid-cols-2">
               <Field label="Full-time employees *" hint="Permanent workforce">
                 <input className={inputCls} type="number" min="0" value={form.full_time_employees}
                   onChange={e => sel({ full_time_employees: e.target.value })} required />
@@ -473,7 +477,7 @@ export default function ApplyPage() {
               </Field>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 md:grid-cols-2">
               <Field label="Number of work shifts">
                 <select className={inputCls} value={form.shift_count}
                   onChange={e => sel({ shift_count: e.target.value })}>
@@ -550,7 +554,7 @@ export default function ApplyPage() {
               <p className="text-xs text-blue-700 -mt-2 mb-2">
                 Required to calculate audit duration using the ISO 50003 K-factor method.
               </p>
-              <div className="grid grid-cols-1 gap-4">
+              <div className="grid gap-4">
                 <Field
                   label="Annual energy consumption (TJ)"
                   hint="Total energy used by all sites in scope, per year"
@@ -621,7 +625,7 @@ export default function ApplyPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-4 md:grid-cols-2">
                 <Field label="Number of HACCP / food safety studies" hint="Distinct HACCP plans in scope">
                   <input className={inputCls} type="number" min="0" value={form.fsms_haccp_studies}
                     onChange={e => sel({ fsms_haccp_studies: e.target.value })} />
@@ -719,7 +723,7 @@ export default function ApplyPage() {
           )}
 
           {/* ── Consultant Referral ─────────────────────────────────────── */}
-          <div className="bg-white rounded-xl shadow-sm border p-6 space-y-4">
+          <div className={`${formSectionCls} space-y-4`}>
             <h2 className={sectionHdCls}>Consultant Referral</h2>
             <div>
               <label className="block text-sm font-medium text-gray-700">
@@ -730,7 +734,7 @@ export default function ApplyPage() {
                 value={consultantCode}
                 onChange={(e) => setConsultantCode(e.target.value)}
                 placeholder="e.g. ali.yilmaz"
-                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className={inputCls}
               />
               <p className="mt-1 text-xs text-gray-400">
                 If a consultant referred you to IFC Global, enter their referral code here.
@@ -739,7 +743,7 @@ export default function ApplyPage() {
           </div>
 
           {/* ── 8. Error + Submit ──────────────────────────────────────── */}
-          <div className="bg-white rounded-xl shadow-sm border p-6 space-y-4">
+          <div className="px-5 py-6 md:px-7 space-y-4">
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3">
                 {error}
@@ -758,20 +762,6 @@ export default function ApplyPage() {
           </div>
 
         </form>
-        <aside className="space-y-4 lg:sticky lg:top-6">
-          <div className="rounded-xl border border-white/70 bg-white/90 p-5 shadow-sm backdrop-blur">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#1A4731]/65">
-              What happens next
-            </p>
-            <div className="mt-4 space-y-3 text-sm text-gray-600">
-              <p><span className="font-semibold text-gray-900">1.</span> Your portal account is created.</p>
-              <p><span className="font-semibold text-gray-900">2.</span> The certification team reviews scope and audit duration.</p>
-              <p><span className="font-semibold text-gray-900">3.</span> Planning, documents, signatures, and decisions continue inside Certiva.</p>
-            </div>
-          </div>
-          <CertivaAdSlot placement="apply_sidebar" />
-        </aside>
-        </div>
       </div>
     </div>
   )
