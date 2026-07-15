@@ -85,7 +85,10 @@ export function AuditReportSection({
     })
     const url = window.URL.createObjectURL(new Blob([r.data]))
     const a   = document.createElement('a')
-    a.href = url; a.download = fileName || 'report.docx'
+    const contentType = String(r.headers?.['content-type'] ?? '')
+    const ext = contentType.includes('pdf') ? '.pdf' : '.docx'
+    const base = (fileName || 'report').replace(/\.(pdf|docx)$/i, '')
+    a.href = url; a.download = `${base}${ext}`
     document.body.appendChild(a); a.click(); a.remove()
     window.URL.revokeObjectURL(url)
   }

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import base64
 import os
+from io import BytesIO
 from typing import TYPE_CHECKING
 
 import fitz  # PyMuPDF
@@ -55,6 +56,53 @@ SIG_TO_ROLE = {
     "REVIEWER": "reviewer",
     "APPOINTED_REVIEWER": "appointed_reviewer",
 }
+
+
+def has_completed_visual_signatures(
+    document_type: str,
+    doc_id: str,
+    db: "Session",
+) -> bool:
+    """Return True when a document has at least one burnable visual signature."""
+    from audit_set.db_models import VisualSignaturePlacement
+
+    return (
+        db.query(VisualSignaturePlacement.id)
+        .filter(
+            VisualSignaturePlacement.document_type == document_type,
+            VisualSignaturePlacement.doc_id == doc_id,
+            VisualSignaturePlacement.signed_at.isnot(None),
+            VisualSignaturePlacement.signature_image.isnot(None),
+        )
+        .first()
+        is not None
+    )
+
+
+def _decode_signature_png(signature_image: str) -> bytes:
+    """Decode a stored signature image and make near-white pixels transparent."""
+    img_data = signature_image or ""
+    if img_data.startswith("data:"):
+        img_data = img_data.split(",", 1)[1]
+    img_bytes = base64.b64decode(img_data)
+
+    try:
+        from PIL import Image
+
+        image = Image.open(BytesIO(img_bytes)).convert("RGBA")
+        pixels = image.getdata()
+        cleaned = []
+        for r, g, b, a in pixels:
+            if a and r >= 245 and g >= 245 and b >= 245:
+                cleaned.append((255, 255, 255, 0))
+            else:
+                cleaned.append((r, g, b, a))
+        image.putdata(cleaned)
+        out = BytesIO()
+        image.save(out, format="PNG")
+        return out.getvalue()
+    except Exception:
+        return img_bytes
 
 
 def flatten_document(
@@ -168,12 +216,8 @@ def flatten_document(
 
         page = doc[page_idx]
 
-        # Decode the base64 PNG data-URL
-        img_data = placement.signature_image
-        if img_data.startswith("data:"):
-            img_data = img_data.split(",", 1)[1]
         try:
-            img_bytes = base64.b64decode(img_data)
+            img_bytes = _decode_signature_png(placement.signature_image)
         except Exception:
             continue   # skip broken image, don't abort the whole document
 

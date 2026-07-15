@@ -7,6 +7,7 @@ other CB-only data are intentionally omitted from the response payload.
 """
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from pydantic import BaseModel
@@ -21,6 +22,8 @@ from audit_set.db_models import (
 from auth.db_models import PlatformUser
 from auth.dependencies import get_current_user
 from storage.document_store import ensure_local
+from audit_set.doc_converter import prepare_document
+from audit_set.pdf_flattener import flatten_document, has_completed_visual_signatures
 
 router = APIRouter(prefix="/client", tags=["client-portal"])
 
@@ -212,6 +215,25 @@ def download_my_document(
         local_path = ensure_local(doc.file_path)
     except FileNotFoundError:
         raise HTTPException(404, "Document not found")
+
+    if has_completed_visual_signatures("shared_doc", doc_id, db):
+        try:
+            prepare_document(local_path, db)
+            pdf_bytes = flatten_document("shared_doc", doc_id, db)
+        except Exception as exc:
+            raise HTTPException(500, "Failed to generate signed PDF") from exc
+
+        safe_label = "".join(
+            c if c.isalnum() or c in " .-" else "_" for c in (doc.label or "Document")
+        )[:60]
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{safe_label}_signed.pdf"'
+            },
+        )
+
     return FileResponse(
         local_path,
         filename=os.path.basename(local_path),

@@ -19,6 +19,7 @@ import re
 import subprocess
 from typing import TYPE_CHECKING
 
+import fitz
 import pdfplumber
 
 from storage.document_store import ensure_local, is_s3_ref
@@ -29,9 +30,10 @@ if TYPE_CHECKING:
 # Portal 65 — KEY now allows lowercase and hyphens so UUID-based sig keys
 # (e.g. ORG_OPENING_ORG_EMP_<uuid> and COMMITTEE_MEMBER_<auditor_id>) are
 # matched when the UUID contains lowercase hex digits and hyphens.
-_SIG_PATTERN = re.compile(r"^\[SIG:([A-Za-z0-9_-]+)\]$")
+_SIG_PATTERN = re.compile(r"^\[SIG:\s*([A-Za-z0-9_-]+)\]$")
 # Search pattern used with page.search() — must match _SIG_PATTERN exactly.
-_SIG_SEARCH  = r"\[SIG:[A-Za-z0-9_\-]+\]"
+_SIG_SEARCH  = r"\[SIG:\s*[A-Za-z0-9_\-]+\]"
+MARKER_HIDE_PAD = 1.5
 
 
 # Portal 59 Fix 4 — legacy sig-key migration. Older rendered PDFs on disk still
@@ -197,6 +199,64 @@ def extract_sig_fields(pdf_path: str) -> list[dict]:
     return fields
 
 
+def _field_value(field, key: str):
+    if isinstance(field, dict):
+        return field[key]
+    return getattr(field, key)
+
+
+def hide_signature_markers(pdf_path: str, fields: list) -> None:
+    """
+    Cover [SIG:...] marker text in the cached viewer PDF after coordinates are
+    extracted. The marker positions remain in the DB for signing overlays.
+    """
+    visible_fields = [f for f in fields if _field_value(f, "sig_key") != "__none__"]
+    if not visible_fields or not os.path.exists(pdf_path):
+        return
+
+    try:
+        doc = fitz.open(pdf_path)
+    except Exception:
+        return
+
+    changed = False
+    saved_copy: str | None = None
+    try:
+        for field in visible_fields:
+            page_idx = int(_field_value(field, "page_number"))
+            if page_idx < 0 or page_idx >= len(doc):
+                continue
+
+            page = doc[page_idx]
+            rect = fitz.Rect(
+                max(0.0, float(_field_value(field, "x0")) - MARKER_HIDE_PAD),
+                max(0.0, float(_field_value(field, "y0")) - MARKER_HIDE_PAD),
+                min(page.rect.x1, float(_field_value(field, "x1")) + MARKER_HIDE_PAD),
+                min(page.rect.y1, float(_field_value(field, "y1")) + MARKER_HIDE_PAD),
+            )
+            if rect.is_empty:
+                continue
+            page.draw_rect(rect, color=(1.0, 1.0, 1.0), fill=(1.0, 1.0, 1.0), width=0)
+            changed = True
+
+        if changed:
+            try:
+                doc.saveIncr()
+            except Exception:
+                saved_copy = f"{pdf_path}.markers.tmp"
+                try:
+                    doc.save(saved_copy, garbage=4, deflate=True)
+                except Exception:
+                    saved_copy = None
+    finally:
+        doc.close()
+    if saved_copy:
+        try:
+            os.replace(saved_copy, pdf_path)
+        except Exception:
+            pass
+
+
 # ── Main entry point ─────────────────────────────────────────────────────────
 
 def prepare_document(docx_path: str, db: "Session") -> dict:
@@ -234,6 +294,7 @@ def prepare_document(docx_path: str, db: "Session") -> dict:
             db.commit()
             existing = []
         else:
+            hide_signature_markers(pdf_path, existing)
             return {
                 "pdf_path": pdf_path,
                 "fields": [
@@ -278,4 +339,10 @@ def prepare_document(docx_path: str, db: "Session") -> dict:
         ))
 
     db.commit()
+    stored_fields = (
+        db.query(DocumentSignatureField)
+        .filter(DocumentSignatureField.docx_path == docx_path)
+        .all()
+    )
+    hide_signature_markers(pdf_path, stored_fields)
     return {"pdf_path": pdf_path, "fields": raw_fields}

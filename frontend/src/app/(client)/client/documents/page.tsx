@@ -66,7 +66,9 @@ export default function ClientDocumentsPage() {
       const url = window.URL.createObjectURL(r.data as Blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${label}.docx`
+      const contentType = String(r.headers?.['content-type'] ?? '')
+      const ext = contentType.includes('pdf') ? '.pdf' : '.docx'
+      a.download = `${label.replace(/\.(pdf|docx)$/i, '')}${ext}`
       document.body.appendChild(a)
       a.click()
       a.remove()

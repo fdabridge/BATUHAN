@@ -16,7 +16,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from audit_set.db_models import (
@@ -35,6 +35,8 @@ from auth.dependencies import get_current_user
 from config.settings import get_settings
 from storage.document_store import upload as store_upload, ensure_local, delete as store_delete, is_s3_ref, invalidate_cache, resolve_docx_key
 from email_service import send_client_status_update, send_document_released
+from audit_set.doc_converter import prepare_document
+from audit_set.pdf_flattener import flatten_document, has_completed_visual_signatures
 
 router = APIRouter(prefix="/audit-sets", tags=["documents"])
 
@@ -674,6 +676,26 @@ def download_document(
         local_path = ensure_local(doc.file_path)
     except FileNotFoundError:
         raise HTTPException(404, "File not found on server")
+
+    if has_completed_visual_signatures("shared_doc", doc_id, db):
+        try:
+            prepare_document(local_path, db)
+            pdf_bytes = flatten_document("shared_doc", doc_id, db)
+        except Exception as exc:
+            logger.exception("Failed to prepare signed shared document %s: %s", doc_id, exc)
+            raise HTTPException(500, "Failed to generate signed PDF") from exc
+
+        safe_label = "".join(
+            c if c.isalnum() or c in " .-" else "_" for c in (doc.label or "Document")
+        )[:60]
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{safe_label}_signed.pdf"'
+            },
+        )
+
     return FileResponse(local_path, filename=os.path.basename(local_path), media_type=DOCX_MIME)
 
 

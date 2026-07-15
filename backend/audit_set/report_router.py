@@ -22,7 +22,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from audit_set.db_models import (
@@ -35,6 +35,8 @@ from audit_set.committee_slots import (
     committee_member_name,
     planned_committee_chair,
 )
+from audit_set.doc_converter import prepare_document
+from audit_set.pdf_flattener import flatten_document, has_completed_visual_signatures
 from auth.db_models import PlatformUser
 from auth.dependencies import get_current_user
 from config.settings import get_settings
@@ -265,6 +267,27 @@ def download_audit_report(
         local_path = ensure_local(report.file_path)
     except FileNotFoundError:
         raise HTTPException(404, "File not found on server")
+
+    if has_completed_visual_signatures("audit_report", rid, db):
+        try:
+            prepare_document(local_path, db)
+            pdf_bytes = flatten_document("audit_report", rid, db)
+        except Exception as exc:
+            logger.exception("Failed to prepare signed audit report %s: %s", rid, exc)
+            raise HTTPException(500, "Failed to generate signed PDF") from exc
+
+        base_name = report.file_name or f"{report.report_form}_audit_report"
+        safe_name = "".join(c if c.isalnum() or c in " .-" else "_" for c in base_name)[:60]
+        if safe_name.lower().endswith(".docx"):
+            safe_name = safe_name[:-5]
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{safe_name}_signed.pdf"'
+            },
+        )
+
     return FileResponse(
         local_path,
         filename=report.file_name or "audit_report.docx",

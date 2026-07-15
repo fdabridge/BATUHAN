@@ -219,7 +219,10 @@ export function SharedDocumentsSection({
       const url = window.URL.createObjectURL(r.data as Blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = docLabel
+      const contentType = String(r.headers?.['content-type'] ?? '')
+      const ext = contentType.includes('pdf') ? '.pdf' : '.docx'
+      const base = docLabel.replace(/\.(pdf|docx)$/i, '')
+      a.download = `${base}${ext}`
       document.body.appendChild(a)
       a.click()
       a.remove()
