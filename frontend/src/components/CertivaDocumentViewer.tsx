@@ -170,7 +170,7 @@ function SignatureBox({
       <div style={style} className="pointer-events-none flex flex-col items-center justify-center
         gap-1 rounded border border-dashed border-gray-200 bg-gray-50/60">
         <span className="text-center text-[10px] text-gray-300 leading-tight px-1">
-          {sigLabel(field.sig_key)}<br />Not required for this standard
+          Not required for this standard
         </span>
       </div>
     )

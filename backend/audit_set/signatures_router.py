@@ -25,6 +25,7 @@ from audit_set.committee_slots import (
     planned_committee_chair,
     planned_committee_slots,
 )
+from audit_set.report_signature_rules import audit_report_requires_appointed_reviewer
 from storage.document_store import resolve_docx_key
 from auth.db_models import PlatformUser
 from auth.dependencies import get_current_user
@@ -153,6 +154,7 @@ def _append_report_and_nc_tasks(
             and current_user.auditor_id
             and report.la_signed_at
             and not report.appointed_reviewer_signed_at
+            and audit_report_requires_appointed_reviewer(report, audit_set)
         ):
             chair = planned_committee_chair(audit_set) if audit_set else None
             if committee_member_auditor_id(chair) == current_user.auditor_id:

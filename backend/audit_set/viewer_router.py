@@ -58,6 +58,7 @@ from audit_set.db_models import (
     get_db,
 )
 from audit_set.doc_converter import prepare_document
+from audit_set.report_signature_rules import audit_report_requires_appointed_reviewer
 from auth.db_models import PlatformUser, UserSignature, get_db as get_auth_db
 from auth.dependencies import get_current_user
 from email_service import send_document_released
@@ -546,6 +547,16 @@ def _find_stage(db: Session, audit_set_id: str, stage_type: str | None) -> Audit
     return q.order_by(AuditSetStage.stage_order).first()
 
 
+def _audit_report_needs_appointed_reviewer(
+    report: AuditSetAuditReport | None,
+    db: Session,
+) -> bool:
+    if not report:
+        return False
+    audit_set = db.query(AuditSet).filter_by(id=report.audit_set_id).first()
+    return audit_report_requires_appointed_reviewer(report, audit_set)
+
+
 def _shared_slot_eligible(
     role_label: str,
     doc: AuditSetSharedDocument,
@@ -593,9 +604,9 @@ def _shared_slot_eligible(
         ).first()
         return member is not None
     if role_label == "appointed_reviewer":
-        # Portal 61 — APPOINTED_REVIEWER (FR.231/FR.232) is always the system's
-        # Certification Manager. The committee-member detour from Portal 55 is
-        # gone: any active certification_manager (or admin) is eligible.
+        # Shared-doc APPOINTED_REVIEWER slots are handled as Certification
+        # Manager slots. Audit reports use their own branch below because
+        # FR.231 only needs the extra reviewer for FSMS/ISMS.
         return role in ("certification_manager", "admin")
     return False
 
@@ -895,6 +906,11 @@ def _assert_can_sign(
                 raise HTTPException(403, "Only the Lead Auditor for this stage may sign")
 
         elif sig_key == "APPOINTED_REVIEWER":
+            if not _audit_report_needs_appointed_reviewer(report, db):
+                raise HTTPException(
+                    400,
+                    "This report does not require committee chairperson signing.",
+                )
             # The "Approved By" row belongs to the committee chairperson saved
             # during audit planning, not a separate per-report reviewer.
             if report.appointed_reviewer_signed_at:
@@ -934,9 +950,12 @@ def _assert_can_sign(
                     400,
                     "The Lead Auditor must sign before the Certification Manager can sign",
                 )
-            # If this document has an APPOINTED_REVIEWER sig field, that must be
-            # signed first. Check DocumentSignatureField for this docx_path.
-            if not report.appointed_reviewer_signed_at:
+            # If this document really requires APPOINTED_REVIEWER, that must be
+            # signed first. FR.231 only requires it for FSMS/ISMS audits.
+            if (
+                _audit_report_needs_appointed_reviewer(report, db)
+                and not report.appointed_reviewer_signed_at
+            ):
                 from storage.document_store import resolve_docx_key
                 try:
                     docx_key = resolve_docx_key(report.file_path)
@@ -1171,9 +1190,8 @@ def _get_field_status(
 
         if sig_record.signed_at:
             return _result("signed", sig_record.signer_name, vsp.signature_image if vsp else None)
-        # Portal 63 — APPOINTED_REVIEWER (FR.231/FR.232) is the Certification
-        # Manager. Pure role check — no ordering gate and no pre-appointment
-        # required. The CM opens the document and signs immediately.
+        # Shared-doc APPOINTED_REVIEWER slots are treated as Certification
+        # Manager slots. Audit reports use the dedicated report branch below.
         if role_label == "appointed_reviewer":
             cm_user = auth_db.query(PlatformUser).filter_by(
                 role="certification_manager", is_active=True,
@@ -1216,6 +1234,8 @@ def _get_field_status(
             return _result("current_user" if is_la else "pending")
 
         elif sig_key == "APPOINTED_REVIEWER":
+            if not _audit_report_needs_appointed_reviewer(report, db):
+                return _result("not_applicable")
             if report.appointed_reviewer_signed_at:
                 return _result(
                     "signed",
@@ -1561,6 +1581,8 @@ def _commit_existing_signing_record(
             db.commit()
 
         elif sig_key == "APPOINTED_REVIEWER" and not report.appointed_reviewer_signed_at:
+            if not _audit_report_needs_appointed_reviewer(report, db):
+                return
             # Portal 123 — record appointed reviewer's sign without changing overall status
             report.appointed_reviewer_user_id   = current_user.id
             report.appointed_reviewer_signed_at  = now

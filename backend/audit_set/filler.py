@@ -22,6 +22,8 @@ from datetime import date, timedelta
 
 from docxtpl import DocxTemplate
 
+from audit_set.report_signature_rules import audit_set_has_stage1_extra_review
+
 # --------------------------------------------------------------------------- #
 # Constants
 # --------------------------------------------------------------------------- #
@@ -388,6 +390,7 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
         "mdqms_selected": "MDQMS" in standards_codes,
         "abms_selected":  "ABMS" in standards_codes,
         "enms_selected":  "ENMS" in standards_codes,
+        "needs_stage1_appointed_reviewer": audit_set_has_stage1_extra_review(audit_set),
         # Audit type
         "audit_type": audit_type,
         "audit_type_display": AUDIT_TYPE_DISPLAY.get(audit_type, audit_type),

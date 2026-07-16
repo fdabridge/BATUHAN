@@ -37,6 +37,7 @@ from audit_set.committee_slots import (
 )
 from audit_set.doc_converter import prepare_document
 from audit_set.pdf_flattener import flatten_document, has_completed_visual_signatures
+from audit_set.report_signature_rules import audit_report_requires_appointed_reviewer
 from auth.db_models import PlatformUser
 from auth.dependencies import get_current_user
 from config.settings import get_settings
@@ -84,9 +85,15 @@ def _report_dict(
     r: AuditSetAuditReport,
     can_review: bool = False,
     committee_chair: dict | None = None,
+    requires_appointed_reviewer: bool | None = None,
 ) -> dict:
-    chair_id = committee_member_auditor_id(committee_chair)
-    chair_name = committee_member_name(committee_chair)
+    show_appointed_reviewer = (
+        requires_appointed_reviewer
+        if requires_appointed_reviewer is not None
+        else committee_chair is not None
+    )
+    chair_id = committee_member_auditor_id(committee_chair) if show_appointed_reviewer else None
+    chair_name = committee_member_name(committee_chair) if show_appointed_reviewer else None
     return {
         "id":                     r.id,
         "audit_set_id":           r.audit_set_id,
@@ -104,8 +111,9 @@ def _report_dict(
         "created_at":             r.created_at.isoformat() if r.created_at else None,
         "can_review":             can_review,
         # The reviewer shown in report lists is the planned committee chair.
-        "reviewer_auditor_id":    chair_id or r.reviewer_auditor_id,
-        "reviewer_auditor_name":  chair_name or r.reviewer_auditor_name,
+        "reviewer_auditor_id":    (chair_id or r.reviewer_auditor_id) if show_appointed_reviewer else None,
+        "reviewer_auditor_name":  (chair_name or r.reviewer_auditor_name) if show_appointed_reviewer else None,
+        "requires_appointed_reviewer": bool(show_appointed_reviewer),
     }
 
 
@@ -188,7 +196,6 @@ async def upload_audit_report(
     file_path = store_upload(relative_path, content)
 
     record_date = datetime.combine(report_date, datetime.min.time()) if report_date else datetime.utcnow()
-    chair = planned_committee_chair(audit_set)
     report = AuditSetAuditReport(
         audit_set_id=audit_set_id,
         stage_type=stage_type,
@@ -199,14 +206,19 @@ async def upload_audit_report(
         status="pending_la",
         uploaded_by=current_user.id,
         created_at=record_date,
-        reviewer_auditor_id=committee_member_auditor_id(chair),
-        reviewer_auditor_name=committee_member_name(chair),
     )
+    if audit_report_requires_appointed_reviewer(report, audit_set):
+        chair = planned_committee_chair(audit_set)
+        report.reviewer_auditor_id = committee_member_auditor_id(chair)
+        report.reviewer_auditor_name = committee_member_name(chair)
     db.add(report)
     db.commit()
     db.refresh(report)
 
-    return _report_dict(report)
+    return _report_dict(
+        report,
+        requires_appointed_reviewer=audit_report_requires_appointed_reviewer(report, audit_set),
+    )
 
 
 # ── List and download ─────────────────────────────────────────────────────────
@@ -223,8 +235,9 @@ def list_audit_reports(
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
     chair = planned_committee_chair(audit_set) if audit_set else None
 
-    # The final review action belongs to the Certification Manager. The planned
-    # committee chairperson signs the APPOINTED_REVIEWER box in the viewer.
+    # The final review action belongs to the Certification Manager. FR.232 always
+    # needs the planned committee chairperson first; FR.231 only needs that extra
+    # reviewer for FSMS/ISMS audits.
     is_cm = current_user.role in ("certification_manager", "admin", "executive")
 
     rows = (
@@ -237,10 +250,16 @@ def list_audit_reports(
     def _can_review(r: AuditSetAuditReport) -> bool:
         if r.status != "pending_review":
             return False
-        return is_cm and r.appointed_reviewer_signed_at is not None
+        needs_chair = audit_report_requires_appointed_reviewer(r, audit_set)
+        return is_cm and (not needs_chair or r.appointed_reviewer_signed_at is not None)
 
     return [
-        _report_dict(r, can_review=_can_review(r), committee_chair=chair)
+        _report_dict(
+            r,
+            can_review=_can_review(r),
+            committee_chair=chair,
+            requires_appointed_reviewer=audit_report_requires_appointed_reviewer(r, audit_set),
+        )
         for r in rows
     ]
 
@@ -406,7 +425,10 @@ def la_sign_direct(
     _notify_reviewer(db, report, audit_set)
 
     db.refresh(report)
-    return _report_dict(report)
+    return _report_dict(
+        report,
+        requires_appointed_reviewer=audit_report_requires_appointed_reviewer(report, audit_set),
+    )
 
 
 # ── Committee Reviewer: approve party 2 ──────────────────────────────────────
@@ -417,6 +439,9 @@ def _notify_reviewer(
     audit_set,
 ) -> None:
     """Send review-request email to the assigned reviewer (auditor or committee member)."""
+    if not audit_report_requires_appointed_reviewer(report, audit_set):
+        return
+
     company = (audit_set.company_name if audit_set else report.audit_set_id) or ""
     stage   = report.stage_type.replace("_", " ").title()
 
@@ -464,7 +489,8 @@ def _check_reviewer_auth(
     """Verify current user may sign the reviewer slot.
 
     This direct final-approval path is reserved for the Certification Manager.
-    The planned committee chairperson signs the visual APPOINTED_REVIEWER box.
+    Where required, the planned committee chairperson signs the visual
+    APPOINTED_REVIEWER box before Certification Manager final approval.
     """
     # 1. Admin/CM bypass
     if current_user.role in ("admin", "certification_manager", "executive"):
@@ -501,8 +527,9 @@ def review_sign_direct(
         raise HTTPException(400, "Report already approved")
     if report.status != "pending_review":
         raise HTTPException(400, f"Report status is '{report.status}', expected 'pending_review'")
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
     if (
-        report.report_form in {"FR.231", "FR.232"}
+        audit_report_requires_appointed_reviewer(report, audit_set)
         and not report.appointed_reviewer_signed_at
     ):
         raise HTTPException(
@@ -519,7 +546,6 @@ def review_sign_direct(
     report.reviewer_signed_at = signed_dt
     report.reviewer_signed_ip = request.client.host if request.client else None
     report.status             = "approved"
-    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
     _maybe_advance_single_stage_report_review(
         db,
         audit_set,
@@ -530,7 +556,11 @@ def review_sign_direct(
     db.commit()
 
     db.refresh(report)
-    return _report_dict(report, can_review=False)
+    return _report_dict(
+        report,
+        can_review=False,
+        requires_appointed_reviewer=audit_report_requires_appointed_reviewer(report, audit_set),
+    )
 
 
 # ── Reviewer assignment (Portal 76) ──────────────────────────────────────────
@@ -596,7 +626,10 @@ def assign_reviewer(
     report.reviewer_auditor_name = auditor.name
     db.commit()
     db.refresh(report)
-    return _report_dict(report)
+    return _report_dict(
+        report,
+        requires_appointed_reviewer=audit_report_requires_appointed_reviewer(report, audit_set),
+    )
 
 
 @router.get("/audit-sets/{audit_set_id}/audit-reports/reviewer-candidates")
