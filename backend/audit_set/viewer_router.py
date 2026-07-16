@@ -58,7 +58,10 @@ from audit_set.db_models import (
     get_db,
 )
 from audit_set.doc_converter import prepare_document
-from audit_set.report_signature_rules import audit_report_requires_appointed_reviewer
+from audit_set.report_signature_rules import (
+    audit_report_has_all_required_approvals,
+    audit_report_requires_appointed_reviewer,
+)
 from audit_set.signature_image import normalize_signature_data_url
 from auth.db_models import PlatformUser, UserSignature, get_db as get_auth_db
 from auth.dependencies import get_current_user
@@ -912,12 +915,22 @@ def _assert_can_sign(
                     400,
                     "This report does not require committee chairperson signing.",
                 )
-            # The "Approved By" row belongs to the committee chairperson saved
-            # during audit planning, not a separate per-report reviewer.
             if report.appointed_reviewer_signed_at:
                 raise HTTPException(400, "Committee chairperson has already signed this report")
+            if not report.la_signed_at:
+                raise HTTPException(
+                    400,
+                    "The Lead Auditor must sign before the committee chairperson can sign",
+                )
+            if not report.reviewer_signed_at:
+                raise HTTPException(
+                    400,
+                    "The Certification Manager must sign before the committee chairperson can sign",
+                )
             if current_user.role == "admin":
                 return
+            # The "Approved By" row belongs to the committee chairperson saved
+            # during audit planning, not a separate per-report reviewer.
             audit_set = db.query(AuditSet).filter_by(id=report.audit_set_id).first()
             chair = planned_committee_chair(audit_set) if audit_set else None
             chair_auditor_id = committee_member_auditor_id(chair)
@@ -934,11 +947,6 @@ def _assert_can_sign(
                     403,
                     "Only the planned committee chairperson may sign this slot",
                 )
-            if not report.la_signed_at:
-                raise HTTPException(
-                    400,
-                    "The Lead Auditor must sign before the committee chairperson can sign",
-                )
 
         elif sig_key in ("CB_REVIEWER", "CB_CERT_MANAGER"):
             # Portal 73 — templates now use CB_CERT_MANAGER; CB_REVIEWER kept as alias.
@@ -951,27 +959,6 @@ def _assert_can_sign(
                     400,
                     "The Lead Auditor must sign before the Certification Manager can sign",
                 )
-            # If this document really requires APPOINTED_REVIEWER, that must be
-            # signed first. FR.231 only requires it for FSMS/ISMS audits.
-            if (
-                _audit_report_needs_appointed_reviewer(report, db)
-                and not report.appointed_reviewer_signed_at
-            ):
-                from storage.document_store import resolve_docx_key
-                try:
-                    docx_key = resolve_docx_key(report.file_path)
-                except Exception:
-                    docx_key = report.file_path  # fallback to raw path
-                has_ar_field = (
-                    db.query(DocumentSignatureField)
-                    .filter_by(docx_path=docx_key, sig_key="APPOINTED_REVIEWER")
-                    .first()
-                ) is not None
-                if has_ar_field:
-                    raise HTTPException(
-                        400,
-                        "The committee chairperson must sign before the Certification Manager can sign",
-                    )
 
         else:
             raise HTTPException(400, f"Unexpected sig_key '{sig_key}' for audit_report")
@@ -1249,6 +1236,8 @@ def _get_field_status(
                     vsp.signature_image if vsp else None,
                 )
             if not report.la_signed_at:
+                return _result("blocked")
+            if not report.reviewer_signed_at:
                 return _result("blocked")
             audit_set = db.query(AuditSet).filter_by(id=report.audit_set_id).first()
             chair = planned_committee_chair(audit_set) if audit_set else None
@@ -1589,10 +1578,28 @@ def _commit_existing_signing_record(
         elif sig_key == "APPOINTED_REVIEWER" and not report.appointed_reviewer_signed_at:
             if not _audit_report_needs_appointed_reviewer(report, db):
                 return
-            # Portal 123 — record appointed reviewer's sign without changing overall status
             report.appointed_reviewer_user_id   = current_user.id
             report.appointed_reviewer_signed_at  = now
             report.appointed_reviewer_signed_ip  = ip
+            audit_set = db.query(AuditSet).filter_by(id=report.audit_set_id).first()
+            if audit_report_has_all_required_approvals(report, audit_set):
+                report.status = "approved"
+                try:
+                    from audit_set.report_router import _maybe_advance_single_stage_report_review
+
+                    _maybe_advance_single_stage_report_review(
+                        db,
+                        audit_set,
+                        report,
+                        current_user.id,
+                        now,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Could not run audit-report approval workflow hook for %s",
+                        report.id,
+                        exc_info=True,
+                    )
             db.commit()
 
         elif sig_key in ("CB_REVIEWER", "CB_CERT_MANAGER") and not report.reviewer_signed_at:
@@ -1601,7 +1608,27 @@ def _commit_existing_signing_record(
             report.reviewer_signed_ip   = ip
             report.reviewer_otp_hash    = None
             report.reviewer_otp_expires = None
-            report.status               = "approved"
+            audit_set = db.query(AuditSet).filter_by(id=report.audit_set_id).first()
+            if audit_report_has_all_required_approvals(report, audit_set):
+                report.status = "approved"
+                try:
+                    from audit_set.report_router import _maybe_advance_single_stage_report_review
+
+                    _maybe_advance_single_stage_report_review(
+                        db,
+                        audit_set,
+                        report,
+                        current_user.id,
+                        now,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Could not run audit-report approval workflow hook for %s",
+                        report.id,
+                        exc_info=True,
+                    )
+            else:
+                report.status = "pending_review"
             db.commit()
             # Portal 49a Part 3: the CB reviewer signing the audit report no
             # longer auto-advances the set to ``certified``. Certification now

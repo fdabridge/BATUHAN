@@ -37,7 +37,10 @@ from audit_set.committee_slots import (
 )
 from audit_set.doc_converter import prepare_document
 from audit_set.pdf_flattener import flatten_document, has_completed_visual_signatures
-from audit_set.report_signature_rules import audit_report_requires_appointed_reviewer
+from audit_set.report_signature_rules import (
+    audit_report_has_all_required_approvals,
+    audit_report_requires_appointed_reviewer,
+)
 from auth.db_models import PlatformUser
 from auth.dependencies import get_current_user
 from config.settings import get_settings
@@ -235,9 +238,9 @@ def list_audit_reports(
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
     chair = planned_committee_chair(audit_set) if audit_set else None
 
-    # The final review action belongs to the Certification Manager. FR.232 always
-    # needs the planned committee chairperson first; FR.231 only needs that extra
-    # reviewer for FSMS/ISMS audits.
+    # The Certification Manager signs after the Lead Auditor. Reports that need
+    # an appointed reviewer/chair are only fully approved once that chair signs
+    # after the Certification Manager.
     is_cm = current_user.role in ("certification_manager", "admin", "executive")
 
     rows = (
@@ -250,8 +253,7 @@ def list_audit_reports(
     def _can_review(r: AuditSetAuditReport) -> bool:
         if r.status != "pending_review":
             return False
-        needs_chair = audit_report_requires_appointed_reviewer(r, audit_set)
-        return is_cm and (not needs_chair or r.appointed_reviewer_signed_at is not None)
+        return is_cm and r.reviewer_signed_at is None
 
     return [
         _report_dict(
@@ -488,9 +490,9 @@ def _check_reviewer_auth(
 ) -> None:
     """Verify current user may sign the reviewer slot.
 
-    This direct final-approval path is reserved for the Certification Manager.
-    Where required, the planned committee chairperson signs the visual
-    APPOINTED_REVIEWER box before Certification Manager final approval.
+    This direct approval path is reserved for the Certification Manager. Where
+    required, the planned committee chairperson signs after the Certification
+    Manager before the report becomes fully approved.
     """
     # 1. Admin/CM bypass
     if current_user.role in ("admin", "certification_manager", "executive"):
@@ -499,7 +501,7 @@ def _check_reviewer_auth(
     raise HTTPException(
         403,
         "Only the Certification Manager may give final approval. "
-        "The committee chairperson must sign the Approved By box in the viewer.",
+        "The committee chairperson signs the Approved By box after Certification Manager approval.",
     )
 
 
@@ -528,16 +530,6 @@ def review_sign_direct(
     if report.status != "pending_review":
         raise HTTPException(400, f"Report status is '{report.status}', expected 'pending_review'")
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
-    if (
-        audit_report_requires_appointed_reviewer(report, audit_set)
-        and not report.appointed_reviewer_signed_at
-    ):
-        raise HTTPException(
-            400,
-            "The committee chairperson must sign the Approved By box before "
-            "the Certification Manager gives final approval.",
-        )
-
     signed_dt = (
         datetime.combine(body.signed_date, datetime.min.time())
         if body.signed_date else datetime.utcnow()
@@ -545,14 +537,17 @@ def review_sign_direct(
     report.reviewer_user_id   = current_user.id
     report.reviewer_signed_at = signed_dt
     report.reviewer_signed_ip = request.client.host if request.client else None
-    report.status             = "approved"
-    _maybe_advance_single_stage_report_review(
-        db,
-        audit_set,
-        report,
-        current_user.id,
-        signed_dt,
-    )
+    if audit_report_has_all_required_approvals(report, audit_set):
+        report.status = "approved"
+        _maybe_advance_single_stage_report_review(
+            db,
+            audit_set,
+            report,
+            current_user.id,
+            signed_dt,
+        )
+    else:
+        report.status = "pending_review"
     db.commit()
 
     db.refresh(report)

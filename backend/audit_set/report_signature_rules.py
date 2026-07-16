@@ -31,3 +31,17 @@ def audit_report_requires_appointed_reviewer(
     if report_form == "FR.231":
         return audit_set_has_stage1_extra_review(audit_set)
     return False
+
+
+def audit_report_has_all_required_approvals(report: Any, audit_set: Any) -> bool:
+    """Return True when all required audit-report signature roles are complete."""
+    if not getattr(report, "la_signed_at", None):
+        return False
+    if not getattr(report, "reviewer_signed_at", None):
+        return False
+    if (
+        audit_report_requires_appointed_reviewer(report, audit_set)
+        and not getattr(report, "appointed_reviewer_signed_at", None)
+    ):
+        return False
+    return True
