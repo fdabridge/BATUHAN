@@ -253,6 +253,8 @@ def list_audit_reports(
     def _can_review(r: AuditSetAuditReport) -> bool:
         if r.status != "pending_review":
             return False
+        if audit_report_requires_appointed_reviewer(r, audit_set):
+            return False
         return is_cm and r.reviewer_signed_at is None
 
     return [
@@ -490,18 +492,25 @@ def _check_reviewer_auth(
 ) -> None:
     """Verify current user may sign the reviewer slot.
 
-    This direct approval path is reserved for the Certification Manager. Where
-    required, the planned committee chairperson signs after the Certification
-    Manager before the report becomes fully approved.
+    This direct approval path is reserved for report types that still require
+    Certification Manager approval. Reports with an appointed committee
+    chairperson are approved by the Lead Auditor and chairperson only.
     """
+    audit_set = db.query(AuditSet).filter_by(id=report.audit_set_id).first()
+    if audit_report_requires_appointed_reviewer(report, audit_set):
+        raise HTTPException(
+            400,
+            "This report is approved by the Lead Auditor and committee chairperson; "
+            "Certification Manager signature is not required.",
+        )
+
     # 1. Admin/CM bypass
     if current_user.role in ("admin", "certification_manager", "executive"):
         return
 
     raise HTTPException(
         403,
-        "Only the Certification Manager may give final approval. "
-        "The committee chairperson signs the Approved By box after Certification Manager approval.",
+        "Only the Certification Manager may give final approval for this report.",
     )
 
 

@@ -52,6 +52,8 @@ interface CommitteeReview {
     stage_type:  string
     status:      string
     signed:      boolean
+    ready:       boolean
+    chair_name:  string | null
   }[]
 }
 
@@ -81,7 +83,8 @@ export default function AuditorDashboard() {
       <div className="mb-6">
         <h1 className="text-xl font-bold text-gray-900">My Audit Assignments</h1>
         <p className="mt-0.5 text-sm text-gray-400">
-          {assignments.length} audit{assignments.length !== 1 ? 's' : ''} assigned
+          {assignments.length} audit-team assignment{assignments.length !== 1 ? 's' : ''}
+          {committeeReviews.length > 0 && ` · ${committeeReviews.length} committee review${committeeReviews.length !== 1 ? 's' : ''}`}
         </p>
       </div>
 
@@ -166,16 +169,21 @@ export default function AuditorDashboard() {
                         </div>
                         <div className="flex items-center gap-3">
                           <span className={`text-xs font-medium ${
-                            report.signed ? 'text-green-700' : 'text-amber-700'
+                            report.signed ? 'text-green-700' : report.ready ? 'text-amber-700' : 'text-gray-500'
                           }`}>
-                            {report.signed ? 'Approved By signed' : 'Approved By signature required'}
+                            {report.signed
+                              ? 'Approved By signed'
+                              : report.ready
+                                ? 'Approved By signature required'
+                                : 'Waiting for Lead Auditor'}
                           </span>
                           <button
                             type="button"
                             onClick={() => router.push(
                               `/auditor/viewer/audit_report/${report.id}`,
                             )}
-                            className="rounded-lg border border-[#1A4731] px-3 py-2 text-xs font-medium text-[#1A4731] hover:bg-green-50"
+                            disabled={!report.ready && !report.signed}
+                            className="rounded-lg border border-[#1A4731] px-3 py-2 text-xs font-medium text-[#1A4731] hover:bg-green-50 disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-400 disabled:hover:bg-white"
                           >
                             {report.signed ? 'Open' : 'Open to Sign'}
                           </button>
@@ -192,7 +200,9 @@ export default function AuditorDashboard() {
 
       {assignments.length === 0 ? (
         <div className="py-16 text-center text-sm text-gray-400">
-          No audit-team assignments yet.
+          {committeeReviews.length > 0
+            ? 'No audit-team assignments. Committee review items are listed above.'
+            : 'No audit-team assignments yet.'}
         </div>
       ) : (
         <div className="space-y-3">

@@ -27,6 +27,7 @@ from audit_set.committee_slots import (
     committee_member_name,
     planned_committee_slots,
 )
+from audit_set.report_signature_rules import audit_report_requires_appointed_reviewer
 from auth.db_models import PlatformUser
 from auth.dependencies import get_current_user
 
@@ -82,6 +83,16 @@ def _get_auditor_assignments(current_user: PlatformUser, db: Session) -> list[Au
     )
 
 
+def _report_chair_matches_user(
+    report: AuditSetAuditReport,
+    audit_set: AuditSet,
+    auditor_id: str,
+) -> bool:
+    chair = planned_committee_slots(audit_set).get("COMMITTEE_CHAIR")
+    chair_auditor_id = report.reviewer_auditor_id or committee_member_auditor_id(chair)
+    return bool(chair_auditor_id) and chair_auditor_id == auditor_id
+
+
 @router.get("/my-assignments")
 def get_my_assignments(
     db: Session = Depends(get_db),
@@ -132,7 +143,6 @@ def get_my_committee_reviews(
     results = []
     audit_sets = (
         db.query(AuditSet)
-        .filter(AuditSet.committee_members.isnot(None))
         .order_by(AuditSet.created_at.desc())
         .all()
     )
@@ -145,29 +155,35 @@ def get_my_committee_reviews(
             ),
             None,
         )
-        if not matching_slot:
+        stage_reports = []
+        for report in (
+            db.query(AuditSetAuditReport)
+            .filter_by(audit_set_id=audit_set.id)
+            .filter(AuditSetAuditReport.report_form.in_(["FR.231", "FR.232"]))
+            .order_by(AuditSetAuditReport.created_at)
+            .all()
+        ):
+            if not audit_report_requires_appointed_reviewer(report, audit_set):
+                continue
+            if not _report_chair_matches_user(report, audit_set, current_user.auditor_id):
+                continue
+            stage_reports.append({
+                "id":          report.id,
+                "report_form": report.report_form,
+                "label":       report.label,
+                "stage_type":  report.stage_type,
+                "status":      report.status,
+                "signed":      report.appointed_reviewer_signed_at is not None,
+                "ready":       bool(report.la_signed_at),
+                "chair_name":  report.reviewer_auditor_name,
+            })
+        if not matching_slot and not stage_reports:
             continue
 
-        sig_key, member = matching_slot
-        stage_reports = []
-        if sig_key == "COMMITTEE_CHAIR":
-            stage_reports = [
-                {
-                    "id":          report.id,
-                    "report_form": report.report_form,
-                    "label":       report.label,
-                    "stage_type":  report.stage_type,
-                    "status":      report.status,
-                    "signed":      report.appointed_reviewer_signed_at is not None,
-                }
-                for report in (
-                    db.query(AuditSetAuditReport)
-                    .filter_by(audit_set_id=audit_set.id)
-                    .filter(AuditSetAuditReport.report_form.in_(["FR.231", "FR.232"]))
-                    .order_by(AuditSetAuditReport.created_at)
-                    .all()
-                )
-            ]
+        sig_key = matching_slot[0] if matching_slot else "COMMITTEE_CHAIR"
+        member = matching_slot[1] if matching_slot else {
+            "name": next((r.get("chair_name") for r in stage_reports if r.get("chair_name")), None),
+        }
         record = db.query(AuditSetFR233Record).filter_by(
             audit_set_id=audit_set.id,
         ).first()

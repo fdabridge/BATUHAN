@@ -253,6 +253,19 @@ def _resolve_docx_path(document_type: str, doc_id: str, db: Session) -> str:
 
 # ── Prepare (convert + extract) ───────────────────────────────────────────────
 
+def _suppressed_sig_keys_for_document(
+    document_type: str,
+    doc_id: str,
+    db: Session,
+) -> set[str]:
+    """Signature markers that should not behave as real slots for this record."""
+    if document_type != "audit_report":
+        return set()
+    report = db.query(AuditSetAuditReport).filter_by(id=doc_id).first()
+    if report and _audit_report_needs_appointed_reviewer(report, db):
+        return {"CB_REVIEWER", "CB_CERT_MANAGER"}
+    return set()
+
 @router.get("/prepare")
 def viewer_prepare(
     document_type: str         = Query(..., description="shared_doc | audit_report | nc_form"),
@@ -276,6 +289,7 @@ def viewer_prepare(
         raise HTTPException(500, f"Document preparation failed: {exc}") from exc
 
     _repair_meeting_signature_fields(document_type, doc_id, docx_path, db, auth_db)
+    suppressed_sig_keys = _suppressed_sig_keys_for_document(document_type, doc_id, db)
 
     # Return the DB rows, not raw extractor output, so first-open responses also
     # include normalized/self-healed keys used by signing-status and flattening.
@@ -292,6 +306,7 @@ def viewer_prepare(
             .filter(
                 DocumentSignatureField.docx_path == docx_path,
                 DocumentSignatureField.sig_key != "__none__",
+                DocumentSignatureField.sig_key.notin_(suppressed_sig_keys or {""}),
             )
             .all()
     ]
@@ -922,18 +937,15 @@ def _assert_can_sign(
                     400,
                     "The Lead Auditor must sign before the committee chairperson can sign",
                 )
-            if not report.reviewer_signed_at:
-                raise HTTPException(
-                    400,
-                    "The Certification Manager must sign before the committee chairperson can sign",
-                )
             if current_user.role == "admin":
                 return
-            # The "Approved By" row belongs to the committee chairperson saved
-            # during audit planning, not a separate per-report reviewer.
+            # The "Approved By" row belongs to the appointed committee
+            # chairperson. Prefer the chair snapshot stored on the report so
+            # uploaded/historical reports stay signable even if the planning
+            # snapshot changed later.
             audit_set = db.query(AuditSet).filter_by(id=report.audit_set_id).first()
             chair = planned_committee_chair(audit_set) if audit_set else None
-            chair_auditor_id = committee_member_auditor_id(chair)
+            chair_auditor_id = report.reviewer_auditor_id or committee_member_auditor_id(chair)
             if not chair_auditor_id:
                 raise HTTPException(
                     400,
@@ -950,6 +962,11 @@ def _assert_can_sign(
 
         elif sig_key in ("CB_REVIEWER", "CB_CERT_MANAGER"):
             # Portal 73 — templates now use CB_CERT_MANAGER; CB_REVIEWER kept as alias.
+            if _audit_report_needs_appointed_reviewer(report, db):
+                raise HTTPException(
+                    400,
+                    "Certification Manager signature is not required for this report.",
+                )
             if report.reviewer_signed_at:
                 raise HTTPException(400, "Certification Manager has already signed this report")
             if current_user.role not in ("certification_manager", "admin"):
@@ -1237,12 +1254,10 @@ def _get_field_status(
                 )
             if not report.la_signed_at:
                 return _result("blocked")
-            if not report.reviewer_signed_at:
-                return _result("blocked")
             audit_set = db.query(AuditSet).filter_by(id=report.audit_set_id).first()
             chair = planned_committee_chair(audit_set) if audit_set else None
-            chair_name = committee_member_name(chair) or "Committee Chairperson"
-            chair_auditor_id = committee_member_auditor_id(chair)
+            chair_name = report.reviewer_auditor_name or committee_member_name(chair) or "Committee Chairperson"
+            chair_auditor_id = report.reviewer_auditor_id or committee_member_auditor_id(chair)
             if (
                 current_user.role == "auditor"
                 and chair_auditor_id
@@ -1255,6 +1270,8 @@ def _get_field_status(
 
         elif sig_key in ("CB_REVIEWER", "CB_CERT_MANAGER"):
             # Portal 73 — templates now use CB_CERT_MANAGER; CB_REVIEWER kept as alias.
+            if _audit_report_needs_appointed_reviewer(report, db):
+                return _result("not_applicable")
             if report.reviewer_signed_at:
                 return _result("signed", _user_name(report.reviewer_user_id), vsp.signature_image if vsp else None)
             if not report.la_signed_at:
@@ -1603,6 +1620,8 @@ def _commit_existing_signing_record(
             db.commit()
 
         elif sig_key in ("CB_REVIEWER", "CB_CERT_MANAGER") and not report.reviewer_signed_at:
+            if _audit_report_needs_appointed_reviewer(report, db):
+                return
             report.reviewer_user_id     = current_user.id
             report.reviewer_signed_at   = now
             report.reviewer_signed_ip   = ip
@@ -1678,6 +1697,7 @@ def viewer_signing_status(
     Status values: signed | current_user | pending | blocked | not_applicable
     """
     docx_path = _resolve_docx_path(document_type, doc_id, db)
+    suppressed_sig_keys = _suppressed_sig_keys_for_document(document_type, doc_id, db)
 
     # Source 1 — pdfplumber-detected sig keys (have a PDF position)
     pdf_sig_keys = {
@@ -1686,6 +1706,7 @@ def viewer_signing_status(
             .filter(
                 DocumentSignatureField.docx_path == docx_path,
                 DocumentSignatureField.sig_key != "__none__",
+                DocumentSignatureField.sig_key.notin_(suppressed_sig_keys or {""}),
             )
             .distinct()
             .all()
@@ -1761,7 +1782,7 @@ def viewer_signing_status(
             except Exception:
                 logger.warning("[FR225] Could not seed team sig keys for doc=%s", doc_id, exc_info=True)
 
-    all_sig_keys = pdf_sig_keys | db_sig_keys
+    all_sig_keys = (pdf_sig_keys | db_sig_keys) - suppressed_sig_keys
 
     fields = [
         _get_field_status(sk, document_type, doc_id, current_user, db, auth_db)

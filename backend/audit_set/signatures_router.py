@@ -157,7 +157,9 @@ def _append_report_and_nc_tasks(
             and audit_report_requires_appointed_reviewer(report, audit_set)
         ):
             chair = planned_committee_chair(audit_set) if audit_set else None
-            if committee_member_auditor_id(chair) == current_user.auditor_id:
+            chair_auditor_id = report.reviewer_auditor_id or committee_member_auditor_id(chair)
+            chair_name = report.reviewer_auditor_name or committee_member_name(chair)
+            if chair_auditor_id == current_user.auditor_id:
                 _add_unique(result, seen, _virtual_sig(
                     key=f"virtual:audit-report-chair:{report.id}",
                     audit_set=audit_set,
@@ -165,13 +167,14 @@ def _append_report_and_nc_tasks(
                     document_type=doc_type,
                     document_label=report.label or report.report_form or "Audit Report",
                     signer_role_label="appointed_reviewer",
-                    signer_name=committee_member_name(chair),
+                    signer_name=chair_name,
                 ))
 
         if (
             current_user.role in ("certification_manager", "admin")
             and report.la_signed_at
             and not report.reviewer_signed_at
+            and not audit_report_requires_appointed_reviewer(report, audit_set)
         ):
             _add_unique(result, seen, _virtual_sig(
                 key=f"virtual:audit-report-cm:{report.id}",

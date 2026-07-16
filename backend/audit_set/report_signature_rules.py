@@ -37,11 +37,8 @@ def audit_report_has_all_required_approvals(report: Any, audit_set: Any) -> bool
     """Return True when all required audit-report signature roles are complete."""
     if not getattr(report, "la_signed_at", None):
         return False
+    if audit_report_requires_appointed_reviewer(report, audit_set):
+        return bool(getattr(report, "appointed_reviewer_signed_at", None))
     if not getattr(report, "reviewer_signed_at", None):
-        return False
-    if (
-        audit_report_requires_appointed_reviewer(report, audit_set)
-        and not getattr(report, "appointed_reviewer_signed_at", None)
-    ):
         return False
     return True
