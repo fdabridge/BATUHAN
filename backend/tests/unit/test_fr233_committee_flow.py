@@ -6,6 +6,7 @@ from docx import Document
 
 from audit_set.committee_slots import (
     expected_committee_sig_keys,
+    is_dynamic_committee_member_sig_key,
     planned_committee_chair,
     planned_committee_members,
     planned_committee_slots,
@@ -66,6 +67,12 @@ def test_expected_keys_support_static_and_legacy_dynamic_documents():
         "COMMITTEE_MEMBER_chair-1",
         "COMMITTEE_MEMBER_member-1",
     }
+
+
+def test_static_member_rows_are_not_treated_as_dynamic_auditor_keys():
+    assert not is_dynamic_committee_member_sig_key("COMMITTEE_MEMBER_1")
+    assert not is_dynamic_committee_member_sig_key("COMMITTEE_MEMBER_2")
+    assert is_dynamic_committee_member_sig_key("COMMITTEE_MEMBER_auditor-123")
 
 
 def test_fr233_render_fills_planned_names_codes_and_static_markers():

@@ -39,6 +39,14 @@ def planned_committee_slots(audit_set: Any) -> dict[str, dict]:
     return dict(zip(STATIC_COMMITTEE_SIG_KEYS, planned_committee_members(audit_set)))
 
 
+def is_dynamic_committee_member_sig_key(sig_key: str) -> bool:
+    """Return true for old per-auditor FR.233 keys, not static MEMBER_1/2 rows."""
+    return (
+        sig_key.startswith("COMMITTEE_MEMBER_")
+        and sig_key not in STATIC_COMMITTEE_SIG_KEYS
+    )
+
+
 def planned_committee_chair(audit_set: Any) -> dict | None:
     """Return the auditor assigned to the chairperson row during planning."""
     members = planned_committee_members(audit_set)

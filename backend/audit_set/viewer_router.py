@@ -39,6 +39,7 @@ from audit_set.committee_slots import (
     committee_member_auditor_id,
     committee_member_name,
     expected_committee_sig_keys,
+    is_dynamic_committee_member_sig_key,
     planned_committee_chair,
     planned_committee_slots,
 )
@@ -114,7 +115,7 @@ FR233_CERT_MANAGER_KEYS = {
     "CERT_MANAGER_FR233",
     "CERT_MANAGER_REVIEW",
 }
-# Portal 62 — regex for dynamic committee member sig keys: COMMITTEE_MEMBER_<auditor_id>
+# Portal 62 — regex for old dynamic committee member sig keys: COMMITTEE_MEMBER_<auditor_id>
 COMMITTEE_MEMBER_RE = re.compile(r"^COMMITTEE_MEMBER_(.+)$")
 
 # Portal 59 Fix 4 — legacy sig-key aliases for VSP lookup. Existing rendered
@@ -442,9 +443,24 @@ def _check_committee_sig(
                 )
         return
 
-    # Portal 62 — dynamic COMMITTEE_MEMBER_<auditor_id> slots (new-style FR.233).
+    # Static keys are positional rows backed by the committee saved in planning.
+    # Check these before the dynamic regex: COMMITTEE_MEMBER_1/2 look like old
+    # dynamic keys, but their suffix is a row number, not an auditor id.
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    member = planned_committee_slots(audit_set).get(sig_key) if audit_set else None
+    if sig_key in COMMITTEE_SIG_KEYS:
+        expected_auditor_id = committee_member_auditor_id(member)
+        if expected_auditor_id is None:
+            raise HTTPException(400, f"No committee member assigned for '{sig_key}'")
+        if current_user.role == "admin":
+            return
+        if current_user.role != "auditor" or current_user.auditor_id != expected_auditor_id:
+            raise HTTPException(403, "This signature slot is assigned to a different committee member")
+        return
+
+    # Portal 62 — dynamic COMMITTEE_MEMBER_<auditor_id> slots on older FR.233 docs.
     cm_match = COMMITTEE_MEMBER_RE.match(sig_key)
-    if cm_match:
+    if is_dynamic_committee_member_sig_key(sig_key) and cm_match:
         member_id = cm_match.group(1)
         if member_id.startswith("BLANK_"):
             raise HTTPException(
@@ -457,23 +473,11 @@ def _check_committee_sig(
         if not current_user.auditor_id or current_user.auditor_id != member_id:
             raise HTTPException(403, "This signature slot is assigned to a different committee member")
         # Verify the auditor is in the committee_members snapshot on the audit set
-        audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
         if audit_set:
             members_snapshot = audit_set.committee_members or []
             if not any(x.get("id") == member_id for x in members_snapshot):
                 raise HTTPException(403, "This auditor is not on the appointed committee")
         return
-
-    # Static keys are positional rows backed by the committee saved in planning.
-    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
-    member = planned_committee_slots(audit_set).get(sig_key) if audit_set else None
-    expected_auditor_id = committee_member_auditor_id(member)
-    if expected_auditor_id is None:
-        raise HTTPException(400, f"No committee member assigned for '{sig_key}'")
-    if current_user.role == "admin":
-        return
-    if current_user.role != "auditor" or current_user.auditor_id != expected_auditor_id:
-        raise HTTPException(403, "This signature slot is assigned to a different committee member")
 
 
 def _fr233_committee_signing_state(
@@ -815,7 +819,7 @@ def _assert_can_sign(
                 raise HTTPException(403, "This signature slot is not assigned to you")
 
         elif (
-            COMMITTEE_MEMBER_RE.match(sig_key)
+            is_dynamic_committee_member_sig_key(sig_key)
             or sig_key in COMMITTEE_SIG_KEYS
             or (
                 doc.document_type == "fr233"
@@ -1114,7 +1118,7 @@ def _get_field_status(
 
         # Portal 62 — dynamic COMMITTEE_MEMBER_<auditor_id> slots on FR.233.
         cm_match = COMMITTEE_MEMBER_RE.match(sig_key)
-        if cm_match:
+        if is_dynamic_committee_member_sig_key(sig_key) and cm_match:
             member_id = cm_match.group(1)
             if member_id.startswith("BLANK_"):
                 return _result("pending", "Awaiting committee appointment")
@@ -1384,7 +1388,7 @@ def _commit_existing_signing_record(
             return
 
         elif (
-            COMMITTEE_MEMBER_RE.match(sig_key)
+            is_dynamic_committee_member_sig_key(sig_key)
             or sig_key in COMMITTEE_SIG_KEYS
             or (
                 doc.document_type == "fr233"
