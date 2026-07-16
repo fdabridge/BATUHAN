@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from audit_set.db_models import ClientOrgEmployee, get_db
+from audit_set.signature_image import normalize_signature_data_url
 from auth.db_models import PlatformUser
 from auth.dependencies import get_current_user
 
@@ -157,7 +158,12 @@ def save_employee_signature(
         raise HTTPException(400, "Signature image is too large. Maximum is ~1.5 MB.")
     if body.source not in ("drawn", "uploaded"):
         raise HTTPException(400, "source must be 'drawn' or 'uploaded'")
-    emp.signature_data   = body.image_data
+    try:
+        image_data = normalize_signature_data_url(body.image_data)
+    except Exception:
+        raise HTTPException(400, "Signature image could not be processed as a PNG.")
+
+    emp.signature_data   = image_data
     emp.signature_source = body.source
     db.commit(); db.refresh(emp)
     return _serialize(emp)

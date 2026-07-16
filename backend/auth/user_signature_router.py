@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from auth.db_models import UserSignature, get_db, PlatformUser
 from auth.dependencies import get_current_user
+from audit_set.signature_image import normalize_signature_data_url
 
 router = APIRouter(prefix="/me", tags=["user_signature"])
 
@@ -64,14 +65,19 @@ def save_my_signature(
     if body.source not in ("drawn", "uploaded"):
         raise HTTPException(400, "source must be 'drawn' or 'uploaded'")
 
+    try:
+        image_data = normalize_signature_data_url(body.image_data)
+    except Exception:
+        raise HTTPException(400, "Signature image could not be processed as a PNG.")
+
     sig = db.query(UserSignature).filter_by(user_id=current_user.id).first()
     if sig:
-        sig.image_data = body.image_data
+        sig.image_data = image_data
         sig.source     = body.source
     else:
         sig = UserSignature(
             user_id=current_user.id,
-            image_data=body.image_data,
+            image_data=image_data,
             source=body.source,
         )
         db.add(sig)

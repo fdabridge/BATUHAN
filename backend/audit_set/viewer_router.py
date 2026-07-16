@@ -59,6 +59,7 @@ from audit_set.db_models import (
 )
 from audit_set.doc_converter import prepare_document
 from audit_set.report_signature_rules import audit_report_requires_appointed_reviewer
+from audit_set.signature_image import normalize_signature_data_url
 from auth.db_models import PlatformUser, UserSignature, get_db as get_auth_db
 from auth.dependencies import get_current_user
 from email_service import send_document_released
@@ -1035,6 +1036,11 @@ def _get_field_status(
     ).first()
 
     def _result(status: str, name: str | None = None, image: str | None = None) -> dict:
+        if image:
+            try:
+                image = normalize_signature_data_url(image)
+            except Exception:
+                pass
         return {"sig_key": sig_key, "status": status, "signer_name": name, "signature_image": image}
 
     def _user_name(user_id: str | None) -> str | None:
@@ -1840,6 +1846,11 @@ def sign_confirm(
         datetime.combine(body.signed_date, datetime.min.time())
         if body.signed_date else datetime.utcnow()
     )
+    try:
+        signature_image_b64 = normalize_signature_data_url(signature_image_b64)
+    except Exception:
+        pass
+
     vsp.signature_image = signature_image_b64
     vsp.signer_name     = signer_display_name
     vsp.otp_hash        = None

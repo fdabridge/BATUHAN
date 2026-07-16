@@ -1,6 +1,5 @@
 """Generate a signed PDF certificate for an impartiality declaration."""
 from __future__ import annotations
-import base64
 import io
 import os
 from datetime import datetime
@@ -8,7 +7,10 @@ from typing import Optional
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
+
+from audit_set.signature_image import signature_png_bytes
 
 
 DECLARATION_LINES = [
@@ -91,12 +93,16 @@ def generate_declaration_pdf(
     c.rect(margin, y - box_h, 60 * mm, box_h)
     if signature_image_b64:
         try:
-            img_data = base64.b64decode(signature_image_b64)
-            img_buf  = io.BytesIO(img_data)
-            c.drawImage(img_buf,  # type: ignore[arg-type]
-                        margin + 2 * mm, y - box_h + 2 * mm,
-                        width=56 * mm, height=box_h - 4 * mm,
-                        preserveAspectRatio=True, anchor="c")
+            img_buf = io.BytesIO(signature_png_bytes(signature_image_b64))
+            c.drawImage(
+                ImageReader(img_buf),
+                margin + 2 * mm, y - box_h + 2 * mm,
+                width=56 * mm,
+                height=box_h - 4 * mm,
+                preserveAspectRatio=True,
+                anchor="c",
+                mask="auto",
+            )
         except Exception:
             c.setFont("Helvetica-Oblique", 8)
             c.drawString(margin + 4 * mm, y - box_h / 2, "(signature image unavailable)")
