@@ -33,12 +33,27 @@ def audit_report_requires_appointed_reviewer(
     return False
 
 
+def audit_report_requires_certification_manager(
+    report: Any,
+    audit_set: Any,
+) -> bool:
+    """Return whether CB_CERT_MANAGER/CB_REVIEWER is a real required slot."""
+    report_form = (getattr(report, "report_form", "") or "").upper()
+    if report_form == "FR.231":
+        return False
+    if audit_report_requires_appointed_reviewer(report, audit_set):
+        return False
+    return True
+
+
 def audit_report_has_all_required_approvals(report: Any, audit_set: Any) -> bool:
     """Return True when all required audit-report signature roles are complete."""
     if not getattr(report, "la_signed_at", None):
         return False
     if audit_report_requires_appointed_reviewer(report, audit_set):
         return bool(getattr(report, "appointed_reviewer_signed_at", None))
+    if not audit_report_requires_certification_manager(report, audit_set):
+        return True
     if not getattr(report, "reviewer_signed_at", None):
         return False
     return True

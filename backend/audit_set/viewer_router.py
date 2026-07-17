@@ -60,6 +60,7 @@ from audit_set.db_models import (
 from audit_set.doc_converter import prepare_document
 from audit_set.report_signature_rules import (
     audit_report_has_all_required_approvals,
+    audit_report_requires_certification_manager,
     audit_report_requires_appointed_reviewer,
 )
 from audit_set.signature_image import normalize_signature_data_url
@@ -262,7 +263,7 @@ def _suppressed_sig_keys_for_document(
     if document_type != "audit_report":
         return set()
     report = db.query(AuditSetAuditReport).filter_by(id=doc_id).first()
-    if report and _audit_report_needs_appointed_reviewer(report, db):
+    if report and not _audit_report_needs_certification_manager(report, db):
         return {"CB_REVIEWER", "CB_CERT_MANAGER"}
     return set()
 
@@ -574,6 +575,16 @@ def _audit_report_needs_appointed_reviewer(
         return False
     audit_set = db.query(AuditSet).filter_by(id=report.audit_set_id).first()
     return audit_report_requires_appointed_reviewer(report, audit_set)
+
+
+def _audit_report_needs_certification_manager(
+    report: AuditSetAuditReport | None,
+    db: Session,
+) -> bool:
+    if not report:
+        return False
+    audit_set = db.query(AuditSet).filter_by(id=report.audit_set_id).first()
+    return audit_report_requires_certification_manager(report, audit_set)
 
 
 def _shared_slot_eligible(
@@ -962,7 +973,7 @@ def _assert_can_sign(
 
         elif sig_key in ("CB_REVIEWER", "CB_CERT_MANAGER"):
             # Portal 73 — templates now use CB_CERT_MANAGER; CB_REVIEWER kept as alias.
-            if _audit_report_needs_appointed_reviewer(report, db):
+            if not _audit_report_needs_certification_manager(report, db):
                 raise HTTPException(
                     400,
                     "Certification Manager signature is not required for this report.",
@@ -1270,7 +1281,7 @@ def _get_field_status(
 
         elif sig_key in ("CB_REVIEWER", "CB_CERT_MANAGER"):
             # Portal 73 — templates now use CB_CERT_MANAGER; CB_REVIEWER kept as alias.
-            if _audit_report_needs_appointed_reviewer(report, db):
+            if not _audit_report_needs_certification_manager(report, db):
                 return _result("not_applicable")
             if report.reviewer_signed_at:
                 return _result("signed", _user_name(report.reviewer_user_id), vsp.signature_image if vsp else None)
@@ -1620,7 +1631,7 @@ def _commit_existing_signing_record(
             db.commit()
 
         elif sig_key in ("CB_REVIEWER", "CB_CERT_MANAGER") and not report.reviewer_signed_at:
-            if _audit_report_needs_appointed_reviewer(report, db):
+            if not _audit_report_needs_certification_manager(report, db):
                 return
             report.reviewer_user_id     = current_user.id
             report.reviewer_signed_at   = now

@@ -25,7 +25,10 @@ from audit_set.committee_slots import (
     planned_committee_chair,
     planned_committee_slots,
 )
-from audit_set.report_signature_rules import audit_report_requires_appointed_reviewer
+from audit_set.report_signature_rules import (
+    audit_report_requires_certification_manager,
+    audit_report_requires_appointed_reviewer,
+)
 from storage.document_store import resolve_docx_key
 from auth.db_models import PlatformUser
 from auth.dependencies import get_current_user
@@ -174,7 +177,7 @@ def _append_report_and_nc_tasks(
             current_user.role in ("certification_manager", "admin")
             and report.la_signed_at
             and not report.reviewer_signed_at
-            and not audit_report_requires_appointed_reviewer(report, audit_set)
+            and audit_report_requires_certification_manager(report, audit_set)
         ):
             _add_unique(result, seen, _virtual_sig(
                 key=f"virtual:audit-report-cm:{report.id}",

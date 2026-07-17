@@ -39,6 +39,7 @@ from audit_set.doc_converter import prepare_document
 from audit_set.pdf_flattener import flatten_document, has_completed_visual_signatures
 from audit_set.report_signature_rules import (
     audit_report_has_all_required_approvals,
+    audit_report_requires_certification_manager,
     audit_report_requires_appointed_reviewer,
 )
 from auth.db_models import PlatformUser
@@ -253,7 +254,7 @@ def list_audit_reports(
     def _can_review(r: AuditSetAuditReport) -> bool:
         if r.status != "pending_review":
             return False
-        if audit_report_requires_appointed_reviewer(r, audit_set):
+        if not audit_report_requires_certification_manager(r, audit_set):
             return False
         return is_cm and r.reviewer_signed_at is None
 
@@ -497,10 +498,10 @@ def _check_reviewer_auth(
     chairperson are approved by the Lead Auditor and chairperson only.
     """
     audit_set = db.query(AuditSet).filter_by(id=report.audit_set_id).first()
-    if audit_report_requires_appointed_reviewer(report, audit_set):
+    if not audit_report_requires_certification_manager(report, audit_set):
         raise HTTPException(
             400,
-            "This report is approved by the Lead Auditor and committee chairperson; "
+            "This report is approved without Certification Manager signing; "
             "Certification Manager signature is not required.",
         )
 

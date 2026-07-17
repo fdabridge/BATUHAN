@@ -31,6 +31,7 @@ from audit_set.db_models import (
     get_db as get_audit_db,
 )
 from audit_set.pipeline_triggers import fire_phase_triggers
+from audit_set.report_signature_rules import audit_report_has_all_required_approvals
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
 from email_service import send_client_status_update
@@ -168,6 +169,9 @@ def _assert_stage1_complete_gate(db: Session, audit_set_id: str) -> None:
       • Stage 1 FR.231 (stage1_report) is uploaded and fully signed.
     """
     failures: list[str] = []
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    if not audit_set:
+        raise HTTPException(404, "Audit set not found")
 
     team_infos = _stage_docs(
         db, audit_set_id, "team_info", "stage_1", include_null_stage=True,
@@ -186,7 +190,7 @@ def _assert_stage1_complete_gate(db: Session, audit_set_id: str) -> None:
     if not stage1_audit_reports:
         failures.append("Stage 1 FR.231 Stage Report has not been uploaded")
     elif not any(
-        r.la_signed_at is not None and r.reviewer_signed_at is not None
+        audit_report_has_all_required_approvals(r, audit_set)
         for r in stage1_audit_reports
     ):
         failures.append("Stage 1 FR.231 Stage Report is not fully signed")
