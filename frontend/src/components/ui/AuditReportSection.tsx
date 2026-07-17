@@ -18,6 +18,7 @@ interface AuditReport {
   created_at:            string
   reviewer_auditor_id:   string | null
   reviewer_auditor_name: string | null
+  requires_appointed_reviewer: boolean
 }
 
 interface ReviewerCandidate {
@@ -205,12 +206,19 @@ export function AuditReportSection({
                       {r.appointed_reviewer_signed_at && ` · Chair signed ${fmtDate(r.appointed_reviewer_signed_at)}`}
                       {r.reviewer_signed_at && ` · CM approved ${fmtDate(r.reviewer_signed_at)}`}
                     </p>
-                    {/* Reviewer assignment badge */}
+                    {/* Reviewer / approval badge */}
                     <p className="mt-0.5 text-xs text-gray-500">
-                      {r.reviewer_auditor_name
-                        ? <>Committee Chairperson: <span className="font-medium text-gray-700">{r.reviewer_auditor_name}</span></>
-                        : <span className="text-amber-600">No committee chairperson selected</span>
-                      }
+                      {r.requires_appointed_reviewer ? (
+                        r.reviewer_auditor_name
+                          ? <>Committee Chairperson: <span className="font-medium text-gray-700">{r.reviewer_auditor_name}</span></>
+                          : <span className="text-amber-600">No committee chairperson selected</span>
+                      ) : r.reviewer_signed_at ? (
+                        <span>Certification Manager approved {fmtDate(r.reviewer_signed_at)}</span>
+                      ) : r.la_signed_at ? (
+                        <span className="text-blue-600">Awaiting Certification Manager approval</span>
+                      ) : (
+                        <span>Certification Manager signs after Lead Auditor</span>
+                      )}
                     </p>
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center gap-2">

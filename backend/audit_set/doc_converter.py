@@ -51,11 +51,12 @@ def _normalize_sig_key(raw_key: str, docx_basename: str) -> str:
         or "FR.230" in name or "FR230" in name   # Portal 121 — NC form
     ):
         return "ORG_REP"
-    # Portal 123 — old templates used [SIG:CB_REVIEWER] for the appointed reviewer's
-    # slot in stage reports. Normalize to APPOINTED_REVIEWER (canonical key). New
-    # templates write [SIG:APPOINTED_REVIEWER] directly, so this rule is a
-    # backward-compat fallback for already-uploaded pre-Portal-123 reports.
-    if raw_key == "CB_REVIEWER" and ("FR.231" in name or "FR.232" in name):
+    # Portal 123/transfer cleanup — old stage-report templates used
+    # [SIG:CB_REVIEWER] inconsistently. In FR.231 that cell belongs to the
+    # Certification Manager. In FR.232 it is the appointed committee chair slot.
+    if raw_key == "CB_REVIEWER" and "FR.231" in name:
+        return "CB_CERT_MANAGER"
+    if raw_key == "CB_REVIEWER" and "FR.232" in name:
         return "APPOINTED_REVIEWER"
     # FR.233 now uses the same canonical Certification Manager key as the rest
     # of the system. Normalize both historical variants for already-uploaded
@@ -294,6 +295,16 @@ def prepare_document(docx_path: str, db: "Session") -> dict:
             db.commit()
             existing = []
         else:
+            docx_basename = os.path.basename(docx_path)
+            if "FR.231" in docx_basename.upper():
+                changed = False
+                for row in existing:
+                    if row.sig_key == "APPOINTED_REVIEWER":
+                        row.sig_key = "CB_CERT_MANAGER"
+                        changed = True
+                if changed:
+                    db.commit()
+                    existing = db.query(DocumentSignatureField).filter_by(docx_path=docx_path).all()
             hide_signature_markers(pdf_path, existing)
             return {
                 "pdf_path": pdf_path,

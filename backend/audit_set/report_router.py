@@ -166,8 +166,7 @@ def _maybe_advance_single_stage_report_review(
         triggered_at=effective_ts,
         notes=(
             "Auto-advanced after the single-stage audit report was fully "
-            "approved by the Lead Auditor, committee chairperson, and "
-            "Certification Manager."
+            "approved by all required report signers."
         ),
     ))
 
@@ -239,9 +238,8 @@ def list_audit_reports(
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
     chair = planned_committee_chair(audit_set) if audit_set else None
 
-    # The Certification Manager signs after the Lead Auditor. Reports that need
-    # an appointed reviewer/chair are only fully approved once that chair signs
-    # after the Certification Manager.
+    # FR.231 is approved by Lead Auditor + Certification Manager. FR.232 is
+    # approved by Lead Auditor + appointed committee chairperson.
     is_cm = current_user.role in ("certification_manager", "admin", "executive")
 
     rows = (
