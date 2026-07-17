@@ -120,7 +120,8 @@ class AuditSetCreateSchema(BaseModel):
     website: str = ""
     representative: str = ""
     standards: list[str]           # e.g. ["QMS", "EMS", "OHSMS"]
-    audit_type: str                # "initial" | "surveillance" | "recertification"
+    audit_type: str                # "initial" | "surveillance_1" | "surveillance_2" | "recertification"
+    is_transfer: bool = False
     cycle_number: int = 1
     accreditation_body: str = "UAF"
     scope_tr: str = ""
@@ -156,6 +157,8 @@ class AuditSetUpdatePlanningSchema(BaseModel):
     document_language: Optional[str] = None
     application_date: Optional[date] = None          # retroactive override — when the client actually applied
     application_data: Optional[ApplicationDataSchema] = None   # ← ADD
+    transfer_reviewer_id: Optional[str] = None
+    transfer_reviewer_name: Optional[str] = None
     stages: list[StageInput] = []
     # Portal 64 — committee picker moved to planning; list of dicts with id, full_name,
     # ea_codes, standards (used to validate and store committee_members JSON on audit_set)
@@ -208,6 +211,7 @@ class AuditSetResponse(BaseModel):
     company_address: Optional[str]
     standards: Optional[list]
     audit_type: str
+    is_transfer: bool = False
     cycle_number: int
     accreditation_body: Optional[str]
     scope_tr: Optional[str]
@@ -232,6 +236,9 @@ class AuditSetResponse(BaseModel):
     # Portal 51 — FR.218 Application Reviewer (FSMS/ISMS only)
     fr218_reviewer_id:   Optional[str] = None
     fr218_reviewer_name: Optional[str] = None
+    # Transfer application reviewer for FR.250
+    transfer_reviewer_id:   Optional[str] = None
+    transfer_reviewer_name: Optional[str] = None
     # Portal 64 — committee appointed during planning (JSON snapshot)
     committee_members: Optional[list] = None
     stages: list[StageResponse]

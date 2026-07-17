@@ -53,7 +53,7 @@ interface FormState {
   // Contact
   representative_name: string; representative_email: string
   // Certification
-  standards: string[]; audit_type: string; scope_description: string
+  standards: string[]; audit_type: string; is_transfer: boolean; scope_description: string
   // Personnel — IAF MD5
   full_time_employees: string; part_time_employees: string
   subcontractor_employees: string; seasonal_employees: string
@@ -76,7 +76,7 @@ const INITIAL: FormState = {
   company_name: '', company_address: '', city: '', country: '',
   phone: '', website: '',
   representative_name: '', representative_email: '',
-  standards: [], audit_type: 'initial', scope_description: '',
+  standards: [], audit_type: 'initial', is_transfer: false, scope_description: '',
   full_time_employees: '', part_time_employees: '',
   subcontractor_employees: '', seasonal_employees: '',
   shift_count: '1', shift_same_process: false,
@@ -174,6 +174,7 @@ export default function ApplyPage() {
         representative_email: form.representative_email,
         standards:         form.standards,
         audit_type:        form.audit_type,
+        is_transfer:       form.is_transfer,
         scope_description: form.scope_description,
         // Personnel
         full_time_employees:      pInt(form.full_time_employees),
@@ -424,10 +425,11 @@ export default function ApplyPage() {
           {/* ── 4. Audit Type ─────────────────────────────────────────── */}
           <div className={formSectionCls}>
             <h2 className={sectionHdCls}>Audit Type *</h2>
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-4">
               {[
                 { v: 'initial',          l: 'Initial Certification' },
-                { v: 'surveillance',     l: 'Surveillance' },
+                { v: 'surveillance_1',   l: 'Surveillance 1' },
+                { v: 'surveillance_2',   l: 'Surveillance 2' },
                 { v: 'recertification',  l: 'Recertification' },
               ].map(opt => (
                 <label key={opt.v} className={`p-3 rounded-lg border text-center cursor-pointer text-sm transition-colors ${
@@ -439,6 +441,20 @@ export default function ApplyPage() {
                 </label>
               ))}
             </div>
+            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-sm text-amber-950">
+              <input
+                type="checkbox"
+                checked={form.is_transfer}
+                onChange={e => sel({ is_transfer: e.target.checked })}
+                className="mt-0.5 accent-[#1A4731]"
+              />
+              <span>
+                <span className="font-semibold">This is a transfer application</span>
+                <span className="block text-xs text-amber-800">
+                  Select this if your organisation already has a certificate from another certification body.
+                </span>
+              </span>
+            </label>
           </div>
 
           {/* ── 5. Scope ──────────────────────────────────────────────── */}

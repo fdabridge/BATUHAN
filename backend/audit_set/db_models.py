@@ -98,6 +98,10 @@ def create_tables():
     _safe_add_column("audit_sets", "fr218_reviewer_name VARCHAR")
     # Portal 62 — FR.233 certification committee (auditor pool snapshot)
     _safe_add_column("audit_sets", "committee_members JSON")
+    # Transfer audits — FR.250 Transfer Application Control Form
+    _safe_add_column("audit_sets", "is_transfer BOOLEAN DEFAULT 0")
+    _safe_add_column("audit_sets", "transfer_reviewer_id VARCHAR")
+    _safe_add_column("audit_sets", "transfer_reviewer_name VARCHAR")
     # Stage planning — IK experts and evaluators (added after initial deploy)
     _safe_add_column("audit_set_stages", "ik_experts JSON")
     _safe_add_column("audit_set_stages", "evaluators JSON")
@@ -146,6 +150,7 @@ class AuditSet(Base):
     # ── Audit config ──────────────────────────────────────────────────────────
     standards          = Column(JSON)    # ["QMS", "EMS", "OHSMS"]
     audit_type         = Column(String)  # "initial"|"surveillance"|"recertification"
+    is_transfer        = Column(Boolean, default=False, nullable=False, server_default="0")
     cycle_number       = Column(Integer, default=1)
     accreditation_body = Column(String)  # "UAF"|"TURKAK"
 
@@ -210,6 +215,12 @@ class AuditSet(Base):
     # Required when any standard in `standards` is FSMS or ISMS.
     fr218_reviewer_id   = Column(String, nullable=True)
     fr218_reviewer_name = Column(String, nullable=True)
+
+    # ── FR.250 Transfer Reviewer (transfer applications only) ────────────────
+    # Separate auditor appointed only for transfer cases. Must not overlap with
+    # audit team, technical experts, FR.218 reviewer, or certification committee.
+    transfer_reviewer_id   = Column(String, nullable=True)
+    transfer_reviewer_name = Column(String, nullable=True)
 
     # ── FR.233 Certification Committee (Portal 62) ───────────────────────────
     # JSON list of appointed committee members from the auditor pool. Each

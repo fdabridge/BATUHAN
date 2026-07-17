@@ -12,7 +12,7 @@ import type { AuditSetResponse } from '@/types'
 interface Step1Data {
   company_name: string; client_reference: string; company_address: string; country: string; city: string
   phone: string; email: string; website: string; representative: string; standards: string[]
-  audit_type: string; scope_tr: string; scope_en: string; non_applicable_clauses: string; accreditation_body: string
+  audit_type: string; is_transfer: boolean; scope_tr: string; scope_en: string; non_applicable_clauses: string; accreditation_body: string
   audit_language: string; document_language: string
 }
 
@@ -96,7 +96,7 @@ const sectionHd  = 'mb-3 text-sm font-medium text-gray-700'
 const DEFAULT_S1: Step1Data = {
   company_name: '', client_reference: '', company_address: '', country: 'Turkey', city: '',
   phone: '', email: '', website: '', representative: '', standards: [],
-  audit_type: '', scope_tr: '', scope_en: '', non_applicable_clauses: '', accreditation_body: 'UAF',
+  audit_type: '', is_transfer: false, scope_tr: '', scope_en: '', non_applicable_clauses: '', accreditation_body: 'UAF',
   audit_language: 'Turkish', document_language: 'turkish',
 }
 
@@ -207,7 +207,8 @@ function Step1({
         <div className="flex gap-5">
           {[
             { value: 'initial',         label: 'Initial certification' },
-            { value: 'surveillance',    label: 'Surveillance'          },
+            { value: 'surveillance_1',  label: 'Surveillance 1'        },
+            { value: 'surveillance_2',  label: 'Surveillance 2'        },
             { value: 'recertification', label: 'Recertification'       },
             { value: 'special',         label: 'Special Audit'         },
           ].map(({ value, label }) => (
@@ -219,6 +220,21 @@ function Step1({
         </div>
         {errors.audit_type && <p className={errCls}>{errors.audit_type}</p>}
       </div>
+
+      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+        <input
+          type="checkbox"
+          className="mt-0.5 accent-certiva-primary"
+          checked={data.is_transfer}
+          onChange={(e) => onChange({ is_transfer: e.target.checked })}
+        />
+        <span>
+          <span className="font-medium">Transfer application</span>
+          <span className="block text-xs text-amber-800">
+            Adds FR.250 and requires an independent Transfer Reviewer.
+          </span>
+        </span>
+      </label>
 
       <div>
         <label className={lblCls}>Scope (Turkish) <span className="text-red-400">*</span></label>
@@ -636,7 +652,8 @@ function Step3({ s1, s2, error }: { s1: Step1Data; s2: Step2Data; error: string 
     ...(s1.client_reference ? [['Client ref / Agreement No', s1.client_reference] as [string, string]] : []),
     ['Address',      s1.company_address],
     ['Standards',    s1.standards.join(', ')],
-    ['Audit type',   s1.audit_type ? s1.audit_type.charAt(0).toUpperCase() + s1.audit_type.slice(1) : '—'],
+    ['Audit type',   s1.audit_type ? s1.audit_type.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase()) : '—'],
+    ['Transfer',     s1.is_transfer ? 'Yes' : 'No'],
     ['Accreditation', s1.accreditation_body],
     ['Personnel',    `${s2.full_time} FT, ${s2.part_time} PT, ${s2.subcontractors} contractor, ${s2.seasonal} seasonal`],
     ['Sites',        `${s2.multiSite ? s2.sites.length : 1} site(s)`],
@@ -684,7 +701,7 @@ export default function NewClientPage() {
         company_address: s1.company_address,
         country: s1.country, city: s1.city, phone: s1.phone,
         email: s1.email, website: s1.website, representative: s1.representative,
-        standards: s1.standards, audit_type: s1.audit_type,
+        standards: s1.standards, audit_type: s1.audit_type, is_transfer: s1.is_transfer,
         scope_tr: s1.scope_tr, scope_en: s1.scope_en,
         non_applicable_clauses: s1.non_applicable_clauses,
         accreditation_body: s1.accreditation_body,

@@ -24,6 +24,51 @@ from audit_set.schemas import (
 
 logger = logging.getLogger(__name__)
 
+
+def _stage_member_ids(stage: AuditSetStage) -> set[str]:
+    ids: set[str] = set()
+    if stage.lead_auditor_id:
+        ids.add(stage.lead_auditor_id)
+    for attr in ("auditors", "technical_experts", "observers", "trainees", "ik_experts", "evaluators"):
+        for member in getattr(stage, attr, None) or []:
+            if isinstance(member, dict) and member.get("id"):
+                ids.add(str(member["id"]))
+    return ids
+
+
+def _committee_member_ids(audit_set: AuditSet) -> set[str]:
+    ids: set[str] = set()
+    for member in audit_set.committee_members or []:
+        if not isinstance(member, dict):
+            continue
+        auditor_id = member.get("id") or member.get("auditor_id") or member.get("auditorId")
+        if auditor_id:
+            ids.add(str(auditor_id))
+    return ids
+
+
+def _validate_transfer_reviewer_choice(audit_set: AuditSet, auditor_id: str | None) -> None:
+    """Transfer Reviewer must be separate from the audit/team/review/committee roles."""
+    if not auditor_id:
+        return
+    involved: set[str] = set()
+    for stage in audit_set.stages or []:
+        involved.update(_stage_member_ids(stage))
+    involved.update(_committee_member_ids(audit_set))
+    if audit_set.fr218_reviewer_id:
+        involved.add(audit_set.fr218_reviewer_id)
+
+    if auditor_id in involved:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Transfer Reviewer must be independent from this audit: choose an auditor "
+                "who is not on the audit team, not a technical expert/reviewer, and not "
+                "on the certification committee."
+            ),
+        )
+
 # Standard code → full ISO name understood by calculator/engine.py
 _CODE_TO_ISO: dict[str, str] = {
     "QMS":        "ISO 9001",
@@ -998,6 +1043,7 @@ def create_audit_set(db: Session, data: AuditSetCreateSchema) -> AuditSet:
         representative=data.representative,
         standards=data.standards,
         audit_type=data.audit_type,
+        is_transfer=data.is_transfer,
         cycle_number=data.cycle_number,
         accreditation_body=data.accreditation_body,
         scope_tr=data.scope_tr,
@@ -1218,6 +1264,10 @@ def update_planning(
     if data.application_data is not None:
         audit_set.application_data = data.application_data.model_dump()
         flag_modified(audit_set, "application_data")
+    if data.transfer_reviewer_id is not None or data.transfer_reviewer_name is not None:
+        _validate_transfer_reviewer_choice(audit_set, data.transfer_reviewer_id)
+        audit_set.transfer_reviewer_id = data.transfer_reviewer_id or None
+        audit_set.transfer_reviewer_name = data.transfer_reviewer_name or None
 
     # Upsert stages
     for stage_input in data.stages:
@@ -1261,6 +1311,9 @@ def update_planning(
     if data.committee_members is not None:
         audit_set.committee_members = data.committee_members
         flag_modified(audit_set, "committee_members")
+        _validate_transfer_reviewer_choice(audit_set, audit_set.transfer_reviewer_id)
+
+    _validate_transfer_reviewer_choice(audit_set, audit_set.transfer_reviewer_id)
 
     # Auto-populate ea_code (and required_scope on legacy records) so
     # documents stop showing "None" for EA/IAF Code. The user's manual

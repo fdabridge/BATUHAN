@@ -22,7 +22,7 @@ router = APIRouter(prefix="/apply", tags=["application"])
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 ALLOWED_STANDARDS = {"QMS", "EMS", "OHSMS", "FSMS", "ISMS", "MDQMS", "ABMS", "ENMS"}
-ALLOWED_AUDIT_TYPES = {"initial", "surveillance", "recertification"}
+ALLOWED_AUDIT_TYPES = {"initial", "surveillance_1", "surveillance_2", "recertification"}
 
 
 class SiteDetailInput(BaseModel):
@@ -47,7 +47,8 @@ class ClientApplicationSchema(BaseModel):
 
     # ── Certification request ─────────────────────────────────────────────
     standards: list[str]              # subset of ALLOWED_STANDARDS
-    audit_type: str                   # "initial" | "surveillance" | "recertification"
+    audit_type: str                   # "initial" | "surveillance_1" | "surveillance_2" | "recertification"
+    is_transfer: bool = False
 
     # ── Scope ─────────────────────────────────────────────────────────────
     scope_description: str = ""
@@ -189,6 +190,7 @@ def submit_application(
         email=payload.representative_email,
         standards=payload.standards,
         audit_type=payload.audit_type,
+        is_transfer=payload.is_transfer,
         scope_en=payload.scope_description,
         scope_tr="",
         accreditation_body="UAF",

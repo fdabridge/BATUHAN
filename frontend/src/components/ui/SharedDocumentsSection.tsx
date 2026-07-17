@@ -66,18 +66,24 @@ export function SharedDocumentsSection({
   auditSetId,
   stages = [],
   auditType = null,
+  isTransfer = false,
   onDocumentReleased,
 }: {
   auditSetId: string
   stages?: StageResponse[]
   auditType?: string | null
+  isTransfer?: boolean
   onDocumentReleased?: () => void
 }) {
   // Document types available in the release form, filtered by audit type.
   const DOC_TYPES = (() => {
     const isSurveillance = (auditType ?? '').startsWith('surveillance')
+    const transferTypes = isTransfer
+      ? [{ value: 'transfer_review', label: 'Transfer Application Control (FR.250)' }]
+      : []
     if (isSurveillance) {
       return [
+        ...transferTypes,
         { value: 'surveillance_notification', label: 'Surveillance Notification (FR.234)' },
         { value: 'team_info',                 label: 'Audit Team Info (FR.224)' },
         { value: 'review_decision',           label: 'Review & Decision (FR.233)' },
@@ -86,6 +92,7 @@ export function SharedDocumentsSection({
     }
     // Initial certification / recertification / unset
     return [
+      ...transferTypes,
       { value: 'quotation',       label: 'Quotation (FR.220)' },
       { value: 'agreement',       label: 'Agreement (FR.221)' },
       { value: 'fr218_review',    label: 'Application Review (FR.218)' },
@@ -104,6 +111,7 @@ export function SharedDocumentsSection({
   const [label, setLabel]     = useState('')
   const [docType, setDocType] = useState(() => {
     const isSurveillance = (auditType ?? '').startsWith('surveillance')
+    if (isTransfer) return 'transfer_review'
     return isSurveillance ? 'surveillance_notification' : 'quotation'
   })
   const [stageType, setStageType] = useState('')
@@ -190,7 +198,7 @@ export function SharedDocumentsSection({
       })
       const releasedFR233 = docType === 'review_decision'
       setLabel(''); setFile(null)
-      setDocType((auditType ?? '').startsWith('surveillance') ? 'surveillance_notification' : 'quotation')
+      setDocType(isTransfer ? 'transfer_review' : ((auditType ?? '').startsWith('surveillance') ? 'surveillance_notification' : 'quotation'))
       setStageType(''); setAuditorId('')
       setReleaseDate(new Date().toISOString().slice(0, 10))
       if (fileRef.current) fileRef.current.value = ''

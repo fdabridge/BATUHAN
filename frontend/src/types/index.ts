@@ -18,7 +18,7 @@ export interface ClientSummary {
   company_name: string
   company_address: string
   standards: string[]         // e.g. ["QMS", "EMS"]
-  audit_type: string          // "initial" | "surveillance" | "recertification"
+  audit_type: string          // "initial" | "surveillance_1" | "surveillance_2" | "recertification"
   status: string              // audit set workflow status
   cert_issued_date: string | null   // ISO date "YYYY-MM-DD"
   cert_expiry_date: string | null   // ISO date "YYYY-MM-DD"
@@ -134,6 +134,7 @@ export interface AuditSetResponse {
   company_address: string | null
   standards: string[] | null
   audit_type: string
+  is_transfer: boolean
   cycle_number: number
   accreditation_body: string | null
   scope_tr: string | null
@@ -168,6 +169,8 @@ export interface AuditSetResponse {
   // Portal 51 — FR.218 Application Reviewer (FSMS/ISMS only)
   fr218_reviewer_id?:   string | null
   fr218_reviewer_name?: string | null
+  transfer_reviewer_id?:   string | null
+  transfer_reviewer_name?: string | null
   // Portal 64 — committee appointed during planning (JSON snapshot from committee_members column)
   committee_members?: CommitteeTeamMember[] | null
   // Portal 78 — per-site details (name, address, employee_count, process)
@@ -500,7 +503,6 @@ export interface AuditorAvailabilityItem {
   conflict_detail: string | null
   covered_scope: Record<string, string[]>    // {standard: [covered_codes]} from required_categories
 }
-
 
 
 

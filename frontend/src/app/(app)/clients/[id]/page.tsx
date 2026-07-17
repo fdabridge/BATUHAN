@@ -34,6 +34,8 @@ function formatDate(iso: string | null | undefined): string {
 function auditTypeLabel(t: string): string {
   if (t === 'initial')         return 'Initial certification'
   if (t === 'surveillance')    return 'Surveillance'
+  if (t === 'surveillance_1')  return 'Surveillance 1'
+  if (t === 'surveillance_2')  return 'Surveillance 2'
   if (t === 'recertification') return 'Recertification'
   return t
 }
@@ -1177,6 +1179,117 @@ function FR218ReviewerPicker({
         <span className="text-xs text-gray-500">Current: <strong>{currentReviewerName}</strong></span>
       )}
       {msg && <span className={`text-xs ${msg.startsWith('Error') ? 'text-red-600' : 'text-green-600'}`}>{msg}</span>}
+    </div>
+  )
+}
+
+
+// ── Transfer Reviewer Picker (FR.250 only) ───────────────────────────────────
+
+function memberId(member: unknown): string | null {
+  if (!member || typeof member !== 'object') return null
+  const obj = member as { id?: unknown }
+  return typeof obj.id === 'string' && obj.id ? obj.id : null
+}
+
+function collectTransferExclusions(
+  stages: StageResponse[],
+  committeeMembers: CommitteeTeamMember[] | null | undefined,
+  fr218ReviewerId: string | null | undefined,
+): Set<string> {
+  const excluded = new Set<string>()
+  if (fr218ReviewerId) excluded.add(fr218ReviewerId)
+  for (const stage of stages) {
+    if (stage.lead_auditor_id) excluded.add(stage.lead_auditor_id)
+    for (const list of [stage.auditors, stage.technical_experts, stage.observers, stage.ik_experts, stage.evaluators]) {
+      for (const member of list ?? []) {
+        const id = memberId(member)
+        if (id) excluded.add(id)
+      }
+    }
+  }
+  for (const member of committeeMembers ?? []) {
+    if (member.id) excluded.add(member.id)
+  }
+  return excluded
+}
+
+function TransferReviewerPicker({
+  auditSetId, auditors, stages, committeeMembers, fr218ReviewerId,
+  currentReviewerId, currentReviewerName, onSaved,
+}: {
+  auditSetId: string
+  auditors: AuditorSummary[]
+  stages: StageResponse[]
+  committeeMembers: CommitteeTeamMember[] | null | undefined
+  fr218ReviewerId: string | null | undefined
+  currentReviewerId: string | null | undefined
+  currentReviewerName: string | null | undefined
+  onSaved: () => void
+}) {
+  const [selected, setSelected] = useState(currentReviewerId ?? '')
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState('')
+  const excluded = useMemo(
+    () => collectTransferExclusions(stages, committeeMembers, fr218ReviewerId),
+    [stages, committeeMembers, fr218ReviewerId],
+  )
+  const eligible = auditors.filter((a) => a.is_active && !excluded.has(a.id))
+
+  useEffect(() => {
+    setSelected(currentReviewerId ?? '')
+  }, [currentReviewerId])
+
+  async function save() {
+    setSaving(true)
+    setMsg('')
+    try {
+      const aud = eligible.find(a => a.id === selected) ?? null
+      await api.put(`/audit-sets/${auditSetId}/planning`, {
+        transfer_reviewer_id: aud?.id ?? '',
+        transfer_reviewer_name: aud?.name ?? '',
+      })
+      setMsg('Saved ✓')
+      onSaved()
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setMsg(detail || 'Error saving')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+      <h3 className="mb-1 text-sm font-semibold text-amber-950">Transfer Reviewer (FR.250)</h3>
+      <p className="mb-3 text-xs text-amber-800">
+        Required only for transfer applications. Choose an auditor who is independent from the audit team,
+        FR.218 reviewer, technical experts, and certification committee.
+      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <select
+          value={selected}
+          onChange={(e) => setSelected(e.target.value)}
+          className="rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A4731]/30"
+        >
+          <option value="">— Select transfer reviewer —</option>
+          {eligible.map((a) => (
+            <option key={a.id} value={a.id}>{a.name}</option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving}
+          className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+        >
+          {saving ? 'Saving…' : 'Assign'}
+        </button>
+        {currentReviewerName && (
+          <span className="text-xs text-amber-800">Current: <strong>{currentReviewerName}</strong></span>
+        )}
+        {msg && <span className={`text-xs ${msg.startsWith('Error') || msg.includes('must') ? 'text-red-600' : 'text-green-700'}`}>{msg}</span>}
+      </div>
     </div>
   )
 }
@@ -2723,6 +2836,18 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
             initialCommittee={data.committee_members}
             onSuccess={invalidate}
           />
+          {data.is_transfer && (
+            <TransferReviewerPicker
+              auditSetId={id}
+              auditors={auditors}
+              stages={data.stages}
+              committeeMembers={data.committee_members}
+              fr218ReviewerId={data.fr218_reviewer_id}
+              currentReviewerId={data.transfer_reviewer_id}
+              currentReviewerName={data.transfer_reviewer_name}
+              onSaved={invalidate}
+            />
+          )}
         </div>
       )}
 
@@ -2767,6 +2892,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
         auditSetId={id}
         stages={data.stages ?? []}
         auditType={data.audit_type ?? null}
+        isTransfer={data.is_transfer}
         onDocumentReleased={invalidate}
       />
 

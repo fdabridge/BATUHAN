@@ -54,6 +54,8 @@ SIG_TO_ROLE = {
     "ASSIGNED_AUDITOR": "assigned_auditor",
     "REVIEWER": "reviewer",
     "APPOINTED_REVIEWER": "appointed_reviewer",
+    "TRANSFER_REVIEWER": "transfer_reviewer",
+    "TRANSFER_CERT_DECISION": "committee_chair",
 }
 
 

@@ -47,6 +47,8 @@ function formatDate(iso: string | null): string {
 function auditTypeLabel(t: string): string {
   if (t === 'initial')         return 'Initial'
   if (t === 'surveillance')    return 'Surveillance'
+  if (t === 'surveillance_1')  return 'Surveillance 1'
+  if (t === 'surveillance_2')  return 'Surveillance 2'
   if (t === 'recertification') return 'Recertification'
   return t
 }
@@ -382,4 +384,3 @@ export default function ClientsPage() {
     </>
   )
 }
-

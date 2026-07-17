@@ -85,6 +85,9 @@ ROLE_TO_SIG: dict[str, str] = {
     "reviewer":         "REVIEWER",
     # Portal 55 — appointed committee reviewer for stage reports (FR.231/FR.232)
     "appointed_reviewer": "APPOINTED_REVIEWER",
+    # FR.250 transfer application control
+    "transfer_reviewer": "TRANSFER_REVIEWER",
+    "committee_chair":   "TRANSFER_CERT_DECISION",
 }
 SIG_TO_ROLE: dict[str, str] = {v: k for k, v in ROLE_TO_SIG.items()}
 
@@ -638,6 +641,21 @@ def _shared_slot_eligible(
         # Manager slots. Audit reports use their own branch below because
         # FR.231 only needs the extra reviewer for FSMS/ISMS.
         return role in ("certification_manager", "admin")
+    if role_label == "transfer_reviewer":
+        if role == "admin":
+            return True
+        if role != "auditor" or not current_user.auditor_id:
+            return False
+        audit_set = db.query(AuditSet).filter_by(id=doc.audit_set_id).first()
+        return audit_set is not None and audit_set.transfer_reviewer_id == current_user.auditor_id
+    if role_label == "committee_chair":
+        if role == "admin":
+            return True
+        if role != "auditor" or not current_user.auditor_id:
+            return False
+        audit_set = db.query(AuditSet).filter_by(id=doc.audit_set_id).first()
+        chair = planned_committee_chair(audit_set) if audit_set else None
+        return committee_member_auditor_id(chair) == current_user.auditor_id
     return False
 
 

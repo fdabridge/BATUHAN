@@ -121,6 +121,18 @@ def _vsp_signed(db: Session, document_type: str, doc_id: str, sig_key: str) -> b
     )
 
 
+def _prior_shared_slots_unsigned(db: Session, slot: AuditDocumentSignature) -> int:
+    if not slot.document_id or not slot.order_index:
+        return 0
+    return (
+        db.query(AuditDocumentSignature)
+        .filter_by(document_id=slot.document_id, required=True)
+        .filter(AuditDocumentSignature.order_index < slot.order_index)
+        .filter(AuditDocumentSignature.signed_at.is_(None))
+        .count()
+    )
+
+
 def _append_report_and_nc_tasks(
     result: list[dict],
     seen: set[str],
@@ -444,6 +456,43 @@ def get_my_pending_signatures(
                 .all()
             ):
                 _add(s)
+
+        # ── 4. transfer reviewer / committee chair — FR.250 ──────────────────
+        transfer_sets = {
+            row.id
+            for row in db.query(AuditSet.id)
+            .filter_by(transfer_reviewer_id=auditor_id)
+            .all()
+        }
+        chair_sets = set()
+        for audit_set in db.query(AuditSet).filter(AuditSet.is_transfer.is_(True)).all():
+            chair = planned_committee_chair(audit_set)
+            if committee_member_auditor_id(chair) == auditor_id:
+                chair_sets.add(audit_set.id)
+
+        transfer_slot_filters = []
+        if transfer_sets:
+            transfer_slot_filters.append((
+                "transfer_reviewer",
+                transfer_sets,
+            ))
+        if chair_sets:
+            transfer_slot_filters.append((
+                "committee_chair",
+                chair_sets,
+            ))
+        for role_label, audit_set_ids in transfer_slot_filters:
+            for s in (
+                db.query(AuditDocumentSignature)
+                .filter(
+                    AuditDocumentSignature.signer_role_label == role_label,
+                    AuditDocumentSignature.signed_at.is_(None),
+                    AuditDocumentSignature.audit_set_id.in_(audit_set_ids),
+                )
+                .all()
+            ):
+                if _prior_shared_slots_unsigned(db, s) == 0:
+                    _add(s)
 
         # ── Serialize and return ────────────────────────────────────────────────
         results = []

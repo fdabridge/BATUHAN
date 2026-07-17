@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 from audit_set.field_maps import (
     FR211_MAP, FR218_MAP, FR222_MAP, FR223_MAP,
     FR224_MAP, FR225_MAP, FR230_MAP, FR231_MAP, FR232_MAP, FR233_MAP, FR234_MAP,
+    FR250_MAP,
 )
 
 
@@ -160,6 +161,23 @@ def _add(specs, seen, fr_number, group, stage_sub, field_map, stage_context, mis
     seen.add(fr_number)
 
 
+def _transfer_spec(missing: list[str]) -> DocumentSpec | None:
+    """Return FR.250 for transfer applications, independent of audit type."""
+    folder = _resolve_dir(BLANK_SET_PATH / GROUP_FOLDER["base"], "Transfer")
+    template = _find_template(folder, "FR.250")
+    if template is None:
+        missing.append(f"{GROUP_FOLDER['base']}/Transfer/FR.250")
+        logger.warning("[Resolver] Transfer template not found: %s/Transfer/FR.250", GROUP_FOLDER["base"])
+        return None
+    return DocumentSpec(
+        fr_number="FR.250",
+        template_path=template,
+        field_map=FR250_MAP,
+        stage_context="all",
+        output_filename=_clean_filename(template.name),
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Per-stage builders
 # --------------------------------------------------------------------------- #
@@ -292,5 +310,12 @@ def resolve_document_set(audit_set) -> tuple[dict[str, list[DocumentSpec]], list
         sub2 = _get_stage_subfolder(audit_type, "stage_2", accreditation_body)
         document_set["Stage_1"] = _build_stage_1(needs_base, needs_mdqms, needs_isms, sub1, missing)
         document_set["Stage_2"] = _build_stage_2(needs_base, needs_mdqms, needs_isms, sub2, missing)
+
+    if getattr(audit_set, "is_transfer", False):
+        spec = _transfer_spec(missing)
+        if spec:
+            first_folder = "Surveillance" if audit_type.startswith("surveillance") else "Stage_1"
+            document_set.setdefault(first_folder, [])
+            document_set[first_folder].insert(0, spec)
 
     return document_set, missing
