@@ -179,11 +179,11 @@ export default function CertificatesCockpit() {
           onChange={(e) => setStandardFilter(e.target.value)}
         >
           <option value="">All Standards</option>
-          <option value="ISO 9001">ISO 9001</option>
-          <option value="ISO 14001">ISO 14001</option>
-          <option value="ISO 45001">ISO 45001</option>
-          <option value="ISO 22000">ISO 22000</option>
-          <option value="ISO 27001">ISO 27001</option>
+          <option value="QMS">ISO 9001 / QMS</option>
+          <option value="EMS">ISO 14001 / EMS</option>
+          <option value="OHSMS">ISO 45001 / OHSMS</option>
+          <option value="FSMS">ISO 22000 / FSMS</option>
+          <option value="ISMS">ISO 27001 / ISMS</option>
         </select>
         <select
           className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -209,7 +209,7 @@ export default function CertificatesCockpit() {
         >
           <option value="">All Buckets</option>
           <option value="due_this_month">Due This Month</option>
-          <option value="due_in_30_days">Due in 30 Days</option>
+          <option value="due_30">Due in 30 Days</option>
           <option value="overdue">Overdue</option>
           <option value="recert_due">Recert Due</option>
           <option value="expiring_soon">Expiring Soon</option>

@@ -571,6 +571,12 @@ class CertificateCockpitResponse(BaseModel):
     certificates: list[CertificateRow]
 
 
+class CertificateDetailResponse(BaseModel):
+    audit_set_id: str
+    company_name: str
+    standards: list[CertificateRow]
+
+
 # ── Portal 91b — CRM Certificate Cockpit ────────────────────────────────────
 
 def _compute_lifecycle_status(audit_set: AuditSet) -> str:
@@ -587,6 +593,25 @@ def _compute_lifecycle_status(audit_set: AuditSet) -> str:
     if audit_set.cert_expiry_date and (audit_set.cert_expiry_date - today).days <= 90:
         return "expiring_soon"
     return "active"
+
+
+def _standard_matches(value: str, selected: str) -> bool:
+    aliases = {
+        "QMS": {"QMS", "ISO 9001", "ISO 9001:2015"},
+        "EMS": {"EMS", "ISO 14001", "ISO 14001:2015"},
+        "OHSMS": {"OHSMS", "ISO 45001", "ISO 45001:2018"},
+        "FSMS": {"FSMS", "ISO 22000", "ISO 22000:2018"},
+        "ISMS": {"ISMS", "ISO 27001", "ISO/IEC 27001", "ISO 27001:2022"},
+    }
+    left = (value or "").strip().upper()
+    right = (selected or "").strip().upper()
+    if left == right:
+        return True
+    for names in aliases.values():
+        normalized = {n.upper() for n in names}
+        if left in normalized and right in normalized:
+            return True
+    return False
 
 
 def _compute_surveillance_due(audit_set: AuditSet, db: Session) -> tuple[Optional[date], Optional[date]]:
@@ -752,7 +777,7 @@ def crm_certificates(
             standards_list = ["N/A"]
 
         for std in standards_list:
-            if standard and std.upper() != standard.upper():
+            if standard and not _standard_matches(std, standard):
                 continue
 
             key = f"{a.id}:{std}"
@@ -774,7 +799,7 @@ def crm_certificates(
                     due_d = date.fromisoformat(row.next_surveillance_due)
                     if not (due_d.year == today.year and due_d.month == today.month):
                         continue
-                elif overdue_bucket == "due_30":
+                elif overdue_bucket in ("due_30", "due_in_30_days"):
                     if row.countdown_days is None or row.countdown_days < 0 or row.countdown_days > 30:
                         continue
                 elif overdue_bucket == "overdue":
@@ -920,7 +945,7 @@ def crm_certificates_export(
     )
 
 
-@router.get("/crm/certificates/{audit_set_id}")
+@router.get("/crm/certificates/{audit_set_id}", response_model=CertificateDetailResponse)
 def crm_certificate_detail(
     audit_set_id: str,
     db: Session = Depends(get_db),
@@ -948,7 +973,11 @@ def crm_certificate_detail(
         commercial = commercial_map.get(std)
         rows.append(_build_certificate_row(a, std, db, auth_db, commercial))
 
-    return rows
+    return CertificateDetailResponse(
+        audit_set_id=a.id,
+        company_name=a.company_name or "",
+        standards=rows,
+    )
 
 
 @router.patch("/crm/certificates/{audit_set_id}/commercial")
