@@ -50,6 +50,11 @@ psycopg2-binary==2.9.10        # PostgreSQL driver for Railway Postgres
 aiosqlite==0.20.0              # async SQLite support (local dev)
 
 # -----------------------------------------------------------------------
+# Excel Export
+# -----------------------------------------------------------------------
+openpyxl>=3.1.0                    # Excel spreadsheet generation (CRM certificate export)
+
+# -----------------------------------------------------------------------
 # Utilities
 # -----------------------------------------------------------------------
 httpx==0.27.2                  # async HTTP client

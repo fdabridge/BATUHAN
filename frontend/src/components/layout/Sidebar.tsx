@@ -19,6 +19,7 @@ import {
   CalendarDays,
   Briefcase,
   GraduationCap,
+  ShieldCheck,
   type LucideIcon,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
@@ -124,10 +125,11 @@ const NAV_TOP: NavItemProps[] = [
 const CB_REVIEW_ROLES = new Set(['admin', 'planner', 'officer', 'executive'])
 
 const CRM_NAV: NavItemProps[] = [
-  { icon: BarChart3,    label: 'CRM Dashboard',   href: '/crm',              active: false },
-  { icon: RefreshCw,    label: 'Clients',          href: '/crm/clients',      active: false },
-  { icon: CalendarDays, label: 'Auditor Calendar', href: '/crm/calendar',     active: false },
-  { icon: Briefcase,    label: 'Consultants',      href: '/crm/consultants',  active: false },
+  { icon: BarChart3,    label: 'CRM Dashboard',   href: '/crm',                active: false },
+  { icon: ShieldCheck,  label: 'Certificates',     href: '/crm/certificates',   active: false },
+  { icon: RefreshCw,    label: 'Clients',          href: '/crm/clients',        active: false },
+  { icon: CalendarDays, label: 'Auditor Calendar', href: '/crm/calendar',       active: false },
+  { icon: Briefcase,    label: 'Consultants',      href: '/crm/consultants',    active: false },
 ]
 
 const CONSULTANT_NAV: NavItemProps[] = [

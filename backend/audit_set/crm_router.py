@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from audit_set.db_models import AuditSet, AuditSetStage, get_db
+from audit_set.db_models import AuditSet, AuditSetStage, CRMCertificateCommercial, get_db
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
 from auditors.models import Auditor, get_db as get_auditors_db
@@ -520,3 +520,505 @@ def crm_consultants(
         except Exception as exc:
             logger.warning("[CRM] consultant %s summary error: %s", c.id, exc)
     return result
+
+
+# ── Portal 91b — CRM Certificate Cockpit Schemas ─────────────────────────────
+
+class CertificateRow(BaseModel):
+    audit_set_id: str
+    plan_number: int
+    company_name: str
+    standard: str
+    certificate_number: Optional[str]  # plan_number-standard e.g. "1652-QMS"
+    lifecycle_status: str  # active, expiring_soon, expired, suspended, withdrawn, in_progress
+    cert_issued_date: Optional[str]
+    cert_expiry_date: Optional[str]
+    next_surveillance_due: Optional[str]
+    countdown_days: Optional[int]
+    last_surveillance_completed: Optional[str]
+    payment_status: str
+    amount_due: Optional[float]
+    amount_received: Optional[float]
+    outstanding: Optional[float]
+    notes: Optional[str]
+    consultant_name: Optional[str]
+    assigned_auditor: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+
+class CertificateDashboardSummary(BaseModel):
+    active_certificates: int
+    expiring_in_90_days: int
+    surveillance_due_in_30_days: int
+    overdue_surveillance: int
+    expired: int
+    total_outstanding: float
+    total_collected: float
+
+
+class CommercialUpdateRequest(BaseModel):
+    standard: str
+    payment_status: Optional[str] = None
+    amount_due: Optional[float] = None
+    amount_received: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class CertificateCockpitResponse(BaseModel):
+    summary: CertificateDashboardSummary
+    certificates: list[CertificateRow]
+
+
+# ── Portal 91b — CRM Certificate Cockpit ────────────────────────────────────
+
+def _compute_lifecycle_status(audit_set: AuditSet) -> str:
+    """Derive lifecycle status from audit set data. CRM cannot edit this."""
+    if audit_set.cert_status == "suspended":
+        return "suspended"
+    if audit_set.cert_status == "withdrawn":
+        return "withdrawn"
+    if not audit_set.cert_issued_date:
+        return "in_progress"
+    today = date.today()
+    if audit_set.cert_expiry_date and audit_set.cert_expiry_date < today:
+        return "expired"
+    if audit_set.cert_expiry_date and (audit_set.cert_expiry_date - today).days <= 90:
+        return "expiring_soon"
+    return "active"
+
+
+def _compute_surveillance_due(audit_set: AuditSet, db: Session) -> tuple[Optional[date], Optional[date]]:
+    """
+    Compute next surveillance due date based on actual audit stage completions.
+    Rules:
+    - First surveillance: within 12 months of Stage 2 end date
+    - Later surveillances: within 12 months of previous completed surveillance end date
+    Returns: (next_surveillance_due, last_surveillance_completed)
+    """
+    stages = (
+        db.query(AuditSetStage)
+        .filter_by(audit_set_id=audit_set.id)
+        .order_by(AuditSetStage.stage_order)
+        .all()
+    )
+
+    # Find completed surveillance stages (most recent first)
+    completed_surveillances = [
+        s for s in stages
+        if s.status == "complete"
+        and s.stage_type and "surveillance" in s.stage_type.lower()
+        and s.audit_date_end
+    ]
+    completed_surveillances.sort(key=lambda s: s.audit_date_end, reverse=True)
+
+    last_surv_completed: Optional[date] = None
+    if completed_surveillances:
+        last_surv_completed = completed_surveillances[0].audit_date_end
+
+    # Find Stage 2 completion date
+    stage2_end: Optional[date] = None
+    for s in stages:
+        if s.stage_type and ("stage_2" in s.stage_type.lower() or s.stage_type.lower() in ("stage2", "2")):
+            if s.status == "complete" and s.audit_date_end:
+                stage2_end = s.audit_date_end
+                break
+
+    # Compute next due
+    next_due: Optional[date] = None
+    if last_surv_completed:
+        # Next surveillance due within 12 months of last completed surveillance
+        next_due = _add_years(last_surv_completed, 1)
+    elif stage2_end:
+        # First surveillance due within 12 months of Stage 2 end
+        next_due = _add_years(stage2_end, 1)
+
+    return next_due, last_surv_completed
+
+
+def _build_certificate_row(
+    audit_set: AuditSet, standard: str, db: Session, auth_db: Session, commercial: Optional[CRMCertificateCommercial]
+) -> CertificateRow:
+    lifecycle = _compute_lifecycle_status(audit_set)
+    next_surv_due, last_surv_completed = _compute_surveillance_due(audit_set, db)
+
+    countdown: Optional[int] = None
+    if next_surv_due:
+        countdown = (next_surv_due - date.today()).days
+
+    # Consultant name
+    consultant_name: Optional[str] = None
+    if audit_set.consultant_id:
+        try:
+            c = auth_db.query(PlatformUser).filter_by(id=audit_set.consultant_id).first()
+            if c:
+                consultant_name = c.full_name
+        except Exception:
+            pass
+
+    # Assigned auditor (latest stage lead auditor)
+    assigned_auditor: Optional[str] = None
+    if audit_set.stages:
+        for stage in reversed(audit_set.stages):
+            if stage.lead_auditor_name:
+                assigned_auditor = stage.lead_auditor_name
+                break
+
+    # Payment/commercial info
+    payment_status = "unpaid"
+    amount_due: Optional[float] = None
+    amount_received: Optional[float] = None
+    notes: Optional[str] = None
+    if commercial:
+        payment_status = commercial.payment_status
+        amount_due = commercial.amount_due
+        amount_received = commercial.amount_received
+        notes = commercial.notes
+
+    outstanding = None
+    if amount_due is not None:
+        outstanding = (amount_due or 0) - (amount_received or 0)
+
+    return CertificateRow(
+        audit_set_id=audit_set.id,
+        plan_number=audit_set.plan_number,
+        company_name=audit_set.company_name or "",
+        standard=standard,
+        certificate_number=f"{audit_set.plan_number}-{standard}" if audit_set.cert_issued_date else None,
+        lifecycle_status=lifecycle,
+        cert_issued_date=audit_set.cert_issued_date.isoformat() if audit_set.cert_issued_date else None,
+        cert_expiry_date=audit_set.cert_expiry_date.isoformat() if audit_set.cert_expiry_date else None,
+        next_surveillance_due=next_surv_due.isoformat() if next_surv_due else None,
+        countdown_days=countdown,
+        last_surveillance_completed=last_surv_completed.isoformat() if last_surv_completed else None,
+        payment_status=payment_status,
+        amount_due=amount_due,
+        amount_received=amount_received,
+        outstanding=outstanding,
+        notes=notes,
+        consultant_name=consultant_name,
+        assigned_auditor=assigned_auditor,
+    )
+
+
+@router.get("/crm/certificates", response_model=CertificateCockpitResponse)
+def crm_certificates(
+    status: Optional[str] = None,        # lifecycle filter
+    standard: Optional[str] = None,      # e.g. "QMS"
+    payment: Optional[str] = None,       # payment_status filter
+    consultant_id: Optional[str] = None,
+    overdue_bucket: Optional[str] = None,  # "due_this_month" | "due_30" | "overdue" | "recert_due" | "expiring_soon" | "expired"
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """One row per certificate/standard. Portfolio view for CRM cockpit."""
+    if current_user.role not in CRM_ROLES:
+        raise HTTPException(403, "Not authorized")
+
+    try:
+        q = db.query(AuditSet).order_by(AuditSet.company_name)
+        if consultant_id:
+            if consultant_id == "none":
+                q = q.filter(AuditSet.consultant_id.is_(None))
+            else:
+                q = q.filter(AuditSet.consultant_id == consultant_id)
+        all_sets = q.all()
+    except Exception as exc:
+        logger.error("[CRM] certificates DB error: %s", exc)
+        all_sets = []
+
+    # Load all commercial records
+    try:
+        commercials = db.query(CRMCertificateCommercial).all()
+        commercial_map: dict[str, CRMCertificateCommercial] = {
+            f"{c.audit_set_id}:{c.standard}": c for c in commercials
+        }
+    except Exception:
+        commercial_map = {}
+
+    today = date.today()
+    certificates: list[CertificateRow] = []
+
+    # Summary accumulators
+    active_count = expiring_90 = surv_due_30 = overdue_surv = expired_count = 0
+    total_outstanding = 0.0
+    total_collected = 0.0
+
+    for a in all_sets:
+        standards_list = a.standards or []
+        if not standards_list:
+            standards_list = ["N/A"]
+
+        for std in standards_list:
+            if standard and std.upper() != standard.upper():
+                continue
+
+            key = f"{a.id}:{std}"
+            commercial = commercial_map.get(key)
+
+            row = _build_certificate_row(a, std, db, auth_db, commercial)
+
+            # Apply filters
+            if status and row.lifecycle_status != status:
+                continue
+            if payment and row.payment_status != payment:
+                continue
+
+            # Overdue bucket filter
+            if overdue_bucket:
+                if overdue_bucket == "due_this_month":
+                    if not row.next_surveillance_due:
+                        continue
+                    due_d = date.fromisoformat(row.next_surveillance_due)
+                    if not (due_d.year == today.year and due_d.month == today.month):
+                        continue
+                elif overdue_bucket == "due_30":
+                    if row.countdown_days is None or row.countdown_days < 0 or row.countdown_days > 30:
+                        continue
+                elif overdue_bucket == "overdue":
+                    if row.countdown_days is None or row.countdown_days >= 0:
+                        continue
+                elif overdue_bucket == "recert_due":
+                    if row.lifecycle_status not in ("expiring_soon", "expired"):
+                        continue
+                elif overdue_bucket == "expiring_soon":
+                    if row.lifecycle_status != "expiring_soon":
+                        continue
+                elif overdue_bucket == "expired":
+                    if row.lifecycle_status != "expired":
+                        continue
+
+            certificates.append(row)
+
+            # Summary calculations
+            if row.lifecycle_status == "active":
+                active_count += 1
+            elif row.lifecycle_status == "expiring_soon":
+                expiring_90 += 1
+            elif row.lifecycle_status == "expired":
+                expired_count += 1
+
+            if row.countdown_days is not None:
+                if 0 <= row.countdown_days <= 30:
+                    surv_due_30 += 1
+                elif row.countdown_days < 0:
+                    overdue_surv += 1
+
+            if row.outstanding and row.outstanding > 0:
+                total_outstanding += row.outstanding
+            if row.amount_received:
+                total_collected += row.amount_received
+
+    summary = CertificateDashboardSummary(
+        active_certificates=active_count,
+        expiring_in_90_days=expiring_90,
+        surveillance_due_in_30_days=surv_due_30,
+        overdue_surveillance=overdue_surv,
+        expired=expired_count,
+        total_outstanding=round(total_outstanding, 2),
+        total_collected=round(total_collected, 2),
+    )
+
+    return CertificateCockpitResponse(summary=summary, certificates=certificates)
+
+
+@router.get("/crm/certificates/export")
+def crm_certificates_export(
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """
+    Export Excel with three sheets: Portfolio, Radar (surveillance due), Financials.
+    """
+    if current_user.role not in CRM_ROLES:
+        raise HTTPException(403, "Not authorized")
+
+    import io
+    from datetime import datetime as dt
+
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+    except ImportError:
+        # Fallback to CSV if openpyxl not available
+        raise HTTPException(500, "openpyxl package required for Excel export")
+
+    # Build all certificate rows
+    all_sets = db.query(AuditSet).order_by(AuditSet.company_name).all()
+    commercials = db.query(CRMCertificateCommercial).all()
+    commercial_map = {f"{c.audit_set_id}:{c.standard}": c for c in commercials}
+
+    rows: list[CertificateRow] = []
+    for a in all_sets:
+        for std in (a.standards or ["N/A"]):
+            key = f"{a.id}:{std}"
+            commercial = commercial_map.get(key)
+            rows.append(_build_certificate_row(a, std, db, auth_db, commercial))
+
+    wb = openpyxl.Workbook()
+
+    # Sheet 1 — Portfolio
+    ws1 = wb.active
+    ws1.title = "Portfolio"
+    headers1 = ["Company", "Standard", "Certificate #", "Status", "Issued", "Expires",
+                "Next Surv Due", "Countdown (days)", "Last Surv Completed", "Auditor", "Consultant"]
+    ws1.append(headers1)
+    for h_cell in ws1[1]:
+        h_cell.font = Font(bold=True)
+    for r in rows:
+        ws1.append([
+            r.company_name, r.standard, r.certificate_number or "", r.lifecycle_status,
+            r.cert_issued_date or "", r.cert_expiry_date or "",
+            r.next_surveillance_due or "", r.countdown_days if r.countdown_days is not None else "",
+            r.last_surveillance_completed or "", r.assigned_auditor or "", r.consultant_name or ""
+        ])
+
+    # Sheet 2 — Radar (surveillance/renewals due)
+    ws2 = wb.create_sheet("Radar")
+    headers2 = ["Company", "Standard", "Certificate #", "Next Surv Due", "Countdown (days)", "Status", "Auditor"]
+    ws2.append(headers2)
+    for h_cell in ws2[1]:
+        h_cell.font = Font(bold=True)
+    radar_rows = [r for r in rows if r.countdown_days is not None and r.countdown_days <= 90]
+    radar_rows.sort(key=lambda x: x.countdown_days if x.countdown_days is not None else 999)
+    for r in radar_rows:
+        ws2.append([
+            r.company_name, r.standard, r.certificate_number or "",
+            r.next_surveillance_due or "", r.countdown_days,
+            r.lifecycle_status, r.assigned_auditor or ""
+        ])
+
+    # Sheet 3 — Financials
+    ws3 = wb.create_sheet("Financials")
+    headers3 = ["Company", "Standard", "Payment Status", "Amount Due", "Amount Received", "Outstanding", "Notes"]
+    ws3.append(headers3)
+    for h_cell in ws3[1]:
+        h_cell.font = Font(bold=True)
+    for r in rows:
+        ws3.append([
+            r.company_name, r.standard, r.payment_status,
+            r.amount_due if r.amount_due is not None else "",
+            r.amount_received if r.amount_received is not None else "",
+            r.outstanding if r.outstanding is not None else "",
+            r.notes or ""
+        ])
+
+    # Write to buffer
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    from fastapi.responses import StreamingResponse
+    filename = f"CRM_Certificates_{dt.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/crm/certificates/{audit_set_id}")
+def crm_certificate_detail(
+    audit_set_id: str,
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """Returns certificate rows for a single audit set (one per standard)."""
+    if current_user.role not in CRM_ROLES:
+        raise HTTPException(403, "Not authorized")
+
+    a = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    if not a:
+        raise HTTPException(404, "Audit set not found")
+
+    standards_list = a.standards or ["N/A"]
+    commercials = (
+        db.query(CRMCertificateCommercial)
+        .filter_by(audit_set_id=audit_set_id)
+        .all()
+    )
+    commercial_map = {c.standard: c for c in commercials}
+
+    rows = []
+    for std in standards_list:
+        commercial = commercial_map.get(std)
+        rows.append(_build_certificate_row(a, std, db, auth_db, commercial))
+
+    return rows
+
+
+@router.patch("/crm/certificates/{audit_set_id}/commercial")
+def update_certificate_commercial(
+    audit_set_id: str,
+    body: CommercialUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """
+    CRM users can ONLY update commercial fields: payment_status, amount_due, amount_received, notes.
+    Cannot modify: lifecycle status, cert dates, audit history, standards, surveillance dates.
+    """
+    if current_user.role not in CRM_ROLES:
+        raise HTTPException(403, "Not authorized")
+
+    # Validate audit set exists
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    if not audit_set:
+        raise HTTPException(404, "Audit set not found")
+
+    # Validate standard is part of this audit set
+    standards_list = audit_set.standards or []
+    if body.standard not in standards_list:
+        raise HTTPException(400, f"Standard '{body.standard}' not found in this audit set")
+
+    # Validate payment_status enum
+    valid_statuses = {"paid", "partially_paid", "unpaid", "overdue"}
+    if body.payment_status and body.payment_status not in valid_statuses:
+        raise HTTPException(400, f"Invalid payment_status. Must be one of: {', '.join(valid_statuses)}")
+
+    # Upsert commercial record
+    existing = (
+        db.query(CRMCertificateCommercial)
+        .filter_by(audit_set_id=audit_set_id, standard=body.standard)
+        .first()
+    )
+
+    if existing:
+        if body.payment_status is not None:
+            existing.payment_status = body.payment_status
+        if body.amount_due is not None:
+            existing.amount_due = body.amount_due
+        if body.amount_received is not None:
+            existing.amount_received = body.amount_received
+        if body.notes is not None:
+            existing.notes = body.notes
+        existing.updated_by = current_user.id
+    else:
+        existing = CRMCertificateCommercial(
+            audit_set_id=audit_set_id,
+            standard=body.standard,
+            payment_status=body.payment_status or "unpaid",
+            amount_due=body.amount_due,
+            amount_received=body.amount_received,
+            notes=body.notes,
+            updated_by=current_user.id,
+        )
+        db.add(existing)
+
+    db.commit()
+    db.refresh(existing)
+
+    return {
+        "audit_set_id": existing.audit_set_id,
+        "standard": existing.standard,
+        "payment_status": existing.payment_status,
+        "amount_due": existing.amount_due,
+        "amount_received": existing.amount_received,
+        "outstanding": (existing.amount_due or 0) - (existing.amount_received or 0),
+        "notes": existing.notes,
+        "updated_by": existing.updated_by,
+    }

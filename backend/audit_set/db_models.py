@@ -809,3 +809,27 @@ class AuditSetNCReview(Base):
     reviewed_by  = Column(String, nullable=True)   # PlatformUser.id of auditor/admin
     reviewed_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
     round_number = Column(Integer, default=1, nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Portal 91b — CRM Certificate Commercial Data
+# Editable commercial fields for CRM users. Keyed by audit_set_id + standard.
+# CRM cannot modify certification truth (status, dates, audit history).
+# ---------------------------------------------------------------------------
+
+class CRMCertificateCommercial(Base):
+    __tablename__ = "crm_certificate_commercial"
+
+    id           = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    audit_set_id = Column(String, ForeignKey("audit_sets.id", ondelete="CASCADE"), nullable=False, index=True)
+    standard     = Column(String, nullable=False)  # e.g. "QMS", "EMS", "OHSMS"
+
+    payment_status = Column(String, default="unpaid", nullable=False)
+    # payment_status values: "paid" | "partially_paid" | "unpaid" | "overdue"
+    amount_due     = Column(Float, nullable=True)
+    amount_received= Column(Float, nullable=True)
+    notes          = Column(Text, nullable=True)
+
+    updated_by   = Column(String, nullable=True)  # PlatformUser.id
+    created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at   = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
