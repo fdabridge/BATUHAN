@@ -993,19 +993,22 @@ def _create_auto_stages(db: Session, audit_set: AuditSet, result: dict | None) -
         stage_defs = [
             ("surveillance", 1, result.get("final_surv1") if result else None),
         ]
+    elif audit_type == "recertification":
+        stage_defs = [
+            ("recertification", 1, result.get("final_recert") if result else None),
+        ]
     elif audit_type == "special":  # single special-purpose visit
         stage_defs = [
             ("stage_1", 1, result.get("final_total") if result else None),
         ]
-    else:  # recertification — use recert phase split
-        if audit_type not in ("recertification",):
-            logger.warning(
-                "[AuditSet] Unknown audit_type=%r for id=%s — defaulting to stage_1 + stage_2",
-                audit_type, getattr(audit_set, "id", "?"),
-            )
+    else:
+        logger.warning(
+            "[AuditSet] Unknown audit_type=%r for id=%s — defaulting to stage_1 + stage_2",
+            audit_type, getattr(audit_set, "id", "?"),
+        )
         stage_defs = [
-            ("stage_1", 1, result.get("final_recert_ph1") if result else None),
-            ("stage_2", 2, result.get("final_recert_ph2") if result else None),
+            ("stage_1", 1, result.get("final_ph1") if result else None),
+            ("stage_2", 2, result.get("final_ph2") if result else None),
         ]
 
     for stage_type, order, audit_days in stage_defs:
@@ -1173,10 +1176,12 @@ def quick_calculate(db: Session, audit_set_id: str, data: QuickCalcSchema) -> Au
         stage_day_map = {"stage_1": result.get("final_ph1"), "stage_2": result.get("final_ph2")}
     elif audit_type.startswith("surveillance"):  # surveillance_1, surveillance_2, surveillance
         stage_day_map = {"surveillance": result.get("final_surv1")}
+    elif audit_type == "recertification":
+        stage_day_map = {"recertification": result.get("final_recert")}
     elif audit_type == "special":
         stage_day_map = {"stage_1": result.get("final_total")}
     else:
-        stage_day_map = {"stage_1": result.get("final_recert_ph1"), "stage_2": result.get("final_recert_ph2")}
+        stage_day_map = {"stage_1": result.get("final_ph1"), "stage_2": result.get("final_ph2")}
 
     for stage in audit_set.stages:
         new_days = stage_day_map.get(stage.stage_type)

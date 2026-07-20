@@ -121,6 +121,8 @@ interface AuditReportMini {
   report_form: string
 }
 
+const NC_FLOW_STAGE_TYPES = new Set(['stage_1', 'stage_2', 'surveillance', 'recertification'])
+
 interface NACSuggestion {
   clause: string
   standard: string
@@ -165,6 +167,32 @@ function buildStageEdit(s: StageResponse): StageEdit {
   }
 }
 
+function isRecertificationAudit(auditType: string | null | undefined): boolean {
+  return (auditType ?? '').toLowerCase() === 'recertification'
+}
+
+function displayStagesForAudit(auditType: string | null | undefined, stages: StageResponse[]): StageResponse[] {
+  if (!isRecertificationAudit(auditType)) return stages
+  const recert = stages.find((stage) => stage.stage_type === 'recertification')
+  if (recert) return [recert]
+
+  const fallback = stages.find((stage) => stage.stage_type === 'stage_2') ?? stages.find((stage) => stage.stage_type === 'stage_1')
+  if (!fallback) return []
+
+  return [{
+    ...fallback,
+    stage_type: 'recertification',
+    stage_order: 1,
+  }]
+}
+
+function stageDisplayLabel(stageType: string, surveillanceIndex: number): string {
+  if (stageType === 'stage_1') return 'Stage 1 — Documentation review'
+  if (stageType === 'stage_2') return 'Stage 2 — On-site audit'
+  if (stageType === 'recertification') return 'Recertification Audit'
+  return `Surveillance ${surveillanceIndex}`
+}
+
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
 const inputCls = 'w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 placeholder-gray-400 outline-none focus:border-certiva-primary focus:ring-2 focus:ring-certiva-primary/20'
@@ -187,8 +215,6 @@ function recommendedDays(
     return manDayResult.final_surv1 ?? null
   }
   if (t === 'recertification') {
-    if (stageType === 'stage_1') return manDayResult.final_recert_ph1 ?? null
-    if (stageType === 'stage_2') return manDayResult.final_recert_ph2 ?? null
     return manDayResult.final_recert ?? null
   }
   return null
@@ -1798,7 +1824,7 @@ function StageCard({
 
     let suggestedStart: string | null = null
 
-    if (stage.stage_type === 'stage_1') {
+    if (stage.stage_type === 'stage_1' || stage.stage_type === 'recertification') {
       const d = new Date()
       d.setDate(d.getDate() + 14)   // 2-week lead time (any day of week)
       suggestedStart = d.toISOString().slice(0, 10)
@@ -1839,7 +1865,8 @@ function StageCard({
   // Man-days covered = calendar days in range × number of assigned team members (all days of week valid)
   const manDaysCovered = calendarDays != null && teamCount > 0 ? calendarDays * teamCount : null
   // Shortfall: covered < stage.audit_days (recommended for this stage from calculation)
-  const manDayShortfall = stage.audit_days != null && manDaysCovered != null && manDaysCovered < stage.audit_days
+  const targetAuditDays = recommended ?? stage.audit_days
+  const manDayShortfall = targetAuditDays != null && manDaysCovered != null && manDaysCovered < targetAuditDays
   const dateMismatch = recommended != null && calendarDays != null && teamCount === 0 && Math.abs(calendarDays - recommended) > 0.5
   const stageOrderErr = validateStageOrder(stage, allStages, edit.audit_date_start, edit.audit_date_end)
 
@@ -1859,17 +1886,17 @@ function StageCard({
     : []
   const allCovered = coverageResults.length === 0 || coverageResults.every((r) => r.covered)
 
-  const isStage2 = stage.stage_type === 'stage_2'
+  const isFinalAuditStage = stage.stage_type === 'stage_2' || stage.stage_type === 'recertification'
   const coverageIncomplete = coverageResults.length > 0 && !allCovered
 
   const { mutate, isPending } = useMutation({
     mutationFn: () => {
-      // Stage 2: hard block — every required code must be covered
-      if (isStage2 && coverageIncomplete) {
+      // Final audit stage: hard block — every required code must be covered
+      if (isFinalAuditStage && coverageIncomplete) {
         const missingCodes = coverageResults
           .flatMap((r) => r.codeResults?.filter((cr) => !cr.coveredBy).map((cr) => cr.code) ?? (r.covered ? [] : [r.standard]))
           .join(', ')
-        throw new Error(`Stage 2 save blocked — uncovered codes: ${missingCodes}. Assign team members who cover these codes first.`)
+        throw new Error(`${label} save blocked — uncovered codes: ${missingCodes}. Assign team members who cover these codes first.`)
       }
       // Stage ordering: Stage 1 end must be strictly before Stage 2 start
       const s1 = allStages.find((s) => s.stage_type === 'stage_1')
@@ -1937,15 +1964,15 @@ function StageCard({
       <div className="mb-4 flex items-center justify-between">
         <span className="text-sm font-medium text-gray-700">{label}</span>
         <div className="flex items-center gap-2">
-          {stage.audit_days != null && (
+          {targetAuditDays != null && (
             <span className="rounded px-2 py-0.5 text-xs font-medium" style={{ background: '#F0FAF4', color: '#1A4731' }}>
-              {stage.audit_days} days audited
+              {targetAuditDays} days audited
               {recommended != null && stage.audit_days !== recommended && (
                 <span className="ml-1" style={{ color: '#92400E' }}>(recommended: {recommended})</span>
               )}
             </span>
           )}
-          {stage.audit_days == null && recommended != null && (
+          {targetAuditDays == null && recommended != null && (
             <span className="rounded px-2 py-0.5 text-xs font-medium" style={{ background: '#FEF3C7', color: '#92400E' }}>
               {recommended} days recommended — not yet scheduled
             </span>
@@ -1954,15 +1981,15 @@ function StageCard({
       </div>
 
       {/* IAF MD 5 banner — shows live calendar days based on team size */}
-      {stage.audit_days != null && (
+      {targetAuditDays != null && (
         <div className="mb-3 rounded-md px-3 py-2 text-sm" style={{ background: '#F0FAF4', color: '#1A4731' }}>
           <span className="font-medium">IAF MD 5:</span>{' '}
-          {stage.audit_days} audit-day{stage.audit_days !== 1 ? 's' : ''} required.
+          {targetAuditDays} audit-day{targetAuditDays !== 1 ? 's' : ''} required.
           {teamCount > 0 ? (
             <span className="ml-2 font-medium">
               ÷ {teamCount} auditor{teamCount > 1 ? 's' : ''}{' = '}
               <span>
-                {Math.ceil(stage.audit_days / teamCount)} calendar day{Math.ceil(stage.audit_days / teamCount) > 1 ? 's' : ''}
+                {Math.ceil(targetAuditDays / teamCount)} calendar day{Math.ceil(targetAuditDays / teamCount) > 1 ? 's' : ''}
               </span>
             </span>
           ) : (
@@ -1975,7 +2002,7 @@ function StageCard({
       {manDayShortfall && calendarDays != null && (
         <div className="mb-3 rounded-md px-3 py-2 text-sm" style={{ background: '#FEF3C7', color: '#92400E' }}>
           ⚠ Your date range covers {calendarDays} calendar day(s) × {teamCount} auditor(s) = {manDaysCovered} man-day(s).
-          IAF recommends {stage.audit_days} audit-day(s) for this stage.
+          IAF recommends {targetAuditDays} audit-day(s) for this stage.
           Consider expanding the date range or adding more auditors.
         </div>
       )}
@@ -2274,14 +2301,14 @@ function StageCard({
 
       {/* Coverage summary */}
       {coverageResults.length > 0 && (
-        <div className={`mt-3 rounded-md p-3 text-sm ${allCovered ? 'border border-green-200' : isStage2 ? 'border border-red-200' : 'border border-amber-200'}`}
-          style={{ background: allCovered ? '#F0FAF4' : isStage2 ? '#FEF2F2' : '#FFFBEB' }}>
-          <p className="font-medium mb-1" style={{ color: allCovered ? '#1A4731' : isStage2 ? '#991B1B' : '#92400E' }}>
+        <div className={`mt-3 rounded-md p-3 text-sm ${allCovered ? 'border border-green-200' : isFinalAuditStage ? 'border border-red-200' : 'border border-amber-200'}`}
+          style={{ background: allCovered ? '#F0FAF4' : isFinalAuditStage ? '#FEF2F2' : '#FFFBEB' }}>
+          <p className="font-medium mb-1" style={{ color: allCovered ? '#1A4731' : isFinalAuditStage ? '#991B1B' : '#92400E' }}>
             {allCovered
               ? '✓ All required codes covered'
-              : isStage2
-              ? '✗ Coverage incomplete — Stage 2 save blocked'
-              : '⚠ Coverage incomplete — Stage 1 can still be saved (warning)'}
+              : isFinalAuditStage
+              ? `✗ Coverage incomplete — ${label} save blocked`
+              : `⚠ Coverage incomplete — ${label} can still be saved (warning)`}
           </p>
           {coverageResults.map((r) => (
             <div key={r.standard} className="mt-0.5">
@@ -2319,7 +2346,7 @@ function StageCard({
       <div className="mt-4 flex items-center gap-2">
         <button
           type="button"
-          disabled={isPending || !!stageOrderErr || (isStage2 && coverageIncomplete)}
+          disabled={isPending || !!stageOrderErr || (isFinalAuditStage && coverageIncomplete)}
           onClick={() => mutate()}
           className="flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium text-white disabled:opacity-60 hover:opacity-90"
           style={{ background: '#1A4731' }}
@@ -2503,9 +2530,13 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
   })
 
   const currentAuditorId = (currentUser as { auditor_id?: string | null } | null | undefined)?.auditor_id ?? null
+  const displayStages = useMemo(
+    () => displayStagesForAudit(data?.audit_type ?? null, data?.stages ?? []),
+    [data?.audit_type, data?.stages],
+  )
   const ncStages = useMemo(
-    () => (data?.stages ?? []).filter((stage) => ['stage_1', 'stage_2'].includes(stage.stage_type)),
-    [data?.stages],
+    () => displayStages.filter((stage) => NC_FLOW_STAGE_TYPES.has(stage.stage_type)),
+    [displayStages],
   )
   const canUseAuditFlowNC = currentUser?.role === 'auditor'
 
@@ -2527,6 +2558,8 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
   const ncStageLabel = useCallback((stageType: string) => {
     if (stageType === 'stage_1') return 'Stage 1'
     if (stageType === 'stage_2') return 'Stage 2'
+    if (stageType === 'surveillance') return 'Surveillance'
+    if (stageType === 'recertification') return 'Recertification'
     return stageType.replace(/_/g, ' ')
   }, [])
 
@@ -2799,21 +2832,19 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
       <CertSection data={data} id={id} onInvalidate={invalidate} />
 
       {/* Audit stages */}
-      {data.stages.length > 0 && (
+      {displayStages.length > 0 && (
         <div className="rounded-lg border border-gray-100 bg-white p-5">
           <p className="mb-4 text-sm font-medium text-gray-700">Audit stages</p>
           <div className="space-y-3">
-            {data.stages.map((stage) => {
-              let stageLabel: string
-              if (stage.stage_type === 'stage_1')      stageLabel = 'Stage 1 — Documentation review'
-              else if (stage.stage_type === 'stage_2') stageLabel = 'Stage 2 — On-site audit'
-              else { survCount += 1; stageLabel = `Surveillance ${survCount}` }
+            {displayStages.map((stage) => {
+              if (stage.stage_type === 'surveillance') survCount += 1
+              const stageLabel = stageDisplayLabel(stage.stage_type, survCount)
               return (
                 <StageCard
                   key={stage.id}
                   stage={stage}
                   label={stageLabel}
-                  allStages={data.stages}
+                  allStages={displayStages}
                   auditSetId={id}
                   onSuccess={invalidate}
                   auditors={auditors}
@@ -2830,7 +2861,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
           {/* Portal 64 — Certification Committee picker (planning phase) */}
           <CommitteePlanningCard
             auditSetId={id}
-            stages={data.stages}
+            stages={displayStages}
             standards={(data.standards ?? []) as string[]}
             eaCode={data.ea_code ?? null}
             initialCommittee={data.committee_members}
@@ -2840,7 +2871,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
             <TransferReviewerPicker
               auditSetId={id}
               auditors={auditors}
-              stages={data.stages}
+              stages={displayStages}
               committeeMembers={data.committee_members}
               fr218ReviewerId={data.fr218_reviewer_id}
               currentReviewerId={data.transfer_reviewer_id}
@@ -2890,7 +2921,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
       {/* Shared Documents — Prompt 07 (additive, bottom of page) */}
       <SharedDocumentsSection
         auditSetId={id}
-        stages={data.stages ?? []}
+        stages={displayStages}
         auditType={data.audit_type ?? null}
         isTransfer={data.is_transfer}
         onDocumentReleased={invalidate}

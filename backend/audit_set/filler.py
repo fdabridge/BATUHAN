@@ -75,6 +75,10 @@ STAGE_CLAUSES = {
     ("ISO 37001:2016", "surveillance"): "4.1-4.2-4.4-4.5 / 5.1-5.2-5.4 / 6.1 / 7.1-7.3-7.5 / 8.1-8.2-8.6-8.7-8.10 / 9.1-9.2-9.3 / 10.1-10.2",
 }
 
+for (_std, _stage), _clauses in list(STAGE_CLAUSES.items()):
+    if _stage == "stage_2":
+        STAGE_CLAUSES[(_std, "recertification")] = _clauses
+
 
 # --------------------------------------------------------------------------- #
 # Date helpers
@@ -264,11 +268,16 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
     all_stages = {s.stage_type: s for s in (audit_set.stages or [])}
     stage1 = all_stages.get("stage_1")
     stage2 = all_stages.get("stage_2")
+    recert_stage = all_stages.get("recertification") or stage2 or stage1
 
     # Estimated certification-cycle dates.
     surv1_estimated = surv2_estimated = recert_estimated = None
-    if (is_initial or is_recertification) and stage2 and stage2.audit_date_end:
+    if is_initial and stage2 and stage2.audit_date_end:
         surv1_estimated = add_years_minus_one_day(stage2.audit_date_end)
+        surv2_estimated = add_years_minus_one_day(surv1_estimated)
+        recert_estimated = add_years_minus_one_day(surv2_estimated)
+    elif is_recertification and recert_stage and recert_stage.audit_date_end:
+        surv1_estimated = add_years_minus_one_day(recert_stage.audit_date_end)
         surv2_estimated = add_years_minus_one_day(surv1_estimated)
         recert_estimated = add_years_minus_one_day(surv2_estimated)
     elif audit_type == "surveillance_1" and stage.audit_date_end:
@@ -338,11 +347,13 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
     start = stage.audit_date_start
 
     # Audit-days fallback: derive from man_day_result when not explicitly set on the stage.
-    _stage_type = stage.stage_type  # "stage_1" | "stage_2" | "surveillance"
+    _stage_type = stage.stage_type  # "stage_1" | "stage_2" | "surveillance" | "recertification"
     if _stage_type == "stage_1":
         _audit_days_fallback = man_day.get("final_ph1", "")
     elif _stage_type == "stage_2":
         _audit_days_fallback = man_day.get("final_ph2", "")
+    elif _stage_type == "recertification":
+        _audit_days_fallback = man_day.get("final_recert", "")
     else:  # surveillance
         _audit_days_fallback = man_day.get("final_surv1", "")
 
@@ -411,6 +422,7 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
         "closing_meeting_date": format_date(closing_meeting_date),
         "stage1_dates": format_date_range(stage1.audit_date_start, stage1.audit_date_end) if stage1 else "",
         "stage2_dates": format_date_range(stage2.audit_date_start, stage2.audit_date_end) if stage2 else "",
+        "recertification_dates": format_date_range(recert_stage.audit_date_start, recert_stage.audit_date_end) if is_recertification and recert_stage else "",
         # Underscore-named aliases used by FR.233, FR.232, FR.231, FR.211 field maps.
         "stage_1_date": format_date_range(stage1.audit_date_start, stage1.audit_date_end) if stage1 else "",
         "stage_2_date": (
@@ -418,6 +430,7 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
             else (format_date_range(start, end) if (is_surveillance or is_recertification) else "")
         ),
         "surveillance_date": format_date_range(start, end) if is_surveillance else "",
+        "recertification_date": format_date_range(start, end) if is_recertification else "",
         "stage2_start_date": format_date(stage2.audit_date_start) if stage2 else "",
         "surv1_estimated_date": format_date(surv1_estimated),
         "surv2_estimated_date": format_date(surv2_estimated),

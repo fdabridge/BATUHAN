@@ -220,6 +220,7 @@ def _assert_nc_stage_complete_gate(db: Session, audit_set_id: str, stage_type: s
         "stage_1": "Stage 1",
         "stage_2": "Stage 2",
         "surveillance": "Surveillance",
+        "recertification": "Recertification",
     }.get(stage_type, stage_type)
     decision = db.query(AuditSetNCDecision).filter_by(
         audit_set_id=audit_set_id,
@@ -251,9 +252,11 @@ def _assert_nc_stage_complete_gate(db: Session, audit_set_id: str, stage_type: s
 
 
 def _fr233_nc_gate_stage(db: Session, audit_set_id: str) -> str:
-    """FR.233 waits on Stage 2 for initial audits, but Surveillance has one NC stage."""
+    """FR.233 waits on the final audit stage: Stage 2, Surveillance, or Recertification."""
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
     audit_type = (audit_set.audit_type or "").lower() if audit_set else ""
+    if audit_type == "recertification":
+        return "recertification"
     if audit_type.startswith("surveillance"):
         return "surveillance"
     return "stage_2"
@@ -269,7 +272,7 @@ def _assert_nc_complete_gate(db: Session, audit_set_id: str) -> None:
     stages = (
         db.query(AuditSetStage)
         .filter_by(audit_set_id=audit_set_id)
-        .filter(AuditSetStage.stage_type.in_(["stage_1", "stage_2", "surveillance"]))
+        .filter(AuditSetStage.stage_type.in_(["stage_1", "stage_2", "surveillance", "recertification"]))
         .order_by(AuditSetStage.stage_order)
         .all()
     )

@@ -304,8 +304,10 @@ def fire_phase_triggers(
 
     elif new_status in ("audit_scheduled", "audit_in_progress"):
         # Surveillance / recertification single-stage path.
-        # Seed FR.224 declarations + FR.211 assessments for the surveillance stage.
-        _seed_stage_declarations_and_assessments(audit_set, "surveillance", db)
+        # Seed FR.224 declarations + FR.211 assessments for the single audit stage.
+        audit_type = (audit_set.audit_type or "").lower()
+        stage_type = "recertification" if audit_type == "recertification" else "surveillance"
+        _seed_stage_declarations_and_assessments(audit_set, stage_type, db)
 
     # stage2_complete → committee_review is NOT auto-fired here: per the gate
     # chain, committee_review starts when the Planner generates FR.233

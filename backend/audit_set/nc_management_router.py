@@ -46,16 +46,18 @@ router = APIRouter(tags=["nc_management"])
 CB_ROLES    = {"admin", "planner", "planner_us", "officer", "executive", "gm"}
 AUDITOR_ROLES = {"auditor"}
 
-NC_STAGE_TYPES = {"stage_1", "stage_2", "surveillance"}
+NC_STAGE_TYPES = {"stage_1", "stage_2", "surveillance", "recertification"}
 NC_STAGE_LABELS = {
     "stage_1": "Stage 1",
     "stage_2": "Stage 2",
     "surveillance": "Surveillance",
+    "recertification": "Recertification",
 }
 REPORT_FORMS_BY_STAGE = {
     "stage_1": {"FR.231", "FR.229"},
     "stage_2": {"FR.232", "FR.229"},
     "surveillance": {"FR.232", "FR.229"},
+    "recertification": {"FR.232", "FR.229"},
 }
 
 
@@ -163,7 +165,7 @@ def _require_cb_or_auditor(current_user: PlatformUser) -> None:
 
 def _normalise_nc_stage(stage_type: str | None) -> str:
     if stage_type not in NC_STAGE_TYPES:
-        raise HTTPException(422, "stage_type must be 'stage_1', 'stage_2', or 'surveillance'")
+        raise HTTPException(422, "stage_type must be 'stage_1', 'stage_2', 'surveillance', or 'recertification'")
     return stage_type
 
 

@@ -2,7 +2,7 @@
 BATUHAN — Audit Set: blank-template resolver.
 
 Given an `AuditSet`, decide which IFC blank DOCX files must be filled and how
-they group into output folders (Stage_1 / Stage_2 / Surveillance).
+they group into output folders (Stage_1 / Stage_2 / Surveillance / Recertification).
 """
 from __future__ import annotations
 
@@ -63,16 +63,16 @@ def _get_stage_subfolder(audit_type: str, stage_key: str, accreditation_body: st
 
     Args:
         audit_type: 'initial' | 'recertification' | 'surveillance' | 'surveillance_1' | ...
-        stage_key:  'stage_1' | 'stage_2' | 'surveillance'
+        stage_key:  'stage_1' | 'stage_2' | 'surveillance' | 'recertification'
         accreditation_body: 'UAF' | 'TÜRKAK' | 'TURKAK' | ...
     """
     is_uaf = (accreditation_body or "").upper() == "UAF"
 
+    if (audit_type or "").lower() == "recertification" and stage_key in {"recertification", "surveillance", "stage_2"}:
+        return STAGE_SUBFOLDER_RECERT_EN if is_uaf else STAGE_SUBFOLDER_RECERT_TR
+
     if stage_key == "surveillance":
         return STAGE_SUBFOLDER_EN["surveillance"] if is_uaf else STAGE_SUBFOLDER["surveillance"]
-
-    if stage_key == "stage_2" and (audit_type or "").lower() == "recertification":
-        return STAGE_SUBFOLDER_RECERT_EN if is_uaf else STAGE_SUBFOLDER_RECERT_TR
 
     return STAGE_SUBFOLDER_EN[stage_key] if is_uaf else STAGE_SUBFOLDER[stage_key]
 
@@ -241,7 +241,14 @@ def _build_stage_2(needs_base, needs_mdqms, needs_isms, sub: str, missing: list[
     return specs
 
 
-def _build_surveillance(needs_base, needs_mdqms, needs_isms, sub: str, missing: list[str]) -> list[DocumentSpec]:
+def _build_surveillance(
+    needs_base,
+    needs_mdqms,
+    needs_isms,
+    sub: str,
+    missing: list[str],
+    stage_context: str = "surveillance",
+) -> list[DocumentSpec]:
     specs: list[DocumentSpec] = []
     seen: set[str] = set()
 
@@ -250,28 +257,28 @@ def _build_surveillance(needs_base, needs_mdqms, needs_isms, sub: str, missing: 
         ("FR.223", FR223_MAP), ("FR.224", FR224_MAP), ("FR.225", FR225_MAP),
         ("FR.230", FR230_MAP),
     ]:
-        if needs_base:  _add(specs, seen, fr, "base",  sub, fmap, "surveillance", missing)
-        if needs_mdqms: _add(specs, seen, fr, "mdqms", sub, fmap, "surveillance", missing)
-        if needs_isms:  _add(specs, seen, fr, "isms",  sub, fmap, "surveillance", missing)
+        if needs_base:  _add(specs, seen, fr, "base",  sub, fmap, stage_context, missing)
+        if needs_mdqms: _add(specs, seen, fr, "mdqms", sub, fmap, stage_context, missing)
+        if needs_isms:  _add(specs, seen, fr, "isms",  sub, fmap, stage_context, missing)
 
     # Audit report — standard-specific form (mirrors _build_stage_2).
     if needs_base:
-        _add(specs, seen, "FR.232",   "base",  sub, FR232_MAP, "surveillance", missing)
+        _add(specs, seen, "FR.232",   "base",  sub, FR232_MAP, stage_context, missing)
     if needs_mdqms:
-        _add(specs, seen, "FR.232-1", "mdqms", sub, FR232_MAP, "surveillance", missing)
+        _add(specs, seen, "FR.232-1", "mdqms", sub, FR232_MAP, stage_context, missing)
     if needs_isms:
-        _add(specs, seen, "FR.229",   "isms",  sub, FR232_MAP, "surveillance", missing)
+        _add(specs, seen, "FR.229",   "isms",  sub, FR232_MAP, stage_context, missing)
 
     # Auditor assessment — one per standard group.
-    if needs_base:  _add(specs, seen, "FR.211", "base",  sub, FR211_MAP, "surveillance", missing)
-    if needs_mdqms: _add(specs, seen, "FR.211", "mdqms", sub, FR211_MAP, "surveillance", missing)
-    if needs_isms:  _add(specs, seen, "FR.211", "isms",  sub, FR211_MAP, "surveillance", missing)
+    if needs_base:  _add(specs, seen, "FR.211", "base",  sub, FR211_MAP, stage_context, missing)
+    if needs_mdqms: _add(specs, seen, "FR.211", "mdqms", sub, FR211_MAP, stage_context, missing)
+    if needs_isms:  _add(specs, seen, "FR.211", "isms",  sub, FR211_MAP, stage_context, missing)
 
     # Single-instance forms (primary group only).
     primary = "base" if needs_base else ("mdqms" if needs_mdqms else ("isms" if needs_isms else None))
     if primary:
-        _add(specs, seen, "FR.234", primary, sub, FR234_MAP, "surveillance", missing)
-        _add(specs, seen, "FR.233", primary, sub, FR233_MAP, "surveillance", missing)
+        _add(specs, seen, "FR.234", primary, sub, FR234_MAP, stage_context, missing)
+        _add(specs, seen, "FR.233", primary, sub, FR233_MAP, stage_context, missing)
 
     return specs
 
@@ -287,10 +294,12 @@ def resolve_document_set(audit_set) -> tuple[dict[str, list[DocumentSpec]], list
         - "Stage_1"      → list[DocumentSpec]
         - "Stage_2"      → list[DocumentSpec]
         - "Surveillance" → list[DocumentSpec]
+        - "Recertification" → list[DocumentSpec]
     * ``missing`` is a list of template paths that could not be found on disk.
 
-    Initial / recertification produce Stage_1 + Stage_2.
+    Initial produces Stage_1 + Stage_2.
     Surveillance (any variant) produces only Surveillance.
+    Recertification produces only Recertification.
     """
     standards = audit_set.standards or []
     needs_base  = any(s in BASE_STANDARDS for s in standards)
@@ -305,7 +314,12 @@ def resolve_document_set(audit_set) -> tuple[dict[str, list[DocumentSpec]], list
     if audit_type.startswith("surveillance"):
         sub = _get_stage_subfolder(audit_type, "surveillance", accreditation_body)
         document_set["Surveillance"] = _build_surveillance(needs_base, needs_mdqms, needs_isms, sub, missing)
-    else:  # initial or recertification
+    elif audit_type == "recertification":
+        sub = _get_stage_subfolder(audit_type, "recertification", accreditation_body)
+        document_set["Recertification"] = _build_surveillance(
+            needs_base, needs_mdqms, needs_isms, sub, missing, stage_context="recertification",
+        )
+    else:
         sub1 = _get_stage_subfolder(audit_type, "stage_1", accreditation_body)
         sub2 = _get_stage_subfolder(audit_type, "stage_2", accreditation_body)
         document_set["Stage_1"] = _build_stage_1(needs_base, needs_mdqms, needs_isms, sub1, missing)
@@ -314,7 +328,12 @@ def resolve_document_set(audit_set) -> tuple[dict[str, list[DocumentSpec]], list
     if getattr(audit_set, "is_transfer", False):
         spec = _transfer_spec(missing)
         if spec:
-            first_folder = "Surveillance" if audit_type.startswith("surveillance") else "Stage_1"
+            if audit_type == "recertification":
+                first_folder = "Recertification"
+            elif audit_type.startswith("surveillance"):
+                first_folder = "Surveillance"
+            else:
+                first_folder = "Stage_1"
             document_set.setdefault(first_folder, [])
             document_set[first_folder].insert(0, spec)
 

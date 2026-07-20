@@ -21,6 +21,7 @@ import io
 import logging
 import re
 import zipfile
+from types import SimpleNamespace
 
 from audit_set.filler import (
     PER_PERSON_FORMS,
@@ -43,7 +44,48 @@ FOLDER_TO_STAGE_TYPE = {
     "Stage_1":      "stage_1",
     "Stage_2":      "stage_2",
     "Surveillance": "surveillance",
+    "Recertification": "recertification",
 }
+
+STAGE_COPY_ATTRS = (
+    "id",
+    "audit_set_id",
+    "stage_type",
+    "stage_order",
+    "status",
+    "audit_days",
+    "lead_auditor_id",
+    "lead_auditor_name",
+    "audit_date_start",
+    "audit_date_end",
+    "auditors",
+    "technical_experts",
+    "observers",
+    "trainees",
+    "ik_experts",
+    "evaluators",
+)
+
+
+def _stage_with_type(stage, stage_type: str):
+    if stage is None or getattr(stage, "stage_type", None) == stage_type:
+        return stage
+    data = {name: getattr(stage, name, None) for name in STAGE_COPY_ATTRS}
+    data["stage_type"] = stage_type
+    return SimpleNamespace(**data)
+
+
+def _stage_for_type(audit_set, stages_by_type: dict, stage_type: str):
+    stage = stages_by_type.get(stage_type)
+    if stage is not None:
+        return stage
+
+    # Production compatibility: older recertification records were mistakenly
+    # created as stage_1 + stage_2. Render them as one recertification stage
+    # until their rows are corrected.
+    if stage_type == "recertification" and (audit_set.audit_type or "").lower() == "recertification":
+        return _stage_with_type(stages_by_type.get("stage_2") or stages_by_type.get("stage_1"), "recertification")
+    return None
 
 
 def _safe_filename(name: str) -> str:
@@ -258,7 +300,7 @@ def render_single_document(audit_set, db, fr_number: str, stage_type: str) -> tu
         )
 
     stages_by_type = {s.stage_type: s for s in (audit_set.stages or [])}
-    stage = stages_by_type.get(stage_type)
+    stage = _stage_for_type(audit_set, stages_by_type, stage_type)
     if stage is None:
         raise ValueError(f"Audit set has no {stage_type} stage")
 
@@ -317,7 +359,8 @@ def build_audit_set_zip(audit_set, db) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         for output_folder, doc_specs in document_set.items():
-            stage = stages_by_type.get(FOLDER_TO_STAGE_TYPE.get(output_folder))
+            stage_type = FOLDER_TO_STAGE_TYPE.get(output_folder)
+            stage = _stage_for_type(audit_set, stages_by_type, stage_type) if stage_type else None
             if stage is None:
                 continue
 
