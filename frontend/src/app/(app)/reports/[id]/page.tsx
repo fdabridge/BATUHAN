@@ -60,6 +60,17 @@ function durationStr(start?: string | null, end?: string | null): string {
   return m > 0 ? `${m}m ${s % 60}s` : `${s}s`
 }
 
+function toDisplayText(value: unknown, fallback = ''): string {
+  if (typeof value === 'string') return value
+  if (value === null || value === undefined) return fallback
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return fallback
+  }
+}
+
 // ── Pipeline display ──────────────────────────────────────────────────────────
 
 function PipelineTrack({ state, failedAt }: { state: JobStateValue; failedAt: number }) {
@@ -262,7 +273,7 @@ export default function ReportStatusPage({ params }: { params: { id: string } })
         <div className="rounded-lg border border-red-200 bg-red-50 p-5">
           <p className="mb-1 text-sm font-medium text-red-700">Report generation failed</p>
           {data.error_message && (
-            <p className="mb-3 text-sm text-red-600">{data.error_message}</p>
+            <p className="mb-3 text-sm text-red-600">{toDisplayText(data.error_message, 'An unknown error occurred.')}</p>
           )}
           <Link
             href={tryAgainHref}

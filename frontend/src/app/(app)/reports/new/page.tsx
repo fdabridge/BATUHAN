@@ -71,6 +71,27 @@ function unique(values: (string | null | undefined)[]): string[] {
   return Array.from(new Set(values.filter(Boolean) as string[]))
 }
 
+function formatApiError(err: unknown, fallback: string): string {
+  const detail = (err as { response?: { data?: { detail?: unknown } }; message?: string })?.response?.data?.detail
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    const messages = detail.map((item) => {
+      if (typeof item === 'string') return item
+      if (item && typeof item === 'object') {
+        const record = item as { loc?: unknown[]; msg?: unknown }
+        const loc = Array.isArray(record.loc) ? record.loc.join('.') : ''
+        const msg = typeof record.msg === 'string' ? record.msg : JSON.stringify(item)
+        return loc ? `${loc}: ${msg}` : msg
+      }
+      return String(item)
+    }).filter(Boolean)
+    if (messages.length) return messages.join('; ')
+  }
+  if (detail && typeof detail === 'object') return JSON.stringify(detail)
+  const message = (err as { message?: string })?.message
+  return message || fallback
+}
+
 function FileZone({
   id, label, hint, multiple, accept, files, onAdd, onRemove,
 }: {
@@ -291,8 +312,7 @@ export default function NewReportPage() {
       router.push(`/reports/${data.job_id}?${qs.toString()}`)
     },
     onError: (err: unknown) => {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setServerError(detail ?? 'Failed to submit job.')
+      setServerError(formatApiError(err, 'Failed to submit job.'))
     },
   })
 
