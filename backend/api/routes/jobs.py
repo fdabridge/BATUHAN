@@ -41,7 +41,7 @@ async def _encode_file(upload: UploadFile) -> dict:
 @router.post("/create")
 async def create_job(
     standards: List[str] = Form(..., description="One or more ISO standard codes (e.g. QMS, EMS). Repeat field for multiple."),
-    stage: AuditStage = Form(..., description="Audit stage: 'Stage 1' or 'Stage 2'"),
+    stage: AuditStage = Form(..., description="Report context: Stage 1, Stage 2, Surveillance 1, Surveillance 2, or Recertification"),
     company_documents: list[UploadFile] = File(
         ..., description="Company documents (PDF, DOCX, TXT, PNG, JPG)"
     ),
@@ -285,4 +285,3 @@ def download_coverage_report(job_id: str, _: PlatformUser = Depends(require_any)
         raise
     except Exception:
         raise HTTPException(status_code=404, detail="Coverage report not found")
-

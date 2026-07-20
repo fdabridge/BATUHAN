@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowLeft, ArrowRight, FileText, History, Plus, ScanLine } from 'lucide-react'
+import { ArrowLeft, ArrowRight, FileText, History, Layers3, Plus, ScanLine, ShieldCheck } from 'lucide-react'
 
 export default function CertivAIReportsPage() {
   return (
@@ -21,7 +21,7 @@ export default function CertivAIReportsPage() {
               <div>
                 <h1 className="text-3xl font-semibold">Report Generation</h1>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-                  Convert audit evidence into structured report drafts with the existing AI report pipeline.
+                  Generate audit reports with integrated standards, surveillance cycles, recertification context, and accreditation-aware review logic.
                 </p>
               </div>
             </div>
@@ -35,21 +35,37 @@ export default function CertivAIReportsPage() {
           </div>
         </section>
 
-        <section className="mt-5 grid gap-4 md:grid-cols-2">
+        <section className="mt-5 grid gap-4 md:grid-cols-3">
           <Link
             href="/reports/new"
             className="group border border-white/10 bg-white/[0.045] p-5 transition hover:-translate-y-1 hover:border-cyan-200/40 hover:bg-white/[0.07]"
             style={{ borderRadius: 8 }}
           >
             <FileText className="mb-5 text-cyan-200" size={28} />
-            <h2 className="text-xl font-semibold">Generate Draft</h2>
+            <h2 className="text-xl font-semibold">Integrated Draft</h2>
             <p className="mt-3 text-sm leading-6 text-slate-300">
-              Start a new AI report job from audit package files and context.
+              Select one or more standards, choose Stage 1, Stage 2, Surveillance 1/2, or Recertification, then submit evidence and a template.
             </p>
             <span className="mt-8 inline-flex items-center gap-2 text-sm font-semibold text-cyan-200">
               Start <ArrowRight className="transition group-hover:translate-x-1" size={16} />
             </span>
           </Link>
+
+          <div
+            className="border border-white/10 bg-white/[0.045] p-5"
+            style={{ borderRadius: 8 }}
+          >
+            <Layers3 className="mb-5 text-violet-200" size={28} />
+            <h2 className="text-xl font-semibold">Context Matrix</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-300">
+              The job setup now carries the audit cycle into the backend prompt so surveillance and recertification outputs are not written like initial audits.
+            </p>
+            <div className="mt-7 flex flex-wrap gap-2 text-xs text-slate-200">
+              {['Stage 1', 'Stage 2', 'Surv 1', 'Surv 2', 'Recert'].map((label) => (
+                <span key={label} className="rounded border border-white/10 bg-white/10 px-2 py-1">{label}</span>
+              ))}
+            </div>
+          </div>
 
           <Link
             href="/reports"
@@ -65,6 +81,15 @@ export default function CertivAIReportsPage() {
               Open history <ArrowRight className="transition group-hover:translate-x-1" size={16} />
             </span>
           </Link>
+        </section>
+
+        <section className="mt-4 border border-emerald-200/20 bg-emerald-300/[0.07] p-5" style={{ borderRadius: 8 }}>
+          <div className="flex items-start gap-3">
+            <ShieldCheck size={20} className="mt-0.5 text-emerald-200" />
+            <p className="text-sm leading-6 text-emerald-50">
+              Use the new setup page for every report job. The old single-standard Stage 1/Stage 2 assumptions are no longer enough for integrated, surveillance, and recertification work.
+            </p>
+          </div>
         </section>
       </div>
     </div>

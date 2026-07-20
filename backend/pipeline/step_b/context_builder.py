@@ -54,6 +54,34 @@ STAGE 2 AUDIT — Implementation & Effectiveness Review (COMPLETED AND SUCCESSFU
   certification.
 - Do NOT suggest that implementation evidence was absent — the audit confirmed conformity.
 """.strip(),
+
+    AuditStage.SURVEILLANCE_1.value: """
+SURVEILLANCE 1 AUDIT — First surveillance cycle (COMPLETED AND SUCCESSFUL):
+- This is not an initial certification Stage 1 or Stage 2 report. Treat it as the first
+  periodic surveillance audit within an existing certification cycle.
+- Focus on continued conformity, effectiveness of maintained controls, performance trends,
+  management review, internal audit, corrective actions, and changes since certification.
+- Confirm whether the certificate can continue to remain valid.
+- Do not write language that says the organisation is ready to proceed to Stage 2.
+""".strip(),
+
+    AuditStage.SURVEILLANCE_2.value: """
+SURVEILLANCE 2 AUDIT — Second surveillance cycle (COMPLETED AND SUCCESSFUL):
+- This is the second periodic surveillance audit within an existing certification cycle.
+- Focus on sustained conformity, follow-up from prior surveillance, trend evidence,
+  continued implementation, and preparation for the next recertification cycle where relevant.
+- Confirm whether the certificate can continue to remain valid.
+- Do not write initial certification or Stage 1 readiness conclusions.
+""".strip(),
+
+    AuditStage.RECERTIFICATION.value: """
+RECERTIFICATION AUDIT — Renewal of certification cycle (COMPLETED AND SUCCESSFUL):
+- Treat this as a recertification audit, not an initial certification audit.
+- Focus on full-cycle performance, continued suitability and effectiveness of the management
+  system, prior cycle performance, audit programme results, complaints, changes, and improvement.
+- The conclusion must support renewal of certification when conformity is demonstrated.
+- Do not use Stage 1 readiness language unless the uploaded template explicitly asks for it.
+""".strip(),
 }
 
 
@@ -206,4 +234,3 @@ def build_prompt_b_context(
         "style_guidance": format_style_guidance_for_prompt(style_guidance),
         "language_instruction": get_language_instruction(language),
     }
-

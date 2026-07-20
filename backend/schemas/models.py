@@ -28,6 +28,9 @@ class ISOStandard(str, Enum):
 class AuditStage(str, Enum):
     STAGE_1 = "Stage 1"
     STAGE_2 = "Stage 2"
+    SURVEILLANCE_1 = "Surveillance 1"
+    SURVEILLANCE_2 = "Surveillance 2"
+    RECERTIFICATION = "Recertification"
 
 
 class ReportLanguage(str, Enum):
@@ -313,4 +316,3 @@ class AuditorAssignment(BaseModel):
 
 class JobAuditorConfig(BaseModel):
     assignments: list[AuditorAssignment]
-

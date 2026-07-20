@@ -121,12 +121,12 @@ function PipelineTrack({ state, failedAt }: { state: JobStateValue; failedAt: nu
 
 function MetaCard({ status, meta }: {
   status: JobStatus
-  meta: { standard: string; stage: string; body: string; company: string }
+  meta: { standards: string; stage: string; body: string; company: string }
 }) {
   return (
     <div className="grid grid-cols-3 gap-x-6 gap-y-4 rounded-lg border border-gray-100 bg-white p-5">
-      <Field label="Standard" value={meta.standard || '—'} />
-      <Field label="Stage" value={meta.stage || '—'} />
+      <Field label="Standards" value={meta.standards || '—'} />
+      <Field label="Report context" value={meta.stage || '—'} />
       <Field label="Accreditation body" value={meta.body || '—'} />
       <Field label="Company" value={meta.company || '—'} />
       <Field label="Submitted at" value={formatDateTime(status.started_at)} />
@@ -150,8 +150,9 @@ function Field({ label, value }: { label: string; value: string }) {
 export default function ReportStatusPage({ params }: { params: { id: string } }) {
   const { id } = params
   const sp = useSearchParams()
+  const standardsFromQuery = sp.get('standards')
   const meta = {
-    standard: sp.get('standard') ?? '',
+    standards: standardsFromQuery ? standardsFromQuery.split(',').filter(Boolean).join(' + ') : (sp.get('standard') ?? ''),
     stage:    sp.get('stage')    ?? '',
     body:     sp.get('accreditation_body') ?? '',
     company:  sp.get('company')  ?? '',
@@ -192,7 +193,7 @@ export default function ReportStatusPage({ params }: { params: { id: string } })
       const a   = document.createElement('a')
       const date = new Date().toISOString().slice(0, 10)
       a.href     = url
-      a.download = `${meta.standard || 'report'}_${meta.stage || 'stage'}_${meta.company || 'company'}_${date}.docx`
+      a.download = `${meta.standards || 'report'}_${meta.stage || 'context'}_${meta.company || 'company'}_${date}.docx`
       a.click()
       URL.revokeObjectURL(url)
     } catch (err: unknown) {
