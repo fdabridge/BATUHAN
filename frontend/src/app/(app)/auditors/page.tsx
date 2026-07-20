@@ -236,9 +236,20 @@ const ISMS_TECHNICAL_AREAS  = [
   { code: 'C', label: 'C — Telecom and service-provider infrastructure' },
   { code: 'D', label: 'D — Specialized and critical infrastructure' },
 ]
+const EA_CODES: string[] = [
+  'EA 1','EA 2','EA 3','EA 4','EA 5','EA 6','EA 7','EA 8','EA 9','EA 10',
+  'EA 11','EA 12','EA 13','EA 14','EA 15','EA 16','EA 17','EA 18','EA 19','EA 20',
+  'EA 21','EA 22','EA 23','EA 24','EA 25','EA 26','EA 27','EA 28','EA 29','EA 30',
+  'EA 31','EA 32','EA 33','EA 34','EA 35','EA 36','EA 37','EA 38','EA 39','EA 40',
+  'EA 41','EA 42',
+]
 const FOOD_STANDARDS    = ['22000','fssc']
 const MEDICAL_STANDARDS = ['13485']
 const SECTOR_STANDARDS  = ['37001','37301']
+const STANDARD_OPTIONS  = [
+  'ISO 9001', 'ISO 14001', 'ISO 45001', 'ISO 27001', 'ISO 22000',
+  'FSSC 22000', 'ISO 13485', 'ISO 50001', 'ISO 37001', 'ISO 37301',
+]
 
 function getStandardType(code: string): 'ea' | 'food' | 'medical' | 'isms' | 'sector' | 'energy' {
   const c = code.toLowerCase()
@@ -393,14 +404,29 @@ function ScopeInput({ standardCode, eaCodes, scopeCategory, onChangeEA, onChange
   return (
     <div className="mt-2 space-y-2">
       <div>
-        <label className="block text-xs text-gray-400 mb-1">EA codes (comma-separated)</label>
-        <input
-          type="text"
-          className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm"
-          placeholder="e.g. EA 3, EA 9"
-          value={eaCodes.join(', ')}
-          onChange={(e) => onChangeEA(e.target.value.split(',').map((s) => s.trim()).filter(Boolean))}
-        />
+        <label className="block text-xs text-gray-400 mb-1">EA codes</label>
+        <div className="flex flex-wrap gap-1">
+          {EA_CODES.map((ea) => {
+            const active = eaCodes.includes(ea)
+            return (
+              <button
+                key={ea}
+                type="button"
+                className="rounded border px-1.5 py-0.5 font-mono text-xs transition-colors"
+                style={active
+                  ? { background: '#D1FAE5', color: '#065F46', borderColor: '#6EE7B7' }
+                  : { background: 'white', color: '#9CA3AF', borderColor: '#E5E7EB' }}
+                onClick={() => {
+                  const next = active ? eaCodes.filter((x) => x !== ea) : [...eaCodes, ea]
+                  onChangeEA(next)
+                }}
+              >
+                {ea}
+              </button>
+            )
+          })}
+        </div>
+        <p className="mt-1 text-[11px] text-gray-400">Select the EA sector codes this auditor is qualified to audit.</p>
       </div>
       <div>
         <label className="block text-xs text-gray-400 mb-1">{riskLabel}</label>
@@ -421,7 +447,6 @@ function AddAuditorPanel({ onClose, onCreated }: { onClose: () => void; onCreate
   const [file,         setFile]         = useState<File | null>(null)
   const [preview,      setPreview]      = useState<AuditorIngestResult | null>(null)
   const [quals,        setQuals]        = useState<QualRow[]>([])
-  const [eaText,       setEaText]       = useState('')
   const [activeSince,  setActiveSince]  = useState('')
   const [ingestErr,    setIngestErr]    = useState<string | null>(null)   // Step-1 inline error
   const [manualNotice, setManualNotice] = useState<string | null>(null)   // Step-2 amber notice
@@ -429,8 +454,7 @@ function AddAuditorPanel({ onClose, onCreated }: { onClose: () => void; onCreate
   const [validationErr, setValidationErr] = useState<string | null>(null)
 
   function resetForBlank() {
-    setQuals([])
-    setEaText('')
+    setQuals([{ ...BLANK_QUAL }])
     setActiveSince('')
     setSaveErr(null)
     setValidationErr(null)
@@ -446,9 +470,9 @@ function AddAuditorPanel({ onClose, onCreated }: { onClose: () => void; onCreate
       return res.data
     },
     onSuccess: (data) => {
+      const extractedQuals = toQualRows(data)
       setPreview(data)
-      setQuals(toQualRows(data))
-      setEaText((data.ea_codes ?? []).join(', '))
+      setQuals(extractedQuals.length ? extractedQuals : [{ ...BLANK_QUAL }])
       setActiveSince(data.active_since ?? '')
       setIngestErr(null)
       setManualNotice(null)
@@ -466,8 +490,14 @@ function AddAuditorPanel({ onClose, onCreated }: { onClose: () => void; onCreate
   const save = useMutation({
     mutationFn: async () => {
       if (!preview) throw new Error('No preview')
-      const ea = eaText.split(',').map((s) => s.trim()).filter(Boolean)
       const cleanQuals = quals.filter((q) => q.standard_code.trim())
+      const derivedEaCodes = Array.from(new Set(
+        cleanQuals
+          .filter((q) => getStandardType(q.standard_code.trim()) === 'ea')
+          .flatMap((q) => q.ea_codes)
+          .map((code) => code.trim())
+          .filter(Boolean),
+      ))
       const accBodies = Array.from(new Set(cleanQuals.map((q) => q.accreditation_body.trim()).filter(Boolean)))
       const body = {
         name:                  (preview.name ?? '').trim(),
@@ -477,7 +507,7 @@ function AddAuditorPanel({ onClose, onCreated }: { onClose: () => void; onCreate
         role:                  preview.role   ?? null,
         field_of_expertise:    preview.field_of_expertise ?? null,
         active_since:          activeSince || null,
-        ea_codes:              ea.length ? ea : null,
+        ea_codes:              derivedEaCodes.length ? derivedEaCodes : null,
         accreditation_bodies:  accBodies.length ? accBodies : null,
         education:             preview.education       ?? [],
         languages:             preview.languages       ?? [],
@@ -543,7 +573,7 @@ function AddAuditorPanel({ onClose, onCreated }: { onClose: () => void; onCreate
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/30" onClick={onClose} />
-      <div className="fixed right-0 top-0 z-50 flex h-full w-full max-w-xl flex-col bg-white shadow-xl">
+      <div className="fixed right-0 top-0 z-50 flex h-full w-full max-w-3xl flex-col bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
           <h2 className="text-base font-semibold text-gray-800">Add auditor</h2>
           <button type="button" onClick={onClose} className="rounded p-1 text-gray-400 hover:bg-gray-50">
@@ -601,12 +631,11 @@ function AddAuditorPanel({ onClose, onCreated }: { onClose: () => void; onCreate
             </>
           ) : (
             <AuditorPreviewForm
-              preview={preview} quals={quals} eaText={eaText} activeSince={activeSince}
+              preview={preview} quals={quals} activeSince={activeSince}
               notice={manualNotice}
               validationErr={validationErr}
               onPreviewChange={patchPreview}
               onQualsChange={setQuals}
-              onEaChange={setEaText}
               onActiveSinceChange={setActiveSince}
               saving={save.isPending}
               saveErr={saveErr}
@@ -837,20 +866,18 @@ const ROLE_OPTIONS = ['Lead Auditor', 'Auditor', 'Technical Expert'] as const
 const BODY_OPTIONS = ['UAF', 'TURKAK'] as const
 
 function AuditorPreviewForm({
-  preview, quals, eaText, activeSince,
+  preview, quals, activeSince,
   notice, validationErr,
-  onPreviewChange, onQualsChange, onEaChange, onActiveSinceChange,
+  onPreviewChange, onQualsChange, onActiveSinceChange,
   saving, saveErr, onBack, onSave,
 }: {
   preview:             AuditorIngestResult
   quals:               QualRow[]
-  eaText:              string
   activeSince:         string
   notice:              string | null
   validationErr:       string | null
   onPreviewChange:     (p: Partial<AuditorIngestResult>) => void
   onQualsChange:       (q: QualRow[]) => void
-  onEaChange:          (v: string) => void
   onActiveSinceChange: (v: string) => void
   saving:              boolean
   saveErr:             string | null
@@ -916,21 +943,16 @@ function AuditorPreviewForm({
             onChange={(e) => onActiveSinceChange(e.target.value)}
           />
         </div>
-
-        <div>
-          <label className={lblCls}>EA codes <span className="font-normal text-gray-300">(comma-separated)</span></label>
-          <input
-            type="text" className={inputCls} value={eaText}
-            onChange={(e) => onEaChange(e.target.value)} placeholder="29, 30"
-          />
-        </div>
       </div>
 
       <div>
         <div className="mb-2 flex items-center justify-between">
-          <label className="block text-sm font-medium text-gray-700">Qualifications *</label>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Qualifications *</label>
+            <p className="mt-0.5 text-xs text-gray-400">Add one card per standard, then select the exact scope or EA codes for that standard.</p>
+          </div>
           <button type="button" onClick={addQual} className="inline-flex items-center gap-1 text-xs font-medium text-certiva-primary hover:opacity-70">
-            <Plus size={12} /> Add
+            <Plus size={12} /> Add standard
           </button>
         </div>
         <div className="space-y-2">
@@ -939,21 +961,25 @@ function AuditorPreviewForm({
           )}
           {quals.map((q, i) => (
             <div key={i} className="rounded-lg border border-gray-100 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Standard {i + 1}</p>
+                <button type="button" onClick={() => removeQual(i)} className="rounded p-1 text-gray-400 hover:bg-gray-50 hover:text-red-500" aria-label="Remove qualification">
+                  <Trash2 size={13} />
+                </button>
+              </div>
               <div className="flex flex-wrap items-center gap-2">
-                {/* Editable standard code — drives ScopeInput below */}
-                <input
-                  list="std-codes-list"
-                  type="text" placeholder="ISO 9001" className={`${inputCls} w-32`}
-                  value={q.standard_code}
-                  onChange={(e) => patchQual(i, { standard_code: e.target.value })}
-                />
-                <datalist id="std-codes-list">
-                  {['ISO 9001','ISO 14001','ISO 45001','ISO 27001','ISO 22000','FSSC 22000','ISO 13485','ISO 50001','ISO 37001','ISO 37301'].map((s) => (
-                    <option key={s} value={s} />
-                  ))}
-                </datalist>
                 <select
-                  className={`${inputCls} w-24`} value={q.accreditation_body}
+                  className={`${inputCls} min-w-40 flex-1`}
+                  value={q.standard_code}
+                  onChange={(e) => patchQual(i, { standard_code: e.target.value, ea_codes: [], scope_category: '' })}
+                >
+                  <option value="">— Standard —</option>
+                  {STANDARD_OPTIONS.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+                <select
+                  className={`${inputCls} w-28`} value={q.accreditation_body}
                   onChange={(e) => patchQual(i, { accreditation_body: e.target.value })}
                 >
                   {BODY_OPTIONS.map((b) => <option key={b} value={b}>{b}</option>)}
@@ -968,13 +994,10 @@ function AuditorPreviewForm({
                   <option>Technical Expert</option>
                 </select>
                 <input
-                  type="number" min={0} placeholder="Yrs" className={`${inputCls} w-16`}
+                  type="number" min={0} placeholder="Yrs" className={`${inputCls} w-20`}
                   value={q.experience_years}
                   onChange={(e) => patchQual(i, { experience_years: e.target.value })}
                 />
-                <button type="button" onClick={() => removeQual(i)} className="rounded p-2 text-gray-400 hover:bg-gray-50 hover:text-red-500" aria-label="Remove qualification">
-                  <Trash2 size={13} />
-                </button>
               </div>
               {/* Scope input — adapts based on the standard code typed above */}
               <ScopeInput
