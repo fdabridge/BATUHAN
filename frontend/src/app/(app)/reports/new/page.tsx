@@ -297,7 +297,9 @@ export default function NewReportPage() {
       docs.forEach((f) => fd.append('company_documents', f))
       docs.forEach((f) => fd.append('sample_reports', f))
       fd.append('template', template[0])
-      const res = await api.post<JobCreateResponse>('/jobs/create', fd)
+      const res = await api.post<JobCreateResponse>('/jobs/create', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
       return res.data
     },
     onSuccess: (data) => {
