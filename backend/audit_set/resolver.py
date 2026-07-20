@@ -69,7 +69,11 @@ def _get_stage_subfolder(audit_type: str, stage_key: str, accreditation_body: st
     is_uaf = (accreditation_body or "").upper() == "UAF"
 
     if (audit_type or "").lower() == "recertification" and stage_key in {"recertification", "surveillance", "stage_2"}:
-        return STAGE_SUBFOLDER_RECERT_EN if is_uaf else STAGE_SUBFOLDER_RECERT_TR
+        # The physical blank set stores the combined surveillance/recertification
+        # forms under "Surveillance" (for example FR.234 is named
+        # "Surveillance_Recertification"). The generated ZIP still uses the
+        # separate "Recertification" output folder; this is only source routing.
+        return STAGE_SUBFOLDER_EN["surveillance"] if is_uaf else STAGE_SUBFOLDER["surveillance"]
 
     if stage_key == "surveillance":
         return STAGE_SUBFOLDER_EN["surveillance"] if is_uaf else STAGE_SUBFOLDER["surveillance"]

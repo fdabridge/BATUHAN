@@ -25,6 +25,7 @@ import pytest
 
 from audit_set.filler import build_base_context
 from audit_set.packager import build_audit_set_zip
+from audit_set.resolver import resolve_document_set
 
 
 # --------------------------------------------------------------------------- #
@@ -104,6 +105,22 @@ def _audit_set() -> NS:
     )
 
 
+def _recertification_audit_set() -> NS:
+    audit_set = _audit_set()
+    audit_set.audit_type = "recertification"
+    audit_set.stages = [
+        NS(
+            stage_type="recertification", stage_order=1,
+            audit_date_start=date(2026, 7, 14), audit_date_end=date(2026, 7, 16),
+            audit_days=3.0, notification_date=date(2026, 5, 14),
+            lead_auditor_id="1", lead_auditor_name="John Smith",
+            auditors=[{"id": "2", "name": "Jane Auditor", "covered_scope": {}}],
+            technical_experts=[], observers=[],
+        )
+    ]
+    return audit_set
+
+
 # --------------------------------------------------------------------------- #
 # Helpers + shared fixtures
 # --------------------------------------------------------------------------- #
@@ -159,6 +176,16 @@ def test_core_templates_present_per_stage(entries):
         names = " ".join(_stage_files(entries, folder))
         for fr in ("FR.223", "FR.230"):
             assert fr in names, f"{fr} missing from {folder}"
+
+
+def test_recertification_uses_existing_surveillance_templates():
+    document_set, missing = resolve_document_set(_recertification_audit_set())
+
+    assert missing == []
+    assert set(document_set) == {"Recertification"}
+    fr_numbers = {spec.fr_number for spec in document_set["Recertification"]}
+    assert {"FR.223", "FR.224", "FR.225", "FR.230", "FR.232", "FR.211", "FR.234", "FR.233"} <= fr_numbers
+    assert all("/Surveillance/" in spec.template_path.as_posix() for spec in document_set["Recertification"])
 
 
 # --------------------------------------------------------------------------- #
