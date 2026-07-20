@@ -295,7 +295,6 @@ export default function NewReportPage() {
       fd.append('org_name', form.company_name.trim())
       fd.append('org_address', `EN: ${form.scope_en.trim()}\nTR: ${form.scope_tr.trim()}`)
       docs.forEach((f) => fd.append('company_documents', f))
-      docs.forEach((f) => fd.append('sample_reports', f))
       fd.append('template', template[0])
       const res = await api.post<JobCreateResponse>('/jobs/create', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },

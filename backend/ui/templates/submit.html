@@ -53,16 +53,16 @@
         <p class="hint">PDF, Word, TXT, or scanned images (PNG/JPG). Include policies, procedures, training records, risk registers, internal audits, and any management system documents.</p>
       </div>
 
-      <div class="section-label" style="margin-top:1.5rem">Step 2 — Sample Audit Reports</div>
+      <div class="section-label" style="margin-top:1.5rem">Step 2 — Optional Style Samples</div>
       <div class="field">
-        <label>Sample Audit Reports <span style="color:var(--danger)">*</span></label>
-        <span class="req-badge req-min">📄 Minimum 1 file · Recommend 2–3</span>
+        <label>Sample Audit Reports</label>
+        <span class="req-badge req-min">📄 Optional · use only anonymized examples</span>
         <div class="upload-zone">
           <span class="upload-icon">📋</span>
-          <span class="upload-label">Click to select one or more files</span>
-          <input type="file" name="sample_reports" multiple accept=".pdf,.docx,.doc,.txt" required />
+          <span class="upload-label">Click to select anonymized style examples</span>
+          <input type="file" name="sample_reports" multiple accept=".pdf,.docx,.doc,.txt" />
         </div>
-        <p class="hint">Real completed ISO audit reports (PDF or DOCX). Used <strong>only</strong> for writing style guidance — all company names and data are automatically blocked.</p>
+        <p class="hint">Only upload anonymized completed reports if you want extra writing-style guidance. Do not upload the current client's evidence here.</p>
       </div>
 
       <div class="section-label" style="margin-top:1.5rem">Step 3 — Blank Report Template</div>
@@ -346,4 +346,3 @@
   setInterval(loadMeetings, 120000);
 </script>
 {% endblock %}
-

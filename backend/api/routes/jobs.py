@@ -45,8 +45,8 @@ async def create_job(
     company_documents: list[UploadFile] = File(
         ..., description="Company documents (PDF, DOCX, TXT, PNG, JPG)"
     ),
-    sample_reports: list[UploadFile] = File(
-        ..., description="Sample audit reports for style reference"
+    sample_reports: list[UploadFile] | None = File(
+        default=None, description="Optional sample audit reports for style reference"
     ),
     template: UploadFile = File(
         ..., description="Blank audit report template (.docx)"
@@ -110,7 +110,7 @@ async def create_job(
 
     # --- Validate and encode sample reports ---
     sample_files: list[dict] = []
-    for f in sample_reports:
+    for f in sample_reports or []:
         if not validate_extension(f.filename or ""):
             raise HTTPException(
                 status_code=400,
