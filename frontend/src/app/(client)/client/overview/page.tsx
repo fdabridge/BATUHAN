@@ -134,7 +134,6 @@ interface ActionCard {
 
 function computeNextAction(
   status:          string | null,
-  hasSig:          boolean,
   employees:       OrgEmployee[],
   unsignedDocCount: number,
   pendingForClient: number,
@@ -170,17 +169,6 @@ function computeNextAction(
     }
   }
 
-  // No signature set up
-  if (!hasSig) {
-    return {
-      urgency: 'high',
-      title:   'Set up your signature',
-      body:    'Your signature is required on audit forms and documents. Set it up now before your audit begins.',
-      href:    '/client/signature',
-      cta:     'Set Up Signature \u2192',
-    }
-  }
-
   // No employees
   const ACTIVE_AUDIT_STATUSES = new Set([
     'agreement_signed',
@@ -192,9 +180,9 @@ function computeNextAction(
   ])
   if (employees.length === 0 && ACTIVE_AUDIT_STATUSES.has(status ?? '')) {
     return {
-      urgency: 'medium',
+      urgency: 'high',
       title:   'Add your organisation personnel',
-      body:    'Your employees\' names and signatures appear on audit meeting forms. Add them before your audit.',
+      body:    'Audit meeting forms use your employee roster for attendee names and signatures. Add the people who will attend before the audit.',
       href:    '/client/employees',
       cta:     'Add Employees \u2192',
     }
@@ -206,7 +194,7 @@ function computeNextAction(
     return {
       urgency: 'medium',
       title:   `${missingSigs} employee${missingSigs > 1 ? 's' : ''} missing a signature`,
-      body:    'Upload their signature images so they can be included on audit meeting forms.',
+      body:    'Draw or upload each employee signature so it can be placed into the correct meeting-form slot.',
       href:    '/client/employees',
       cta:     'Go to Employees \u2192',
     }
@@ -253,7 +241,6 @@ function computeNextAction(
 export default function ClientOverviewPage() {
   const [data,       setData]       = useState<ClientAuditSet | null>(null)
   const [history,    setHistory]    = useState<StatusEvent[]>([])
-  const [hasSig,     setHasSig]     = useState(false)
   const [employees,  setEmployees]  = useState<OrgEmployee[]>([])
   const [docs,       setDocs]       = useState<SharedDoc[]>([])
   const [loading,    setLoading]    = useState(true)
@@ -262,15 +249,13 @@ export default function ClientOverviewPage() {
     Promise.all([
       api.get<ClientAuditSet>('/client/my-audit-set'),
       api.get<StatusEvent[]>('/client/my-audit-set/status-history'),
-      api.get('/me/signature').catch(() => null),
       api.get<OrgEmployee[]>('/org/employees').catch(() => ({ data: [] })),
       api.get<SharedDoc[]>('/client/my-audit-set/documents').catch(() => ({ data: [] })),
-    ]).then(([r1, r2, r3, r4, r5]) => {
+    ]).then(([r1, r2, r3, r4]) => {
       setData(r1.data)
       setHistory(r2.data)
-      setHasSig(!!(r3?.data?.has_signature))
-      setEmployees((r4 as { data: OrgEmployee[] }).data ?? [])
-      setDocs((r5 as { data: SharedDoc[] }).data ?? [])
+      setEmployees((r3 as { data: OrgEmployee[] }).data ?? [])
+      setDocs((r4 as { data: SharedDoc[] }).data ?? [])
     }).finally(() => setLoading(false))
   }, [])
 
@@ -291,7 +276,6 @@ export default function ClientOverviewPage() {
 
   const action = computeNextAction(
     data.workflow_status,
-    hasSig,
     employees,
     waitingOnCbCount,
     pendingForClient,
@@ -350,23 +334,6 @@ export default function ClientOverviewPage() {
       <div className="rounded-xl border bg-white p-5">
         <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">Setup checklist</p>
         <div className="space-y-2.5">
-          {/* Signature */}
-          <div className="flex items-center gap-3">
-            <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold
-              ${hasSig ? 'bg-[#1A4731] text-white' : 'bg-amber-100 text-amber-700'}`}>
-              {hasSig ? '\u2713' : '!'}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-700">Personal signature</p>
-              <p className="text-xs text-gray-400">{hasSig ? 'On file' : 'Not set up yet'}</p>
-            </div>
-            {!hasSig && (
-              <Link href="/client/signature" className="text-xs font-medium text-[#1A4731] hover:underline">
-                Set up \u2192
-              </Link>
-            )}
-          </div>
-
           {/* Employees */}
           <div className="flex items-center gap-3">
             <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold

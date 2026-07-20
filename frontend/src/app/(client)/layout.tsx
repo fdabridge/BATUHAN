@@ -49,7 +49,6 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
     { href: '/client/ncs',         label: 'Nonconformities',  badge: 0 },
     { href: '/client/messages',    label: 'Messages',      badge: 0 },
     { href: '/client/employees',   label: 'Employees',     badge: 0 },
-    { href: '/client/signature',   label: 'My Signature',  badge: 0 },
   ]
 
   return (

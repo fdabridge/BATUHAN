@@ -45,7 +45,7 @@ const ORG_EMP_RE = /^ORG_(OPENING|CLOSING)_ORG_EMP_(\d+)$/
 function getSignatureSettingsUrl(): string {
   if (typeof window === 'undefined') return '/settings/signature'
   const p = window.location.pathname
-  if (p.startsWith('/client/'))  return '/client/signature'
+  if (p.startsWith('/client/'))  return '/client/employees'
   if (p.startsWith('/auditor/')) return '/auditor/signature'
   return '/settings/signature'
 }
@@ -211,6 +211,7 @@ export function SignatureConfirmDialog({
   }
   const roleLabel = resolveSigLabel(sigKey)
   const busy      = stage === 'signing'
+  const isClientPortal = typeof window !== 'undefined' && window.location.pathname.startsWith('/client/')
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -273,16 +274,25 @@ export function SignatureConfirmDialog({
           {stage === 'no_signature' && !isOrgEmpSlot && !needsEmployeePicker && (
             <>
               <p className="text-sm text-gray-600">
-                You don&apos;t have a saved signature yet. Go to{' '}
-                <strong>Settings → My Signature</strong> to draw or upload your signature, then come back.
+                {isClientPortal ? (
+                  <>
+                    This signing slot needs a saved employee signature. Go to{' '}
+                    <strong>Employees</strong> to draw or upload the employee signature, then come back.
+                  </>
+                ) : (
+                  <>
+                    You don&apos;t have a saved signature yet. Go to{' '}
+                    <strong>Settings → My Signature</strong> to draw or upload your signature, then come back.
+                  </>
+                )}
               </p>
               <a href={getSignatureSettingsUrl()} target="_blank" rel="noreferrer"
                 className="block w-full rounded-lg border-2 border-dashed border-[#1A4731] py-3 text-center
                   text-sm font-medium text-[#1A4731] hover:bg-[#1A4731]/5 transition-colors">
-                Set up my signature →
+                {isClientPortal ? 'Open Employees →' : 'Set up my signature →'}
               </a>
               <p className="text-xs text-gray-400 text-center">
-                Opens in a new tab. Save your signature, then close this dialog and try again.
+                Opens in a new tab. Save the signature, then close this dialog and try again.
               </p>
             </>
           )}

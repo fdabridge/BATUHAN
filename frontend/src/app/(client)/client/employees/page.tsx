@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Loader2, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
+import { Loader2, PenLine, Pencil, Plus, RotateCcw, Trash2, Upload, X } from 'lucide-react'
 import api from '@/lib/api'
 import { removeWhiteBackground, MAX_SIGNATURE_FILE_BYTES } from '@/lib/signatureUtils'
 
@@ -18,6 +18,8 @@ interface OrgEmployee {
 
 const inputCls = 'w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 placeholder-gray-400 outline-none focus:border-[#1A4731] focus:ring-2 focus:ring-[#1A4731]/20'
 const lblCls   = 'mb-1 block text-xs font-medium text-gray-500'
+type SignatureSource = 'drawn' | 'uploaded'
+type SignaturePayload = { image_data: string; source: SignatureSource }
 
 function extractDetail(err: unknown, fallback: string): string {
   const e = err as { response?: { data?: { detail?: string } }; message?: string }
@@ -116,7 +118,7 @@ export default function ClientEmployeesPage() {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-2">
-                    <button onClick={() => setSigTarget(e)} className="text-gray-400 hover:text-gray-700" aria-label="Upload signature" title="Upload signature">
+                    <button onClick={() => setSigTarget(e)} className="text-gray-400 hover:text-gray-700" aria-label="Set signature" title="Set signature">
                       <Upload size={16} />
                     </button>
                     <button onClick={() => setEditTarget(e)} className="text-gray-400 hover:text-gray-700" aria-label="Edit">
@@ -148,7 +150,7 @@ function Modal({ open, title, onClose, children }: {
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-lg bg-white shadow-xl">
+      <div className="w-full max-w-lg rounded-lg bg-white shadow-xl">
         <div className="flex items-start justify-between border-b border-gray-100 px-5 py-3">
           <h2 className="text-sm font-semibold text-gray-800">{title}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700" aria-label="Close">
@@ -156,6 +158,200 @@ function Modal({ open, title, onClose, children }: {
           </button>
         </div>
         <div className="px-5 py-4">{children}</div>
+      </div>
+    </div>
+  )
+}
+
+// ── Signature input ──────────────────────────────────────────────────────────
+
+function SignatureDrawPad({ onReady }: { onReady: (getDataUrl: () => string | null) => void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const drawing = useRef(false)
+  const hasStrokes = useRef(false)
+  const last = useRef<{ x: number; y: number } | null>(null)
+
+  function configureCanvas() {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const dpr = window.devicePixelRatio || 1
+    const rect = canvas.getBoundingClientRect()
+    canvas.width = Math.max(1, Math.floor(rect.width * dpr))
+    canvas.height = Math.max(1, Math.floor(rect.height * dpr))
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.lineWidth = 2.5
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    ctx.strokeStyle = '#1A4731'
+    hasStrokes.current = false
+    last.current = null
+  }
+
+  useEffect(() => {
+    configureCanvas()
+    onReady(() => {
+      if (!hasStrokes.current) return null
+      return canvasRef.current?.toDataURL('image/png') ?? null
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function point(ev: React.PointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current
+    if (!canvas) return null
+    const rect = canvas.getBoundingClientRect()
+    return { x: ev.clientX - rect.left, y: ev.clientY - rect.top }
+  }
+
+  function start(ev: React.PointerEvent<HTMLCanvasElement>) {
+    ev.preventDefault()
+    ev.currentTarget.setPointerCapture(ev.pointerId)
+    drawing.current = true
+    last.current = point(ev)
+  }
+
+  function move(ev: React.PointerEvent<HTMLCanvasElement>) {
+    ev.preventDefault()
+    if (!drawing.current || !last.current) return
+    const ctx = canvasRef.current?.getContext('2d')
+    const next = point(ev)
+    if (!ctx || !next) return
+    ctx.beginPath()
+    ctx.moveTo(last.current.x, last.current.y)
+    ctx.lineTo(next.x, next.y)
+    ctx.stroke()
+    last.current = next
+    hasStrokes.current = true
+  }
+
+  function stop() {
+    drawing.current = false
+    last.current = null
+  }
+
+  return (
+    <div>
+      <canvas
+        ref={canvasRef}
+        onPointerDown={start}
+        onPointerMove={move}
+        onPointerUp={stop}
+        onPointerLeave={stop}
+        className="w-full cursor-crosshair rounded-lg border-2 border-dashed border-gray-300 bg-white"
+        style={{ height: 130, touchAction: 'none' }}
+      />
+      <button
+        type="button"
+        onClick={configureCanvas}
+        className="mt-2 flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600"
+      >
+        <RotateCcw size={13} />
+        Clear drawing
+      </button>
+    </div>
+  )
+}
+
+function EmployeeSignatureInput({
+  registerGetter,
+  optional = false,
+}: {
+  registerGetter: (getter: () => SignaturePayload | null) => void
+  optional?: boolean
+}) {
+  const [tab, setTab] = useState<SignatureSource>('drawn')
+  const [uploadPreview, setUploadPreview] = useState<string | null>(null)
+  const [processing, setProcessing] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const drawGetter = useRef<(() => string | null) | null>(null)
+
+  useEffect(() => {
+    registerGetter(() => {
+      if (tab === 'drawn') {
+        const imageData = drawGetter.current?.() ?? null
+        return imageData ? { image_data: imageData, source: 'drawn' } : null
+      }
+      return uploadPreview ? { image_data: uploadPreview, source: 'uploaded' } : null
+    })
+  }, [registerGetter, tab, uploadPreview])
+
+  async function onFile(ev: React.ChangeEvent<HTMLInputElement>) {
+    const file = ev.target.files?.[0]
+    if (!file) return
+    if (!['image/png', 'image/jpeg'].includes(file.type)) {
+      setErr('Please upload a JPG or PNG image.')
+      return
+    }
+    if (file.size > MAX_SIGNATURE_FILE_BYTES) {
+      setErr('Image is too large. Please use an image under 10 MB.')
+      return
+    }
+    setProcessing(true)
+    setErr(null)
+    try {
+      setUploadPreview(await removeWhiteBackground(file))
+    } catch {
+      setErr('Could not process the image. Please try a different file.')
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-gray-100 bg-gray-50">
+      <div className="flex border-b border-gray-100 bg-white">
+        {([
+          ['drawn', 'Draw signature', PenLine],
+          ['uploaded', 'Upload photo', Upload],
+        ] as const).map(([value, label, Icon]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => { setTab(value); setErr(null) }}
+            className={[
+              'flex flex-1 items-center justify-center gap-2 py-2.5 text-xs font-medium transition-colors',
+              tab === value
+                ? 'border-b-2 border-[#1A4731] text-[#1A4731]'
+                : 'text-gray-400 hover:text-gray-600',
+            ].join(' ')}
+          >
+            <Icon size={14} />
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="space-y-3 p-3">
+        <p className="text-xs text-gray-500">
+          {optional
+            ? 'Optional but recommended: add the employee signature now, so meeting forms can be signed without extra setup later.'
+            : "Draw or upload this employee signature. It will be used for that employee's document slots."}
+        </p>
+        {tab === 'drawn' ? (
+          <SignatureDrawPad onReady={(fn) => { drawGetter.current = fn }} />
+        ) : (
+          <div className="space-y-3">
+            <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-white px-4 py-5 text-center hover:border-[#1A4731]">
+              <Upload size={20} className="mb-1 text-gray-400" />
+              <span className="text-sm text-gray-600">{processing ? 'Processing…' : 'Choose JPG or PNG file'}</span>
+              <span className="text-xs text-gray-400">White background is removed automatically</span>
+              <input type="file" accept="image/jpeg,image/png" onChange={onFile} className="sr-only" />
+            </label>
+            {uploadPreview && !processing && (
+              <div className="rounded border border-gray-100 bg-white p-3">
+                <p className="mb-1 text-xs text-gray-400">Preview</p>
+                <img
+                  src={uploadPreview}
+                  alt="Signature preview"
+                  className="mx-auto max-h-20 object-contain"
+                  style={{ background: 'repeating-conic-gradient(#f0f0f0 0% 25%, #fff 0% 50%) 0 0 / 12px 12px' }}
+                />
+              </div>
+            )}
+          </div>
+        )}
+        {err && <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{err}</div>}
       </div>
     </div>
   )
@@ -170,6 +366,7 @@ function CreateModal({ open, onClose, onSuccess }: {
   const [role,     setRole]     = useState('')
   const [busy,     setBusy]     = useState(false)
   const [err,      setErr]      = useState<string | null>(null)
+  const signatureGetter = useRef<() => SignaturePayload | null>(() => null)
 
   useEffect(() => { if (open) { setFullName(''); setRole(''); setErr(null) } }, [open])
 
@@ -178,7 +375,18 @@ function CreateModal({ open, onClose, onSuccess }: {
     if (!fullName.trim() || !role.trim()) { setErr('Both fields are required.'); return }
     setBusy(true); setErr(null)
     try {
-      await api.post('/org/employees', { full_name: fullName.trim(), role_title: role.trim() })
+      const created = await api.post<OrgEmployee>('/org/employees', {
+        full_name: fullName.trim(),
+        role_title: role.trim(),
+      })
+      const signature = signatureGetter.current?.() ?? null
+      if (signature) {
+        try {
+          await api.post(`/org/employees/${created.data.id}/signature`, signature)
+        } catch {
+          window.alert('Employee was created, but the signature could not be saved. Open the employee row and save the signature again.')
+        }
+      }
       onSuccess()
     } catch (e) {
       setErr(extractDetail(e, 'Failed to create.'))
@@ -197,6 +405,13 @@ function CreateModal({ open, onClose, onSuccess }: {
         <div>
           <label className={lblCls}>Role / Title *</label>
           <input className={inputCls} value={role} onChange={(e) => setRole(e.target.value)} placeholder="e.g. Quality Manager" />
+        </div>
+        <div>
+          <label className={lblCls}>Employee signature</label>
+          <EmployeeSignatureInput
+            optional
+            registerGetter={(getter) => { signatureGetter.current = getter }}
+          />
         </div>
         {err && <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{err}</div>}
         <button type="submit" disabled={busy}
@@ -279,44 +494,24 @@ function EditModal({ target, onClose, onSuccess }: {
 function SignatureModal({ target, onClose, onSuccess }: {
   target: OrgEmployee | null; onClose: () => void; onSuccess: () => void
 }) {
-  const fileRef = useRef<HTMLInputElement>(null)
-  const [preview,    setPreview]    = useState<string | null>(null)
-  const [processing, setProcessing] = useState(false)
   const [busy,       setBusy]       = useState(false)
   const [err,        setErr]        = useState<string | null>(null)
+  const signatureGetter = useRef<() => SignaturePayload | null>(() => null)
 
   useEffect(() => {
-    if (!target) { setPreview(null); setErr(null) }
+    if (!target) setErr(null)
   }, [target])
 
-  async function onFile(ev: React.ChangeEvent<HTMLInputElement>) {
-    const f = ev.target.files?.[0]
-    if (!f) return
-    if (!['image/png', 'image/jpeg'].includes(f.type)) {
-      setErr('Please upload a JPG or PNG image.')
-      return
-    }
-    if (f.size > MAX_SIGNATURE_FILE_BYTES) {
-      setErr('Image is too large. Please use an image under 10 MB.')
-      return
-    }
-    setProcessing(true)
-    setErr(null)
-    try {
-      const processed = await removeWhiteBackground(f)
-      setPreview(processed)
-    } catch {
-      setErr('Could not process the image. Please try a different file.')
-    } finally {
-      setProcessing(false)
-    }
-  }
-
   async function submit() {
-    if (!target || !preview) return
+    if (!target) return
+    const signature = signatureGetter.current?.() ?? null
+    if (!signature) {
+      setErr('Draw or upload a signature before saving.')
+      return
+    }
     setBusy(true); setErr(null)
     try {
-      await api.post(`/org/employees/${target.id}/signature`, { image_data: preview, source: 'uploaded' })
+      await api.post(`/org/employees/${target.id}/signature`, signature)
       onSuccess()
     } catch (e) {
       setErr(extractDetail(e, 'Failed to save signature.'))
@@ -329,28 +524,14 @@ function SignatureModal({ target, onClose, onSuccess }: {
     <Modal open={!!target} title={target ? `Signature — ${target.full_name}` : 'Signature'} onClose={onClose}>
       <div className="space-y-3">
         <p className="text-xs text-gray-500">
-          Upload a photo or scan of this person&apos;s handwritten signature. The white
-          background will be removed automatically. JPG or PNG accepted.
+          Draw this employee&apos;s signature or upload a photo/scan. This is the signature
+          used for that employee&apos;s document slots.
         </p>
-        <input ref={fileRef} type="file" accept="image/jpeg,image/png" onChange={onFile} className="hidden" />
-        <button type="button" onClick={() => fileRef.current?.click()}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-600 hover:border-[#1A4731] hover:text-[#1A4731]">
-          <Upload size={16} />
-          {processing ? 'Processing…' : preview ? 'Choose a different file' : 'Choose JPG or PNG file'}
-        </button>
-        {preview && !processing && (
-          <div className="rounded border border-gray-100 bg-gray-50 p-3">
-            <p className="mb-1 text-xs text-gray-400">Preview (background removed)</p>
-            <img
-              src={preview}
-              alt="Signature preview"
-              className="mx-auto max-h-24 object-contain"
-              style={{ background: 'repeating-conic-gradient(#f0f0f0 0% 25%, #fff 0% 50%) 0 0 / 12px 12px' }}
-            />
-          </div>
-        )}
+        <EmployeeSignatureInput
+          registerGetter={(getter) => { signatureGetter.current = getter }}
+        />
         {err && <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{err}</div>}
-        <button type="button" onClick={submit} disabled={busy || !preview || processing}
+        <button type="button" onClick={submit} disabled={busy}
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#1A4731] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60">
           {busy && <Loader2 size={14} className="animate-spin" />}
           {busy ? 'Saving…' : 'Save signature'}
