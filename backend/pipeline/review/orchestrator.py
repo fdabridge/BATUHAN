@@ -29,6 +29,14 @@ def _load_prompt() -> str:
     return "\n".join(lines)
 
 
+def _render_prompt(template: str, values: dict[str, str]) -> str:
+    """Replace known prompt tokens without interpreting JSON braces."""
+    rendered = template
+    for key, value in values.items():
+        rendered = rendered.replace("{" + key + "}", value)
+    return rendered
+
+
 def _profile_to_text(profile: dict) -> str:
     """Convert the rule profile dict to readable text for the prompt."""
     lines = []
@@ -227,13 +235,16 @@ def run_review(
 
     # Load and format prompt
     prompt_template = _load_prompt()
-    prompt = prompt_template.format(
-        standard=standard_label,
-        stage=stage,
-        accreditation_body=profile["display_name"],
-        rule_profile_text=rule_profile_text,
-        mandatory_clauses=mandatory_clauses_text,
-        report_text=report_text,
+    prompt = _render_prompt(
+        prompt_template,
+        {
+            "standard": standard_label,
+            "stage": stage,
+            "accreditation_body": profile["display_name"],
+            "rule_profile_text": rule_profile_text,
+            "mandatory_clauses": mandatory_clauses_text,
+            "report_text": report_text,
+        },
     )
     logger.info(
         "Review [%s]: prompt built | %d chars | standard=%s stage=%s ab=%s",
