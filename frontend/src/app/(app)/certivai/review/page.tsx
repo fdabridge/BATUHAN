@@ -100,7 +100,7 @@ const STATE_COPY: Record<string, string> = {
 
 export default function CertivAIReviewPage() {
   const [references, setReferences] = useState<ReviewReferences>(FALLBACK_REFERENCES)
-  const [standard, setStandard] = useState('QMS')
+  const [selectedStandards, setSelectedStandards] = useState<string[]>(['QMS'])
   const [stage, setStage] = useState('Stage 2')
   const [profileCode, setProfileCode] = useState('UAF')
   const [report, setReport] = useState<File | null>(null)
@@ -117,6 +117,11 @@ export default function CertivAIReviewPage() {
       .then((response) => {
         if (!alive) return
         setReferences(response.data)
+        const availableStandards = response.data.standards.length > 0 ? response.data.standards : FALLBACK_REFERENCES.standards
+        setSelectedStandards((current) => {
+          const kept = current.filter((item) => availableStandards.includes(item))
+          return kept.length > 0 ? kept : [availableStandards[0]]
+        })
         if (response.data.profiles.length > 0) {
           setProfileCode(response.data.profiles.find((profile) => profile.code === 'UAF')?.code || response.data.profiles[0].code)
         }
@@ -168,10 +173,24 @@ export default function CertivAIReviewPage() {
     [summary],
   )
   const hasDocxSource = Boolean(report?.name.toLowerCase().endsWith('.docx'))
+  const standardLabel = selectedStandards.join(' + ')
+
+  function toggleStandard(item: string) {
+    setSelectedStandards((current) => {
+      if (current.includes(item)) {
+        return current.length === 1 ? current : current.filter((value) => value !== item)
+      }
+      return [...current, item]
+    })
+  }
 
   async function submitReview() {
     if (!report) {
       setMessage('Please choose a completed audit report PDF or DOCX first.')
+      return
+    }
+    if (selectedStandards.length === 0) {
+      setMessage('Please select at least one standard for the review.')
       return
     }
     const reportName = report.name.toLowerCase()
@@ -188,7 +207,7 @@ export default function CertivAIReviewPage() {
 
     const formData = new FormData()
     formData.append('report', report)
-    formData.append('standard', standard)
+    selectedStandards.forEach((item) => formData.append('standards', item))
     formData.append('stage', stage)
     formData.append('accreditation_body', profileCode)
 
@@ -200,7 +219,7 @@ export default function CertivAIReviewPage() {
       setStatus({
         review_job_id: response.data.review_job_id,
         state: response.data.state,
-        standard_code: standard,
+        standard_code: standardLabel,
         accreditation_body: profileCode,
       })
     } catch (error: any) {
@@ -252,18 +271,38 @@ export default function CertivAIReviewPage() {
               <div>
                 <h1 className="text-3xl font-semibold">Report Review</h1>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-                  Upload a completed audit report and compare it against the selected accreditation profile, standard clause map, evidence rules, and stage logic.
+                  Upload a completed audit report and compare it against the selected accreditation profile, integrated standard clause maps, evidence rules, and stage logic.
                 </p>
               </div>
             </div>
 
             <div className="mt-7 grid gap-4 sm:grid-cols-2">
-              <label className="space-y-2">
-                <span className="text-xs font-semibold uppercase text-slate-400">Standard</span>
-                <select value={standard} onChange={(event) => setStandard(event.target.value)} className="w-full border border-white/10 bg-black/40 px-3 py-3 text-sm text-white outline-none" style={{ borderRadius: 8 }}>
-                  {references.standards.map((item) => <option key={item}>{item}</option>)}
-                </select>
-              </label>
+              <div className="space-y-2 sm:col-span-2">
+                <span className="text-xs font-semibold uppercase text-slate-400">Standards</span>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {references.standards.map((item) => {
+                    const active = selectedStandards.includes(item)
+                    return (
+                      <button
+                        key={item}
+                        type="button"
+                        onClick={() => toggleStandard(item)}
+                        className={`border px-3 py-3 text-sm font-semibold transition ${
+                          active
+                            ? 'border-cyan-300 bg-cyan-300/15 text-cyan-50 shadow-[0_0_18px_rgba(103,232,249,0.18)]'
+                            : 'border-white/10 bg-black/35 text-slate-300 hover:border-white/25 hover:text-white'
+                        }`}
+                        style={{ borderRadius: 8 }}
+                      >
+                        {item}
+                      </button>
+                    )
+                  })}
+                </div>
+                <span className="block text-xs text-slate-400">
+                  Select every standard included in the report. Integrated reviews check all selected clause maps together.
+                </span>
+              </div>
               <label className="space-y-2">
                 <span className="text-xs font-semibold uppercase text-slate-400">Audit Type</span>
                 <select value={stage} onChange={(event) => setStage(event.target.value)} className="w-full border border-white/10 bg-black/40 px-3 py-3 text-sm text-white outline-none" style={{ borderRadius: 8 }}>
@@ -277,6 +316,9 @@ export default function CertivAIReviewPage() {
                     <option key={profile.code} value={profile.code}>{profile.display_name}</option>
                   ))}
                 </select>
+                <span className="block text-xs text-slate-400">
+                  The review will use {standardLabel || 'the selected standards'} with this accreditation profile.
+                </span>
               </label>
               <label className="space-y-2 sm:col-span-2">
                 <span className="text-xs font-semibold uppercase text-slate-400">Completed Report</span>

@@ -115,15 +115,48 @@ def _get_stage_specific_rules(profile: dict, stage: str) -> str:
     return "\n".join(lines)
 
 
-def _get_standard_specific_rules(profile: dict, standard: str) -> str:
-    rules = profile.get("standard_specific_rules", {}).get(standard, {})
-    if not rules:
-        return ""
-    lines = [f"\nSTANDARD-SPECIFIC RULES FOR {standard}:"]
-    for key, items in rules.items():
-        for item in items:
-            lines.append(f"  - {item}")
+def _split_standard_label(standard: str) -> list[str]:
+    standards: list[str] = []
+    for part in standard.replace("+", ",").split(","):
+        code = part.strip().upper()
+        if code and code not in standards:
+            standards.append(code)
+    return standards or [standard.strip().upper()]
+
+
+def _get_standard_specific_rules(profile: dict, standards: list[str]) -> str:
+    lines: list[str] = []
+    profile_rules = profile.get("standard_specific_rules", {})
+    for standard in standards:
+        rules = profile_rules.get(standard, {})
+        if not rules:
+            continue
+        lines.append(f"\nSTANDARD-SPECIFIC RULES FOR {standard}:")
+        for _key, items in rules.items():
+            for item in items:
+                lines.append(f"  - {item}")
     return "\n".join(lines)
+
+
+def _get_mandatory_clauses_text(standards: list[str]) -> str:
+    sections: list[str] = []
+    for standard in standards:
+        try:
+            clause_config = load_clause_config(standard)
+            mandatory_ids = get_mandatory_clause_ids(clause_config)
+            clauses = [
+                f"  - {c.clause_id}: {c.title}"
+                for c in clause_config.clauses
+                if c.clause_id in mandatory_ids
+            ]
+            if clauses:
+                sections.append(f"{standard}:\n" + "\n".join(clauses))
+            else:
+                sections.append(f"{standard}: All mandatory clauses defined for this standard")
+        except Exception as e:
+            logger.warning("Could not load clause config for %s: %s", standard, e)
+            sections.append(f"{standard}: All clauses of {standard} standard")
+    return "\n\n".join(sections)
 
 
 def _empty_result(
@@ -160,7 +193,7 @@ def run_review(
 
     Args:
         report_text:       Plain text extracted from the uploaded report DOCX.
-        standard:          ISO standard code (e.g. "QMS", "ISMS").
+        standard:          ISO standard code or integrated label (e.g. "QMS + EMS").
         stage:             Audit stage string ("Stage 1" or "Stage 2").
         accreditation_body: Accreditation body code ("UAF" or "TURKAK").
         review_job_id:     The review job ID for artifact labelling.
@@ -173,24 +206,14 @@ def run_review(
         ReviewResult with per-clause findings and overall assessment.
     """
     profile = load_review_profile(accreditation_body)
-
-    # Load clause config to build mandatory clause list
-    try:
-        clause_config = load_clause_config(standard)
-        mandatory_ids = get_mandatory_clause_ids(clause_config)
-        mandatory_clauses_text = "\n".join(
-            f"  - {c.clause_id}: {c.title}"
-            for c in clause_config.clauses
-            if c.clause_id in mandatory_ids
-        )
-    except Exception as e:
-        logger.warning("Could not load clause config for %s: %s", standard, e)
-        mandatory_clauses_text = f"All clauses of {standard} standard"
+    standards = _split_standard_label(standard)
+    standard_label = " + ".join(standards)
+    mandatory_clauses_text = _get_mandatory_clauses_text(standards)
 
     # Build full rule profile text for prompt injection
     rule_profile_text = _profile_to_text(profile)
     rule_profile_text += _get_stage_specific_rules(profile, stage)
-    rule_profile_text += _get_standard_specific_rules(profile, standard)
+    rule_profile_text += _get_standard_specific_rules(profile, standards)
 
     # Cap report text to avoid token overflow
     # Review prompt + profile + clauses ~ 3k tokens; leave ~20k for report
@@ -205,7 +228,7 @@ def run_review(
     # Load and format prompt
     prompt_template = _load_prompt()
     prompt = prompt_template.format(
-        standard=standard,
+        standard=standard_label,
         stage=stage,
         accreditation_body=profile["display_name"],
         rule_profile_text=rule_profile_text,
@@ -214,7 +237,7 @@ def run_review(
     )
     logger.info(
         "Review [%s]: prompt built | %d chars | standard=%s stage=%s ab=%s",
-        review_job_id, len(prompt), standard, stage, accreditation_body,
+        review_job_id, len(prompt), standard_label, stage, accreditation_body,
     )
 
     # Call Claude — retry up to 3 attempts on parse failure
@@ -246,7 +269,7 @@ def run_review(
                     "Review [%s]: all 3 attempts failed — returning empty result",
                     review_job_id,
                 )
-                return _empty_result(review_job_id, standard, stage, accreditation_body)
+                return _empty_result(review_job_id, standard_label, stage, accreditation_body)
 
     assert parsed is not None
 
@@ -278,7 +301,7 @@ def run_review(
 
     result = ReviewResult(
         review_job_id=review_job_id,
-        standard_code=standard,
+        standard_code=standard_label,
         stage=stage,
         accreditation_body=accreditation_body,
         total_findings=non_ok,

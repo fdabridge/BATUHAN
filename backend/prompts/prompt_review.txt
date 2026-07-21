@@ -6,7 +6,7 @@ Your job is to review an existing audit report and identify issues
 with its quality, completeness, internal logic, evidence strength, and
 alignment with the reference profile below.
 
-STANDARD: {standard}
+STANDARD(S): {standard}
 AUDIT STAGE: {stage}
 ACCREDITATION BODY: {accreditation_body}
 
@@ -14,7 +14,7 @@ ACCREDITATION BODY: {accreditation_body}
 {rule_profile_text}
 
 ━━━ MANDATORY CLAUSES TO CHECK ━━━
-Every clause below must have substantive findings in the report.
+Every clause below must have substantive findings in the report. If multiple standards are listed, assess each standard's clause map separately and check that integrated conclusions are supported across all selected standards.
 {mandatory_clauses}
 
 ━━━ AUDIT REPORT TEXT ━━━
@@ -22,7 +22,7 @@ Every clause below must have substantive findings in the report.
 
 ━━━ YOUR TASK ━━━
 
-Review every clause listed above. For each clause, check:
+Review every clause listed above for every selected standard. For each clause, check:
 
 1. Is there substantive content covering this clause? (MISSING_SECTION if absent)
 2. Does the finding cite specific evidence — named documents, records,

@@ -11,6 +11,7 @@ import base64
 import logging
 import uuid
 import datetime
+from typing import List
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
@@ -26,6 +27,23 @@ logger = logging.getLogger(__name__)
 
 _VALID_STANDARDS = ["QMS", "EMS", "OHSMS", "FSMS", "MDQMS", "ISMS", "ABMS", "ENMS"]
 _VALID_STAGES = ["Stage 1", "Stage 2", "Surveillance", "Recertification"]
+
+
+def _normalize_standard_inputs(
+    standards: List[str] | None,
+    legacy_standard: str | None,
+) -> list[str]:
+    raw_values = list(standards or [])
+    if legacy_standard:
+        raw_values.append(legacy_standard)
+
+    selected: list[str] = []
+    for raw in raw_values:
+        for part in raw.replace("+", ",").split(","):
+            code = part.strip().upper()
+            if code and code not in selected:
+                selected.append(code)
+    return selected
 
 
 def _reference_summary(profile: dict) -> dict:
@@ -58,7 +76,8 @@ async def list_review_references(_: PlatformUser = Depends(require_any)):
 @router.post("/submit")
 async def submit_review(
     report: UploadFile = File(..., description="The audit report PDF or DOCX to review"),
-    standard: str = Form(..., description="Standard code: QMS, EMS, OHSMS, FSMS, MDQMS, ISMS, ABMS, ENMS"),
+    standards: List[str] | None = Form(default=None, description="One or more standard codes: QMS, EMS, OHSMS, FSMS, MDQMS, ISMS, ABMS, ENMS"),
+    standard: str | None = Form(default=None, description="Legacy single standard code"),
     stage: str = Form(..., description="Stage 1, Stage 2, Surveillance, or Recertification"),
     accreditation_body: str = Form(..., description="UAF, IAF, or TURKAK"),
     _: PlatformUser = Depends(require_any),
@@ -75,12 +94,22 @@ async def submit_review(
             detail=f"Unknown accreditation body '{accreditation_body}'. Available: {available}",
         )
 
-    # Validate standard
-    if standard.upper() not in _VALID_STANDARDS:
+    selected_standards = _normalize_standard_inputs(standards, standard)
+    if not selected_standards:
         raise HTTPException(
             status_code=400,
-            detail=f"Unknown standard '{standard}'. Valid: {_VALID_STANDARDS}",
+            detail="At least one standard must be selected.",
         )
+
+    invalid_standards = [
+        selected for selected in selected_standards if selected not in _VALID_STANDARDS
+    ]
+    if invalid_standards:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown standard(s) {invalid_standards}. Valid: {_VALID_STANDARDS}",
+        )
+    standards_label = " + ".join(selected_standards)
 
     # Validate stage
     if stage not in _VALID_STAGES:
@@ -108,7 +137,7 @@ async def submit_review(
     initial_status = ReviewJobStatus(
         review_job_id=review_job_id,
         state=ReviewJobState.QUEUED,
-        standard_code=standard.upper(),
+        standard_code=standards_label,
         accreditation_body=accreditation_body.upper(),
         created_at=datetime.datetime.utcnow().isoformat(),
     )
@@ -123,20 +152,20 @@ async def submit_review(
             review_job_id=review_job_id,
             report_b64=report_b64,
             report_filename=report.filename or "report.docx",
-            standard=standard.upper(),
+            standard=standards_label,
             stage=stage,
             accreditation_body=accreditation_body.upper(),
         )
         logger.info(
             "Review job %s queued | standard=%s | stage=%s | ab=%s",
-            review_job_id, standard.upper(), stage, accreditation_body.upper(),
+            review_job_id, standards_label, stage, accreditation_body.upper(),
         )
     except Exception as e:
         logger.warning("Could not queue review job %s via Celery: %s", review_job_id, e)
         failed_status = ReviewJobStatus(
             review_job_id=review_job_id,
             state=ReviewJobState.FAILED,
-            standard_code=standard.upper(),
+            standard_code=standards_label,
             accreditation_body=accreditation_body.upper(),
             error_message="Could not queue the report review job.",
             created_at=initial_status.created_at,
