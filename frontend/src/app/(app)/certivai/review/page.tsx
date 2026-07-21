@@ -92,7 +92,7 @@ const SEVERITY_STYLES: Record<ReviewFinding['severity'], string> = {
 const STATE_COPY: Record<string, string> = {
   QUEUED: 'Queued',
   PREPROCESSING: 'Reading report',
-  REVIEWING: 'Checking clauses',
+  REVIEWING: 'Accreditation assessment',
   ANNOTATING: 'Preparing annotated DOCX',
   COMPLETE: 'Complete',
   FAILED: 'Failed',
@@ -433,7 +433,9 @@ export default function CertivAIReviewPage() {
                   <CheckCircle2 size={18} />
                   <span className="font-semibold">Overall Assessment</span>
                 </div>
-                <p className="text-sm leading-6 text-slate-200">{summary.overall_assessment || 'No overall assessment returned.'}</p>
+                <div className="whitespace-pre-wrap text-sm leading-6 text-slate-200">
+                  {summary.overall_assessment || 'No overall assessment returned.'}
+                </div>
               </div>
 
               <div className="space-y-3">

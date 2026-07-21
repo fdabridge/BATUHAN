@@ -129,7 +129,7 @@ def run_review_job(
 
     except Exception as e:
         logger.error("Review job %s failed: %s", review_job_id, e, exc_info=True)
-        update_review_state(ReviewJobState.FAILED, str(e))
+        update_review_state(ReviewJobState.FAILED, _public_error_message(e))
         raise
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -144,3 +144,18 @@ def _extract_report_text(report_path: str) -> str:
     except Exception as e:
         logger.warning("Text extraction failed for review: %s. Returning empty.", e)
         return ""
+
+
+def _public_error_message(error: Exception) -> str:
+    """Return a safe, user-facing review failure reason."""
+    message = str(error).strip()
+    if not message:
+        return "Report review failed. Please retry with a readable PDF or DOCX report."
+    if "json" in message.lower() or "parse" in message.lower() or "expecting" in message.lower():
+        return (
+            "Report review failed because the AI response could not be converted into the required review format. "
+            "Please retry the review."
+        )
+    if len(message) > 240:
+        return message[:237].rstrip() + "..."
+    return message

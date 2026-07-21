@@ -9,6 +9,7 @@ import json
 import logging
 import re
 from pathlib import Path
+from typing import Any
 
 from anthropic import Anthropic
 from schemas.models import (
@@ -40,26 +41,27 @@ def _render_prompt(template: str, values: dict[str, str]) -> str:
 def _profile_to_text(profile: dict) -> str:
     """Convert the rule profile dict to readable text for the prompt."""
     lines = []
-    lines.append(f"Accreditation Body: {profile['display_name']}")
-    lines.append(f"Governing Standard: {profile['governing_standard']}")
+    lines.append(f"Accreditation Body: {profile.get('display_name', 'Unknown')}")
+    lines.append(f"Governing Standard: {profile.get('governing_standard', 'ISO/IEC 17021-1')}")
     if profile.get("reference_basis"):
         lines.append("")
         lines.append("REFERENCE BASIS:")
-        for item in profile["reference_basis"]:
+        for item in profile.get("reference_basis", []):
             lines.append(f"  - {item}")
     if profile.get("required_report_elements"):
         lines.append("")
         lines.append("REQUIRED REPORT ELEMENTS:")
-        for item in profile["required_report_elements"]:
+        for item in profile.get("required_report_elements", []):
             lines.append(f"  - {item}")
-    lines.append("")
-    lines.append("NC CLASSIFICATIONS:")
-    for nc_type, definition in profile["nc_classifications"].items():
-        lines.append(f"  {nc_type.upper()}: {definition}")
+    if profile.get("nc_classifications"):
+        lines.append("")
+        lines.append("NC CLASSIFICATIONS:")
+        for nc_type, definition in profile.get("nc_classifications", {}).items():
+            lines.append(f"  {nc_type.upper()}: {definition}")
     lines.append("")
 
     lines.append("STAGE REQUIREMENTS:")
-    for stage_key, rules in profile["stage_requirements"].items():
+    for stage_key, rules in profile.get("stage_requirements", {}).items():
         title = stage_key.replace("_", " ").title()
         lines.append(f"  {title}:")
         for item in rules.get("mandatory_coverage", []):
@@ -75,22 +77,25 @@ def _profile_to_text(profile: dict) -> str:
 
     lines.append("")
     lines.append("FINDING DEPTH REQUIREMENTS:")
-    fdr = profile["finding_depth_requirements"]
-    lines.append(f"  Minimum finding length: {fdr['minimum_finding_length_words']} words")
-    lines.append(f"  Must reference evidence: {fdr['must_reference_evidence']}")
-    lines.append("  Vague patterns to flag:")
-    for p in fdr["vague_finding_patterns"]:
-        lines.append(f'    - "{p}"')
+    fdr = profile.get("finding_depth_requirements", {})
+    lines.append(f"  Minimum finding length: {fdr.get('minimum_finding_length_words', 'not specified')} words")
+    lines.append(f"  Must reference evidence: {fdr.get('must_reference_evidence', True)}")
+    if fdr.get("vague_finding_patterns"):
+        lines.append("  Vague patterns to flag:")
+        for p in fdr.get("vague_finding_patterns", []):
+            lines.append(f'    - "{p}"')
 
-    lines.append("")
-    lines.append("NC RULES:")
-    for rule, value in profile["nc_rules"].items():
-        lines.append(f"  - {rule}: {value}")
+    if profile.get("nc_rules"):
+        lines.append("")
+        lines.append("NC RULES:")
+        for rule, value in profile.get("nc_rules", {}).items():
+            lines.append(f"  - {rule}: {value}")
 
-    lines.append("")
-    lines.append("FORBIDDEN PHRASES IN FINDINGS:")
-    for phrase in profile["forbidden_in_findings"]:
-        lines.append(f'  - "{phrase}"')
+    if profile.get("forbidden_in_findings"):
+        lines.append("")
+        lines.append("FORBIDDEN PHRASES IN FINDINGS:")
+        for phrase in profile.get("forbidden_in_findings", []):
+            lines.append(f'  - "{phrase}"')
 
     return "\n".join(lines)
 
@@ -110,9 +115,10 @@ def _stage_to_key(stage: str) -> str:
 
 def _get_stage_specific_rules(profile: dict, stage: str) -> str:
     stage_key = _stage_to_key(stage)
+    stage_requirements = profile.get("stage_requirements", {})
     stage_rules = (
-        profile["stage_requirements"].get(stage_key)
-        or profile["stage_requirements"].get("stage_2")
+        stage_requirements.get(stage_key)
+        or stage_requirements.get("stage_2")
         or {}
     )
     lines = [f"\nACTIVE STAGE RULES ({stage}):"]
@@ -181,8 +187,166 @@ def _empty_result(
         minor_count=0,
         warning_count=0,
         findings=[],
-        overall_assessment="Review could not be completed due to a processing error.",
+        overall_assessment=(
+            "Identity: Review job could not be completed.\n\n"
+            "Overall assurance verdict: The AI review response could not be parsed into the required structured format. "
+            "Please retry the review. If it fails again, check the uploaded report text extraction and model response logs.\n\n"
+            "Checks applied: The review did not reach the accreditation-assessment stage."
+        ),
     )
+
+
+def _strip_json_fence(raw: str) -> str:
+    text = raw.strip()
+    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*```$", "", text)
+    return text.strip()
+
+
+def _extract_json_object(raw: str) -> dict[str, Any]:
+    """Parse JSON even when the model wraps it with stray prose or fences."""
+    text = _strip_json_fence(raw)
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+
+    start = text.find("{")
+    if start == -1:
+        raise ValueError("AI response did not contain a JSON object.")
+
+    in_string = False
+    escaped = False
+    depth = 0
+    for index in range(start, len(text)):
+        char = text[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                parsed = json.loads(text[start:index + 1])
+                if isinstance(parsed, dict):
+                    return parsed
+                raise ValueError("AI response JSON root was not an object.")
+
+    raise ValueError("AI response JSON object was incomplete.")
+
+
+def _stringify(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return "\n".join(f"- {_stringify(item)}" for item in value)
+    if isinstance(value, dict):
+        lines: list[str] = []
+        for key, item in value.items():
+            label = str(key).replace("_", " ").title()
+            item_text = _stringify(item)
+            if "\n" in item_text:
+                lines.append(f"{label}:\n{item_text}")
+            else:
+                lines.append(f"{label}: {item_text}")
+        return "\n".join(lines)
+    return str(value)
+
+
+def _coerce_finding_type(value: Any, severity: ReviewFindingSeverity) -> ReviewFindingType:
+    if severity == ReviewFindingSeverity.OK:
+        return ReviewFindingType.OK
+    key = _stringify(value).strip().upper().replace(" ", "_").replace("-", "_")
+    if key in ReviewFindingType.__members__:
+        return ReviewFindingType[key]
+    value_map = {
+        "EVIDENCE_GAP": ReviewFindingType.WEAK_EVIDENCE,
+        "UNSUPPORTED": ReviewFindingType.WEAK_EVIDENCE,
+        "UNSUPPORTED_CLAIM": ReviewFindingType.WEAK_EVIDENCE,
+        "INSUFFICIENT_EVIDENCE": ReviewFindingType.INSUFFICIENT_EVIDENCE_SPECIFICITY,
+        "INSUFFICIENT_EVIDENCE_SPECIFICITY": ReviewFindingType.INSUFFICIENT_EVIDENCE_SPECIFICITY,
+        "LOGIC_GAP": ReviewFindingType.INSUFFICIENT_EVIDENCE_SPECIFICITY,
+        "CONTRADICTION": ReviewFindingType.INSUFFICIENT_EVIDENCE_SPECIFICITY,
+        "INTERNAL_CONTRADICTION": ReviewFindingType.INSUFFICIENT_EVIDENCE_SPECIFICITY,
+        "DECISION_INTEGRITY": ReviewFindingType.INSUFFICIENT_EVIDENCE_SPECIFICITY,
+        "MISSING": ReviewFindingType.MISSING_SECTION,
+        "MISSING_CONTENT": ReviewFindingType.MISSING_SECTION,
+        "STANDARD_GAP": ReviewFindingType.STANDARD_SPECIFIC_MISSING,
+        "SPECIFIC_STANDARD_MISSING": ReviewFindingType.STANDARD_SPECIFIC_MISSING,
+        "NC_CLASSIFICATION": ReviewFindingType.NC_MISCLASSIFICATION,
+        "NC_CLASSIFICATION_ERROR": ReviewFindingType.NC_MISCLASSIFICATION,
+        "ISSUE": ReviewFindingType.INSUFFICIENT_EVIDENCE_SPECIFICITY,
+        "GAP": ReviewFindingType.INSUFFICIENT_EVIDENCE_SPECIFICITY,
+        "OBSERVATION": ReviewFindingType.VAGUE_FINDING,
+        "OFI": ReviewFindingType.VAGUE_FINDING,
+    }
+    return value_map.get(key, ReviewFindingType.INSUFFICIENT_EVIDENCE_SPECIFICITY)
+
+
+def _coerce_severity(value: Any) -> ReviewFindingSeverity:
+    key = _stringify(value).strip().upper().replace(" ", "_").replace("-", "_")
+    if key in ReviewFindingSeverity.__members__:
+        return ReviewFindingSeverity[key]
+    if key in {"BLOCKER", "HIGH", "FAIL", "NOT_ACCEPTABLE"}:
+        return ReviewFindingSeverity.CRITICAL
+    if key in {"MEDIUM", "SERIOUS"}:
+        return ReviewFindingSeverity.MAJOR
+    if key in {"LOW", "IMPROVEMENT"}:
+        return ReviewFindingSeverity.MINOR
+    if key in {"OBSERVATION", "OFI", "INFO"}:
+        return ReviewFindingSeverity.WARNING
+    return ReviewFindingSeverity.WARNING
+
+
+def _normalise_findings(parsed: dict[str, Any]) -> list[Any]:
+    findings = parsed.get("findings")
+    if findings is None:
+        findings = parsed.get("issues") or parsed.get("findings_and_recommendations") or []
+    if isinstance(findings, dict):
+        flattened: list[Any] = []
+        for value in findings.values():
+            if isinstance(value, list):
+                flattened.extend(value)
+            else:
+                flattened.append(value)
+        return flattened
+    if isinstance(findings, list):
+        return findings
+    return []
+
+
+def _compose_overall_assessment(parsed: dict[str, Any]) -> str:
+    explicit = parsed.get("overall_assessment") or parsed.get("overall_assurance_verdict")
+    if isinstance(explicit, str) and explicit.strip():
+        return explicit.strip()
+
+    sections = [
+        ("Identity", parsed.get("identity_line") or parsed.get("identity")),
+        ("Overall assurance verdict", parsed.get("verdict") or parsed.get("assurance_verdict")),
+        ("ISO/IEC 17021-1 section 9.4.8 completeness matrix", parsed.get("completeness_matrix")),
+        ("Strengths", parsed.get("strengths")),
+        ("Priority actions", parsed.get("priority_actions") or parsed.get("actions")),
+        ("Checks applied", parsed.get("checks_applied")),
+    ]
+    rendered = []
+    for title, value in sections:
+        text = _stringify(value).strip()
+        if text:
+            rendered.append(f"{title}: {text}" if "\n" not in text else f"{title}:\n{text}")
+    return "\n\n".join(rendered) or "Overall assurance verdict: The review completed, but no narrative assessment was returned."
 
 
 def run_review(
@@ -240,7 +404,7 @@ def run_review(
         {
             "standard": standard_label,
             "stage": stage,
-            "accreditation_body": profile["display_name"],
+            "accreditation_body": profile.get("display_name", accreditation_body),
             "rule_profile_text": rule_profile_text,
             "mandatory_clauses": mandatory_clauses_text,
             "report_text": report_text,
@@ -262,10 +426,7 @@ def run_review(
                 messages=[{"role": "user", "content": prompt}],
             )
             raw = response.content[0].text.strip()
-            raw = re.sub(r'^```json\s*', '', raw)
-            raw = re.sub(r'^```\s*', '', raw)
-            raw = re.sub(r'\s*```$', '', raw)
-            parsed = json.loads(raw)
+            parsed = _extract_json_object(raw)
             logger.info(
                 "Review [%s]: Claude response parsed on attempt %d",
                 review_job_id, attempt + 1,
@@ -286,16 +447,39 @@ def run_review(
 
     # Parse findings
     findings: list[ReviewFinding] = []
-    for raw_finding in parsed.get("findings", []):
+    for raw_finding in _normalise_findings(parsed):
         try:
+            if not isinstance(raw_finding, dict):
+                raw_finding = {"description": _stringify(raw_finding)}
+            severity = _coerce_severity(raw_finding.get("severity", "WARNING"))
+            finding_type = _coerce_finding_type(raw_finding.get("finding_type", ""), severity)
+            clause_id = (
+                raw_finding.get("clause_id")
+                or raw_finding.get("id")
+                or raw_finding.get("finding_id")
+                or raw_finding.get("location")
+                or ""
+            )
+            clause_title = (
+                raw_finding.get("clause_title")
+                or raw_finding.get("title")
+                or raw_finding.get("basis")
+                or raw_finding.get("area")
+                or ""
+            )
             finding = ReviewFinding(
-                clause_id=raw_finding.get("clause_id", ""),
-                clause_title=raw_finding.get("clause_title", ""),
-                finding_type=ReviewFindingType(raw_finding.get("finding_type", "OK")),
-                severity=ReviewFindingSeverity(raw_finding.get("severity", "OK")),
-                description=raw_finding.get("description", ""),
-                suggestion=raw_finding.get("suggestion", ""),
-                quote=raw_finding.get("quote", ""),
+                clause_id=_stringify(clause_id),
+                clause_title=_stringify(clause_title),
+                finding_type=finding_type,
+                severity=severity,
+                description=_stringify(raw_finding.get("description", "")),
+                suggestion=_stringify(
+                    raw_finding.get("suggestion")
+                    or raw_finding.get("recommended_fix")
+                    or raw_finding.get("fix")
+                    or ""
+                ),
+                quote=_stringify(raw_finding.get("quote", "")),
             )
             findings.append(finding)
         except Exception as e:
@@ -303,6 +487,15 @@ def run_review(
                 "Review [%s]: skipping malformed finding %s — %s",
                 review_job_id, raw_finding, e,
             )
+
+    severity_order = {
+        ReviewFindingSeverity.CRITICAL: 0,
+        ReviewFindingSeverity.MAJOR: 1,
+        ReviewFindingSeverity.MINOR: 2,
+        ReviewFindingSeverity.WARNING: 3,
+        ReviewFindingSeverity.OK: 4,
+    }
+    findings.sort(key=lambda item: severity_order.get(item.severity, 5))
 
     critical = sum(1 for f in findings if f.severity == ReviewFindingSeverity.CRITICAL)
     major    = sum(1 for f in findings if f.severity == ReviewFindingSeverity.MAJOR)
@@ -321,7 +514,7 @@ def run_review(
         minor_count=minor,
         warning_count=warning,
         findings=findings,
-        overall_assessment=parsed.get("overall_assessment", ""),
+        overall_assessment=_compose_overall_assessment(parsed),
     )
 
     logger.info(
