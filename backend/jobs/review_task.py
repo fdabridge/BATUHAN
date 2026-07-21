@@ -33,7 +33,7 @@ def run_review_job(
     accreditation_body: str,
 ):
     """
-    Execute the full BATUHAN review pipeline for an uploaded audit report DOCX.
+    Execute the full BATUHAN review pipeline for an uploaded audit report PDF or DOCX.
     Stores artifacts in Redis; API container retrieves them for downloads.
     """
 
@@ -64,7 +64,7 @@ def run_review_job(
             f.write(report_bytes)
 
         # ------------------------------------------------------------------
-        # PREPROCESSING — extract plain text from the uploaded report DOCX
+        # PREPROCESSING — extract plain text from the uploaded report
         # ------------------------------------------------------------------
         update_review_state(ReviewJobState.PREPROCESSING)
         report_text = _extract_report_text(report_path)
@@ -107,16 +107,23 @@ def run_review_job(
 
         # ------------------------------------------------------------------
         # ANNOTATING — build annotated DOCX with inline Word comments
+        # PDF reviews produce the structured findings summary only.
         # ------------------------------------------------------------------
-        update_review_state(ReviewJobState.ANNOTATING)
-        from pipeline.review.annotator import build_annotated_docx
+        if report_filename.lower().endswith(".docx"):
+            update_review_state(ReviewJobState.ANNOTATING)
+            from pipeline.review.annotator import build_annotated_docx
 
-        annotated_bytes = build_annotated_docx(
-            report_path=report_path,
-            review_result=review_result,
-        )
-        save_binary_artifact(review_job_id, "annotated_report.docx", annotated_bytes)
-        logger.info("Review [%s]: annotated DOCX built", review_job_id)
+            annotated_bytes = build_annotated_docx(
+                report_path=report_path,
+                review_result=review_result,
+            )
+            save_binary_artifact(review_job_id, "annotated_report.docx", annotated_bytes)
+            logger.info("Review [%s]: annotated DOCX built", review_job_id)
+        else:
+            logger.info(
+                "Review [%s]: PDF upload reviewed; annotated DOCX output skipped",
+                review_job_id,
+            )
 
         update_review_state(ReviewJobState.COMPLETE)
 
@@ -129,17 +136,11 @@ def run_review_job(
 
 
 def _extract_report_text(report_path: str) -> str:
-    """Extract plain text from the uploaded audit report DOCX."""
+    """Extract plain text from the uploaded audit report."""
     try:
-        import docx
-        doc = docx.Document(report_path)
-        parts: list[str] = [p.text for p in doc.paragraphs if p.text.strip()]
-        for table in doc.tables:
-            for row in table.rows:
-                for cell in row.cells:
-                    if cell.text.strip():
-                        parts.append(cell.text.strip())
-        return "\n".join(parts)
+        from parsers.text_extractor import extract_text
+
+        return extract_text(report_path)
     except Exception as e:
-        logger.warning("docx text extraction failed for review: %s. Returning empty.", e)
+        logger.warning("Text extraction failed for review: %s. Returning empty.", e)
         return ""

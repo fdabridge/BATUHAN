@@ -1,6 +1,6 @@
 """
 BATUHAN — Review API Routes
-POST /review/submit          → accept a completed audit report DOCX for AI review
+POST /review/submit          → accept a completed audit report PDF or DOCX for AI review
 GET  /review/{id}/status     → poll review job state
 GET  /review/{id}/download/annotated-report  → download DOCX with Word comments
 GET  /review/{id}/download/review-summary    → download JSON findings summary
@@ -51,19 +51,19 @@ async def list_review_references(_: PlatformUser = Depends(require_any)):
         "profiles": profiles,
         "standards": _VALID_STANDARDS,
         "stages": _VALID_STAGES,
-        "file_types": [".docx"],
+        "file_types": [".pdf", ".docx"],
     }
 
 
 @router.post("/submit")
 async def submit_review(
-    report: UploadFile = File(..., description="The audit report DOCX to review"),
+    report: UploadFile = File(..., description="The audit report PDF or DOCX to review"),
     standard: str = Form(..., description="Standard code: QMS, EMS, OHSMS, FSMS, MDQMS, ISMS, ABMS, ENMS"),
     stage: str = Form(..., description="Stage 1, Stage 2, Surveillance, or Recertification"),
     accreditation_body: str = Form(..., description="UAF, IAF, or TURKAK"),
     _: PlatformUser = Depends(require_any),
 ):
-    """Submit a completed audit report DOCX for AI-powered review against accreditation rules."""
+    """Submit a completed audit report PDF or DOCX for AI-powered review against accreditation rules."""
 
     # Validate accreditation body
     try:
@@ -90,10 +90,11 @@ async def submit_review(
         )
 
     # Validate file type
-    if not (report.filename or "").lower().endswith(".docx"):
+    filename_lower = (report.filename or "").lower()
+    if not filename_lower.endswith((".pdf", ".docx")):
         raise HTTPException(
             status_code=400,
-            detail="Only .docx files are accepted for review.",
+            detail="Only .pdf and .docx files are accepted for review.",
         )
 
     # Read and encode file

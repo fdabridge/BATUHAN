@@ -78,7 +78,7 @@ const FALLBACK_REFERENCES: ReviewReferences = {
   ],
   standards: ['QMS', 'EMS', 'OHSMS', 'FSMS', 'MDQMS', 'ISMS', 'ABMS', 'ENMS'],
   stages: ['Stage 1', 'Stage 2', 'Surveillance', 'Recertification'],
-  file_types: ['.docx'],
+  file_types: ['.pdf', '.docx'],
 }
 
 const SEVERITY_STYLES: Record<ReviewFinding['severity'], string> = {
@@ -167,14 +167,16 @@ export default function CertivAIReviewPage() {
     () => (summary?.findings || []).filter((finding) => finding.finding_type === 'OK').length,
     [summary],
   )
+  const hasDocxSource = Boolean(report?.name.toLowerCase().endsWith('.docx'))
 
   async function submitReview() {
     if (!report) {
-      setMessage('Please choose a completed audit report DOCX first.')
+      setMessage('Please choose a completed audit report PDF or DOCX first.')
       return
     }
-    if (!report.name.toLowerCase().endsWith('.docx')) {
-      setMessage('Report Review currently accepts DOCX reports only.')
+    const reportName = report.name.toLowerCase()
+    if (!reportName.endsWith('.pdf') && !reportName.endsWith('.docx')) {
+      setMessage('Report Review accepts PDF or DOCX reports only.')
       return
     }
 
@@ -280,11 +282,14 @@ export default function CertivAIReviewPage() {
                 <span className="text-xs font-semibold uppercase text-slate-400">Completed Report</span>
                 <input
                   type="file"
-                  accept=".docx"
+                  accept=".pdf,.docx"
                   onChange={(event) => setReport(event.target.files?.[0] || null)}
                   className="w-full border border-white/10 bg-black/40 px-3 py-3 text-sm text-slate-200 file:mr-3 file:border-0 file:bg-emerald-500/20 file:px-3 file:py-2 file:text-emerald-100"
                   style={{ borderRadius: 8 }}
                 />
+                <span className="block text-xs text-slate-400">
+                  Accepted: PDF or DOCX. DOCX uploads also produce an annotated Word file.
+                </span>
               </label>
             </div>
 
@@ -352,7 +357,7 @@ export default function CertivAIReviewPage() {
                 {STATE_COPY[status.state] || status.state}
               </div>
             )}
-            {summary && (
+            {summary && hasDocxSource && (
               <button
                 type="button"
                 onClick={downloadAnnotatedReport}
@@ -368,6 +373,11 @@ export default function CertivAIReviewPage() {
 
           {summary ? (
             <div className="mt-6 space-y-5">
+              {!hasDocxSource && (
+                <div className="border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-sm text-amber-100" style={{ borderRadius: 8 }}>
+                  PDF review complete. Findings are shown below; annotated Word download is available for DOCX uploads only.
+                </div>
+              )}
               <div className="grid gap-3 sm:grid-cols-5">
                 <Metric label="Critical" value={summary.critical_count} tone="text-red-100 bg-red-500/15 border-red-300/30" />
                 <Metric label="Major" value={summary.major_count} tone="text-orange-100 bg-orange-400/15 border-orange-300/30" />
