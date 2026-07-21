@@ -107,21 +107,35 @@ MISSING_NC_CLAUSE_REF, MISSING_NC_RATIONALE, PLACEHOLDER, FORBIDDEN_PHRASE,
 STANDARD_SPECIFIC_MISSING, INSUFFICIENT_EVIDENCE_SPECIFICITY, OK
 
 RESPONSE FORMAT:
-Return ONLY valid JSON. No markdown fences, no prose outside JSON.
+Return exactly one compact JSON object. No markdown fences. No prose outside JSON.
+All JSON strings must be single-line strings; escape quotes; do not use trailing
+commas. Return up to 20 findings, sorted by severity and importance. Do not
+return a top-level array.
 
 {
+  "identity": "Organization, standards, audit type/stage, accreditation body, audit dates/sites, audit team, scope, and decision/recommendation found in the report.",
+  "verdict": "Short accreditation-assessor verdict explaining whether the report is defensible and why.",
+  "completeness_matrix": {
+    "audit_objectives_scope_criteria": "OK / weak / missing with one-sentence basis.",
+    "audit_dates_sites_team": "OK / weak / missing with one-sentence basis.",
+    "evidence_and_sampled_records": "OK / weak / missing with one-sentence basis.",
+    "findings_and_nc_classification": "OK / weak / missing with one-sentence basis.",
+    "audit_conclusions_recommendation": "OK / weak / missing with one-sentence basis."
+  },
+  "strengths": ["Specific positive traceability point, if any."],
+  "priority_actions": ["Most important correction the report owner should make."],
+  "checks_applied": ["Evidence sufficiency", "Effectiveness", "Logical consistency/internal contradiction", "Arithmetic and temporal integrity", "Completeness and decision integrity"],
   "findings": [
     {
       "clause_id": "F-01",
       "clause_title": "Evidence sufficiency - process audit trail",
       "finding_type": "WEAK_EVIDENCE",
       "severity": "MAJOR",
-      "description": "Finding F-01\\nGrade: MAJOR\\nBasis: ISO/IEC 17021-1 report-content and evidence-traceability expectations\\nLocation: Stage 2 process findings section\\nDeficiency: The report concludes the process is effective but does not identify sampled records, interviews, dates, or observed activities.\\nWhy it matters: The certification recommendation cannot be independently traced to objective audit evidence.",
-      "suggestion": "Recommended fix: Add the sampled records, interview roles, process evidence, and the reasoning that connects the evidence to the conclusion.",
+      "description": "Basis: ISO/IEC 17021-1 report-content and evidence-traceability expectations. Location: Stage 2 process findings section. Deficiency: The report concludes the process is effective but does not identify sampled records, interviews, dates, or observed activities. Why it matters: The certification recommendation cannot be independently traced to objective audit evidence.",
+      "suggestion": "Add the sampled records, interview roles, process evidence, and the reasoning that connects the evidence to the conclusion.",
       "quote": "exact report words, maximum 20 words"
     }
-  ],
-  "overall_assessment": "Identity: ...\\n\\nOverall assurance verdict: ...\\n\\nISO/IEC 17021-1 section 9.4.8 completeness matrix:\\n- Audit objectives/scope/criteria: ...\\n- Audit dates/sites/team: ...\\n- Evidence and sampled records: ...\\n- Findings and NC classification: ...\\n- Audit conclusions/recommendation: ...\\n\\nStrengths:\\n- ...\\n\\nPriority actions:\\n1. ...\\n\\nChecks applied:\\n- Evidence sufficiency\\n- Effectiveness\\n- Logical consistency/internal contradiction\\n- Arithmetic and temporal integrity\\n- Completeness and decision integrity"
+  ]
 }
 
 STRICT RULES:
@@ -134,6 +148,9 @@ STRICT RULES:
 - Quote only exact words from the report. Leave quote empty for missing content.
 - Never invent evidence, dates, names, NCs, sites, or procedures not present in
   the report/reference set.
+- If no actionable weaknesses exist, return "findings": [] and still complete
+  identity, verdict, completeness_matrix, strengths, priority_actions, and
+  checks_applied.
 - Do not flag ISO clause references like [4.1] or [A.5.1] as placeholders.
 - Do not accept ticks, blank tables, or repeated generic wording as evidence.
 - If the report is strong, say so, but only after applying the checks above.

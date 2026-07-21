@@ -5,6 +5,7 @@ accreditation body rules and returns a structured ReviewResult.
 """
 
 from __future__ import annotations
+import ast
 import json
 import logging
 import re
@@ -17,6 +18,7 @@ from schemas.models import (
 )
 from config.review_profiles.loader import load_review_profile
 from config.clause_configs.loader import load_clause_config, get_mandatory_clause_ids
+from storage.file_store import save_text_artifact
 
 logger = logging.getLogger(__name__)
 
@@ -173,29 +175,6 @@ def _get_mandatory_clauses_text(standards: list[str]) -> str:
     return "\n\n".join(sections)
 
 
-def _empty_result(
-    review_job_id: str, standard: str, stage: str, accreditation_body: str
-) -> ReviewResult:
-    return ReviewResult(
-        review_job_id=review_job_id,
-        standard_code=standard,
-        stage=stage,
-        accreditation_body=accreditation_body,
-        total_findings=0,
-        critical_count=0,
-        major_count=0,
-        minor_count=0,
-        warning_count=0,
-        findings=[],
-        overall_assessment=(
-            "Identity: Review job could not be completed.\n\n"
-            "Overall assurance verdict: The AI review response could not be parsed into the required structured format. "
-            "Please retry the review. If it fails again, check the uploaded report text extraction and model response logs.\n\n"
-            "Checks applied: The review did not reach the accreditation-assessment stage."
-        ),
-    )
-
-
 def _strip_json_fence(raw: str) -> str:
     text = raw.strip()
     text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
@@ -203,20 +182,78 @@ def _strip_json_fence(raw: str) -> str:
     return text.strip()
 
 
-def _extract_json_object(raw: str) -> dict[str, Any]:
-    """Parse JSON even when the model wraps it with stray prose or fences."""
-    text = _strip_json_fence(raw)
+def _message_text(response: Any) -> str:
+    chunks: list[str] = []
+    for block in getattr(response, "content", []) or []:
+        text = getattr(block, "text", None)
+        if text:
+            chunks.append(text)
+    return "\n".join(chunks).strip()
+
+
+def _save_review_debug_artifact(review_job_id: str, filename: str, content: str) -> None:
     try:
-        parsed = json.loads(text)
-        if isinstance(parsed, dict):
+        save_text_artifact(review_job_id, filename, content[:100000])
+    except Exception as e:
+        logger.warning(
+            "Review [%s]: could not save debug artifact %s: %s",
+            review_job_id,
+            filename,
+            e,
+        )
+
+
+def _normalise_json_candidate(text: str) -> str:
+    text = _strip_json_fence(text).lstrip("\ufeff").strip()
+    return re.sub(r",\s*([}\]])", r"\1", text)
+
+
+def _normalise_parsed_root(parsed: Any) -> dict[str, Any]:
+    if isinstance(parsed, dict):
+        likely_keys = {
+            "findings",
+            "issues",
+            "overall_assessment",
+            "overall_assurance_verdict",
+            "overall_verdict",
+            "verdict",
+            "identity",
+            "identity_line",
+        }
+        if any(key in parsed for key in likely_keys):
             return parsed
+
+        for wrapper_key in (
+            "result",
+            "review",
+            "assessment",
+            "report_review",
+            "response",
+            "data",
+            "review_result",
+            "output",
+        ):
+            value = parsed.get(wrapper_key)
+            if isinstance(value, (dict, list)):
+                return _normalise_parsed_root(value)
+        return parsed
+    if isinstance(parsed, list):
+        return {"findings": parsed}
+    raise ValueError("AI response JSON root was not an object or finding list.")
+
+
+def _parse_json_candidate(candidate: str) -> dict[str, Any]:
+    cleaned = _normalise_json_candidate(candidate)
+    try:
+        return _normalise_parsed_root(json.loads(cleaned))
     except json.JSONDecodeError:
-        pass
+        parsed = ast.literal_eval(cleaned)
+        return _normalise_parsed_root(parsed)
 
-    start = text.find("{")
-    if start == -1:
-        raise ValueError("AI response did not contain a JSON object.")
 
+def _extract_balanced_json(text: str, start: int) -> str | None:
+    opener = text[start]
+    closer = "}" if opener == "{" else "]"
     in_string = False
     escaped = False
     depth = 0
@@ -233,17 +270,90 @@ def _extract_json_object(raw: str) -> dict[str, Any]:
 
         if char == '"':
             in_string = True
-        elif char == "{":
+        elif char == opener:
             depth += 1
-        elif char == "}":
+        elif char == closer:
             depth -= 1
             if depth == 0:
-                parsed = json.loads(text[start:index + 1])
-                if isinstance(parsed, dict):
-                    return parsed
-                raise ValueError("AI response JSON root was not an object.")
+                return text[start:index + 1]
+    return None
 
-    raise ValueError("AI response JSON object was incomplete.")
+
+def _extract_json_object(raw: str) -> dict[str, Any]:
+    """Parse model JSON even when it is wrapped, fenced, or lightly malformed."""
+    text = _normalise_json_candidate(raw)
+    try:
+        return _parse_json_candidate(text)
+    except Exception:
+        pass
+
+    decoder = json.JSONDecoder()
+    for start, char in enumerate(text):
+        if char not in "{[":
+            continue
+        try:
+            parsed, _end = decoder.raw_decode(text[start:])
+            return _normalise_parsed_root(parsed)
+        except Exception:
+            continue
+
+    for start, char in enumerate(text):
+        if char not in "{[":
+            continue
+        candidate = _extract_balanced_json(text, start)
+        if not candidate:
+            continue
+        try:
+            return _parse_json_candidate(candidate)
+        except Exception:
+            continue
+
+    raise ValueError("AI response did not contain parseable review JSON.")
+
+
+def _repair_json_response(
+    client: Anthropic,
+    model: str,
+    raw: str,
+    parse_error: Exception,
+    max_tokens: int,
+) -> str:
+    prompt = f"""You are a JSON repair step for CertivAI report review.
+Return ONLY one valid JSON object. No markdown. No prose.
+Keep the original assessment content; do not add new facts.
+Required shape:
+{{
+  "identity": "",
+  "verdict": "",
+  "completeness_matrix": {{}},
+  "strengths": [],
+  "priority_actions": [],
+  "checks_applied": [],
+  "findings": [
+    {{
+      "clause_id": "",
+      "clause_title": "",
+      "finding_type": "WEAK_EVIDENCE",
+      "severity": "WARNING",
+      "description": "",
+      "suggestion": "",
+      "quote": ""
+    }}
+  ]
+}}
+Allowed severity values: CRITICAL, MAJOR, MINOR, WARNING, OK.
+Allowed finding_type values: MISSING_SECTION, WEAK_EVIDENCE, NC_MISCLASSIFICATION, VAGUE_FINDING, MISSING_NC_CLAUSE_REF, MISSING_NC_RATIONALE, PLACEHOLDER, FORBIDDEN_PHRASE, STANDARD_SPECIFIC_MISSING, INSUFFICIENT_EVIDENCE_SPECIFICITY, OK.
+Parse error: {parse_error}
+Raw response:
+{raw[:50000]}
+"""
+    response = client.messages.create(
+        model=model,
+        max_tokens=min(max(max_tokens, 4000), 8000),
+        temperature=0,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return _message_text(response)
 
 
 def _stringify(value: Any) -> str:
@@ -335,7 +445,12 @@ def _compose_overall_assessment(parsed: dict[str, Any]) -> str:
 
     sections = [
         ("Identity", parsed.get("identity_line") or parsed.get("identity")),
-        ("Overall assurance verdict", parsed.get("verdict") or parsed.get("assurance_verdict")),
+        (
+            "Overall assurance verdict",
+            parsed.get("verdict")
+            or parsed.get("overall_verdict")
+            or parsed.get("assurance_verdict"),
+        ),
         ("ISO/IEC 17021-1 section 9.4.8 completeness matrix", parsed.get("completeness_matrix")),
         ("Strengths", parsed.get("strengths")),
         ("Priority actions", parsed.get("priority_actions") or parsed.get("actions")),
@@ -415,17 +530,25 @@ def run_review(
         review_job_id, len(prompt), standard_label, stage, accreditation_body,
     )
 
-    # Call Claude — retry up to 3 attempts on parse failure
+    # Call Claude — retry and repair parse failures before failing the job.
     parsed: dict | None = None
+    last_parse_error: Exception | None = None
+    response_max_tokens = min(max(max_tokens, 4096), 12000)
     for attempt in range(3):
+        raw = ""
         try:
             response = client.messages.create(
                 model=model,
-                max_tokens=max_tokens,
+                max_tokens=response_max_tokens,
                 temperature=temperature,
                 messages=[{"role": "user", "content": prompt}],
             )
-            raw = response.content[0].text.strip()
+            raw = _message_text(response)
+            _save_review_debug_artifact(
+                review_job_id,
+                f"review_ai_response_attempt_{attempt + 1}.txt",
+                raw,
+            )
             parsed = _extract_json_object(raw)
             logger.info(
                 "Review [%s]: Claude response parsed on attempt %d",
@@ -433,17 +556,53 @@ def run_review(
             )
             break
         except Exception as e:
+            last_parse_error = e
+            _save_review_debug_artifact(
+                review_job_id,
+                f"review_ai_parse_error_attempt_{attempt + 1}.txt",
+                str(e),
+            )
             logger.warning(
                 "Review [%s]: attempt %d failed: %s", review_job_id, attempt + 1, e
             )
-            if attempt == 2:
-                logger.error(
-                    "Review [%s]: all 3 attempts failed — returning empty result",
-                    review_job_id,
+            try:
+                repaired = _repair_json_response(
+                    client=client,
+                    model=model,
+                    raw=raw,
+                    parse_error=e,
+                    max_tokens=response_max_tokens,
                 )
-                return _empty_result(review_job_id, standard_label, stage, accreditation_body)
+                _save_review_debug_artifact(
+                    review_job_id,
+                    f"review_ai_repair_attempt_{attempt + 1}.txt",
+                    repaired,
+                )
+                parsed = _extract_json_object(repaired)
+                logger.info(
+                    "Review [%s]: repaired Claude response parsed on attempt %d",
+                    review_job_id,
+                    attempt + 1,
+                )
+                break
+            except Exception as repair_error:
+                last_parse_error = repair_error
+                logger.warning(
+                    "Review [%s]: repair for attempt %d failed: %s",
+                    review_job_id,
+                    attempt + 1,
+                    repair_error,
+                )
 
-    assert parsed is not None
+    if parsed is None:
+        logger.error(
+            "Review [%s]: all parse and repair attempts failed: %s",
+            review_job_id,
+            last_parse_error,
+        )
+        raise ValueError(
+            "AI review response could not be parsed into the required review format after repair attempts."
+        )
 
     # Parse findings
     findings: list[ReviewFinding] = []
