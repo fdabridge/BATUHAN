@@ -81,6 +81,9 @@ celery_app.conf.beat_schedule = {
 # Register meetings tasks so the worker can discover them
 import meetings.tasks  # noqa: E402, F401
 
+# Register report-review tasks for workers started with `celery -A jobs.tasks`.
+import jobs.review_task  # noqa: E402, F401
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers
