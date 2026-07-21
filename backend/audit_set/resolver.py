@@ -215,6 +215,26 @@ def _build_stage_1(needs_base, needs_mdqms, needs_isms, sub: str, missing: list[
     return specs
 
 
+def _build_recertification_front_docs(
+    needs_base,
+    needs_mdqms,
+    needs_isms,
+    sub: str,
+    missing: list[str],
+) -> list[DocumentSpec]:
+    """Recertification starts with the same front-office review docs as initial certification."""
+    specs: list[DocumentSpec] = []
+    seen: set[str] = set()
+
+    primary = "base" if needs_base else ("mdqms" if needs_mdqms else ("isms" if needs_isms else None))
+    if primary:
+        _add(specs, seen, "FR.218", primary, sub, FR218_MAP, "all", missing)
+        _add(specs, seen, "FR.220", primary, sub, {},        "all", missing)
+        _add(specs, seen, "FR.221", primary, sub, {},        "all", missing)
+
+    return specs
+
+
 
 def _build_stage_2(needs_base, needs_mdqms, needs_isms, sub: str, missing: list[str]) -> list[DocumentSpec]:
     specs: list[DocumentSpec] = []
@@ -319,9 +339,13 @@ def resolve_document_set(audit_set) -> tuple[dict[str, list[DocumentSpec]], list
         sub = _get_stage_subfolder(audit_type, "surveillance", accreditation_body)
         document_set["Surveillance"] = _build_surveillance(needs_base, needs_mdqms, needs_isms, sub, missing)
     elif audit_type == "recertification":
+        front_sub = _get_stage_subfolder(audit_type, "stage_1", accreditation_body)
         sub = _get_stage_subfolder(audit_type, "recertification", accreditation_body)
-        document_set["Recertification"] = _build_surveillance(
-            needs_base, needs_mdqms, needs_isms, sub, missing, stage_context="recertification",
+        document_set["Recertification"] = (
+            _build_recertification_front_docs(needs_base, needs_mdqms, needs_isms, front_sub, missing)
+            + _build_surveillance(
+                needs_base, needs_mdqms, needs_isms, sub, missing, stage_context="recertification",
+            )
         )
     else:
         sub1 = _get_stage_subfolder(audit_type, "stage_1", accreditation_body)

@@ -46,6 +46,19 @@ const STANDARD_STEPS = [
   { key: 'certified',         label: 'Certified'  },
 ]
 
+const RECERTIFICATION_STEPS = [
+  { key: 'pending_review',    label: 'Pending'    },
+  { key: 'in_planning',       label: 'Planning'   },
+  { key: 'quotation_sent',    label: 'Quotation'  },
+  { key: 'agreement_signed',  label: 'Agreement'  },
+  { key: 'fr218_in_progress', label: 'FR.218'     },
+  { key: 'fr218_complete',    label: 'FR.218 ✓'   },
+  { key: 'audit_scheduled',   label: 'Scheduled'  },
+  { key: 'audit_in_progress', label: 'In Progress'},
+  { key: 'under_review',      label: 'Review'     },
+  { key: 'certified',         label: 'Recertified'},
+]
+
 const SURVEILLANCE_STEPS = [
   { key: 'pending_review',    label: 'Pending'    },
   { key: 'in_planning',       label: 'Planning'   },
@@ -62,6 +75,7 @@ function isSurveillanceAudit(auditType: string | null): boolean {
 
 function getSteps(auditType: string | null) {
   if (auditType === 'initial') return INITIAL_STEPS
+  if (auditType === 'recertification') return RECERTIFICATION_STEPS
   if (isSurveillanceAudit(auditType)) return SURVEILLANCE_STEPS
   return STANDARD_STEPS
 }
@@ -173,6 +187,48 @@ const STANDARD_PANELS: Record<string, ActionPanel> = {
   },
 }
 
+const RECERTIFICATION_PANELS: Record<string, ActionPanel> = {
+  in_planning: {
+    heading: 'Ready to send recertification quotation?',
+    body: "Download and generate FR.220, then release it to the client using the Shared Documents section below. Once you release a Quotation document, the status advances automatically.",
+  },
+  quotation_sent: {
+    heading: 'Waiting for client signature',
+    body: 'The quotation has been sent. The client needs to sign it via their portal. Status will advance automatically when they sign.',
+  },
+  agreement_signed: {
+    heading: 'Agreement confirmed — recertification review pending',
+    body: 'The client has signed FR.221. FR.218 application review will open automatically; if you do not see it, refresh the page.',
+  },
+  fr218_in_progress: {
+    heading: 'FR.218 application review in progress',
+    body: 'The Planning Officer, optional independent reviewer when required, and Certification Manager must sign FR.218 before the recertification audit can be scheduled.',
+  },
+  fr218_complete: {
+    heading: 'FR.218 complete — ready to schedule recertification audit',
+    body: 'Application review is signed off. Confirm audit dates, then mark the one-stage recertification audit as scheduled.',
+    cta: { label: 'Mark Recertification Audit Scheduled', nextStatus: 'audit_scheduled', allowedRoles: ['admin', 'planner', 'planner_us'] },
+  },
+  audit_scheduled: {
+    heading: 'Recertification audit is scheduled',
+    body: 'Audit dates are confirmed. Mark as in progress when the recertification audit begins.',
+    cta: { label: 'Mark as In Progress', nextStatus: 'audit_in_progress' },
+  },
+  audit_in_progress: {
+    heading: 'Recertification audit in progress',
+    body: 'The audit is underway. The auditor uploads the recertification report, meeting form, NC decision, and related documents via their portal.',
+  },
+  under_review: {
+    heading: 'Under review — renewed certification decision',
+    body: 'Audit documents are complete. Release FR.233 (Review & Decision Form) from Shared Documents so the committee can sign. Once the decision is issued, upload/issue the renewed certificate.',
+    cta: { label: 'Issue Renewed Certificate', nextStatus: 'certified', allowedRoles: ['admin', 'executive'] },
+  },
+  certified: {
+    heading: 'Recertification completed ✓',
+    body: 'The renewed certification has been issued.',
+  },
+}
+
 const SURVEILLANCE_PANELS: Record<string, ActionPanel> = {
   in_planning: {
     heading: 'Prepare surveillance notification',
@@ -205,6 +261,7 @@ const SURVEILLANCE_PANELS: Record<string, ActionPanel> = {
 
 function getPanels(auditType: string | null) {
   if (auditType === 'initial') return INITIAL_PANELS
+  if (auditType === 'recertification') return RECERTIFICATION_PANELS
   if (isSurveillanceAudit(auditType)) return SURVEILLANCE_PANELS
   return STANDARD_PANELS
 }

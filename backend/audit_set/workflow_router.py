@@ -58,6 +58,8 @@ VALID_TRANSITIONS: dict[tuple[Optional[str], str], set[str]] = {
     # corrections by admin still go through the normal endpoint.
     ("agreement_signed",  "fr218_in_progress"): {"admin"},
     ("fr218_in_progress", "fr218_complete"):    {"admin", "planner", "planner_us", "certification_manager"},
+    # Recertification uses FR.218, then continues to the single-audit path.
+    ("fr218_complete",     "audit_scheduled"):   {"admin", "planner", "planner_us"},
     # ── Initial certification — Stage 1 ──────────────────────────────────────
     # Portal 49b: the team is assigned at planning, so fr218_complete advances
     # directly to stage1_in_progress (gated below). Scheduled statuses are
