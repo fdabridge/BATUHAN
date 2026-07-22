@@ -24,7 +24,43 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 
-def _set_cell_text(tc_el, text) -> None:
+HIDDEN_SIG_MARKER_COLOR = "FFFFFF"
+
+STANDARD_ALIASES = {
+    "QMS": "ISO 9001",
+    "EMS": "ISO 14001",
+    "OHSMS": "ISO 45001",
+    "FSMS": "ISO 22000",
+    "ISMS": "ISO 27001",
+    "MDQMS": "ISO 13485",
+    "MDMS": "ISO 13485",
+    "ABMS": "ISO 37001",
+    "ENMS": "ISO 50001",
+    "FSSC": "FSSC 22000",
+}
+
+NON_EA_SCOPE_STANDARDS = {
+    "ISO 13485",
+    "ISO 27001",
+    "ISO 22000",
+    "FSSC 22000",
+    "ISO 37001",
+    "ISO 50001",
+}
+
+
+def _ensure_run_color(run_el, hex_color: str) -> None:
+    rPr = run_el.find(qn("w:rPr"))
+    if rPr is None:
+        rPr = etree.Element(qn("w:rPr"))
+        run_el.insert(0, rPr)
+    color = rPr.find(qn("w:color"))
+    if color is None:
+        color = etree.SubElement(rPr, qn("w:color"))
+    color.set(qn("w:val"), hex_color)
+
+
+def _set_cell_text(tc_el, text, *, font_color_hex: str | None = None) -> None:
     """Clear all paragraphs in a <w:tc> and write `text` into a single run on
     the first paragraph, preserving paragraph + run formatting where possible.
     Non-string values (e.g. integers stored in JSON columns) are coerced to str
@@ -50,6 +86,8 @@ def _set_cell_text(tc_el, text) -> None:
     new_r = etree.SubElement(p, qn("w:r"))
     if saved_rPr is not None:
         new_r.append(saved_rPr)
+    if font_color_hex:
+        _ensure_run_color(new_r, font_color_hex)
     new_t = etree.SubElement(new_r, qn("w:t"))
     new_t.text = text
     new_t.set(qn("xml:space"), "preserve")
@@ -57,6 +95,118 @@ def _set_cell_text(tc_el, text) -> None:
 
 def _fmt_d(d) -> str:
     return d.strftime("%d.%m.%Y") if d else ""
+
+
+def _normalise_scope_key(value) -> str:
+    raw = str(value or "").strip()
+    upper = raw.upper()
+    if upper in STANDARD_ALIASES:
+        return STANDARD_ALIASES[upper]
+    compact = upper.replace("ISO/IEC", "ISO").replace(":", " ").replace("-", " ")
+    if "FSSC" in compact and "22000" in compact:
+        return "FSSC 22000"
+    for needle, label in (
+        ("9001", "ISO 9001"),
+        ("14001", "ISO 14001"),
+        ("45001", "ISO 45001"),
+        ("22000", "ISO 22000"),
+        ("27001", "ISO 27001"),
+        ("13485", "ISO 13485"),
+        ("37001", "ISO 37001"),
+        ("50001", "ISO 50001"),
+    ):
+        if needle in compact:
+            return label
+    return raw
+
+
+def _selected_standard_keys(audit_set) -> set[str]:
+    return {
+        _normalise_scope_key(std)
+        for std in (getattr(audit_set, "standards", None) or [])
+        if std
+    }
+
+
+def _as_list(value) -> list:
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return list(value)
+    return [value]
+
+
+def _scope_codes(entry: dict) -> list[str]:
+    values = []
+    for key in (
+        "codes",
+        "categories",
+        "category",
+        "technical_areas",
+        "technical_area",
+        "ea_codes",
+        "scope_codes",
+    ):
+        values.extend(_as_list(entry.get(key)))
+    seen = []
+    for value in values:
+        text = str(value).strip()
+        if text and text not in seen:
+            seen.append(text)
+    return seen
+
+
+def _display_scope_codes(scope_type: str, codes: list[str]) -> str:
+    if scope_type in {"ea", "ea_code", "ea_codes"}:
+        return ", ".join(
+            code if code.upper().startswith("EA") else f"EA {code}"
+            for code in codes
+        )
+    return ", ".join(codes)
+
+
+def _audit_scope_display(audit_set) -> str:
+    required_scope = getattr(audit_set, "required_scope", None) or {}
+    selected = _selected_standard_keys(audit_set)
+    entries = []
+    for raw_iso, raw_entry in required_scope.items():
+        if not isinstance(raw_entry, dict):
+            continue
+        iso = _normalise_scope_key(raw_iso)
+        scope_type = str(raw_entry.get("type") or "").strip().lower()
+        codes = _scope_codes(raw_entry)
+        value = _display_scope_codes(scope_type, codes)
+        if value:
+            entries.append((iso, f"{iso}: {value}"))
+    if entries:
+        selected_entries = [
+            text for iso, text in entries
+            if not selected or iso in selected
+        ]
+        if selected_entries:
+            return "; ".join(selected_entries)
+        return "; ".join(text for _iso, text in entries)
+
+    technical_area = str(getattr(audit_set, "ea_technical_area", None) or "").strip()
+    category = str(getattr(audit_set, "ea_category", None) or "").strip()
+    if technical_area:
+        return technical_area
+    if category and any(std in NON_EA_SCOPE_STANDARDS for std in selected):
+        return category
+    return ""
+
+
+def _uses_non_ea_standard(audit_set) -> bool:
+    return any(std in NON_EA_SCOPE_STANDARDS for std in _selected_standard_keys(audit_set))
+
+
+def _committee_scope_display(audit_set, member: dict) -> str:
+    audit_scope = _audit_scope_display(audit_set)
+    if audit_scope:
+        return audit_scope
+    if _uses_non_ea_standard(audit_set):
+        return ""
+    return ", ".join(str(c) for c in (member.get("ea_codes") or []))
 
 
 def _build_committee_context(audit_set) -> list[dict]:
@@ -67,7 +217,7 @@ def _build_committee_context(audit_set) -> list[dict]:
         {
             "id":            m.get("id", ""),
             "name":          m.get("name") or m.get("full_name") or "",
-            "ea_codes_str":  ", ".join(str(c) for c in (m.get("ea_codes") or [])),
+            "ea_codes_str":  _committee_scope_display(audit_set, m),
             "role":          m.get("role", "member"),
         }
         for m in members
@@ -131,13 +281,21 @@ def _fill_table3_committee(t3, members_ctx: list[dict]) -> None:
         # col 3 — EA codes (merged with col 4; writing col 3 _tc is sufficient)
         _set_cell_text(cells[3]._tc, ea_codes)
         # col 5 — signature marker
-        _set_cell_text(cells[5]._tc, f"[SIG:{sig_key}]")
+        _set_cell_text(
+            cells[5]._tc,
+            f"[SIG:{sig_key}]",
+            font_color_hex=HIDDEN_SIG_MARKER_COLOR,
+        )
 
     # Row 6 — Certification Manager sign cell (col 4, merged with col 5)
     if len(t3.rows) > 6:
         cm_row = t3.rows[6]
         if len(cm_row.cells) > 4:
-            _set_cell_text(cm_row.cells[4]._tc, "[SIG:CB_CERT_MANAGER]")
+            _set_cell_text(
+                cm_row.cells[4]._tc,
+                "[SIG:CB_CERT_MANAGER]",
+                font_color_hex=HIDDEN_SIG_MARKER_COLOR,
+            )
 
 
 def render_fr233_bytes(audit_set, db: "Session", template_path=None) -> bytes:

@@ -3,6 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from docx import Document
+from docx.oxml.ns import qn
 
 from audit_set.committee_slots import (
     expected_committee_sig_keys,
@@ -14,17 +15,26 @@ from audit_set.committee_slots import (
 from audit_set.fr233_generator import render_fr233_bytes
 
 
-def _audit_set(committee_members):
-    return SimpleNamespace(
-        committee_members=committee_members,
-        stages=[],
-        personnel={},
-        plan_number=1652,
-        company_name="Example Company",
-        company_address="Example Address",
-        standards=["QMS"],
-        ea_code="17",
-    )
+def _audit_set(committee_members, **overrides):
+    defaults = {
+        "committee_members": committee_members,
+        "stages": [],
+        "personnel": {},
+        "plan_number": 1652,
+        "company_name": "Example Company",
+        "company_address": "Example Address",
+        "standards": ["QMS"],
+        "ea_code": "17",
+        "ea_category": None,
+        "ea_technical_area": None,
+        "required_scope": None,
+    }
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
+def _run_color_values(cell):
+    return [color.get(qn("w:val")) for color in cell._tc.iter(qn("w:color"))]
 
 
 def test_planned_committee_drives_static_slot_order():
@@ -109,3 +119,42 @@ def test_fr233_render_fills_planned_names_codes_and_static_markers():
     assert committee_table.cell(3, 1).text == ""
     assert committee_table.cell(3, 5).text == "[SIG:COMMITTEE_MEMBER_2]"
     assert committee_table.cell(6, 4).text == "[SIG:CB_CERT_MANAGER]"
+    assert "FFFFFF" in _run_color_values(committee_table.cell(1, 5))
+    assert "FFFFFF" in _run_color_values(committee_table.cell(2, 5))
+    assert "FFFFFF" in _run_color_values(committee_table.cell(3, 5))
+    assert "FFFFFF" in _run_color_values(committee_table.cell(6, 4))
+
+
+def test_fr233_render_uses_mdqms_required_scope_not_chair_ea_codes():
+    audit_set = _audit_set(
+        [
+            {
+                "id": "chair-1",
+                "name": "Chair One",
+                "role": "chairperson",
+                "ea_codes": ["1", "12", "17"],
+            },
+        ],
+        standards=["MDQMS"],
+        required_scope={
+            "ISO 13485:2016": {
+                "type": "medical",
+                "codes": ["MD 0101", "MD 0302"],
+            },
+        },
+        ea_technical_area="ISO 13485: MD 0101, MD 0302",
+    )
+    template = next(
+        Path("backend/uaf_blank_set").rglob(
+            "Initial Certification*/Stage 2/FR.233*.docx",
+        )
+    )
+
+    rendered = Document(
+        BytesIO(render_fr233_bytes(audit_set, db=None, template_path=template))
+    )
+    scope_text = rendered.tables[3].cell(1, 3).text
+
+    assert scope_text == "ISO 13485: MD 0101, MD 0302"
+    assert "EA 1" not in scope_text
+    assert "EA 12" not in scope_text
