@@ -25,9 +25,18 @@ def _clean_signature_rgba(image_bytes: bytes):
             cleaned.append((r, g, b, 0))
             continue
 
-        light = min(r, g, b) >= 220
-        pale_neutral = (r + g + b) >= 690 and (max(r, g, b) - min(r, g, b)) <= 45
-        if light or pale_neutral:
+        channel_max = max(r, g, b)
+        channel_min = min(r, g, b)
+        brightness = (r + g + b) / 3
+        saturation = channel_max - channel_min
+
+        # Uploaded/scanned signatures often carry a paper-colored rectangle
+        # that is not pure white after compression or anti-aliasing. Remove
+        # bright neutral pixels aggressively, but preserve colored/dark ink.
+        white_paper = channel_min >= 232
+        pale_paper = brightness >= 225 and saturation <= 38
+        gray_halo = brightness >= 205 and saturation <= 18
+        if white_paper or pale_paper or gray_halo:
             cleaned.append((255, 255, 255, 0))
         else:
             cleaned.append((r, g, b, a))

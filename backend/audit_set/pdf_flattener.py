@@ -40,8 +40,10 @@ SIG_MIN_H = 28.0
 NAME_TEXT_H = 10.0
 NAME_GAP = 1.5
 
-# Padding around the [SIG:...] text bounding box for the whiteout rect
-WHITEOUT_PAD = 4.0
+# Tight padding around the [SIG:...] text only. A larger whiteout makes the
+# downloaded PDF look like the signature has a white background because table
+# borders and form lines are erased under the transparent ink.
+WHITEOUT_PAD = 1.5
 
 SIG_TO_ROLE = {
     "CB_PLANNER": "cb_planner",
@@ -213,12 +215,12 @@ def flatten_document(
         )
         name_rect = _name_rect_below_signature(overlay_rect, doc[page_idx].rect)
 
-        # ── White-out the [SIG:...] placeholder text ──────────────────────────
+        # ── White-out only the [SIG:...] placeholder text ─────────────────────
         placeholder_rect = fitz.Rect(
             x0 - WHITEOUT_PAD,
             y0 - WHITEOUT_PAD,
             x1 + WHITEOUT_PAD,
-            max(y1 + WHITEOUT_PAD, name_rect.y1 + 1.0),
+            y1 + WHITEOUT_PAD,
         )
         # Draw a white filled rectangle with no visible border
         page.draw_rect(
