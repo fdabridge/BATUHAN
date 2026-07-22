@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2, PenLine, Pencil, Plus, RotateCcw, Trash2, Upload, X } from 'lucide-react'
 import api from '@/lib/api'
 import { removeWhiteBackground, MAX_SIGNATURE_FILE_BYTES } from '@/lib/signatureUtils'
@@ -171,14 +171,28 @@ function SignatureDrawPad({ onReady }: { onReady: (getDataUrl: () => string | nu
   const hasStrokes = useRef(false)
   const last = useRef<{ x: number; y: number } | null>(null)
 
+  const getCtx = () => canvasRef.current?.getContext('2d') ?? null
+
+  const getPoint = (event: MouseEvent | TouchEvent): { x: number; y: number } | null => {
+    const canvas = canvasRef.current
+    if (!canvas) return null
+    const rect = canvas.getBoundingClientRect()
+    const source = 'touches' in event ? event.touches[0] : event
+    if (!source || rect.width <= 0 || rect.height <= 0) return null
+    return {
+      x: source.clientX - rect.left,
+      y: source.clientY - rect.top,
+    }
+  }
+
   function configureCanvas() {
     const canvas = canvasRef.current
     if (!canvas) return
     const dpr = window.devicePixelRatio || 1
     const rect = canvas.getBoundingClientRect()
-    canvas.width = Math.max(1, Math.floor(rect.width * dpr))
-    canvas.height = Math.max(1, Math.floor(rect.height * dpr))
-    const ctx = canvas.getContext('2d')
+    canvas.width = Math.max(1, rect.width * dpr)
+    canvas.height = Math.max(1, rect.height * dpr)
+    const ctx = getCtx()
     if (!ctx) return
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.lineWidth = 2.5
@@ -190,33 +204,26 @@ function SignatureDrawPad({ onReady }: { onReady: (getDataUrl: () => string | nu
   }
 
   useEffect(() => {
-    configureCanvas()
+    const frame = window.requestAnimationFrame(configureCanvas)
     onReady(() => {
       if (!hasStrokes.current) return null
       return canvasRef.current?.toDataURL('image/png') ?? null
     })
+    return () => window.cancelAnimationFrame(frame)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  function point(ev: React.PointerEvent<HTMLCanvasElement>) {
-    const canvas = canvasRef.current
-    if (!canvas) return null
-    const rect = canvas.getBoundingClientRect()
-    return { x: ev.clientX - rect.left, y: ev.clientY - rect.top }
-  }
-
-  function start(ev: React.PointerEvent<HTMLCanvasElement>) {
-    ev.preventDefault()
-    ev.currentTarget.setPointerCapture(ev.pointerId)
+  const start = useCallback((event: MouseEvent | TouchEvent) => {
+    event.preventDefault()
     drawing.current = true
-    last.current = point(ev)
-  }
+    last.current = getPoint(event)
+  }, [])
 
-  function move(ev: React.PointerEvent<HTMLCanvasElement>) {
-    ev.preventDefault()
+  const move = useCallback((event: MouseEvent | TouchEvent) => {
+    event.preventDefault()
     if (!drawing.current || !last.current) return
-    const ctx = canvasRef.current?.getContext('2d')
-    const next = point(ev)
+    const ctx = getCtx()
+    const next = getPoint(event)
     if (!ctx || !next) return
     ctx.beginPath()
     ctx.moveTo(last.current.x, last.current.y)
@@ -224,21 +231,40 @@ function SignatureDrawPad({ onReady }: { onReady: (getDataUrl: () => string | nu
     ctx.stroke()
     last.current = next
     hasStrokes.current = true
-  }
+  }, [])
 
-  function stop() {
+  const stop = useCallback(() => {
     drawing.current = false
     last.current = null
-  }
+  }, [])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    canvas.addEventListener('mousedown', start as EventListener)
+    canvas.addEventListener('mousemove', move as EventListener)
+    canvas.addEventListener('mouseup', stop)
+    canvas.addEventListener('mouseleave', stop)
+    canvas.addEventListener('touchstart', start as EventListener, { passive: false })
+    canvas.addEventListener('touchmove', move as EventListener, { passive: false })
+    canvas.addEventListener('touchend', stop)
+    canvas.addEventListener('touchcancel', stop)
+    return () => {
+      canvas.removeEventListener('mousedown', start as EventListener)
+      canvas.removeEventListener('mousemove', move as EventListener)
+      canvas.removeEventListener('mouseup', stop)
+      canvas.removeEventListener('mouseleave', stop)
+      canvas.removeEventListener('touchstart', start as EventListener)
+      canvas.removeEventListener('touchmove', move as EventListener)
+      canvas.removeEventListener('touchend', stop)
+      canvas.removeEventListener('touchcancel', stop)
+    }
+  }, [start, move, stop])
 
   return (
     <div>
       <canvas
         ref={canvasRef}
-        onPointerDown={start}
-        onPointerMove={move}
-        onPointerUp={stop}
-        onPointerLeave={stop}
         className="w-full cursor-crosshair rounded-lg border-2 border-dashed border-gray-300 bg-white"
         style={{ height: 130, touchAction: 'none' }}
       />
