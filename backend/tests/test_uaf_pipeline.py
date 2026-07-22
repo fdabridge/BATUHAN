@@ -22,6 +22,7 @@ from datetime import date
 from types import SimpleNamespace as NS
 
 import pytest
+from docx import Document
 
 from audit_set.filler import build_base_context
 from audit_set.packager import build_audit_set_zip
@@ -264,6 +265,29 @@ def test_fr222_conditional_standard_rows(entries):
     # Versioned names only — bare numbers appear in fixed column headers.
     assert "ISO 9001:2015" in text and "ISO 14001:2015" in text
     assert "ISO 45001:2018" not in text and "ISO 22000:2018" not in text
+
+
+def test_fr222_possible_audit_dates_row_renders(entries):
+    body = _find(entries, "Stage_1", "FR.222")
+    if body is None:
+        pytest.skip("FR.222 did not render — see RENDER_ERRORS gate")
+
+    doc = Document(io.BytesIO(body))
+    rows = [[cell.text.strip() for cell in row.cells] for row in doc.tables[0].rows]
+    possible_idx = next(
+        i
+        for i, row in enumerate(rows)
+        if row[0] == "Possible Audit Dates" and "Stage 1" in row
+    )
+
+    date_row = rows[possible_idx + 1]
+    clauses_header_row = rows[possible_idx + 2]
+    assert date_row[1] == "10–11 June 2026"
+    assert date_row[3] == "14–16 July 2026"
+    assert date_row[6] == "15/07/2027"
+    assert date_row[8] == "14/07/2028"
+    assert date_row[11] == "13/07/2029"
+    assert "Clauses to be Audited" in clauses_header_row[1]
 
 
 # --------------------------------------------------------------------------- #

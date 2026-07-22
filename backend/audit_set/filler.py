@@ -360,6 +360,38 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
 
     decision_committee_chair_name = committee_member_name(planned_committee_chair(audit_set)) or ""
 
+    stage1_dates_value = format_date_range(stage1.audit_date_start, stage1.audit_date_end) if stage1 else ""
+    stage2_dates_value = format_date_range(stage2.audit_date_start, stage2.audit_date_end) if stage2 else ""
+    recertification_dates_value = (
+        format_date_range(recert_stage.audit_date_start, recert_stage.audit_date_end)
+        if is_recertification and recert_stage
+        else ""
+    )
+    stage2_date_value = (
+        stage2_dates_value
+        if stage2
+        else (format_date_range(start, end) if (is_surveillance or is_recertification) else "")
+    )
+    surveillance_date_value = format_date_range(start, end) if is_surveillance else ""
+    recertification_date_value = format_date_range(start, end) if is_recertification else ""
+    stage2_start_date_value = format_date(stage2.audit_date_start) if stage2 else ""
+    surv1_estimated_date_value = format_date(surv1_estimated)
+    surv2_estimated_date_value = format_date(surv2_estimated)
+    recert_estimated_date_value = format_date(recert_estimated)
+
+    fr222_date_aliases: dict[str, str] = {}
+    for suffix in ("qms", "ems", "ohsms", "fsms", "isms", "enms", "mdqms", "abms"):
+        fr222_date_aliases.update(
+            {
+                f"stage_1_date_{suffix}": stage1_dates_value,
+                f"stage_2_date_{suffix}": stage2_dates_value,
+                f"surveillance_date_{suffix}": surv1_estimated_date_value,
+                f"surveillance_1_date_{suffix}": surv1_estimated_date_value,
+                f"surveillance_2_date_{suffix}": surv2_estimated_date_value,
+                f"recertification_date_{suffix}": recert_estimated_date_value,
+            }
+        )
+
     return {
         # Company
         "company_name": audit_set.company_name,
@@ -423,21 +455,19 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
         "notification_date": format_date(subtract_months(start, 2)) if start else "",
         "opening_meeting_date": format_date(opening_meeting_date),
         "closing_meeting_date": format_date(closing_meeting_date),
-        "stage1_dates": format_date_range(stage1.audit_date_start, stage1.audit_date_end) if stage1 else "",
-        "stage2_dates": format_date_range(stage2.audit_date_start, stage2.audit_date_end) if stage2 else "",
-        "recertification_dates": format_date_range(recert_stage.audit_date_start, recert_stage.audit_date_end) if is_recertification and recert_stage else "",
+        "stage1_dates": stage1_dates_value,
+        "stage2_dates": stage2_dates_value,
+        "recertification_dates": recertification_dates_value,
         # Underscore-named aliases used by FR.233, FR.232, FR.231, FR.211 field maps.
-        "stage_1_date": format_date_range(stage1.audit_date_start, stage1.audit_date_end) if stage1 else "",
-        "stage_2_date": (
-            format_date_range(stage2.audit_date_start, stage2.audit_date_end) if stage2
-            else (format_date_range(start, end) if (is_surveillance or is_recertification) else "")
-        ),
-        "surveillance_date": format_date_range(start, end) if is_surveillance else "",
-        "recertification_date": format_date_range(start, end) if is_recertification else "",
-        "stage2_start_date": format_date(stage2.audit_date_start) if stage2 else "",
-        "surv1_estimated_date": format_date(surv1_estimated),
-        "surv2_estimated_date": format_date(surv2_estimated),
-        "recert_estimated_date": format_date(recert_estimated),
+        "stage_1_date": stage1_dates_value,
+        "stage_2_date": stage2_date_value,
+        "surveillance_date": surveillance_date_value,
+        "recertification_date": recertification_date_value,
+        "stage2_start_date": stage2_start_date_value,
+        "surv1_estimated_date": surv1_estimated_date_value,
+        "surv2_estimated_date": surv2_estimated_date_value,
+        "recert_estimated_date": recert_estimated_date_value,
+        **fr222_date_aliases,
         # Team (auditor scope strings merged in by build_auditor_scope_strings)
         "lead_auditor_name": stage.lead_auditor_name,
         "decision_committee_chair_name": decision_committee_chair_name,
