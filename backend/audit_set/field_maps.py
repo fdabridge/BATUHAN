@@ -48,6 +48,7 @@ FR218_MAP = {
     "ea_category":         (4, 1, 1),
     "ea_technical_area":   (4, 1, 2),
     "effective_employees": (1, 6, 6),   # Number of Effective Employee value cell
+    "decision_committee_chair_name": (23, 1, 1),  # Recommended Auditor/Technical Expert for Decision
 }
 
 

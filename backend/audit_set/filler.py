@@ -22,6 +22,7 @@ from datetime import date, timedelta
 
 from docxtpl import DocxTemplate
 
+from audit_set.committee_slots import committee_member_name, planned_committee_chair
 from audit_set.report_signature_rules import audit_set_has_stage1_extra_review
 
 # --------------------------------------------------------------------------- #
@@ -357,6 +358,8 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
     else:  # surveillance
         _audit_days_fallback = man_day.get("final_surv1", "")
 
+    decision_committee_chair_name = committee_member_name(planned_committee_chair(audit_set)) or ""
+
     return {
         # Company
         "company_name": audit_set.company_name,
@@ -437,6 +440,7 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
         "recert_estimated_date": format_date(recert_estimated),
         # Team (auditor scope strings merged in by build_auditor_scope_strings)
         "lead_auditor_name": stage.lead_auditor_name,
+        "decision_committee_chair_name": decision_committee_chair_name,
         "auditors": stage.auditors or [],
         "technical_experts": stage.technical_experts or [],
         "observers": stage.observers or [],
