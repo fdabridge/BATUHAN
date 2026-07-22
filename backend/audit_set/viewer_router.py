@@ -92,10 +92,10 @@ ROLE_TO_SIG: dict[str, str] = {
 SIG_TO_ROLE: dict[str, str] = {v: k for k, v in ROLE_TO_SIG.items()}
 
 # Portal 49a Part 2 — FR.225 organisation-personnel signature slots.
-# Portal 73: format changed from ORG_OPENING_ORG_EMP_<uuid> to ORG_OPENING_ORG_EMP_<N>
-# (1-based row index, ordering matches packager created_at).
+# Portal 73 changed generated forms to ORG_OPENING_ORG_EMP_<N> row-index keys,
+# but older released documents can still carry employee-id keys. Accept both.
 ORG_SIG_RE = re.compile(
-    r"^ORG_(OPENING|CLOSING)_ORG_EMP_(\d+)$"
+    r"^ORG_(OPENING|CLOSING)_ORG_EMP_(.+)$"
 )
 
 # Portal 59 — FR.225 audit-team signature slots (added to all 9 templates in
@@ -810,6 +810,32 @@ def _resolve_org_emp_by_index(
     return None
 
 
+def _resolve_org_emp_by_slot(
+    audit_set_id: str,
+    slot_token: str,
+    db: Session,
+    auth_db: Session,
+) -> Optional["ClientOrgEmployee"]:
+    """Return the ClientOrgEmployee for a row-index or legacy employee-id slot."""
+    token = (slot_token or "").strip()
+    if not audit_set_id or not token:
+        return None
+
+    if token.isdigit():
+        return _resolve_org_emp_by_index(audit_set_id, int(token), db, auth_db)
+
+    client_user = auth_db.query(PlatformUser).filter_by(
+        role="client", audit_set_id=audit_set_id
+    ).first()
+    if not client_user:
+        return None
+    return (
+        db.query(ClientOrgEmployee)
+        .filter_by(id=token, client_user_id=client_user.id, is_active=True)
+        .first()
+    )
+
+
 # ── Helper: _assert_can_sign ──────────────────────────────────────────────────
 
 def _assert_can_sign(
@@ -859,8 +885,8 @@ def _assert_can_sign(
                 raise HTTPException(403, "Only the client account may sign organisation slots")
             if current_user.audit_set_id != doc.audit_set_id:
                 raise HTTPException(403, "This document is not for your audit set")
-            row_idx = int(ORG_SIG_RE.match(sig_key).group(2))
-            emp = _resolve_org_emp_by_index(doc.audit_set_id, row_idx, db, auth_db)
+            org_match = ORG_SIG_RE.match(sig_key)
+            emp = _resolve_org_emp_by_slot(doc.audit_set_id, org_match.group(2), db, auth_db)
             if not emp or emp.client_user_id != current_user.id:
                 raise HTTPException(404, "Employee not in your roster")
             if not emp.signature_data:
@@ -1116,8 +1142,7 @@ def _get_field_status(
         # keys are not in SIG_TO_ROLE and have no AuditDocumentSignature slot.
         org_match = ORG_SIG_RE.match(sig_key)
         if org_match:
-            row_idx = int(org_match.group(2))
-            emp = _resolve_org_emp_by_index(doc.audit_set_id, row_idx, db, auth_db)
+            emp = _resolve_org_emp_by_slot(doc.audit_set_id, org_match.group(2), db, auth_db)
             emp_name = emp.full_name if emp else None
             if vsp:
                 return _result("signed", emp_name, vsp.signature_image)
@@ -1870,16 +1895,21 @@ def sign_confirm(
         )
 
     # Resolve the signature image to embed.
-    #   ORG_OPENING_*/ORG_CLOSING_*  → employee resolved by 1-based row index (Portal 73)
+    #   ORG_OPENING_*/ORG_CLOSING_*  → employee resolved by row index or legacy id
     #   CLIENT / ORG_REP             → selected_employee from the picker (Portal 56)
     #   everything else              → current user's UserSignature
+    if ORG_BLANK_RE.match(body.sig_key):
+        raise HTTPException(
+            400,
+            "This row is a placeholder — register the organisation's employees "
+            "and refresh the meeting form before signing.",
+        )
     org_match = ORG_SIG_RE.match(body.sig_key)
     if org_match:
-        row_idx = int(org_match.group(2))
         # Resolve audit_set_id from the shared-document record (meeting_form is always shared_doc).
         _doc = db.query(AuditSetSharedDocument).filter_by(id=body.doc_id).first()
         audit_set_id = _doc.audit_set_id if _doc else None
-        emp = _resolve_org_emp_by_index(audit_set_id, row_idx, db, auth_db) if audit_set_id else None
+        emp = _resolve_org_emp_by_slot(audit_set_id, org_match.group(2), db, auth_db) if audit_set_id else None
         if not emp or not emp.signature_data:
             raise HTTPException(400, "Employee signature missing — re-upload and try again.")
         signature_image_b64 = emp.signature_data
