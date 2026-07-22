@@ -141,6 +141,7 @@ interface StageEdit {
   lead_auditor_name: string
   audit_date_start:  string
   audit_date_end:    string
+  audit_days:        string
   auditors:          TeamMember[]
   technical_experts: TeamMember[]
   observers:         TeamMember[]
@@ -160,11 +161,19 @@ function buildStageEdit(s: StageResponse): StageEdit {
     lead_auditor_name: s.lead_auditor_name ?? '',
     audit_date_start:  s.audit_date_start  ?? '',
     audit_date_end:    s.audit_date_end    ?? '',
+    audit_days:        s.audit_days != null ? String(s.audit_days) : '',
     auditors:          parseTeamMembers(s.auditors as unknown[]),
     technical_experts: parseTeamMembers(s.technical_experts as unknown[]),
     observers:         parseTeamMembers(s.observers as unknown[]),
     trainees:          parseTeamMembers((s as StageResponse & { trainees?: unknown[] }).trainees as unknown[]),
   }
+}
+
+function parseAuditDaysInput(value: string): number | null {
+  const normalized = value.trim().replace(',', '.')
+  if (!normalized) return null
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
 }
 
 function isRecertificationAudit(auditType: string | null | undefined): boolean {
@@ -1795,6 +1804,11 @@ function StageCard({
   const [saved, setSaved] = useState(false)
 
   const recommended = recommendedDays(stage.stage_type, manDayResult, auditType)
+  const manualAuditDays = parseAuditDaysInput(edit.audit_days)
+  const targetAuditDays = manualAuditDays ?? recommended ?? stage.audit_days
+  const hasAuditDayOverride =
+    manualAuditDays != null &&
+    (recommended == null || Math.abs(manualAuditDays - recommended) > 0.001)
   const resolvedStds = resolveStandards(standards ?? [])
   const primaryStandard = resolvedStds[0] ?? null
 
@@ -1820,7 +1834,7 @@ function StageCard({
   // Auto-fill suggested dates on mount when the stage has no dates yet
   useEffect(() => {
     if (edit.audit_date_start || edit.audit_date_end) return   // don't override existing dates
-    if (!recommended) return                                    // need man-day recommendation first
+    if (!targetAuditDays) return                                // need man-day recommendation first
 
     let suggestedStart: string | null = null
 
@@ -1839,7 +1853,7 @@ function StageCard({
     if (suggestedStart) {
       patch({
         audit_date_start: suggestedStart,
-        audit_date_end: suggestEndDate(suggestedStart, recommended),
+        audit_date_end: suggestEndDate(suggestedStart, targetAuditDays),
       })
     }
   }, [])   // eslint-disable-line react-hooks/exhaustive-deps — intentionally on mount only
@@ -1848,26 +1862,23 @@ function StageCard({
   // Team size for man-day math: lead + additional auditors ONLY (technical experts observe, not audit — per IAF MD 5 / spec Part 5)
   const teamCount = (edit.lead_auditor_name ? 1 : 0) + edit.auditors.length
 
-  // Reactive: when team size changes and a start date exists, recompute end date
-  // so that: calendar days = ceil(recommended / teamCount).
-  // Always divides the IAF man-day figure — never stage.audit_days (stale calendar-day artifact).
+  // Reactive: when team size or planner audit-day override changes, recompute end date
+  // so that: calendar days = ceil(target audit days / teamCount).
   useEffect(() => {
     if (!edit.audit_date_start) return           // no start date yet — nothing to do
-    if (!recommended) return                     // no IAF recommendation — nothing to base on
+    if (!targetAuditDays) return                 // no IAF recommendation or planner override — nothing to base on
     if (teamCount === 0) return                  // no auditors yet — keep existing date
-    const calendarDaysNeeded = Math.ceil(recommended / teamCount)
+    const calendarDaysNeeded = Math.ceil(targetAuditDays / teamCount)
     const newEnd = suggestEndDate(edit.audit_date_start, calendarDaysNeeded)
     if (newEnd !== edit.audit_date_end) {
       patch({ audit_date_end: newEnd })
     }
-  }, [teamCount])   // eslint-disable-line react-hooks/exhaustive-deps — intentionally watches teamCount only
+  }, [teamCount, targetAuditDays])   // eslint-disable-line react-hooks/exhaustive-deps — intentionally avoids date-end feedback loops
 
   // Man-days covered = calendar days in range × number of assigned team members (all days of week valid)
   const manDaysCovered = calendarDays != null && teamCount > 0 ? calendarDays * teamCount : null
-  // Shortfall: covered < stage.audit_days (recommended for this stage from calculation)
-  const targetAuditDays = recommended ?? stage.audit_days
   const manDayShortfall = targetAuditDays != null && manDaysCovered != null && manDaysCovered < targetAuditDays
-  const dateMismatch = recommended != null && calendarDays != null && teamCount === 0 && Math.abs(calendarDays - recommended) > 0.5
+  const dateMismatch = targetAuditDays != null && calendarDays != null && teamCount === 0 && Math.abs(calendarDays - targetAuditDays) > 0.5
   const stageOrderErr = validateStageOrder(stage, allStages, edit.audit_date_start, edit.audit_date_end)
 
   const [coverageError, setCoverageError] = useState<string | null>(null)
@@ -1918,6 +1929,7 @@ function StageCard({
           lead_auditor_id:   isThis ? (edit.lead_auditor_id   || null) : (s.lead_auditor_id ?? null),
           audit_date_start:  isThis ? (edit.audit_date_start  || null) : s.audit_date_start,
           audit_date_end:    isThis ? (edit.audit_date_end    || null) : s.audit_date_end,
+          audit_days:        isThis ? manualAuditDays : s.audit_days,
           auditors:          isThis ? edit.auditors          : ((s.auditors as TeamMember[]) ?? []),
           technical_experts: isThis ? edit.technical_experts : ((s.technical_experts as TeamMember[]) ?? []),
           observers:         isThis ? edit.observers.map((x) => ({ id: x.id, name: x.name })) : ((s.observers as TeamMember[]) ?? []),
@@ -1966,9 +1978,9 @@ function StageCard({
         <div className="flex items-center gap-2">
           {targetAuditDays != null && (
             <span className="rounded px-2 py-0.5 text-xs font-medium" style={{ background: '#F0FAF4', color: '#1A4731' }}>
-              {targetAuditDays} days audited
-              {recommended != null && stage.audit_days !== recommended && (
-                <span className="ml-1" style={{ color: '#92400E' }}>(recommended: {recommended})</span>
+              {targetAuditDays} audit day{targetAuditDays !== 1 ? 's' : ''}
+              {hasAuditDayOverride && recommended != null && (
+                <span className="ml-1" style={{ color: '#92400E' }}>(calculator: {recommended})</span>
               )}
             </span>
           )}
@@ -2010,7 +2022,7 @@ function StageCard({
       {dateMismatch && calendarDays != null && (
         <div className="mb-3 rounded-md px-3 py-2 text-sm" style={{ background: '#FEF3C7', color: '#92400E' }}>
           ⚠ Date range covers {calendarDays} calendar day(s), but IAF MD 5 recommends {recommended} for a single auditor.
-          {calendarDays > recommended!
+          {calendarDays > targetAuditDays
             ? ' This exceeds the recommended duration.'
             : ' Assign auditors or expand the date range.'}
         </div>
@@ -2083,7 +2095,8 @@ function StageCard({
             </div>
           </div>
           {recommended != null && edit.audit_date_start && (() => {
-            const calendarDaysNeeded = Math.ceil(recommended / Math.max(1, teamCount))
+            const daysForSuggestion = targetAuditDays ?? recommended
+            const calendarDaysNeeded = Math.ceil(daysForSuggestion / Math.max(1, teamCount))
             return (
               <button
                 type="button"
@@ -2093,12 +2106,47 @@ function StageCard({
                 Suggest end date ({calendarDaysNeeded} audit days from start)
                 {teamCount > 1 && (
                   <span className="ml-1 opacity-70">
-                    ({recommended} person-days ÷ {teamCount} auditors)
+                    ({daysForSuggestion} person-days ÷ {teamCount} auditors)
                   </span>
                 )}
               </button>
             )
           })()}
+        </div>
+
+        {/* Planner audit-day override */}
+        <div>
+          <label className={lblCls}>Audit days</label>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              step="0.5"
+              min="0.5"
+              className={inputCls}
+              value={edit.audit_days}
+              placeholder={recommended != null ? String(recommended) : 'Calculator value'}
+              onChange={(e) => patch({ audit_days: e.target.value })}
+            />
+            {edit.audit_days && (
+              <button
+                type="button"
+                onClick={() => patch({ audit_days: '' })}
+                className="shrink-0 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50"
+              >
+                Use calculator
+              </button>
+            )}
+          </div>
+          <p className="mt-1 text-[11px] text-gray-400">
+            {recommended != null
+              ? `Calculator recommends ${recommended}. Leave blank to use the calculator, or enter a planner override.`
+              : 'Enter a planner audit-day value when no calculator recommendation is available.'}
+          </p>
+          {hasAuditDayOverride && (
+            <p className="mt-1 text-[11px]" style={{ color: '#92400E' }}>
+              Planner override active. The calculator result is preserved and shown for comparison.
+            </p>
+          )}
         </div>
 
         {/* Auditors multi-select */}
