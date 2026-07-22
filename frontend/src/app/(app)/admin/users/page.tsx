@@ -63,8 +63,21 @@ function formatDateTime(iso: string | null): string {
 function extractDetail(err: unknown, fallback: string): string {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const anyErr = err as any
-  if (anyErr?.response?.data?.detail) return String(anyErr.response.data.detail)
-  if (anyErr?.message)                return String(anyErr.message)
+  const detail = anyErr?.response?.data?.detail
+
+  if (Array.isArray(detail)) {
+    return detail.map((item) => {
+      if (typeof item === 'string') return item
+      const loc = Array.isArray(item?.loc) ? item.loc.filter(Boolean).join('.') : ''
+      const msg = item?.msg ?? JSON.stringify(item)
+      return loc ? `${loc}: ${msg}` : String(msg)
+    }).join('; ')
+  }
+  if (detail) return typeof detail === 'string' ? detail : JSON.stringify(detail)
+  if (!anyErr?.response && anyErr?.message === 'Network Error') {
+    return 'Could not reach the server. Please check that the latest deployment is healthy and try again.'
+  }
+  if (anyErr?.message) return String(anyErr.message)
   return fallback
 }
 
@@ -161,7 +174,15 @@ function CreateUserModal({
       setErr('All fields are required.')
       return
     }
-    m.mutate({ ...form, full_name: form.full_name.trim(), email: form.email.trim(), username: form.username?.trim() })
+    const role = form.role
+    m.mutate({
+      ...form,
+      full_name: form.full_name.trim(),
+      email: form.email.trim(),
+      username: form.username?.trim(),
+      role,
+      auditor_id: role === 'auditor' ? form.auditor_id ?? null : null,
+    })
   }
 
   return (
@@ -177,7 +198,7 @@ function CreateUserModal({
           <input
             type="text"
             value={form.username ?? ''}
-            onChange={(e) => setForm((f) => ({ ...f, username: e.target.value.trim() }))}
+            onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
             className={inputCls}
             placeholder="e.g. john.smith"
           />
@@ -195,7 +216,10 @@ function CreateUserModal({
         <div>
           <label className={lblCls}>Role *</label>
           <select value={form.role}
-            onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as UserRole }))} className={inputCls}>
+            onChange={(e) => {
+              const role = e.target.value as UserRole
+              setForm((f) => ({ ...f, role, auditor_id: role === 'auditor' ? f.auditor_id : null }))
+            }} className={inputCls}>
             {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>
         </div>

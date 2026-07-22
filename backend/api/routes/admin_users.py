@@ -16,6 +16,7 @@ import io
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from auditors.models import Auditor, AuditorStandardQualification, get_db as get_auditors_db
@@ -25,7 +26,7 @@ from auth.schemas import (
     UserCreateSchema, UserResponse, UserUpdateSchema, VALID_ROLES,
 )
 from auth.service import (
-    create_user, get_user_by_id, get_user_by_username, list_users, update_user, change_password,
+    create_user, get_user_by_email, get_user_by_id, get_user_by_username, list_users, update_user, change_password,
 )
 
 router = APIRouter()
@@ -41,10 +42,26 @@ def admin_create_user(
     db: Session = Depends(get_db),
     _admin: PlatformUser = Depends(require_admin),
 ):
-    if body.role not in VALID_ROLES:
+    full_name = body.full_name.strip()
+    email = body.email.strip()
+    username = body.username.strip() if body.username else None
+    role = body.role.strip().lower()
+
+    if not full_name or not email or not body.password or not username:
+        raise HTTPException(status_code=400, detail="Full name, username, email, and password are required.")
+    if role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of {sorted(VALID_ROLES)}")
-    user = create_user(db, body.email, body.password, body.full_name, body.role, body.auditor_id, body.username)
-    return user
+    if get_user_by_email(db, email):
+        raise HTTPException(status_code=409, detail="Email already exists.")
+    if username and get_user_by_username(db, username):
+        raise HTTPException(status_code=409, detail="Username already exists.")
+
+    auditor_id = body.auditor_id if role == "auditor" else None
+    try:
+        return create_user(db, email, body.password, full_name, role, auditor_id, username)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="A user with this email or username already exists.")
 
 
 @router.get("/users/", response_model=list[UserResponse])
