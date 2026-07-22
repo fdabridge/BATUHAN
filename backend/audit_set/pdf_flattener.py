@@ -2,7 +2,7 @@
 Certiva — PDF flattening (Prompt 26).
 
 Embeds placed signature images into the PDF at the coordinates of each
-[SIG:KEY] placeholder, whiting out the placeholder text first.
+[SIG:KEY] placeholder, hiding only the placeholder text first.
 
 Uses PyMuPDF (fitz), which is already in requirements.txt.
 
@@ -19,13 +19,16 @@ directly without inversion.
 from __future__ import annotations
 
 import os
+import shutil
+import tempfile
+from io import BytesIO
 from typing import TYPE_CHECKING
 
 import fitz  # PyMuPDF
 
 import logging
 
-from audit_set.signature_image import signature_pdf_streams
+from audit_set.signature_image import signature_pdf_streams, signature_png_bytes
 from storage.document_store import ensure_local
 
 logger = logging.getLogger(__name__)
@@ -160,16 +163,37 @@ def flatten_document(
 
     field_map = {f.sig_key: f for f in fields}
 
-    # ── Open PDF and embed signatures ─────────────────────────────────────────
+    # ── Open a fresh PDF and embed signatures ─────────────────────────────────
+    # Existing cached PDFs may already contain old broad whiteouts from earlier
+    # marker hiding. Flatten from a fresh conversion so downloads can self-heal.
+    source_pdf_path = pdf_path
+    temp_dir: tempfile.TemporaryDirectory[str] | None = None
     try:
-        doc = fitz.open(pdf_path)
+        from audit_set.doc_converter import convert_docx_to_pdf
+
+        temp_dir = tempfile.TemporaryDirectory(prefix="certiva-flatten-")
+        temp_docx_path = os.path.join(temp_dir.name, os.path.basename(docx_path))
+        shutil.copy2(docx_path, temp_docx_path)
+        source_pdf_path = convert_docx_to_pdf(temp_docx_path)
+    except Exception as exc:
+        logger.warning(
+            "[flatten_document] Could not regenerate fresh PDF for %s; "
+            "using cached PDF %s: %s",
+            docx_path,
+            pdf_path,
+            exc,
+        )
+
+    try:
+        doc = fitz.open(source_pdf_path)
     except Exception as exc:
         # Corrupted or unreadable PDF — fall back to the raw file bytes.
-        import logging
-        logging.getLogger(__name__).warning(
+        logger.warning(
             "[flatten_document] fitz.open() failed for %s/%s: %s — returning raw PDF",
             document_type, doc_id, exc,
         )
+        if temp_dir is not None:
+            temp_dir.cleanup()
         with open(pdf_path, "rb") as f:
             return f.read()
 
@@ -193,11 +217,6 @@ def flatten_document(
 
         page = doc[page_idx]
 
-        try:
-            img_bytes, alpha_mask = signature_pdf_streams(placement.signature_image)
-        except Exception:
-            continue   # skip broken image, don't abort the whole document
-
         # ── Compute overlay rectangle ─────────────────────────────────────────
         x0, y0, x1, y1 = field.x0, field.y0, field.x1, field.y1
         cx = (x0 + x1) / 2.0
@@ -215,24 +234,19 @@ def flatten_document(
         )
         name_rect = _name_rect_below_signature(overlay_rect, doc[page_idx].rect)
 
-        # ── White-out only the [SIG:...] placeholder text ─────────────────────
-        placeholder_rect = fitz.Rect(
-            x0 - WHITEOUT_PAD,
-            y0 - WHITEOUT_PAD,
-            x1 + WHITEOUT_PAD,
-            y1 + WHITEOUT_PAD,
-        )
-        # Draw a white filled rectangle with no visible border
-        page.draw_rect(
-            placeholder_rect,
-            color=(1.0, 1.0, 1.0),
-            fill=(1.0, 1.0, 1.0),
-            width=0,
-        )
+        # ── Hide only the [SIG:...] placeholder text ──────────────────────────
+        marker_rect = _marker_hide_rect(page, field, (sig_key, field.sig_key))
+        if marker_rect:
+            page.draw_rect(
+                marker_rect,
+                color=(1.0, 1.0, 1.0),
+                fill=(1.0, 1.0, 1.0),
+                width=0,
+            )
 
         # ── Insert signature image ────────────────────────────────────────────
         try:
-            page.insert_image(overlay_rect, stream=img_bytes, mask=alpha_mask)
+            _insert_signature_image(page, overlay_rect, placement.signature_image)
             if signer_name:
                 _insert_signer_name(page, name_rect, signer_name)
         except Exception:
@@ -252,20 +266,136 @@ def flatten_document(
         result = doc.tobytes(garbage=4, deflate=True)
     except Exception as exc:
         # If fitz can't serialise the modified document, return the original PDF.
-        import logging
-        logging.getLogger(__name__).warning(
+        logger.warning(
             "[flatten_document] tobytes() failed for %s/%s: %s — returning raw PDF",
             document_type, doc_id, exc,
         )
         doc.close()
+        if temp_dir is not None:
+            temp_dir.cleanup()
         with open(pdf_path, "rb") as f:
             return f.read()
 
     doc.close()
+    if temp_dir is not None:
+        temp_dir.cleanup()
     return result
 
 
 # ── Internal helper ───────────────────────────────────────────────────────────
+
+def _signature_marker_candidates(*keys: str | None) -> list[str]:
+    """Return searchable marker spellings without broad area whiteouts."""
+    candidates: list[str] = []
+    for key in keys:
+        cleaned = (key or "").strip()
+        if not cleaned or cleaned == "__none__":
+            continue
+        for marker in (f"[SIG:{cleaned}]", f"[SIG: {cleaned}]", f"SIG:{cleaned}"):
+            if marker not in candidates:
+                candidates.append(marker)
+    return candidates
+
+
+def _field_rect(field) -> fitz.Rect:
+    return fitz.Rect(float(field.x0), float(field.y0), float(field.x1), float(field.y1))
+
+
+def _padded_page_rect(page: fitz.Page, rect: fitz.Rect, pad: float) -> fitz.Rect:
+    return fitz.Rect(
+        max(page.rect.x0, rect.x0 - pad),
+        max(page.rect.y0, rect.y0 - pad),
+        min(page.rect.x1, rect.x1 + pad),
+        min(page.rect.y1, rect.y1 + pad),
+    )
+
+
+def _marker_hide_rect(
+    page: fitz.Page,
+    field,
+    keys: tuple[str | None, ...],
+) -> fitz.Rect | None:
+    """Hide only the literal [SIG:...] text, never the whole signature slot."""
+    clip = _padded_page_rect(page, _field_rect(field), 20.0)
+    matches: list[fitz.Rect] = []
+
+    for marker in _signature_marker_candidates(*keys):
+        try:
+            matches.extend(page.search_for(marker, clip=clip))
+        except Exception:
+            continue
+
+    if matches:
+        rect = fitz.Rect(matches[0])
+        for match in matches[1:]:
+            rect |= match
+        return _padded_page_rect(page, rect, WHITEOUT_PAD)
+
+    logger.warning(
+        "[flatten_document] Marker text not found for sig_key=%s page=%s; "
+        "leaving PDF content untouched to avoid white signature boxes.",
+        getattr(field, "sig_key", None),
+        getattr(field, "page_number", None),
+    )
+    return None
+
+
+def _fit_image_rect(rect: fitz.Rect, image_size: tuple[int, int]) -> fitz.Rect:
+    """Fit an image inside a slot without stretching or covering extra PDF area."""
+    image_width, image_height = image_size
+    if image_width <= 0 or image_height <= 0 or rect.width <= 0 or rect.height <= 0:
+        return rect
+
+    image_ratio = image_width / image_height
+    slot_ratio = rect.width / rect.height
+
+    if image_ratio >= slot_ratio:
+        fitted_width = rect.width
+        fitted_height = fitted_width / image_ratio
+    else:
+        fitted_height = rect.height
+        fitted_width = fitted_height * image_ratio
+
+    cx = (rect.x0 + rect.x1) / 2.0
+    cy = (rect.y0 + rect.y1) / 2.0
+    return fitz.Rect(
+        cx - fitted_width / 2.0,
+        cy - fitted_height / 2.0,
+        cx + fitted_width / 2.0,
+        cy + fitted_height / 2.0,
+    )
+
+
+def _insert_signature_image(page: fitz.Page, rect: fitz.Rect, image_data: str) -> None:
+    """Insert signature image with alpha mask so transparent pixels stay clear."""
+    try:
+        image_bytes, alpha_mask, image_size = signature_pdf_streams(image_data)
+        image_rect = _fit_image_rect(rect, image_size)
+        try:
+            page.insert_image(
+                image_rect,
+                stream=image_bytes,
+                mask=alpha_mask,
+                keep_proportion=True,
+            )
+        except TypeError:
+            page.insert_image(image_rect, stream=image_bytes, mask=alpha_mask)
+        return
+    except Exception:
+        png_bytes = signature_png_bytes(image_data)
+        image_rect = rect
+        try:
+            from PIL import Image
+
+            with Image.open(BytesIO(png_bytes)) as image:
+                image_rect = _fit_image_rect(rect, image.size)
+        except Exception:
+            pass
+        try:
+            page.insert_image(image_rect, stream=png_bytes, keep_proportion=True)
+        except TypeError:
+            page.insert_image(image_rect, stream=png_bytes)
+
 
 def _name_rect_below_signature(signature_rect: fitz.Rect, page_rect: fitz.Rect) -> fitz.Rect:
     """Return a small centered text box just below the visual signature."""
