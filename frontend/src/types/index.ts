@@ -495,6 +495,7 @@ export interface AuditorAvailabilityItem {
   ea_codes: string[]
   standard_qualifications: {
     standard_code: string
+    accreditation_body: string | null
     technical_depth: string
     ea_codes: string[]          // per-standard EA codes — may be [] for old records
     scope_category: string | null
@@ -503,6 +504,5 @@ export interface AuditorAvailabilityItem {
   conflict_detail: string | null
   covered_scope: Record<string, string[]>    // {standard: [covered_codes]} from required_categories
 }
-
 
 

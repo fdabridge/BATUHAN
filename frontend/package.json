@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:coverage": "tsc --noEmit false --incremental false --target ES2020 --module commonjs --moduleResolution node --esModuleInterop true --skipLibCheck true --outDir /tmp/certiva-stage-coverage-tests src/lib/stageCoverage.ts src/lib/stageCoverage.test.ts && node --test /tmp/certiva-stage-coverage-tests/stageCoverage.test.js"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.0.2",

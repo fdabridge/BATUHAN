@@ -32,6 +32,12 @@ from auditors.service import (
     create_auditor, get_auditor, list_auditors, update_auditor, delete_auditor,
     get_dashboard,
 )
+from auditors.qualification_scope import (
+    compute_covered_scope,
+    matching_qualifications,
+    normalize_scope_code,
+    qualification_codes_for_standard,
+)
 from auditors.schemas import AuditorDashboardEntry
 from auditors.extractor import extract_auditor_from_document
 from auditors.eligibility import check_eligibility
@@ -43,41 +49,6 @@ from auth.service import create_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-# Standard abbreviation → numeric fragment for cross-matching required_scope keys
-# (full ISO names) against stored qualification standard_codes (CB abbreviations).
-_STD_ABBR_NORM: dict[str, str] = {
-    "isms":  "27001",
-    "enms":  "50001",
-    "abms":  "37001",
-    "cms":   "37301",
-    "mdqms": "13485",
-    "mdms":  "13485",
-}
-
-
-def _std_norm(s: str) -> str:
-    """Normalise a standard code for cross-matching.
-
-    Strips 'ISO ', 'IEC ', slashes and spaces, then maps known CB abbreviations
-    to their numeric fragment so that 'ISMS' == 'ISO 27001' == '27001'.
-    """
-    base = (s or '').lower().replace('iso ', '').replace('iec ', '').replace('/', '').replace(' ', '')
-    return _STD_ABBR_NORM.get(base, base)
-
-
-def _ea_int(code) -> int | None:
-    """Normalise 'EA 28', 'EA28', '28', or bare integer 28 → 28.
-    Handles integer inputs stored in JSON columns as well as string inputs.
-    Returns None if the value cannot be parsed as an EA sector number.
-    """
-    try:
-        if isinstance(code, (int, float)):
-            return int(code)
-        return int(str(code).strip().upper().replace("EA", "").replace(" ", ""))
-    except (ValueError, AttributeError):
-        return None
-
 
 # ── Bulk import helpers ───────────────────────────────────────────────────────
 
@@ -475,6 +446,7 @@ def get_available_auditors(
     date_end: str,
     standard_code: Optional[str] = None,
     ea_code: Optional[str] = None,
+    accreditation_body: Optional[str] = None,
     required_scope: Optional[str] = None,         # JSON-encoded required_scope dict (preferred)
     required_categories: Optional[str] = None,    # legacy alias — same semantics
     db: Session = Depends(get_db),
@@ -489,6 +461,7 @@ def get_available_auditors(
       date_end             — ISO date string YYYY-MM-DD (inclusive)
       standard_code        — optional; e.g. "ISO 9001" (partial case-insensitive match)
       ea_code              — optional; e.g. "EA 3" (numeric part compared)
+      accreditation_body   — optional; qualification must match this accreditation
       required_scope       — optional; JSON-encoded required_scope dict, e.g.
                              '{"ISO 22000": {"type": "food", "codes": ["CI", "CIV"]}}'
                              When provided, each result includes covered_scope showing
@@ -520,79 +493,60 @@ def get_available_auditors(
     # cover everything.  The single ea_code / standard_code params are legacy fallbacks
     # used when required_scope is absent.
     if req_cat:
-        _q_std_norm = _std_norm   # use module-level normaliser (maps ISMS→27001 etc.)
+        def _scope_for(auditor) -> dict:
+            return compute_covered_scope(
+                auditor.standard_qualifications,
+                req_cat,
+                accreditation_body=accreditation_body,
+                legacy_ea_codes=auditor.ea_codes,
+                legacy_accreditation_bodies=auditor.accreditation_bodies,
+            )
 
-        def _category_key(value) -> str:
-            return str(value or "").strip().upper().replace(" ", "")
-
-        def _auditor_covers_any_required(auditor, req: dict) -> bool:
-            for iso_std, entry in req.items():
-                scope_type    = entry.get('type', 'ea')
-                required_codes: list[str] = entry.get('codes', [])
-                std_norm = _q_std_norm(iso_std)
-                qual = next(
-                    (q for q in auditor.standard_qualifications
-                     if q.is_qualified is not False
-                     and std_norm in _q_std_norm(q.standard_code or '')),
-                    None,
-                )
-                if not qual:
-                    continue
-                if not required_codes:
-                    # Standard with no code system (ISO 37001 etc.) — qualification alone is enough
-                    return True
-                if scope_type in ('food', 'medical', 'isms', 'sector', 'energy'):
-                    raw = qual.scope_category or ''
-                    auditor_codes = [c.strip() for c in raw.split(',') if c.strip()]
-                else:  # ea
-                    auditor_codes = qual.ea_codes or []
-                # If no EA codes are recorded for this auditor, treat as qualifying for
-                # any code. (Common for auditors imported without per-standard EA breakdown.)
-                if not auditor_codes:
-                    return True
-                # EA codes — numeric normalisation so "EA 12", "12", and int 12 all match.
-                req_ints = {_ea_int(c) for c in required_codes} - {None}
-                if req_ints and any(_ea_int(c) in req_ints for c in auditor_codes):
-                    return True
-                elif not req_ints and any(
-                    _category_key(c) in {_category_key(ac) for ac in auditor_codes}
-                    for c in required_codes
-                ):
-                    # Non-numeric required codes — category/complexity match.
-                    return True
-            return False
-
-        all_auditors = [a for a in all_auditors if _auditor_covers_any_required(a, req_cat)]
+        # Include a person when at least one exact standard/code pair is covered;
+        # the frontend then combines all selected eligible team members.
+        all_auditors = [a for a in all_auditors if _scope_for(a)]
     else:
         # Legacy fallback: single standard_code + ea_code filter
-        # 2. Filter by standard_code (partial, case-insensitive)
+        # 2. Filter by the exact normalized standard and accreditation body.
         if standard_code:
-            sc_lower = standard_code.lower()
             all_auditors = [
                 a for a in all_auditors
-                if any(
-                    q.is_qualified is not False and sc_lower in (q.standard_code or '').lower()
-                    for q in a.standard_qualifications
+                if matching_qualifications(
+                    a.standard_qualifications,
+                    standard_code,
+                    accreditation_body,
+                    a.accreditation_bodies,
                 )
             ]
 
-        # 3. Filter by ea_code — read from AuditorStandardQualification.ea_codes (per-standard),
-        #    NOT from Auditor.ea_codes (top-level field is null for bulk-imported auditors).
+        # 3. Filter by EA code from the exact per-standard qualification.
+        # A top-level legacy EA list is used only when its standard is unambiguous.
         if ea_code:
-            target_ea = _ea_int(ea_code)
-            if target_ea is not None:
-                sc_lower = (standard_code or '').lower()
-                filtered_by_ea = []
-                for a in all_auditors:
-                    sq_codes: list[str] = []
-                    for q in a.standard_qualifications:
-                        if q.is_qualified is not False:
-                            if not sc_lower or sc_lower in (q.standard_code or '').lower():
-                                sq_codes.extend(q.ea_codes or [])
-                    codes_to_check = sq_codes if sq_codes else (a.ea_codes or [])
-                    if any(_ea_int(c) == target_ea for c in codes_to_check):
-                        filtered_by_ea.append(a)
-                all_auditors = filtered_by_ea
+            target = normalize_scope_code(ea_code, "ea")
+            filtered_by_ea = []
+            for auditor in all_auditors:
+                if standard_code:
+                    codes, has_qualification = qualification_codes_for_standard(
+                        auditor.standard_qualifications,
+                        standard_code,
+                        "ea",
+                        accreditation_body,
+                        auditor.ea_codes,
+                        auditor.accreditation_bodies,
+                    )
+                    if has_qualification and any(
+                        normalize_scope_code(code, "ea") == target for code in codes
+                    ):
+                        filtered_by_ea.append(auditor)
+                elif any(
+                    normalize_scope_code(code, "ea") == target
+                    for code in (auditor.ea_codes or [])
+                ):
+                    # No standard was supplied by this legacy caller, so retain
+                    # the historical top-level behavior without using it for
+                    # standard-specific coverage.
+                    filtered_by_ea.append(auditor)
+            all_auditors = filtered_by_ea
 
     # 4. Check bookings in audit_sets DB
     sets_db_gen = get_sets_db()
@@ -613,65 +567,6 @@ def get_available_auditors(
             .all()
         )
 
-        def _compute_covered_scope(auditor_qualifications: list, req: dict) -> dict:
-            """
-            For each required standard/codes, determine which codes this auditor covers.
-            Returns {iso_standard: [covered_codes]}.
-            'UNSCOPED' is a sentinel meaning "qualified for this standard, no sub-code restriction".
-            """
-            def _category_key(value) -> str:
-                return str(value or "").strip().upper().replace(" ", "")
-
-            covered: dict = {}
-            for iso_std, entry in req.items():
-                scope_type = entry.get("type", "ea")
-                required_codes: list[str] = entry.get("codes", [])
-
-                # Qualification lookup comes first — before the codes check.
-                std_lower = _std_norm(iso_std)
-                qual = next(
-                    (q for q in auditor_qualifications
-                     if q.is_qualified is not False and std_lower in
-                     _std_norm(q.standard_code or "")),
-                    None,
-                )
-                if not qual:
-                    continue
-
-                # No specific sub-codes required (e.g. Turkish scope text, no keyword match).
-                # Auditor is qualified → mark as unscoped so the committee picker can see them.
-                if not required_codes:
-                    covered[iso_std] = ["UNSCOPED"]
-                    continue
-
-                auditor_codes: list[str] = []
-                if scope_type in ("food", "medical", "isms", "sector", "energy"):
-                    # scope_category is a comma-separated string like "A1.1, A1.3"
-                    raw = qual.scope_category or ""
-                    auditor_codes = [c.strip() for c in raw.split(",") if c.strip()]
-                elif scope_type == "ea":
-                    auditor_codes = qual.ea_codes or []
-
-                # If auditor has no recorded codes (any scope type), credit all required codes.
-                if not auditor_codes:
-                    covered[iso_std] = required_codes
-                    continue
-
-                # Intersection — numeric normalisation for EA codes so "EA 12", "12",
-                # and bare integer 12 all compare as the same sector number.
-                aud_ints = {_ea_int(c) for c in auditor_codes} - {None}
-                if aud_ints:
-                    matched = [c for c in required_codes if _ea_int(c) in aud_ints]
-                else:
-                    # No parseable integers — category/complexity codes such as
-                    # ISO 27001 "C" or ISO 22000 "C IV" should ignore case/spacing.
-                    auditor_keys = {_category_key(c) for c in auditor_codes}
-                    matched = [c for c in required_codes if _category_key(c) in auditor_keys]
-                if matched:
-                    covered[iso_std] = matched
-
-            return covered
-
         for auditor in all_auditors:
             conflict_detail: Optional[str] = None
             for stage, company_name in overlapping_stages:
@@ -686,7 +581,13 @@ def get_available_auditors(
                     conflict_detail = f"Booked {start_str} to {end_str} ({client})"
                     break
 
-            covered_scope = _compute_covered_scope(auditor.standard_qualifications, req_cat)
+            covered_scope = compute_covered_scope(
+                auditor.standard_qualifications,
+                req_cat,
+                accreditation_body=accreditation_body,
+                legacy_ea_codes=auditor.ea_codes,
+                legacy_accreditation_bodies=auditor.accreditation_bodies,
+            )
 
             result.append(AuditorAvailabilityItem(
                 id=auditor.id,
@@ -696,6 +597,7 @@ def get_available_auditors(
                 standard_qualifications=[
                     {
                         "standard_code": q.standard_code,
+                        "accreditation_body": q.accreditation_body,
                         "technical_depth": q.technical_depth,
                         "ea_codes": q.ea_codes or [],
                         "scope_category": q.scope_category,

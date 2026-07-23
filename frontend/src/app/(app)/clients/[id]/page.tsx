@@ -21,6 +21,10 @@ import { NCFormManagementSection } from '@/components/ui/NCFormManagementSection
 import { DeclarationManagementSection } from '@/components/ui/DeclarationManagementSection'
 import { AuditReportSection } from '@/components/ui/AuditReportSection'
 import { WorkflowStatusBar } from '@/components/ui/WorkflowStatusBar'
+import {
+  authoritativeCoverageLabel,
+  computeStageCoverage,
+} from '@/lib/stageCoverage'
 import type { AuditSetResponse, AuditSite, CommitteeTeamMember, StageResponse, ManDayResult, AuditorSummary, AuditorAvailabilityItem, RequiredScope } from '@/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -268,152 +272,6 @@ function calendarDaysBetween(start: string, end: string): number {
   const s = new Date(start)
   const e = new Date(end)
   return Math.max(1, Math.round((e.getTime() - s.getTime()) / 86_400_000) + 1)
-}
-
-// ── Coverage check helpers ────────────────────────────────────────────────────
-
-const EA_CODE_STANDARDS = ['9001', '14001', '45001']
-const CATEGORY_STANDARDS = ['27001', '22000', 'fssc', '13485', '50001', '37001', '37301']
-
-function standardUsesCodes(std: string): 'ea' | 'category' | 'unknown' {
-  const n = std.toLowerCase().replace('iso ', '').replace(/\s/g, '')
-  if (EA_CODE_STANDARDS.some((s) => n.includes(s))) return 'ea'
-  if (CATEGORY_STANDARDS.some((s) => n.includes(s))) return 'category'
-  return 'unknown'
-}
-
-function normalizeStandardKey(std: string): string {
-  return std.toLowerCase().replace('iso/iec', '').replace('iso', '').replace(/[^a-z0-9]/g, '')
-}
-
-function normalizeScopeCode(code: string): string {
-  return code.trim().toUpperCase().replace(/\s+/g, '')
-}
-
-function coveredCodesForStandard(
-  coveredScope: Record<string, string[]> | undefined,
-  std: string,
-): string[] {
-  if (!coveredScope) return []
-  if (coveredScope[std]) return coveredScope[std]
-  const target = normalizeStandardKey(std)
-  const match = Object.entries(coveredScope).find(([key]) => {
-    const current = normalizeStandardKey(key)
-    return current === target || current.includes(target) || target.includes(current)
-  })
-  return match?.[1] ?? []
-}
-
-function codeListIncludes(codes: string[] | undefined, code: string): boolean {
-  const target = normalizeScopeCode(code)
-  return (codes ?? []).some((c) => normalizeScopeCode(c) === target)
-}
-
-interface CoverageResult {
-  standard: string
-  covered: boolean
-  coveredBy: string | null
-  reason: string | null
-  // Per-code detail (populated when requiredScope is available)
-  codeResults?: { code: string; coveredBy: string | null }[]
-}
-
-function computeCoverage(
-  requiredStandards: string[],
-  clientEACode: string | null,
-  teamMembers: TeamMember[],
-  allAuditors: AuditorAvailabilityItem[],
-  requiredScope?: RequiredScope | null,
-  teNames?: Set<string>,
-): CoverageResult[] {
-  const normalizePersonName = (value: string | null | undefined) =>
-    (value ?? '').trim().toLocaleLowerCase()
-  const teamAuditors = allAuditors.filter(
-    (a) =>
-      teamMembers.some((m) => {
-        if (m.id && m.id === a.id) return true
-        const memberName = normalizePersonName(m.name)
-        return memberName !== '' && memberName === normalizePersonName(a.name)
-      })
-  )
-
-  const labelName = (name: string | null) =>
-    name && teNames?.has(name) ? `${name} (TE)` : name
-
-  return requiredStandards.map((std) => {
-    const stdNorm = std.toLowerCase().replace('iso ', '').replace(/\s/g, '')
-    const scopeType = standardUsesCodes(std)
-    const rsEntry = requiredScope?.[std]
-
-    // ── Per-code check when requiredScope is available ──────────────────────
-    if (rsEntry && rsEntry.codes.length > 0) {
-      const codeResults = rsEntry.codes.map((code) => {
-        const coveringAuditor = teamAuditors.find((a) => {
-          // Standard path: auditor covers this code for this specific standard
-          const cs = coveredCodesForStandard(a.covered_scope, std)
-          if (codeListIncludes(cs, code)) return true
-          // TE path: a Technical Expert's EA code applies to ALL audit standards,
-          // not only the standard they hold a formal auditor qualification for.
-          if (teNames?.has(a.name ?? '')) {
-            return Object.values(a.covered_scope ?? {}).some((codes) => codeListIncludes(codes, code))
-          }
-          return false
-        })
-        const coveredBy = labelName(coveringAuditor?.name ?? null)
-        return { code, coveredBy }
-      })
-      const allCodesCovered = codeResults.every((r) => r.coveredBy !== null)
-      const firstCover = codeResults.find((r) => r.coveredBy)
-      return {
-        standard: std,
-        covered: allCodesCovered,
-        coveredBy: firstCover?.coveredBy ?? null,
-        reason: allCodesCovered ? null : `missing codes: ${codeResults.filter((r) => !r.coveredBy).map((r) => r.code).join(', ')}`,
-        codeResults,
-      }
-    }
-
-    // ── Fallback: per-standard check ────────────────────────────────────────
-    const cover = teamAuditors.find((a) => {
-      // TE short-circuit: if this auditor is a TE and covers the client EA code
-      // in any standard, they satisfy this standard's coverage requirement.
-      if (teNames?.has(a.name ?? '') && scopeType === 'ea' && clientEACode) {
-        const clientNum = clientEACode.replace(/[^0-9]/g, '')
-        const coversEA = Object.values(a.covered_scope ?? {}).some((codes) =>
-          codes.some((c) => c.replace(/[^0-9]/g, '') === clientNum)
-        )
-        if (coversEA) return true
-      }
-
-      const qual = a.standard_qualifications.find((q) => {
-        const qNorm = q.standard_code.toLowerCase().replace('iso ', '').replace(/\s/g, '')
-        return qNorm === stdNorm || qNorm.startsWith(stdNorm) || stdNorm.startsWith(qNorm)
-      })
-      if (!qual) return false
-      if (scopeType === 'ea') {
-        if (!clientEACode) return true
-        const qualEA = qual.ea_codes
-        if (!qualEA || qualEA.length === 0) return true
-        const clientNum = clientEACode.replace(/[^0-9]/g, '')
-        return qualEA.some((c) => c.replace(/[^0-9]/g, '') === clientNum)
-      }
-      return true
-    })
-
-    let reason: string | null = null
-    if (!cover) {
-      reason = scopeType === 'ea' && clientEACode
-        ? `needs qualification + ${clientEACode}`
-        : 'no qualified team member'
-    }
-
-    return {
-      standard: std,
-      covered: !!cover,
-      coveredBy: labelName(cover?.name ?? null),
-      reason,
-    }
-  })
 }
 
 function LabeledField({ label, children }: { label: string; children: React.ReactNode }) {
@@ -1792,7 +1650,7 @@ function CommitteePlanningCard({
 function StageCard({
   stage, label, allStages, auditSetId, onSuccess,
   auditors, auditorsLoading,
-  manDayResult, auditType, eaCode, standards, requiredScope,
+  manDayResult, auditType, eaCode, accreditationBody, standards, requiredScope,
 }: {
   stage: StageResponse
   label: string
@@ -1804,6 +1662,7 @@ function StageCard({
   manDayResult: ManDayResult | null
   auditType: string | null
   eaCode: string | null
+  accreditationBody: string | null
   standards: string[]
   requiredScope: RequiredScope | null
 }) {
@@ -1823,7 +1682,7 @@ function StageCard({
   const datesReady = !!edit.audit_date_start && !!edit.audit_date_end
   const reqCatStr = requiredScope ? JSON.stringify(requiredScope) : undefined
   const { data: availableAuditors, isFetching: loadingAvailability } = useQuery<AuditorAvailabilityItem[]>({
-    queryKey: ['auditor-availability', edit.audit_date_start, edit.audit_date_end, primaryStandard, eaCode, reqCatStr],
+    queryKey: ['auditor-availability', edit.audit_date_start, edit.audit_date_end, primaryStandard, eaCode, accreditationBody, reqCatStr],
     queryFn: () => {
       const params = new URLSearchParams({
         date_start: edit.audit_date_start,
@@ -1831,6 +1690,7 @@ function StageCard({
       })
       if (primaryStandard) params.set('standard_code', primaryStandard)
       if (eaCode)          params.set('ea_code', eaCode)
+      if (accreditationBody) params.set('accreditation_body', accreditationBody)
       if (reqCatStr)       params.set('required_categories', reqCatStr)
       return api.get<AuditorAvailabilityItem[]>(`/auditors/available?${params}`).then((r) => r.data)
     },
@@ -1893,14 +1753,22 @@ function StageCard({
   const resolvedStandards = resolvedStds
 
   // Coverage: full team (lead + auditors + TEs) collectively covers all required codes (IAF MD 11)
-  const teamMembers: TeamMember[] = [
-    ...(edit.lead_auditor_name ? [{ id: edit.lead_auditor_id, name: edit.lead_auditor_name }] : []),
-    ...edit.auditors,
-    ...edit.technical_experts,
-  ]
-  const teNameSet = new Set(edit.technical_experts.map((te) => te.name))
-  const coverageResults = (resolvedStandards.length > 0 && (availableAuditors ?? []).length > 0)
-    ? computeCoverage(resolvedStandards, eaCode, teamMembers, availableAuditors ?? [], requiredScope, teNameSet)
+  const coverageResults = (resolvedStandards.length > 0 && availableAuditors !== undefined)
+    ? computeStageCoverage(
+        resolvedStandards,
+        eaCode,
+        {
+          leadAuditor: edit.lead_auditor_name
+            ? { id: edit.lead_auditor_id, name: edit.lead_auditor_name }
+            : null,
+          auditors: edit.auditors,
+          technicalExperts: edit.technical_experts,
+          observers: edit.observers,
+          trainees: edit.trainees,
+        },
+        availableAuditors ?? [],
+        requiredScope,
+      )
     : []
   const allCovered = coverageResults.length === 0 || coverageResults.every((r) => r.covered)
 
@@ -2160,30 +2028,44 @@ function StageCard({
         <div>
           <label className={lblCls}>Auditors</label>
           <div className="flex flex-wrap gap-1 mb-1 min-h-[24px]">
-            {edit.auditors.map((a) => (
-              <span key={a.id || a.name}
-                className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
-                style={{ background: '#F0FAF4', color: '#1A4731', border: '1px solid #BBF7D0' }}>
-                {a.name}
-                <input
-                  type="text"
-                  placeholder="EA"
-                  className="w-14 rounded border border-green-200 bg-white/70 px-1 py-0 text-[11px] leading-tight text-gray-700 outline-none focus:border-certiva-primary"
-                  value={a.ea_code ?? ''}
-                  title="EA/IAF Code for this assignment (e.g. EA 3) — used in FR.223/FR.224 when the auditor's profile has no scope match"
-                  onChange={(e) => patch({
-                    auditors: edit.auditors.map((x) =>
-                      (x.id || x.name) === (a.id || a.name) ? { ...x, ea_code: e.target.value } : x
-                    ),
-                  })}
-                />
-                <button type="button"
-                  className="ml-1 text-gray-400 hover:text-red-500"
-                  onClick={() => patch({ auditors: edit.auditors.filter((x) => (x.id || x.name) !== (a.id || a.name)) })}>
-                  ×
-                </button>
-              </span>
-            ))}
+            {edit.auditors.map((a) => {
+              const qualificationLabel = availableAuditors
+                ? authoritativeCoverageLabel(a, availableAuditors)
+                : null
+              return (
+                <span key={a.id || a.name}
+                  className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
+                  style={{ background: '#F0FAF4', color: '#1A4731', border: '1px solid #BBF7D0' }}>
+                  <span>
+                    {a.name}
+                    {qualificationLabel && (
+                      <span className={qualificationLabel === 'no matching qualification' ? 'text-red-600' : 'text-green-700'}>
+                        {' · '}{qualificationLabel}
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-[10px] text-gray-500">Doc EA:</span>
+                  <input
+                    type="text"
+                    placeholder="Doc EA"
+                    className="w-20 rounded border border-green-200 bg-white/70 px-1 py-0 text-[11px] leading-tight text-gray-700 outline-none focus:border-certiva-primary"
+                    value={a.ea_code ?? ''}
+                    title="Document assignment EA/IAF code only. This does not grant qualification or affect coverage."
+                    aria-label={`Document EA code for ${a.name}`}
+                    onChange={(e) => patch({
+                      auditors: edit.auditors.map((x) =>
+                        (x.id || x.name) === (a.id || a.name) ? { ...x, ea_code: e.target.value } : x
+                      ),
+                    })}
+                  />
+                  <button type="button"
+                    className="ml-1 text-gray-400 hover:text-red-500"
+                    onClick={() => patch({ auditors: edit.auditors.filter((x) => (x.id || x.name) !== (a.id || a.name)) })}>
+                    ×
+                  </button>
+                </span>
+              )
+            })}
           </div>
           <select className={inputCls} value=""
             onChange={(e) => {
@@ -2219,30 +2101,44 @@ function StageCard({
         <div>
           <label className={lblCls}>Technical experts</label>
           <div className="flex flex-wrap gap-1 mb-1 min-h-[24px]">
-            {edit.technical_experts.map((a) => (
-              <span key={a.id || a.name}
-                className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
-                style={{ background: '#F0FAF4', color: '#1A4731', border: '1px solid #BBF7D0' }}>
-                {a.name}
-                <input
-                  type="text"
-                  placeholder="EA"
-                  className="w-14 rounded border border-green-200 bg-white/70 px-1 py-0 text-[11px] leading-tight text-gray-700 outline-none focus:border-certiva-primary"
-                  value={a.ea_code ?? ''}
-                  title="EA/IAF Code for this assignment (e.g. EA 3) — used in FR.223/FR.224 when the auditor's profile has no scope match"
-                  onChange={(e) => patch({
-                    technical_experts: edit.technical_experts.map((x) =>
-                      (x.id || x.name) === (a.id || a.name) ? { ...x, ea_code: e.target.value } : x
-                    ),
-                  })}
-                />
-                <button type="button"
-                  className="ml-1 text-gray-400 hover:text-red-500"
-                  onClick={() => patch({ technical_experts: edit.technical_experts.filter((x) => (x.id || x.name) !== (a.id || a.name)) })}>
-                  ×
-                </button>
-              </span>
-            ))}
+            {edit.technical_experts.map((a) => {
+              const qualificationLabel = availableAuditors
+                ? authoritativeCoverageLabel(a, availableAuditors)
+                : null
+              return (
+                <span key={a.id || a.name}
+                  className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
+                  style={{ background: '#F0FAF4', color: '#1A4731', border: '1px solid #BBF7D0' }}>
+                  <span>
+                    {a.name}
+                    {qualificationLabel && (
+                      <span className={qualificationLabel === 'no matching qualification' ? 'text-red-600' : 'text-green-700'}>
+                        {' · '}{qualificationLabel}
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-[10px] text-gray-500">Doc EA:</span>
+                  <input
+                    type="text"
+                    placeholder="Doc EA"
+                    className="w-20 rounded border border-green-200 bg-white/70 px-1 py-0 text-[11px] leading-tight text-gray-700 outline-none focus:border-certiva-primary"
+                    value={a.ea_code ?? ''}
+                    title="Document assignment EA/IAF code only. This does not grant qualification or affect coverage."
+                    aria-label={`Document EA code for ${a.name}`}
+                    onChange={(e) => patch({
+                      technical_experts: edit.technical_experts.map((x) =>
+                        (x.id || x.name) === (a.id || a.name) ? { ...x, ea_code: e.target.value } : x
+                      ),
+                    })}
+                  />
+                  <button type="button"
+                    className="ml-1 text-gray-400 hover:text-red-500"
+                    onClick={() => patch({ technical_experts: edit.technical_experts.filter((x) => (x.id || x.name) !== (a.id || a.name)) })}>
+                    ×
+                  </button>
+                </span>
+              )
+            })}
           </div>
           <select className={inputCls} value=""
             onChange={(e) => {
@@ -2907,6 +2803,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
                   manDayResult={data.man_day_result}
                   auditType={data.audit_type ?? null}
                   eaCode={data.ea_code ?? null}
+                  accreditationBody={data.accreditation_body ?? null}
                   standards={(data.standards ?? []) as string[]}
                   requiredScope={data.required_scope ?? null}
                 />
