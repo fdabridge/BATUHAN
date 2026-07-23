@@ -270,6 +270,16 @@ def _get_or_create_comments_part(doc: Document):
     return root
 
 
+def _add_bullet_paragraph(doc: Document):
+    """Add a bullet paragraph even when the template omits Word's bullet style."""
+    try:
+        return doc.add_paragraph(style="List Bullet")
+    except KeyError:
+        paragraph = doc.add_paragraph()
+        paragraph.add_run("\u2022 ")
+        return paragraph
+
+
 def _append_summary_section(doc: Document, review_result: ReviewResult):
     """Appends a structured review summary at the end of the document."""
     from docx.shared import Pt, RGBColor
@@ -303,7 +313,7 @@ def _append_summary_section(doc: Document, review_result: ReviewResult):
         doc.add_heading('All Findings', level=2)
         for finding in non_ok:
             label = _SEVERITY_LABELS.get(finding.severity, "NOTE")
-            p = doc.add_paragraph(style='List Bullet')
+            p = _add_bullet_paragraph(doc)
             run = p.add_run(
                 f"[{label}] {finding.clause_id} — {finding.finding_type.value}: "
             )
