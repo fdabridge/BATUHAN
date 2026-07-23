@@ -326,8 +326,15 @@ function computeCoverage(
   requiredScope?: RequiredScope | null,
   teNames?: Set<string>,
 ): CoverageResult[] {
+  const normalizePersonName = (value: string | null | undefined) =>
+    (value ?? '').trim().toLocaleLowerCase()
   const teamAuditors = allAuditors.filter(
-    (a) => teamMembers.some((m) => (m.id ? m.id === a.id : m.name === a.name))
+    (a) =>
+      teamMembers.some((m) => {
+        if (m.id && m.id === a.id) return true
+        const memberName = normalizePersonName(m.name)
+        return memberName !== '' && memberName === normalizePersonName(a.name)
+      })
   )
 
   const labelName = (name: string | null) =>
