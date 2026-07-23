@@ -30,6 +30,7 @@ from audit_set.filler import (
     build_team_members,
     render_docx,
 )
+from audit_set.fr222_postprocess import ensure_fr222_possible_audit_dates
 from audit_set.fr233_generator import render_fr233_bytes
 from audit_set.postprocess import (
     apply_audit_type_highlighting,
@@ -334,6 +335,8 @@ def render_single_document(audit_set, db, fr_number: str, stage_type: str) -> tu
         )
     else:
         data = render_docx(spec.template_path, ctx)
+    if fr_number == "FR.222":
+        data = ensure_fr222_possible_audit_dates(data, ctx)
     # Always apply colour highlighting (safe no-op on forms without standard/audit-type cells).
     data = apply_standard_highlighting(data, standards_codes)
     data = apply_audit_type_highlighting(data, audit_set.audit_type or "")
@@ -412,6 +415,8 @@ def build_audit_set_zip(audit_set, db) -> bytes:
                             )
                         else:
                             data = render_docx(doc.template_path, rctx)
+                        if doc.fr_number == "FR.222":
+                            data = ensure_fr222_possible_audit_dates(data, rctx)
                         # Always apply colour highlighting (safe no-op on forms without
                         # standard/audit-type cells).
                         data = apply_standard_highlighting(data, standards_codes)
