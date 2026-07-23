@@ -12,8 +12,15 @@ import tempfile
 import os
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
+from auth.db_models import PlatformUser
+from auth.dependencies import require_any
+from .advanced import (
+    AdvancedCalculationRequest,
+    AdvancedCalculationResult,
+    calculate_advanced,
+)
 from .extractor import extract_form_data
 from .engine import calculate
 from .models import CalculationResult
@@ -24,6 +31,18 @@ router = APIRouter(prefix="/calculator", tags=["calculator"])
 
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt"}
 MAX_FILE_SIZE_MB = 20
+
+
+@router.post("/standalone/calculate", response_model=AdvancedCalculationResult)
+def standalone_calculator_calculate(
+    body: AdvancedCalculationRequest,
+    _: PlatformUser = Depends(require_any),
+) -> AdvancedCalculationResult:
+    """Run the independent sidebar calculator without creating an AuditSet."""
+    try:
+        return calculate_advanced(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/calculate", response_model=CalculationResult)
@@ -139,4 +158,3 @@ async def calculator_calculate(
                 os.unlink(path)
             except OSError:
                 pass
-
