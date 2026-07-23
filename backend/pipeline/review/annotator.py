@@ -246,7 +246,7 @@ def _get_or_create_comments_part(doc: Document):
         'xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk" '
         'xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml" '
         'xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" '
-        'mc:Ignorable="mv mo w14 wp14"/>'
+        'mc:Ignorable="mv mo w14 wp14">'
         '</w:comments>'
     )
 
