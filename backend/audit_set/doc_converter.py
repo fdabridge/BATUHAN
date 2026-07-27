@@ -22,6 +22,11 @@ from typing import TYPE_CHECKING
 import fitz
 import pdfplumber
 
+from audit_set.signature_marker_visibility import (
+    erase_marker_boxes,
+    marker_hide_boxes,
+    signature_marker_candidates,
+)
 from storage.document_store import ensure_local, is_s3_ref
 
 if TYPE_CHECKING:
@@ -33,7 +38,6 @@ if TYPE_CHECKING:
 _SIG_PATTERN = re.compile(r"^\[SIG:\s*([A-Za-z0-9_-]+)\]$")
 # Search pattern used with page.search() — must match _SIG_PATTERN exactly.
 _SIG_SEARCH  = r"\[SIG:\s*[A-Za-z0-9_\-]+\]"
-MARKER_HIDE_PAD = 1.5
 
 
 # Portal 59 Fix 4 — legacy sig-key migration. Older rendered PDFs on disk still
@@ -206,10 +210,20 @@ def _field_value(field, key: str):
     return getattr(field, key)
 
 
+def _field_box(field) -> tuple[float, float, float, float]:
+    return (
+        float(_field_value(field, "x0")),
+        float(_field_value(field, "y0")),
+        float(_field_value(field, "x1")),
+        float(_field_value(field, "y1")),
+    )
+
+
 def hide_signature_markers(pdf_path: str, fields: list) -> None:
     """
-    Cover [SIG:...] marker text in the cached viewer PDF after coordinates are
-    extracted. The marker positions remain in the DB for signing overlays.
+    Remove [SIG:...] marker text from the cached viewer PDF after coordinates
+    are extracted. Transparent text-only redaction preserves table line art,
+    cell shading and images; the positions remain in the DB for overlays.
     """
     visible_fields = [f for f in fields if _field_value(f, "sig_key") != "__none__"]
     if not visible_fields or not os.path.exists(pdf_path):
@@ -223,22 +237,24 @@ def hide_signature_markers(pdf_path: str, fields: list) -> None:
     changed = False
     saved_copy: str | None = None
     try:
+        boxes_by_page: dict[int, list[tuple[float, float, float, float]]] = {}
         for field in visible_fields:
             page_idx = int(_field_value(field, "page_number"))
             if page_idx < 0 or page_idx >= len(doc):
                 continue
 
             page = doc[page_idx]
-            rect = fitz.Rect(
-                max(0.0, float(_field_value(field, "x0")) - MARKER_HIDE_PAD),
-                max(0.0, float(_field_value(field, "y0")) - MARKER_HIDE_PAD),
-                min(page.rect.x1, float(_field_value(field, "x1")) + MARKER_HIDE_PAD),
-                min(page.rect.y1, float(_field_value(field, "y1")) + MARKER_HIDE_PAD),
+            sig_key = str(_field_value(field, "sig_key") or "")
+            boxes = marker_hide_boxes(
+                page,
+                _field_box(field),
+                signature_marker_candidates(sig_key),
             )
-            if rect.is_empty:
-                continue
-            page.draw_rect(rect, color=(1.0, 1.0, 1.0), fill=(1.0, 1.0, 1.0), width=0)
-            changed = True
+            if boxes:
+                boxes_by_page.setdefault(page_idx, []).extend(boxes)
+
+        for page_idx, boxes in boxes_by_page.items():
+            changed = erase_marker_boxes(doc[page_idx], boxes) or changed
 
         if changed:
             try:
@@ -277,7 +293,8 @@ def prepare_document(docx_path: str, db: "Session") -> dict:
     pdf_path  = os.path.splitext(docx_path)[0] + ".pdf"
 
     # Step 1: Convert DOCX → PDF
-    if not os.path.exists(pdf_path):
+    pdf_was_existing = os.path.exists(pdf_path)
+    if not pdf_was_existing:
         pdf_path = convert_docx_to_pdf(docx_path)
 
     # Step 2: Return from cache if already extracted.
@@ -320,6 +337,13 @@ def prepare_document(docx_path: str, db: "Session") -> dict:
                     for f in existing
                 ],
             }
+
+    # A prepared viewer PDF has its marker text removed after extraction. If
+    # the coordinate cache is missing (for example after a database restore),
+    # regenerate from the source DOCX before scanning so every field remains
+    # recoverable. Avoid a duplicate conversion during the normal first open.
+    if not existing and pdf_was_existing:
+        pdf_path = convert_docx_to_pdf(docx_path)
 
     # Step 3: Extract and store
     raw_fields = extract_sig_fields(pdf_path)

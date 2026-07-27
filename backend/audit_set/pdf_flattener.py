@@ -22,13 +22,18 @@ import os
 import shutil
 import tempfile
 from io import BytesIO
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import fitz  # PyMuPDF
 
 import logging
 
 from audit_set.signature_image import signature_pdf_streams, signature_png_bytes
+from audit_set.signature_marker_visibility import (
+    erase_marker_boxes,
+    marker_hide_boxes,
+    signature_marker_candidates,
+)
 from storage.document_store import ensure_local
 
 logger = logging.getLogger(__name__)
@@ -42,11 +47,6 @@ SIG_MIN_W = 140.0
 SIG_MIN_H = 28.0
 NAME_TEXT_H = 10.0
 NAME_GAP = 1.5
-
-# Tight padding around the [SIG:...] text only. A larger whiteout makes the
-# downloaded PDF look like the signature has a white background because table
-# borders and form lines are erased under the transparent ink.
-WHITEOUT_PAD = 1.5
 
 SIG_TO_ROLE = {
     "CB_PLANNER": "cb_planner",
@@ -197,6 +197,9 @@ def flatten_document(
         with open(pdf_path, "rb") as f:
             return f.read()
 
+    render_jobs: list[tuple[int, Any, fitz.Rect, fitz.Rect, str | None]] = []
+    marker_boxes_by_page: dict[int, list[tuple[float, float, float, float]]] = {}
+
     for sig_key, placement in placement_map.items():
         field = field_map.get(sig_key)
         if not field:
@@ -235,15 +238,22 @@ def flatten_document(
         name_rect = _name_rect_below_signature(overlay_rect, doc[page_idx].rect)
 
         # ── Hide only the [SIG:...] placeholder text ──────────────────────────
-        marker_rect = _marker_hide_rect(page, field, (sig_key, field.sig_key))
-        if marker_rect:
-            page.draw_rect(
-                marker_rect,
-                color=(1.0, 1.0, 1.0),
-                fill=(1.0, 1.0, 1.0),
-                width=0,
-            )
+        marker_boxes = marker_hide_boxes(
+            page,
+            (float(field.x0), float(field.y0), float(field.x1), float(field.y1)),
+            signature_marker_candidates(sig_key, field.sig_key),
+        )
+        if marker_boxes:
+            marker_boxes_by_page.setdefault(page_idx, []).extend(marker_boxes)
+        render_jobs.append((page_idx, placement, overlay_rect, name_rect, signer_name))
 
+    # Remove all marker text before adding signature images or signer names.
+    # Transparent text redaction preserves table lines, cell shading and images.
+    for page_idx, marker_boxes in marker_boxes_by_page.items():
+        erase_marker_boxes(doc[page_idx], marker_boxes)
+
+    for page_idx, placement, overlay_rect, name_rect, signer_name in render_jobs:
+        page = doc[page_idx]
         # ── Insert signature image ────────────────────────────────────────────
         try:
             _insert_signature_image(page, overlay_rect, placement.signature_image)
@@ -283,62 +293,6 @@ def flatten_document(
 
 
 # ── Internal helper ───────────────────────────────────────────────────────────
-
-def _signature_marker_candidates(*keys: str | None) -> list[str]:
-    """Return searchable marker spellings without broad area whiteouts."""
-    candidates: list[str] = []
-    for key in keys:
-        cleaned = (key or "").strip()
-        if not cleaned or cleaned == "__none__":
-            continue
-        for marker in (f"[SIG:{cleaned}]", f"[SIG: {cleaned}]", f"SIG:{cleaned}"):
-            if marker not in candidates:
-                candidates.append(marker)
-    return candidates
-
-
-def _field_rect(field) -> fitz.Rect:
-    return fitz.Rect(float(field.x0), float(field.y0), float(field.x1), float(field.y1))
-
-
-def _padded_page_rect(page: fitz.Page, rect: fitz.Rect, pad: float) -> fitz.Rect:
-    return fitz.Rect(
-        max(page.rect.x0, rect.x0 - pad),
-        max(page.rect.y0, rect.y0 - pad),
-        min(page.rect.x1, rect.x1 + pad),
-        min(page.rect.y1, rect.y1 + pad),
-    )
-
-
-def _marker_hide_rect(
-    page: fitz.Page,
-    field,
-    keys: tuple[str | None, ...],
-) -> fitz.Rect | None:
-    """Hide only the literal [SIG:...] text, never the whole signature slot."""
-    clip = _padded_page_rect(page, _field_rect(field), 20.0)
-    matches: list[fitz.Rect] = []
-
-    for marker in _signature_marker_candidates(*keys):
-        try:
-            matches.extend(page.search_for(marker, clip=clip))
-        except Exception:
-            continue
-
-    if matches:
-        rect = fitz.Rect(matches[0])
-        for match in matches[1:]:
-            rect |= match
-        return _padded_page_rect(page, rect, WHITEOUT_PAD)
-
-    logger.warning(
-        "[flatten_document] Marker text not found for sig_key=%s page=%s; "
-        "leaving PDF content untouched to avoid white signature boxes.",
-        getattr(field, "sig_key", None),
-        getattr(field, "page_number", None),
-    )
-    return None
-
 
 def _fit_image_rect(rect: fitz.Rect, image_size: tuple[int, int]) -> fitz.Rect:
     """Fit an image inside a slot without stretching or covering extra PDF area."""
