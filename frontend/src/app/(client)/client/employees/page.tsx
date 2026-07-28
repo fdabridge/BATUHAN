@@ -4,14 +4,17 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2, PenLine, Pencil, Plus, RotateCcw, Trash2, Upload, X } from 'lucide-react'
 import api from '@/lib/api'
 import { removeWhiteBackground, MAX_SIGNATURE_FILE_BYTES } from '@/lib/signatureUtils'
+import { usePlatformPolicy } from '@/lib/useManualActionDates'
 
 interface OrgEmployee {
   id: string
   full_name: string
   role_title: string
+  email: string | null
   is_active: boolean
   has_signature: boolean
   signature_source: 'drawn' | 'uploaded' | null
+  signature_verification_pending?: boolean
   created_at: string
   updated_at: string
 }
@@ -83,21 +86,22 @@ export default function ClientEmployeesPage() {
             <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-medium text-gray-500">
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">Role / Title</th>
+              <th className="px-4 py-3">Email</th>
               <th className="px-4 py-3">Signature</th>
               <th className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={4} className="py-10 text-center text-sm text-gray-400">
+              <tr><td colSpan={5} className="py-10 text-center text-sm text-gray-400">
                 <Loader2 size={16} className="mx-auto animate-spin" />
               </td></tr>
             )}
             {!loading && error && (
-              <tr><td colSpan={4} className="py-10 text-center text-sm text-red-500">{error}</td></tr>
+              <tr><td colSpan={5} className="py-10 text-center text-sm text-red-500">{error}</td></tr>
             )}
             {!loading && !error && list.length === 0 && (
-              <tr><td colSpan={4} className="py-10 text-center text-sm text-gray-400">
+              <tr><td colSpan={5} className="py-10 text-center text-sm text-gray-400">
                 No employees yet. Add your first person.
               </td></tr>
             )}
@@ -105,10 +109,15 @@ export default function ClientEmployeesPage() {
               <tr key={e.id} className="border-b border-gray-50 last:border-0">
                 <td className="px-4 py-3 font-medium text-gray-800">{e.full_name}</td>
                 <td className="px-4 py-3 text-gray-600">{e.role_title}</td>
+                <td className="px-4 py-3 text-gray-500">{e.email || '—'}</td>
                 <td className="px-4 py-3">
                   {e.has_signature ? (
                     <span className="rounded bg-[#F0FAF4] px-2 py-0.5 text-xs font-medium text-[#1A4731]">
                       ✓ On file
+                    </span>
+                  ) : e.signature_verification_pending ? (
+                    <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                      Verification pending
                     </span>
                   ) : (
                     <span className="rounded bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
@@ -390,11 +399,14 @@ function CreateModal({ open, onClose, onSuccess }: {
 }) {
   const [fullName, setFullName] = useState('')
   const [role,     setRole]     = useState('')
+  const [email,    setEmail]    = useState('')
   const [busy,     setBusy]     = useState(false)
   const [err,      setErr]      = useState<string | null>(null)
   const signatureGetter = useRef<() => SignaturePayload | null>(() => null)
+  const policy = usePlatformPolicy()
+  const verificationEnabled = policy.data?.employee_signature_email_verification ?? true
 
-  useEffect(() => { if (open) { setFullName(''); setRole(''); setErr(null) } }, [open])
+  useEffect(() => { if (open) { setFullName(''); setRole(''); setEmail(''); setErr(null) } }, [open])
 
   async function submit(ev: React.FormEvent) {
     ev.preventDefault()
@@ -404,9 +416,10 @@ function CreateModal({ open, onClose, onSuccess }: {
       const created = await api.post<OrgEmployee>('/org/employees', {
         full_name: fullName.trim(),
         role_title: role.trim(),
+        email: email.trim() || null,
       })
       const signature = signatureGetter.current?.() ?? null
-      if (signature) {
+      if (signature && !verificationEnabled) {
         try {
           await api.post(`/org/employees/${created.data.id}/signature`, signature)
         } catch {
@@ -433,12 +446,22 @@ function CreateModal({ open, onClose, onSuccess }: {
           <input className={inputCls} value={role} onChange={(e) => setRole(e.target.value)} placeholder="e.g. Quality Manager" />
         </div>
         <div>
+          <label className={lblCls}>Email {verificationEnabled ? '*' : ''}</label>
+          <input type="email" className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)}
+            placeholder="employee@company.com" required={verificationEnabled} />
+        </div>
+        {!verificationEnabled && <div>
           <label className={lblCls}>Employee signature</label>
           <EmployeeSignatureInput
             optional
             registerGetter={(getter) => { signatureGetter.current = getter }}
           />
-        </div>
+        </div>}
+        {verificationEnabled && (
+          <p className="rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">
+            After creating the employee, use the signature action. The signature becomes active only after the employee enters the emailed code.
+          </p>
+        )}
         {err && <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{err}</div>}
         <button type="submit" disabled={busy}
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#1A4731] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60">
@@ -457,6 +480,7 @@ function EditModal({ target, onClose, onSuccess }: {
 }) {
   const [fullName, setFullName] = useState('')
   const [role,     setRole]     = useState('')
+  const [email,    setEmail]    = useState('')
   const [active,   setActive]   = useState(true)
   const [busy,     setBusy]     = useState(false)
   const [err,      setErr]      = useState<string | null>(null)
@@ -465,6 +489,7 @@ function EditModal({ target, onClose, onSuccess }: {
     if (target) {
       setFullName(target.full_name)
       setRole(target.role_title)
+      setEmail(target.email || '')
       setActive(target.is_active)
       setErr(null)
     }
@@ -479,6 +504,7 @@ function EditModal({ target, onClose, onSuccess }: {
       await api.patch(`/org/employees/${target.id}`, {
         full_name:  fullName.trim(),
         role_title: role.trim(),
+        email: email.trim() || null,
         is_active:  active,
       })
       onSuccess()
@@ -499,6 +525,10 @@ function EditModal({ target, onClose, onSuccess }: {
         <div>
           <label className={lblCls}>Role / Title *</label>
           <input className={inputCls} value={role} onChange={(e) => setRole(e.target.value)} />
+        </div>
+        <div>
+          <label className={lblCls}>Email</label>
+          <input type="email" className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
         <label className="flex items-center gap-2 text-sm text-gray-700">
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
@@ -522,10 +552,16 @@ function SignatureModal({ target, onClose, onSuccess }: {
 }) {
   const [busy,       setBusy]       = useState(false)
   const [err,        setErr]        = useState<string | null>(null)
+  const [verificationPending, setVerificationPending] = useState(false)
+  const [code, setCode] = useState('')
   const signatureGetter = useRef<() => SignaturePayload | null>(() => null)
 
   useEffect(() => {
-    if (!target) setErr(null)
+    if (!target) {
+      setErr(null)
+      setVerificationPending(false)
+      setCode('')
+    }
   }, [target])
 
   async function submit() {
@@ -537,10 +573,27 @@ function SignatureModal({ target, onClose, onSuccess }: {
     }
     setBusy(true); setErr(null)
     try {
-      await api.post(`/org/employees/${target.id}/signature`, signature)
-      onSuccess()
+      const response = await api.post<{ verification_required?: boolean }>(`/org/employees/${target.id}/signature`, signature)
+      if (response.data.verification_required) {
+        setVerificationPending(true)
+      } else {
+        onSuccess()
+      }
     } catch (e) {
       setErr(extractDetail(e, 'Failed to save signature.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function verify() {
+    if (!target) return
+    setBusy(true); setErr(null)
+    try {
+      await api.post(`/org/employees/${target.id}/signature/verify`, { code })
+      onSuccess()
+    } catch (e) {
+      setErr(extractDetail(e, 'The verification code is not valid.'))
     } finally {
       setBusy(false)
     }
@@ -553,14 +606,22 @@ function SignatureModal({ target, onClose, onSuccess }: {
           Draw this employee&apos;s signature or upload a photo/scan. This is the signature
           used for that employee&apos;s document slots.
         </p>
-        <EmployeeSignatureInput
-          registerGetter={(getter) => { signatureGetter.current = getter }}
-        />
+        {!verificationPending ? (
+          <EmployeeSignatureInput registerGetter={(getter) => { signatureGetter.current = getter }} />
+        ) : (
+          <div className="space-y-2 rounded-lg bg-blue-50 p-3">
+            <p className="text-xs text-blue-700">Enter the 6-digit code sent to {target?.email}.</p>
+            <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              inputMode="numeric" autoComplete="one-time-code" placeholder="Verification code"
+              className={inputCls} />
+          </div>
+        )}
         {err && <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{err}</div>}
-        <button type="button" onClick={submit} disabled={busy}
+        <button type="button" onClick={verificationPending ? verify : submit}
+          disabled={busy || (verificationPending && code.length !== 6)}
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#1A4731] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60">
           {busy && <Loader2 size={14} className="animate-spin" />}
-          {busy ? 'Saving…' : 'Save signature'}
+          {busy ? 'Saving…' : verificationPending ? 'Verify and activate signature' : 'Save signature'}
         </button>
       </div>
     </Modal>

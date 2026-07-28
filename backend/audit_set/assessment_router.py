@@ -29,6 +29,7 @@ from audit_set.db_models import (
 )
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
+from auth.policy import resolve_realtime_action_datetime
 from config.settings import get_settings
 from email_service import send_otp_code
 from storage.document_store import upload as store_upload
@@ -264,6 +265,7 @@ def verify_assessment_signature(
     request: Request,
     body:         SignAssessmentOTPBody = Body(default_factory=SignAssessmentOTPBody),
     db:           Session = Depends(get_db),
+    auth_db:      Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     a = _get_client_assessment(aid, current_user, db)
@@ -278,10 +280,7 @@ def verify_assessment_signature(
     if _hash(otp.strip()) != a.otp_hash:
         raise HTTPException(400, "Invalid code.")
 
-    signed_dt = (
-        datetime.combine(body.signed_date, datetime.min.time())
-        if body.signed_date else datetime.utcnow()
-    )
+    signed_dt = resolve_realtime_action_datetime(auth_db, body.signed_date)
     a.signed_by      = current_user.id
     a.signed_at      = signed_dt
     a.signed_ip      = request.client.host if request.client else None
@@ -426,6 +425,7 @@ def sign_assessment_direct(
     aid: str,
     body:         SignAssessmentDirectBody = Body(default_factory=SignAssessmentDirectBody),
     db:           Session = Depends(get_db),
+    auth_db:      Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     a = _get_client_assessment(aid, current_user, db)
@@ -435,10 +435,7 @@ def sign_assessment_direct(
         raise HTTPException(400, "Rating must be set before signing — save a draft first")
 
     a.signed_by = current_user.id
-    a.signed_at = (
-        datetime.combine(body.signed_date, datetime.min.time())
-        if body.signed_date else datetime.utcnow()
-    )
+    a.signed_at = resolve_realtime_action_datetime(auth_db, body.signed_date)
     db.commit()
     db.refresh(a)
     return _assessment_dict(a)

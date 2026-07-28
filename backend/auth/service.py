@@ -79,6 +79,10 @@ def create_user(
     auditor_id: str | None = None,
     username: str | None = None,
 ) -> PlatformUser:
+    is_activated = True
+    if role == "client":
+        from auth.policy import CLIENT_EMAIL_VERIFICATION, policy_enabled
+        is_activated = not policy_enabled(db, CLIENT_EMAIL_VERIFICATION)
     user = PlatformUser(
         email=email,
         password_hash=hash_password(password),
@@ -86,10 +90,32 @@ def create_user(
         role=role,
         auditor_id=auditor_id,
         username=username,
+        is_activated=is_activated,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
+    if role == "client" and not user.is_activated:
+        # Best-effort initial activation email; the client can request a fresh
+        # code after login if delivery is unavailable during account creation.
+        try:
+            from auth.otp import generate_otp
+            from email_service import send_otp_code
+            code, code_hash, expires_at = generate_otp()
+            if send_otp_code(
+                to=user.email,
+                full_name=user.full_name,
+                otp=code,
+                document_label="client account activation",
+            ):
+                user.activation_email = user.email
+                user.activation_otp_hash = code_hash
+                user.activation_otp_expires_at = expires_at
+                user.activation_otp_attempts = 0
+                db.commit()
+                db.refresh(user)
+        except Exception:
+            pass
     return user
 
 

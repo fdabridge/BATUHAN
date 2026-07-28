@@ -50,6 +50,7 @@ from audit_set.db_models import (
 )
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
+from auth.policy import resolve_realtime_action_datetime
 
 class GenerateFR233Request(BaseModel):
     released_at_override: str | None = None
@@ -550,6 +551,7 @@ def generate_fr233(
     audit_set_id: str,
     body: GenerateFR233Request = Body(default=GenerateFR233Request()),
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     """Render FR.233 from the blank template, persist it as a SharedDocument and
@@ -594,18 +596,18 @@ def generate_fr233(
             id=record.document_id
         ).first()
 
+    requested_released_at = None
     if body.released_at_override:
         try:
-            released_at_dt = _dt.datetime.fromisoformat(body.released_at_override)
+            requested_released_at = _dt.datetime.fromisoformat(body.released_at_override)
         except ValueError:
             raise HTTPException(
                 400,
                 "released_at_override must be ISO 8601: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS",
             )
     elif _existing_doc_for_date and _existing_doc_for_date.released_at:
-        released_at_dt = _existing_doc_for_date.released_at
-    else:
-        released_at_dt = _dt.datetime.utcnow()
+        requested_released_at = _existing_doc_for_date.released_at
+    released_at_dt = resolve_realtime_action_datetime(auth_db, requested_released_at)
 
     # Portal 125 — allow generation even with empty committee (blank rows will render).
     committee_members = audit_set.committee_members or []
@@ -683,6 +685,7 @@ def release_fr233_blank(
     audit_set_id: str,
     body: ReleaseFR233Request = Body(default=ReleaseFR233Request()),
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     """Portal 125 — Release FR.233 as a blank document from the template."""
@@ -711,15 +714,15 @@ def release_fr233_blank(
             id=existing_record.document_id
         ).first()
 
+    requested_released_at = None
     if body.released_at:
         try:
-            released_at_dt = _dt.datetime.fromisoformat(body.released_at)
+            requested_released_at = _dt.datetime.fromisoformat(body.released_at)
         except ValueError:
             raise HTTPException(400, "released_at must be ISO 8601: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS")
     elif existing_doc and existing_doc.released_at:
-        released_at_dt = existing_doc.released_at
-    else:
-        released_at_dt = _dt.datetime.utcnow()
+        requested_released_at = existing_doc.released_at
+    released_at_dt = resolve_realtime_action_datetime(auth_db, requested_released_at)
 
     template_path = _resolve_fr233_template(audit_set)
     if not template_path:
@@ -817,6 +820,7 @@ async def upload_fr233(
     audit_set_id: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     """Portal 57 — committee uploads the completed FR.233 Review & Decision Form
@@ -859,7 +863,7 @@ async def upload_fr233(
             direction="cb_to_client",
             status="released",
             released_by=current_user.id,
-            released_at=datetime.utcnow(),
+            released_at=resolve_realtime_action_datetime(auth_db, None),
         )
         db.add(doc)
         db.flush()
@@ -872,7 +876,7 @@ async def upload_fr233(
         doc.file_path   = out_path
         doc.status      = "released"
         doc.released_by = current_user.id
-        doc.released_at = datetime.utcnow()
+        doc.released_at = resolve_realtime_action_datetime(auth_db, None)
         from audit_set.db_models import DocumentSignatureField
         _dsf_key = resolve_docx_key(out_path)
         db.query(DocumentSignatureField).filter_by(docx_path=_dsf_key).delete()

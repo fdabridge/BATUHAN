@@ -34,6 +34,7 @@ from audit_set.pipeline_triggers import fire_phase_triggers
 from audit_set.report_signature_rules import audit_report_has_all_required_approvals
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
+from auth.policy import resolve_realtime_action_datetime
 from email_service import send_client_status_update
 
 router = APIRouter(prefix="/audit-sets", tags=["workflow"])
@@ -514,15 +515,7 @@ def update_workflow_status(
         if stage_row:
             stage_row.status = "complete"
 
-    # Retroactive mode: use caller-supplied date if provided, else record now.
-    if payload.effective_date:
-        effective_ts = datetime(
-            payload.effective_date.year,
-            payload.effective_date.month,
-            payload.effective_date.day,
-        )
-    else:
-        effective_ts = datetime.utcnow()
+    effective_ts = resolve_realtime_action_datetime(auth_db, payload.effective_date)
 
     if to_status == "certified":
         from audit_set.service import ensure_cert_dates_for_certified
@@ -579,6 +572,7 @@ def jump_workflow_status(
     audit_set_id: str,
     payload: WorkflowJumpSchema,
     db: Session = Depends(get_audit_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     """
@@ -602,14 +596,7 @@ def jump_workflow_status(
 
     audit_set.workflow_status = payload.target_status
 
-    if payload.effective_date:
-        effective_ts = datetime(
-            payload.effective_date.year,
-            payload.effective_date.month,
-            payload.effective_date.day,
-        )
-    else:
-        effective_ts = datetime.utcnow()
+    effective_ts = resolve_realtime_action_datetime(auth_db, payload.effective_date)
 
     if payload.target_status == "certified":
         from audit_set.service import ensure_cert_dates_for_certified

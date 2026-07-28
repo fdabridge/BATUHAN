@@ -16,7 +16,9 @@ from passlib.context import CryptContext
 from audit_set.db_models import AuditSet, AuditSetStage, AuditSetStatusEvent, get_db as get_audit_db
 from audit_set.service import _create_auto_stages
 from auth.db_models import PlatformUser, get_db as get_auth_db
-from email_service import send_client_welcome
+from auth.policy import CLIENT_EMAIL_VERIFICATION, policy_enabled
+from auth.otp import generate_otp
+from email_service import send_client_welcome, send_otp_code
 
 router = APIRouter(prefix="/apply", tags=["application"])
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -251,6 +253,7 @@ def submit_application(
         full_name=payload.representative_name,
         role="client",
         is_active=True,
+        is_activated=not policy_enabled(auth_db, CLIENT_EMAIL_VERIFICATION),
         audit_set_id=audit_set.id,
     )
     auth_db.add(user)
@@ -270,6 +273,26 @@ def submit_application(
         )
     except Exception:
         pass
+
+    # New verified-mode accounts receive an activation code immediately. If
+    # delivery is temporarily unavailable they can request a fresh code from
+    # the activation screen after logging in.
+    if not user.is_activated:
+        try:
+            code, code_hash, expires_at = generate_otp()
+            if send_otp_code(
+                to=user.email,
+                full_name=user.full_name,
+                otp=code,
+                document_label="client account activation",
+            ):
+                user.activation_email = user.email
+                user.activation_otp_hash = code_hash
+                user.activation_otp_expires_at = expires_at
+                user.activation_otp_attempts = 0
+                auth_db.commit()
+        except Exception:
+            pass
 
     return {
         "success":      True,

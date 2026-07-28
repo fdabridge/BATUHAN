@@ -42,8 +42,9 @@ from audit_set.report_signature_rules import (
     audit_report_requires_certification_manager,
     audit_report_requires_appointed_reviewer,
 )
-from auth.db_models import PlatformUser
+from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
+from auth.policy import resolve_realtime_action_datetime
 from config.settings import get_settings
 from storage.document_store import (
     delete as store_delete,
@@ -182,6 +183,7 @@ async def upload_audit_report(
     report_date:  Optional[date] = Form(None),
     file: UploadFile = File(...),
     db:       Session = Depends(get_db),
+    auth_db:  Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     if current_user.role not in UPLOAD_ROLES:
@@ -198,7 +200,7 @@ async def upload_audit_report(
     content = await file.read()
     file_path = store_upload(relative_path, content)
 
-    record_date = datetime.combine(report_date, datetime.min.time()) if report_date else datetime.utcnow()
+    record_date = resolve_realtime_action_datetime(auth_db, report_date)
     report = AuditSetAuditReport(
         audit_set_id=audit_set_id,
         stage_type=stage_type,
@@ -401,6 +403,7 @@ def la_sign_direct(
     request: Request,
     body:    SignReportBody = Body(default_factory=SignReportBody),
     db:      Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     report = db.query(AuditSetAuditReport).filter_by(
@@ -415,10 +418,7 @@ def la_sign_direct(
         raise HTTPException(400, f"Report status is '{report.status}', expected 'pending_la'")
 
     report.la_user_id   = current_user.id
-    report.la_signed_at = (
-        datetime.combine(body.signed_date, datetime.min.time())
-        if body.signed_date else datetime.utcnow()
-    )
+    report.la_signed_at = resolve_realtime_action_datetime(auth_db, body.signed_date)
     report.la_signed_ip = request.client.host if request.client else None
     report.status       = "pending_review"
     db.commit()
@@ -522,6 +522,7 @@ def review_sign_direct(
     request: Request,
     body:    SignReportBody = Body(default_factory=SignReportBody),
     db:      Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     # Fetch once — 404 first, then auth.
@@ -538,10 +539,7 @@ def review_sign_direct(
     if report.status != "pending_review":
         raise HTTPException(400, f"Report status is '{report.status}', expected 'pending_review'")
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
-    signed_dt = (
-        datetime.combine(body.signed_date, datetime.min.time())
-        if body.signed_date else datetime.utcnow()
-    )
+    signed_dt = resolve_realtime_action_datetime(auth_db, body.signed_date)
     report.reviewer_user_id   = current_user.id
     report.reviewer_signed_at = signed_dt
     report.reviewer_signed_ip = request.client.host if request.client else None

@@ -66,6 +66,7 @@ from audit_set.report_signature_rules import (
 from audit_set.signature_image import normalize_signature_data_url
 from auth.db_models import PlatformUser, UserSignature, get_db as get_auth_db
 from auth.dependencies import get_current_user
+from auth.policy import resolve_realtime_action_datetime
 from email_service import send_document_released
 router = APIRouter(prefix="/viewer", tags=["viewer"])
 
@@ -1949,10 +1950,7 @@ def sign_confirm(
         db.add(vsp)
 
     ip = request.client.host if request.client else None
-    signed_at = (
-        datetime.combine(body.signed_date, datetime.min.time())
-        if body.signed_date else datetime.utcnow()
-    )
+    signed_at = resolve_realtime_action_datetime(auth_db, body.signed_date)
     try:
         signature_image_b64 = normalize_signature_data_url(signature_image_b64)
     except Exception:

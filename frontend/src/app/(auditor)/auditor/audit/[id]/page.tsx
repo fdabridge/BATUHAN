@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import api from '@/lib/api'
 import { MessageThread } from '@/components/ui/MessageThread'
+import { useManualActionDates } from '@/lib/useManualActionDates'
 
 const STANDARD_NAMES: Record<string, string> = {
   QMS:   'ISO 9001:2015',
@@ -561,6 +562,7 @@ function AuditorDeclarationsView({
   auditSetId: string
   currentAuditorId: string | null
 }) {
+  const { manualActionDatesEnabled } = useManualActionDates()
   const [declarations, setDeclarations] = useState<{
     id: string; stage_type: string; member_name: string; member_role: string
     auditor_ref_id: string | null; is_signed: boolean; signed_at: string | null
@@ -602,7 +604,9 @@ function AuditorDeclarationsView({
     setSigning(s => ({ ...s, [id]: true }))
     setSignErrs(e => ({ ...e, [id]: '' }))
     try {
-      const signed_date = signDates[id] || new Date().toISOString().slice(0, 10)
+      const signed_date = manualActionDatesEnabled
+        ? (signDates[id] || new Date().toISOString().slice(0, 10))
+        : undefined
       await api.post(`/audit-sets/${auditSetId}/declarations/${id}/sign/direct`, { signed_date })
       // Re-fetch to get file_path/file_name from server after PDF generation
       const refreshed = await api.get(`/audit-sets/${auditSetId}/declarations`)
@@ -669,7 +673,7 @@ function AuditorDeclarationsView({
           </div>
 
           <div className="flex items-end gap-3">
-            <div>
+            {manualActionDatesEnabled && <div>
               <label className="block text-xs text-gray-500 mb-1">Signing date</label>
               <input
                 type="date"
@@ -677,7 +681,7 @@ function AuditorDeclarationsView({
                 onChange={e => setSignDates(prev => ({ ...prev, [d.id]: e.target.value }))}
                 className="rounded-lg border px-2 py-1 text-sm"
               />
-            </div>
+            </div>}
             <button
               type="button"
               onClick={() => handleSign(d.id)}
@@ -752,6 +756,7 @@ const FORM_OPTS = [
 ]
 
 function AuditorReportsView({ auditSetId, auditType }: { auditSetId: string; auditType: string | null }) {
+  const { manualActionDatesEnabled } = useManualActionDates()
   const [reports, setReports] = useState<{
     id: string; stage_type: string; report_form: string; label: string
     file_name: string | null; status: string
@@ -832,7 +837,7 @@ function AuditorReportsView({ auditSetId, auditType }: { auditSetId: string; aud
       fd.append('stage_type', stageType)
       fd.append('report_form', reportForm)
       fd.append('label', form.label.trim())
-      fd.append('report_date', reportDate)
+      if (manualActionDatesEnabled) fd.append('report_date', reportDate)
       fd.append('file', file)
       const r = await api.post(`/audit-sets/${auditSetId}/audit-reports/upload`, fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -859,7 +864,9 @@ function AuditorReportsView({ auditSetId, auditType }: { auditSetId: string; aud
     setReviewSigning(s => ({ ...s, [id]: true }))
     setReviewErr(e => ({ ...e, [id]: '' }))
     try {
-      const signed_date = reviewSignDate[id] || new Date().toISOString().slice(0, 10)
+      const signed_date = manualActionDatesEnabled
+        ? (reviewSignDate[id] || new Date().toISOString().slice(0, 10))
+        : undefined
       const r = await api.post(
         `/audit-sets/${auditSetId}/audit-reports/${id}/sign/review/direct`,
         { signed_date }
@@ -949,7 +956,7 @@ function AuditorReportsView({ auditSetId, auditType }: { auditSetId: string; aud
                 className="text-sm"
               />
             </div>
-            <div>
+            {manualActionDatesEnabled && <div>
               <label className="mb-1 block text-xs font-medium text-gray-600">Report date</label>
               <input
                 type="date"
@@ -957,7 +964,7 @@ function AuditorReportsView({ auditSetId, auditType }: { auditSetId: string; aud
                 onChange={(e) => setReportDate(e.target.value)}
                 className="w-full rounded-lg border px-3 py-2 text-sm"
               />
-            </div>
+            </div>}
           </div>
           <button
             type="submit"
@@ -1045,12 +1052,12 @@ function AuditorReportsView({ auditSetId, auditType }: { auditSetId: string; aud
                         You are assigned as the reviewer for this report.
                       </p>
                       <div className="flex flex-wrap items-center gap-2">
-                        <input
+                        {manualActionDatesEnabled && <input
                           type="date"
                           value={reviewSignDate[r.id] || new Date().toISOString().slice(0, 10)}
                           onChange={e => setReviewSignDate(d => ({ ...d, [r.id]: e.target.value }))}
                           className="rounded-lg border bg-white px-2 py-1.5 text-sm"
-                        />
+                        />}
                         <button
                           type="button"
                           disabled={reviewSigning[r.id]}
@@ -1246,6 +1253,7 @@ function AuditorSharedDocsView({
 
 export default function AuditorAuditDetail() {
   const { id } = useParams<{ id: string }>()
+  const { manualActionDatesEnabled } = useManualActionDates()
   const [data, setData]   = useState<AssignmentDetail | null>(null)
   const [myAuditorId, setMyAuditorId] = useState<string | null>(null)
   const [tab, setTab]     = useState<Tab>('overview')
@@ -1333,7 +1341,8 @@ export default function AuditorAuditDetail() {
       const form = new FormData()
       form.append('file', uploadFile)
       await api.post(
-        `/audit-sets/${id}/documents/upload?label=${encodeURIComponent(uploadLabel)}&upload_date=${uploadDate}`,
+        `/audit-sets/${id}/documents/upload?label=${encodeURIComponent(uploadLabel)}`
+          + (manualActionDatesEnabled ? `&upload_date=${uploadDate}` : ''),
         form,
         { headers: { 'Content-Type': 'multipart/form-data' } },
       )
@@ -1364,7 +1373,7 @@ export default function AuditorAuditDetail() {
         label,
         document_type: 'audit_plan',
         stage_type: stageType,
-        upload_date: uploadDate,
+        ...(manualActionDatesEnabled ? { upload_date: uploadDate } : {}),
       })
       await api.post(
         `/audit-sets/${id}/documents/upload?${qs.toString()}`,
@@ -1396,7 +1405,7 @@ export default function AuditorAuditDetail() {
         label,
         document_type: 'meeting_form',
         stage_type: stageType,
-        upload_date: uploadDate,
+        ...(manualActionDatesEnabled ? { upload_date: uploadDate } : {}),
       })
       await api.post(
         `/audit-sets/${id}/documents/upload?${qs.toString()}`,
@@ -1605,13 +1614,13 @@ export default function AuditorAuditDetail() {
                 onChange={(e) => setAuditPlanFile(e.target.files?.[0] ?? null)}
                 className="text-sm"
               />
-              <input
+              {manualActionDatesEnabled && <input
                 type="date"
                 value={uploadDate}
                 onChange={(e) => setUploadDate(e.target.value)}
                 className="rounded-lg border px-2 py-1.5 text-sm"
                 title="Document date (leave as today if correct)"
-              />
+              />}
               <button
                 type="button"
                 onClick={handleAuditPlanUpload}
@@ -1654,13 +1663,13 @@ export default function AuditorAuditDetail() {
                 onChange={(e) => setMeetingFile(e.target.files?.[0] ?? null)}
                 className="text-sm"
               />
-              <input
+              {manualActionDatesEnabled && <input
                 type="date"
                 value={uploadDate}
                 onChange={(e) => setUploadDate(e.target.value)}
                 className="rounded-lg border px-2 py-1.5 text-sm"
                 title="Document date (leave as today if correct)"
-              />
+              />}
               <button
                 type="button"
                 onClick={handleMeetingUpload}
@@ -1704,7 +1713,7 @@ export default function AuditorAuditDetail() {
                 onChange={(e) => setUploadLabel(e.target.value)}
               />
             </div>
-            <div>
+            {manualActionDatesEnabled && <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">Upload date</label>
               <input
                 type="date"
@@ -1712,7 +1721,7 @@ export default function AuditorAuditDetail() {
                 onChange={(e) => setUploadDate(e.target.value)}
                 className="w-full rounded-lg border px-3 py-2 text-sm"
               />
-            </div>
+            </div>}
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">File</label>
               <input

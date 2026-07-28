@@ -13,7 +13,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, String,
+    Boolean, Column, DateTime, Integer, String,
     create_engine,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -51,6 +51,20 @@ def create_tables():
     # Safe migrations — added after initial deployment
     _safe_add_column_auth("platform_users", "audit_set_id VARCHAR")
     _safe_add_column_auth("platform_users", "username VARCHAR")
+    _safe_add_column_auth("platform_users", "is_activated BOOLEAN DEFAULT TRUE")
+    _safe_add_column_auth("platform_users", "activation_verified_at TIMESTAMP")
+    _safe_add_column_auth("platform_users", "activation_email VARCHAR")
+    _safe_add_column_auth("platform_users", "activation_otp_hash VARCHAR")
+    _safe_add_column_auth("platform_users", "activation_otp_expires_at TIMESTAMP")
+    _safe_add_column_auth("platform_users", "activation_otp_attempts INTEGER DEFAULT 0")
+    _safe_add_column_auth("platform_users", "activation_verified_ip VARCHAR")
+    # Existing accounts remain usable when verification policy is introduced.
+    import sqlalchemy as sa
+    with engine.begin() as conn:
+        conn.execute(sa.text(
+            "UPDATE platform_users SET is_activated = TRUE "
+            "WHERE is_activated IS NULL"
+        ))
 
 
 class PlatformUser(Base):
@@ -66,6 +80,13 @@ class PlatformUser(Base):
     is_active     = Column(Boolean, default=True, nullable=False)
     auditor_id    = Column(String, nullable=True)   # soft FK → auditors.auditors.id
     audit_set_id  = Column(String, nullable=True)   # soft FK → audit_sets.id (client role only)
+    is_activated  = Column(Boolean, default=True, nullable=False)
+    activation_verified_at = Column(DateTime, nullable=True)
+    activation_email = Column(String, nullable=True)
+    activation_otp_hash = Column(String, nullable=True)
+    activation_otp_expires_at = Column(DateTime, nullable=True)
+    activation_otp_attempts = Column(Integer, default=0, nullable=False)
+    activation_verified_ip = Column(String, nullable=True)
     last_login    = Column(DateTime, nullable=True)
     created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at    = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -80,3 +101,14 @@ class UserSignature(Base):
     source     = Column(String, nullable=False)  # "drawn" | "uploaded"
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class PlatformPolicy(Base):
+    """Runtime-configurable platform policy, one row per stable policy key."""
+
+    __tablename__ = "platform_policies"
+
+    key        = Column(String, primary_key=True)
+    enabled    = Column(Boolean, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_by = Column(String, nullable=True)

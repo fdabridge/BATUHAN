@@ -15,6 +15,8 @@ export interface User {
   email: string
   full_name: string
   role: string
+  is_activated?: boolean
+  activation_required?: boolean
 }
 
 interface AuthContextValue {
@@ -23,6 +25,7 @@ interface AuthContextValue {
   login: (token: string, user: User) => void
   logout: () => void
   isLoading: boolean
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -70,8 +73,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     router.push('/login')
   }
 
+  async function refreshUser() {
+    const res = await api.get<User>('/auth/me')
+    setUser(res.data)
+  }
+
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, token, login, logout, isLoading, refreshUser }}>
       {children}
     </AuthContext.Provider>
   )

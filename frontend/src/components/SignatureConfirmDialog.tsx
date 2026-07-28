@@ -16,6 +16,7 @@
 import { useEffect, useState } from 'react'
 import { AlertCircle, CheckCircle2, Loader2, PenLine, X } from 'lucide-react'
 import api from '@/lib/api'
+import { useManualActionDates } from '@/lib/useManualActionDates'
 
 type Stage = 'loading' | 'no_signature' | 'preview' | 'signing' | 'success'
 
@@ -90,6 +91,7 @@ export function SignatureConfirmDialog({
   const [sigImage,   setSigImage]   = useState<string | null>(null)
   const [errorMsg,   setErrorMsg]   = useState('')
   const [signedDate, setSignedDate] = useState(todayIso)
+  const { manualActionDatesEnabled } = useManualActionDates()
 
   // Portal 56 — employee picker state, only used for generic CLIENT / ORG_REP slots.
   const needsEmployeePicker = CLIENT_SIDE_SIG_KEYS.has(sigKey)
@@ -188,7 +190,7 @@ export function SignatureConfirmDialog({
         document_type: documentType,
         doc_id:        docId,
         sig_key:       sigKey,
-        signed_date:   signedDate || todayIso(),
+        signed_date:   manualActionDatesEnabled ? (signedDate || todayIso()) : undefined,
       }
       // Portal 56 — picker slots need employee_id; Portal 73 UUID slots do not
       // (backend reads the employee UUID directly from the sig_key).
@@ -355,7 +357,7 @@ export function SignatureConfirmDialog({
                   <strong>Sign Document</strong> to proceed.
                 </p>
               )}
-              <div>
+              {manualActionDatesEnabled && <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Signing date</label>
                 <input
                   type="date"
@@ -363,7 +365,7 @@ export function SignatureConfirmDialog({
                   onChange={(e) => setSignedDate(e.target.value)}
                   className="rounded border border-gray-200 px-2 py-1 text-sm text-gray-700 focus:border-[#1A4731] focus:outline-none"
                 />
-              </div>
+              </div>}
               <div className="flex items-center justify-center rounded-lg p-4" style={{
                 background: 'repeating-conic-gradient(#e5e7eb 0% 25%, #fff 0% 50%) 0 0 / 12px 12px',
                 minHeight: 90,

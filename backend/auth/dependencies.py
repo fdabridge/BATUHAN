@@ -3,7 +3,7 @@ BATUHAN — Auth: FastAPI dependency injection helpers.
 """
 from __future__ import annotations
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
 from sqlalchemy.orm import Session
@@ -15,6 +15,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
 def get_current_user(
+    request: Request,
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> PlatformUser:
@@ -23,6 +24,21 @@ def get_current_user(
         user = get_user_by_id(db, payload["sub"])
         if not user or not user.is_active:
             raise HTTPException(status_code=401, detail="Invalid or inactive user")
+        if user.role == "client" and not user.is_activated:
+            from auth.policy import CLIENT_EMAIL_VERIFICATION, policy_enabled
+            activation_paths = {
+                "/auth/me",
+                "/auth/client-activation/request",
+                "/auth/client-activation/verify",
+            }
+            if (
+                policy_enabled(db, CLIENT_EMAIL_VERIFICATION)
+                and request.url.path not in activation_paths
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Client email verification is required.",
+                )
         return user
     except JWTError:
         raise HTTPException(status_code=401, detail="Could not validate token")

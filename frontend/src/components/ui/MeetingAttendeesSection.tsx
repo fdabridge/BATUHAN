@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import api from '@/lib/api'
+import { useManualActionDates } from '@/lib/useManualActionDates'
 
 interface Attendee {
   id:                string
@@ -60,6 +61,7 @@ export function MeetingAttendeesSection({
   const [signing, setSigning] = useState<Record<string, boolean>>({})
   const [signErr, setSignErr] = useState<Record<string, string>>({})
   const [signDates, setSignDates] = useState<Record<string, string>>({})
+  const { manualActionDatesEnabled } = useManualActionDates()
 
   const load = useCallback(async () => {
     try {
@@ -122,7 +124,9 @@ export function MeetingAttendeesSection({
     setSigning(s => ({ ...s, [key]: true }))
     setSignErr(e => ({ ...e, [key]: '' }))
     try {
-      const signed_date = signDates[key] || new Date().toISOString().slice(0, 10)
+      const signed_date = manualActionDatesEnabled
+        ? (signDates[key] || new Date().toISOString().slice(0, 10))
+        : undefined
       const r = await api.post<Attendee>(
         `/audit-sets/${auditSetId}/meeting-attendees/${attId}/sign-direct`,
         { meeting_type: meetingType, signed_date }
@@ -254,12 +258,12 @@ export function MeetingAttendeesSection({
                       <SignBadge signed={a.opening_signed} label="Opening" />
                       {!a.opening_signed && (
                         <div className="flex items-center gap-1">
-                          <input
+                          {manualActionDatesEnabled && <input
                             type="date"
                             value={signDates[`${a.id}-opening`] || new Date().toISOString().slice(0, 10)}
                             onChange={e => setSignDates(prev => ({ ...prev, [`${a.id}-opening`]: e.target.value }))}
                             className="rounded border px-1.5 py-0.5 text-xs"
-                          />
+                          />}
                           <button
                             type="button"
                             onClick={() => handleDirectSign(a.id, 'opening')}
@@ -276,12 +280,12 @@ export function MeetingAttendeesSection({
                       <SignBadge signed={a.closing_signed} label="Closing" />
                       {!a.closing_signed && (
                         <div className="flex items-center gap-1">
-                          <input
+                          {manualActionDatesEnabled && <input
                             type="date"
                             value={signDates[`${a.id}-closing`] || new Date().toISOString().slice(0, 10)}
                             onChange={e => setSignDates(prev => ({ ...prev, [`${a.id}-closing`]: e.target.value }))}
                             className="rounded border px-1.5 py-0.5 text-xs"
-                          />
+                          />}
                           <button
                             type="button"
                             onClick={() => handleDirectSign(a.id, 'closing')}

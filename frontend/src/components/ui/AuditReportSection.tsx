@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { ExternalLink } from 'lucide-react'
 import api from '@/lib/api'
+import { useManualActionDates } from '@/lib/useManualActionDates'
 
 interface AuditReport {
   id:                    string
@@ -61,6 +62,7 @@ export function AuditReportSection({
   const [deleting,  setDeleting]  = useState<Record<string, boolean>>({})
   const [errors,    setErrors]    = useState<Record<string, string>>({})
   const [approveDates, setApproveDates] = useState<Record<string, string>>({})
+  const { manualActionDatesEnabled } = useManualActionDates()
 
   // The reviewer is the chairperson selected in audit planning.
   const canAssignReviewer = false
@@ -120,7 +122,9 @@ export function AuditReportSection({
     setApproving(a => ({ ...a, [id]: true }))
     setErrors(e => ({ ...e, [id]: '' }))
     try {
-      const signed_date = approveDates[id] || new Date().toISOString().slice(0, 10)
+      const signed_date = manualActionDatesEnabled
+        ? (approveDates[id] || new Date().toISOString().slice(0, 10))
+        : undefined
       const r = await api.post<AuditReport>(
         `/audit-sets/${auditSetId}/audit-reports/${id}/sign/review/direct`,
         { signed_date }
@@ -314,7 +318,7 @@ export function AuditReportSection({
                 {/* CM/reviewer direct-approve (only for CB staff with can_review) */}
                 {r.can_review && r.status === 'pending_review' && (
                   <div className="mt-2 flex items-end gap-3">
-                    <div>
+                    {manualActionDatesEnabled && <div>
                       <label className="block text-xs text-gray-500 mb-1">Approval date</label>
                       <input
                         type="date"
@@ -322,7 +326,7 @@ export function AuditReportSection({
                         onChange={e => setApproveDates(prev => ({ ...prev, [r.id]: e.target.value }))}
                         className="rounded-lg border px-2 py-1 text-sm"
                       />
-                    </div>
+                    </div>}
                     <div>
                       <button
                         type="button"

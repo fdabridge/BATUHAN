@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import api from '@/lib/api'
+import { useManualActionDates } from '@/lib/useManualActionDates'
 
 interface Assessment {
   id:           string
@@ -106,6 +107,7 @@ function AssessmentCard({ assessment, onSigned }: { assessment: Assessment; onSi
   const [error, setError]       = useState('')
   const [busy, setBusy]         = useState(false)
   const [signedDate, setSignedDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const { manualActionDatesEnabled } = useManualActionDates()
 
   if (assessment.is_signed) return <SignedCard assessment={assessment} />
 
@@ -130,7 +132,9 @@ function AssessmentCard({ assessment, onSigned }: { assessment: Assessment; onSi
         rating,
         comments: comments || null,
       })
-      await api.post(`/client/my-audit-set/assessments/${assessment.id}/sign/direct`, { signed_date: signedDate })
+      await api.post(`/client/my-audit-set/assessments/${assessment.id}/sign/direct`, {
+        signed_date: manualActionDatesEnabled ? signedDate : undefined,
+      })
       onSigned()
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
@@ -173,7 +177,7 @@ function AssessmentCard({ assessment, onSigned }: { assessment: Assessment; onSi
           />
         </div>
         <div className="flex items-end gap-3">
-          <div>
+          {manualActionDatesEnabled && <div>
             <label className="block text-xs text-gray-500 mb-1">Signing date</label>
             <input
               type="date"
@@ -181,7 +185,7 @@ function AssessmentCard({ assessment, onSigned }: { assessment: Assessment; onSi
               onChange={e => setSignedDate(e.target.value)}
               className="rounded-lg border px-2 py-1.5 text-sm"
             />
-          </div>
+          </div>}
           <button
             type="button"
             onClick={handleSign}
@@ -210,6 +214,7 @@ function Fr211StageRow({
   doc: SharedDocLite | undefined
   onChanged: () => void
 }) {
+  const { manualActionDatesEnabled } = useManualActionDates()
   const [file, setFile]   = useState<File | null>(null)
   const [busy, setBusy]   = useState(false)
   const [error, setError] = useState('')
@@ -228,7 +233,7 @@ function Fr211StageRow({
           + `?label=${encodeURIComponent(label)}`
           + `&document_type=auditor_assessment`
           + `&stage_type=${encodeURIComponent(stageType)}`
-          + `&upload_date=${today}`,
+          + (manualActionDatesEnabled ? `&upload_date=${today}` : ''),
         fd,
         { headers: { 'Content-Type': 'multipart/form-data' } },
       )

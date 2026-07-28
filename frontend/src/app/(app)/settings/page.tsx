@@ -1,9 +1,13 @@
 'use client'
 
 import axios from 'axios'
-import { Settings } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { Loader2, Save, Settings } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { BrandingResponse } from '@/types'
+import api from '@/lib/api'
+import { useAuth } from '@/lib/auth'
+import { PlatformPolicy, usePlatformPolicy } from '@/lib/useManualActionDates'
 
 // Use a bare axios instance for /config/branding — endpoint is public, no auth needed.
 const baseURL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
@@ -40,6 +44,7 @@ function ColorSwatch({ hex }: { hex: string }) {
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
+  const { user } = useAuth()
   const { data, isLoading, isError } = useQuery<BrandingResponse>({
     queryKey: ['branding'],
     queryFn:  fetchBranding,
@@ -49,13 +54,12 @@ export default function SettingsPage() {
     <div className="mx-auto max-w-[1200px] py-4">
       <h1 className="mb-5 text-gray-800" style={{ fontSize: 22, fontWeight: 500 }}>Settings</h1>
 
-      <div className="mx-auto" style={{ maxWidth: 480 }}>
+      <div className="mx-auto space-y-6" style={{ maxWidth: 620 }}>
         <div className="flex flex-col items-center text-center">
           <Settings size={48} className="text-certiva-accent" />
           <p className="mt-3 text-gray-800" style={{ fontSize: 18, fontWeight: 500 }}>Settings</p>
           <p className="mt-2 text-gray-500" style={{ fontSize: 13 }}>
-            Platform configuration is managed through environment variables on the server.
-            Contact your administrator to update branding, supported standards, or accreditation bodies.
+            Review branding and control verification and real-time action-date policies.
           </p>
         </div>
 
@@ -99,7 +103,86 @@ export default function SettingsPage() {
             </div>
           )}
         </div>
+        {user?.role === 'admin' && <PolicySettings />}
       </div>
     </div>
+  )
+}
+
+const policyRows: { key: keyof PlatformPolicy; title: string; description: string }[] = [
+  {
+    key: 'client_email_verification',
+    title: 'Client email verification',
+    description: 'Require future client accounts to verify their email before accessing client portal records.',
+  },
+  {
+    key: 'employee_signature_email_verification',
+    title: 'Employee signature email verification',
+    description: 'Require an emailed code before a new or updated organisation-employee signature becomes active.',
+  },
+  {
+    key: 'retroactive_signing_dates',
+    title: 'Manual action dates',
+    description: 'Allow users to choose release, upload, signature, and workflow-action dates. Turn off to enforce server time.',
+  },
+]
+
+function PolicySettings() {
+  const queryClient = useQueryClient()
+  const policy = usePlatformPolicy()
+  const [draft, setDraft] = useState<PlatformPolicy | null>(null)
+
+  useEffect(() => {
+    if (policy.data) setDraft(policy.data)
+  }, [policy.data])
+
+  const save = useMutation({
+    mutationFn: (values: PlatformPolicy) => api.put<PlatformPolicy>('/config/policy', values).then((r) => r.data),
+    onSuccess: (values) => {
+      setDraft(values)
+      queryClient.setQueryData(['platform-policy'], values)
+    },
+  })
+
+  return (
+    <section className="rounded-lg border border-gray-100 bg-white p-5">
+      <div className="mb-4">
+        <h2 className="text-sm font-semibold text-gray-800">Runtime policy</h2>
+        <p className="mt-1 text-xs leading-5 text-gray-500">
+          Changes apply immediately to future actions. Turning off manual action dates forces document releases,
+          uploads, signatures, and workflow transitions to use server time. Planning dates stay editable.
+        </p>
+      </div>
+      {policy.isLoading || !draft ? (
+        <Loader2 size={18} className="mx-auto animate-spin text-gray-400" />
+      ) : (
+        <div className="space-y-4">
+          {policyRows.map((row) => (
+            <label key={row.key} className="flex cursor-pointer items-start justify-between gap-5 rounded-lg bg-gray-50 p-3">
+              <span>
+                <span className="block text-sm font-medium text-gray-800">{row.title}</span>
+                <span className="mt-0.5 block text-xs leading-5 text-gray-500">{row.description}</span>
+              </span>
+              <input
+                type="checkbox"
+                checked={draft[row.key]}
+                onChange={(event) => setDraft({ ...draft, [row.key]: event.target.checked })}
+                className="mt-1 h-4 w-4 accent-[#1A4731]"
+              />
+            </label>
+          ))}
+          {save.isError && <p className="text-xs text-red-600">Policy settings could not be saved.</p>}
+          {save.isSuccess && <p className="text-xs text-emerald-700">Policy settings saved.</p>}
+          <button
+            onClick={() => save.mutate(draft)}
+            disabled={save.isPending}
+            className="flex items-center gap-2 rounded-lg bg-[#1A4731] px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+          >
+            {save.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            Save policy
+          </button>
+        </div>
+      )}
+    </section>
   )
 }

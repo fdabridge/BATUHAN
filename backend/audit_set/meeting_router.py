@@ -16,8 +16,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from audit_set.db_models import AuditSet, AuditSetMeetingAttendee, get_db
-from auth.db_models import PlatformUser
+from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
+from auth.policy import resolve_realtime_action_datetime
 from email_service import send_meeting_signing_link, send_meeting_otp
 from config.settings import get_settings
 
@@ -144,6 +145,7 @@ def sign_attendee_direct(
     att_id: str,
     body: DirectSignSchema,
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     if current_user.role not in ALLOWED_ROLES:
@@ -157,10 +159,7 @@ def sign_attendee_direct(
     if not att:
         raise HTTPException(404, "Attendee not found")
 
-    signed_dt = (
-        datetime.combine(body.signed_date, datetime.min.time())
-        if body.signed_date else datetime.utcnow()
-    )
+    signed_dt = resolve_realtime_action_datetime(auth_db, body.signed_date)
     if body.meeting_type == "opening":
         if att.opening_signed_at:
             raise HTTPException(400, "Opening meeting already marked as signed")
@@ -330,16 +329,14 @@ def verify_meeting_signature(
     request: Request,
     body: VerifyMeetingOTPBody = Body(default_factory=VerifyMeetingOTPBody),
     db:   Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
 ):
     if event_type not in ("opening", "closing"):
         raise HTTPException(400, "event_type must be 'opening' or 'closing'")
 
     att = _get_attendee_by_token(token, db)
 
-    signed_dt = (
-        datetime.combine(body.signed_date, datetime.min.time())
-        if body.signed_date else datetime.utcnow()
-    )
+    signed_dt = resolve_realtime_action_datetime(auth_db, body.signed_date)
 
     if event_type == "opening":
         if att.opening_signed_at:

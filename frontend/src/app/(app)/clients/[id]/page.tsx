@@ -7,6 +7,7 @@ import { ArrowLeft, ChevronDown, ChevronRight, Download, Loader2, Pencil, Check,
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { useAuth } from '@/lib/auth'
+import { useManualActionDates } from '@/lib/useManualActionDates'
 import { CertBadge } from '@/components/ui/CertBadge'
 import { MessageThread } from '@/components/ui/MessageThread'
 import { SharedDocumentsSection } from '@/components/ui/SharedDocumentsSection'
@@ -2456,6 +2457,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
   const queryClient = useQueryClient()
   const { user: currentUser } = useAuth()
   const isRealtimeMode = currentUser?.role === 'planner_us'
+  const { manualActionDatesEnabled } = useManualActionDates()
   const canDelete = !!currentUser && CAN_DELETE_ROLES.has(currentUser.role)
   const [downloading, setDownloading] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
@@ -2741,8 +2743,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
         </div>
       )}
 
-      {/* Retroactive mode — always shown, no off switch (hidden for planner_us) */}
-      {!isRealtimeMode && <RetroactiveBanner />}
+      {!isRealtimeMode && manualActionDatesEnabled && <RetroactiveBanner />}
 
       {/* Client portal application — show approval banner when pending */}
       {data.workflow_status === 'pending_review' && (

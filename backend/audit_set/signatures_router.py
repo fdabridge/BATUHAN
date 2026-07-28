@@ -30,8 +30,9 @@ from audit_set.report_signature_rules import (
     audit_report_requires_appointed_reviewer,
 )
 from storage.document_store import resolve_docx_key
-from auth.db_models import PlatformUser
+from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
+from auth.policy import resolve_realtime_action_datetime
 
 router = APIRouter(prefix="/audit-sets", tags=["signatures"])
 
@@ -578,6 +579,7 @@ def sign_direct(
     request:      Request,
     body:         SignDirectBody = Body(default_factory=SignDirectBody),
     db:           Session      = Depends(get_db),
+    auth_db:      Session      = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     """Direct sign for FR218/FR222 internal slots — no OTP required."""
@@ -609,10 +611,7 @@ def sign_direct(
     if sig.signed_at:
         raise HTTPException(400, "Already signed")
 
-    sig.signed_at      = (
-        datetime.combine(body.signed_date, datetime.min.time())
-        if body.signed_date else datetime.utcnow()
-    )
+    sig.signed_at      = resolve_realtime_action_datetime(auth_db, body.signed_date)
     sig.signed_ip      = request.client.host if request.client else None
     sig.otp_hash       = None
     sig.otp_expires_at = None

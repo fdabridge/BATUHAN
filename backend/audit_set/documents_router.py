@@ -32,6 +32,7 @@ from audit_set.db_models import (
 )
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
+from auth.policy import resolve_realtime_action_datetime
 from config.settings import get_settings
 from storage.document_store import upload as store_upload, ensure_local, delete as store_delete, is_s3_ref, invalidate_cache, resolve_docx_key
 from email_service import send_client_status_update, send_document_released
@@ -468,10 +469,7 @@ async def release_document(
             else "released"
         )
 
-        released_dt = (
-            datetime.combine(release_date, datetime.min.time())
-            if release_date else datetime.utcnow()
-        )
+        released_dt = resolve_realtime_action_datetime(auth_db, release_date)
         doc = AuditSetSharedDocument(
             audit_set_id=audit_set_id,
             label=label,
@@ -746,6 +744,7 @@ async def upload_assessment(
     upload_date: Optional[date] = Form(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     """Client uploads one filled FR.211 per auditor/TE of a completed stage."""
@@ -773,10 +772,7 @@ async def upload_assessment(
     content = await file.read()
     file_path = store_upload(relative_path, content)
 
-    uploaded_dt = (
-        datetime.combine(upload_date, datetime.min.time())
-        if upload_date else datetime.utcnow()
-    )
+    uploaded_dt = resolve_realtime_action_datetime(auth_db, upload_date)
     label = f"FR.211 Auditor Assessment — {auditor_name or assigned_auditor_id}"
     doc = AuditSetSharedDocument(
         audit_set_id=audit_set_id,
@@ -803,6 +799,7 @@ def sign_assessment(
     request: Request,
     signed_date: Optional[date] = None,
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     """Client signs their own uploaded FR.211 (visual signature on record)."""
@@ -821,10 +818,7 @@ def sign_assessment(
 
     doc.status = "signed"
     doc.signed_by = current_user.id
-    doc.signed_at = (
-        datetime.combine(signed_date, datetime.min.time())
-        if signed_date else datetime.utcnow()
-    )
+    doc.signed_at = resolve_realtime_action_datetime(auth_db, signed_date)
     doc.signed_ip = request.client.host if request.client else None
     db.commit()
     return {"signed": True, "signed_at": doc.signed_at.isoformat()}
@@ -883,10 +877,7 @@ async def upload_audit_document(
     content = await file.read()
     file_path = store_upload(relative_path, content)
 
-    uploaded_dt = (
-        datetime.combine(upload_date, datetime.min.time())
-        if upload_date else datetime.utcnow()
-    )
+    uploaded_dt = resolve_realtime_action_datetime(auth_db, upload_date)
     direction = "client_to_cb" if current_user.role == "client" else "auditor_to_cb"
     doc = AuditSetSharedDocument(
         audit_set_id=audit_set_id,

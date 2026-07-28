@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import api from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import type { StageResponse } from '@/types'
+import { useManualActionDates } from '@/lib/useManualActionDates'
 
 interface SharedDoc {
   id: string
@@ -120,6 +121,7 @@ export function SharedDocumentsSection({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError]     = useState('')
   const [releaseDate, setReleaseDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const { manualActionDatesEnabled } = useManualActionDates()
   const fileRef = useRef<HTMLInputElement>(null)
 
   const { user }                           = useAuth()
@@ -189,7 +191,7 @@ export function SharedDocumentsSection({
       const fd = new FormData()
       fd.append('label', label.trim())
       fd.append('document_type', docType)
-      fd.append('release_date', releaseDate)
+      if (manualActionDatesEnabled) fd.append('release_date', releaseDate)
       if (stageScoped && stageType) fd.append('stage_type', stageType)
       if (docType === 'team_info' && auditorId) fd.append('assigned_auditor_id', auditorId)
       fd.append('file', file)
@@ -321,7 +323,7 @@ export function SharedDocumentsSection({
                 )}
               </div>
             )}
-            <div>
+            {manualActionDatesEnabled && <div>
               <label className="block text-xs font-medium text-gray-500">Release date</label>
               <input
                 type="date"
@@ -329,7 +331,7 @@ export function SharedDocumentsSection({
                 onChange={(e) => setReleaseDate(e.target.value)}
                 className="mt-1 w-full rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A4731]/30"
               />
-            </div>
+            </div>}
             <div>
               <label className="block text-xs font-medium text-gray-500">File</label>
               <input

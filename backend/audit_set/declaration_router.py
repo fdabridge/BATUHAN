@@ -28,6 +28,7 @@ from audit_set.db_models import (
 )
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
+from auth.policy import resolve_realtime_action_datetime
 from email_service import send_impartiality_declaration_request, send_otp_code
 
 router = APIRouter(tags=["declarations"])
@@ -238,6 +239,7 @@ def declaration_verify_otp(
     request: Request,
     body:    SignDeclarationOTPBody = Body(default_factory=SignDeclarationOTPBody),
     db:      Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     decl = _get_own_declaration(did, audit_set_id, current_user, db)
@@ -251,10 +253,7 @@ def declaration_verify_otp(
         raise HTTPException(400, "Invalid code.")
 
     decl.signed_by      = current_user.id
-    decl.signed_at      = (
-        datetime.combine(body.signed_date, datetime.min.time())
-        if body.signed_date else datetime.utcnow()
-    )
+    decl.signed_at      = resolve_realtime_action_datetime(auth_db, body.signed_date)
     decl.signed_ip      = request.client.host if request.client else None
     decl.otp_hash       = None
     decl.otp_expires_at = None
@@ -275,6 +274,7 @@ def sign_declaration_direct(
     did: str,
     body:         SignDeclarationDirectBody = Body(default_factory=SignDeclarationDirectBody),
     db:           Session = Depends(get_db),
+    auth_db:      Session = Depends(get_auth_db),
     current_user: PlatformUser = Depends(get_current_user),
 ):
     decl = db.query(AuditSetImpartialityDeclaration).filter_by(
@@ -291,10 +291,7 @@ def sign_declaration_direct(
             raise HTTPException(403, "You may only sign your own declaration")
 
     decl.signed_by = current_user.id
-    decl.signed_at = (
-        datetime.combine(body.signed_date, datetime.min.time())
-        if body.signed_date else datetime.utcnow()
-    )
+    decl.signed_at = resolve_realtime_action_datetime(auth_db, body.signed_date)
     db.commit()
     db.refresh(decl)
 

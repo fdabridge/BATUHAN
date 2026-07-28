@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import api from '@/lib/api'
+import { useManualActionDates } from '@/lib/useManualActionDates'
 
 interface WorkflowStatusBarProps {
   auditSetId:      string
@@ -268,6 +269,7 @@ function getPanels(auditType: string | null) {
 
 export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, auditType, onAdvanced }: WorkflowStatusBarProps) {
   const isRealtimeMode = currentUserRole === 'planner_us'
+  const { manualActionDatesEnabled } = useManualActionDates()
   const [errMsg, setErrMsg] = useState<string | null>(null)
   // Retroactive mode — date picker for recording when transitions actually happened.
   const [effectiveDate, setEffectiveDate] = useState<string>(
@@ -275,7 +277,7 @@ export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, 
   )
 
   const { mutate: advance, isPending } = useMutation({
-    mutationFn: ({ nextStatus, date }: { nextStatus: string; date: string }) =>
+    mutationFn: ({ nextStatus, date }: { nextStatus: string; date?: string }) =>
       api.patch(`/audit-sets/${auditSetId}/workflow-status`, {
         workflow_status: nextStatus,
         notes: 'Advanced from workflow status bar',
@@ -300,7 +302,7 @@ export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, 
     try {
       await api.post(`/audit-sets/${auditSetId}/workflow-status/jump`, {
         target_status: jumpStatus,
-        effective_date: jumpDate,
+        effective_date: manualActionDatesEnabled ? jumpDate : undefined,
       })
       onAdvanced()
     } catch (err: unknown) {
@@ -360,7 +362,7 @@ export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, 
           </div>
 
           {/* Date picker — hidden in realtime mode */}
-          {!isRealtimeMode && (
+          {!isRealtimeMode && manualActionDatesEnabled && (
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-600">
                 Effective date
@@ -439,14 +441,17 @@ export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, 
               <button
                 type="button"
                 disabled={isPending}
-                onClick={() => advance({ nextStatus: panel.cta!.nextStatus, date: effectiveDate })}
+                onClick={() => advance({
+                  nextStatus: panel.cta!.nextStatus,
+                  date: manualActionDatesEnabled ? effectiveDate : undefined,
+                })}
                 className="mt-3 rounded-lg px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
                 style={{ background: '#1A4731' }}
               >
                 {isPending ? 'Saving…' : panel.cta.label}
               </button>
               {/* Retroactive date picker — hidden in realtime mode */}
-              {!isRealtimeMode && (
+              {!isRealtimeMode && manualActionDatesEnabled && (
                 <div className="mt-2 flex items-center gap-2">
                   <label className="text-xs text-gray-500">Effective date:</label>
                   <input

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import api from '@/lib/api'
+import { useManualActionDates } from '@/lib/useManualActionDates'
 
 interface PendingSig {
   id: string
@@ -35,6 +36,7 @@ export function PendingSignaturesWidget({ viewerBasePath = '/viewer' }: PendingS
   const [sigPreviewSlot, setSigPreviewSlot]   = useState<PendingSig | null>(null)
   const [sigPreviewImage, setSigPreviewImage] = useState<string | null>(null)
   const [signedDate, setSignedDate]           = useState(() => new Date().toISOString().slice(0, 10))
+  const { manualActionDatesEnabled } = useManualActionDates()
 
   const [error, setError] = useState('')
 
@@ -81,7 +83,7 @@ export function PendingSignaturesWidget({ viewerBasePath = '/viewer' }: PendingS
     try {
       await api.post(
         `/audit-sets/${slot.audit_set_id}/signatures/${slot.id}/sign-direct`,
-        { signed_date: signedDate || new Date().toISOString().slice(0, 10) },
+        { signed_date: manualActionDatesEnabled ? (signedDate || new Date().toISOString().slice(0, 10)) : undefined },
       )
       await load()
     } catch (e: unknown) {
@@ -181,7 +183,7 @@ export function PendingSignaturesWidget({ viewerBasePath = '/viewer' }: PendingS
                 <strong>{sigPreviewSlot.company_name}</strong>.
                 Click <strong>Sign</strong> to confirm.
               </p>
-              <div>
+              {manualActionDatesEnabled && <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Signing date</label>
                 <input
                   type="date"
@@ -189,7 +191,7 @@ export function PendingSignaturesWidget({ viewerBasePath = '/viewer' }: PendingS
                   onChange={(e) => setSignedDate(e.target.value)}
                   className="rounded border border-gray-200 px-2 py-1 text-sm text-gray-700 focus:border-[#1A4731] focus:outline-none"
                 />
-              </div>
+              </div>}
               {sigPreviewImage ? (
                 <div
                   className="flex items-center justify-center rounded-lg p-4"

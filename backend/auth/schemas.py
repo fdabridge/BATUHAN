@@ -20,6 +20,7 @@ class TokenResponse(BaseModel):
     role: str
     full_name: str
     user_id: str
+    activation_required: bool = False
 
 
 class UserCreateSchema(BaseModel):
@@ -47,6 +48,8 @@ class UserResponse(BaseModel):
     role: str
     is_active: bool
     auditor_id: str | None
+    is_activated: bool = True
+    activation_required: bool = False
     last_login: datetime | None
     created_at: datetime
 

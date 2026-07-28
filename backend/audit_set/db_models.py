@@ -122,6 +122,17 @@ def create_tables():
     _safe_add_column("audit_set_audit_reports", "appointed_reviewer_signed_at TIMESTAMP")
     _safe_add_column("audit_set_audit_reports", "appointed_reviewer_user_id VARCHAR")
     _safe_add_column("audit_set_audit_reports", "appointed_reviewer_signed_ip VARCHAR")
+    # Runtime policy — verified organisation-employee signature enrollment.
+    _safe_add_column("client_org_employees", "email VARCHAR")
+    _safe_add_column("client_org_employees", "pending_signature_data TEXT")
+    _safe_add_column("client_org_employees", "pending_signature_source VARCHAR")
+    _safe_add_column("client_org_employees", "signature_verified_at TIMESTAMP")
+    _safe_add_column("client_org_employees", "signature_verified_email VARCHAR")
+    _safe_add_column("client_org_employees", "enroll_otp_hash VARCHAR")
+    _safe_add_column("client_org_employees", "enroll_otp_email VARCHAR")
+    _safe_add_column("client_org_employees", "enroll_otp_expires_at TIMESTAMP")
+    _safe_add_column("client_org_employees", "enroll_otp_attempts INTEGER DEFAULT 0")
+    _safe_add_column("client_org_employees", "signature_verified_ip VARCHAR")
 
 
 # ---------------------------------------------------------------------------
@@ -710,8 +721,18 @@ class ClientOrgEmployee(Base):
     client_user_id  = Column(String, nullable=False, index=True)   # soft FK → platform_users.id (role=client)
     full_name       = Column(String, nullable=False)
     role_title      = Column(String, nullable=False)               # e.g. "Quality Manager"
+    email           = Column(String, nullable=True)
     signature_data  = Column(Text, nullable=True)                  # base64 PNG data URL (data:image/png;base64,...)
     signature_source= Column(String, nullable=True)                # "drawn" | "uploaded"
+    pending_signature_data = Column(Text, nullable=True)
+    pending_signature_source = Column(String, nullable=True)
+    signature_verified_at = Column(DateTime, nullable=True)
+    signature_verified_email = Column(String, nullable=True)
+    signature_verified_ip = Column(String, nullable=True)
+    enroll_otp_hash = Column(String, nullable=True)
+    enroll_otp_email = Column(String, nullable=True)
+    enroll_otp_expires_at = Column(DateTime, nullable=True)
+    enroll_otp_attempts = Column(Integer, default=0, nullable=False)
     is_active       = Column(Boolean, default=True, nullable=False)
     created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at      = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

@@ -1,12 +1,18 @@
 """
 BATUHAN — Email Service (Resend)
 Thin wrapper around the Resend HTTP API.
-All functions log and silently return False on failure so the app never crashes
-when email is unavailable (e.g. local dev without RESEND_API_KEY).
+
+Existing notification templates remain disabled. Verification-code delivery is
+enabled because account and employee-signature policy gates must fail closed
+when a code cannot be delivered.
 """
 from __future__ import annotations
+
+from html import escape
 import logging
+
 import httpx
+
 from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -14,11 +20,31 @@ RESEND_SEND_URL = "https://api.resend.com/emails"
 
 
 def _send(to: str, subject: str, html: str) -> bool:
-    """Stubbed — email sending is disabled."""
-    return False
+    settings = get_settings()
+    if not settings.resend_api_key:
+        logger.warning("Email unavailable: RESEND_API_KEY is not configured")
+        return False
+    try:
+        response = httpx.post(
+            RESEND_SEND_URL,
+            headers={
+                "Authorization": f"Bearer {settings.resend_api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "from": settings.email_from,
+                "to": [to],
+                "subject": subject,
+                "html": html,
+            },
+            timeout=15.0,
+        )
+        response.raise_for_status()
+        return True
+    except Exception as exc:
+        logger.warning("Resend delivery failed for %s: %s", to, exc)
+        return False
 
-
-# ── Template functions (all stubbed — no emails are sent) ───────────────────
 
 def send_client_welcome(to: str, full_name: str, temp_password: str, audit_set_id: str) -> bool:
     return False
@@ -33,7 +59,19 @@ def send_document_released(to: str, full_name: str, document_label: str) -> bool
 
 
 def send_otp_code(to: str, full_name: str, otp: str, document_label: str) -> bool:
-    return False
+    return _send(
+        to,
+        f"Verification code for {document_label}",
+        (
+            '<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;'
+            'color:#24332b;line-height:1.55">'
+            f"<h2>Hello, {escape(full_name)}</h2>"
+            f"<p>Your verification code for {escape(document_label)} is:</p>"
+            f'<p style="font-size:28px;font-weight:700;letter-spacing:5px">{escape(otp)}</p>'
+            "<p>This code expires in 10 minutes. If you did not request it, ignore this email.</p>"
+            "</div>"
+        ),
+    )
 
 
 def send_meeting_signing_link(

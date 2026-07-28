@@ -15,6 +15,7 @@ interface LoginResponse {
   role: string
   full_name: string
   user_id: string
+  activation_required?: boolean
 }
 
 // Role-based landing page after login or auto-rehydrate.
@@ -91,6 +92,7 @@ export default function LoginPage() {
         email,
         full_name: data.full_name,
         role:      data.role,
+        activation_required: data.activation_required,
       })
       router.push(roleHome(data.role))
     } catch {
