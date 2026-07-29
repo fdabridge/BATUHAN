@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import api from '@/lib/api'
+import { examRemainingSeconds, type ExamTimerPayload } from '@/lib/examTimer'
 
 interface Question {
   id: string
@@ -64,7 +65,13 @@ export default function AuditorExamPage() {
           setAssignment(myAssignment)
           if (!myAssignment.exam_completed && myAssignment.training_completed) {
             const timerRes = await api.post(`/trainings/assignments/${myAssignment.id}/start-exam`)
-            setExamDueAt(timerRes.data.exam_due_at || null)
+            const remaining = examRemainingSeconds(timerRes.data as ExamTimerPayload)
+            setRemainingSeconds(remaining)
+            setExamDueAt(
+              remaining === null
+                ? null
+                : new Date(Date.now() + remaining * 1000).toISOString(),
+            )
           }
         }
         setQuestions(qRes.data)
@@ -92,14 +99,16 @@ export default function AuditorExamPage() {
 
   useEffect(() => {
     if (!examDueAt || result || assignment?.exam_completed) return
-    const id = setInterval(() => {
-      const remaining = Math.max(0, Math.floor((new Date(examDueAt).getTime() - Date.now()) / 1000))
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((new Date(examDueAt).getTime() - Date.now()) / 1000))
       setRemainingSeconds(remaining)
       if (remaining <= 0) {
         clearInterval(id)
         handleSubmit(true)
       }
-    }, 1000)
+    }
+    const id = setInterval(tick, 1000)
+    tick()
     return () => clearInterval(id)
   }, [examDueAt, result, assignment?.exam_completed, answers, questions])
 

@@ -42,6 +42,7 @@ from trainings.models import (
     TrainingAssignment,
     get_db,
 )
+from trainings.timer import remaining_exam_seconds, utc_iso
 
 logger = logging.getLogger(__name__)
 
@@ -988,9 +989,10 @@ def start_exam(
         return {
             "assignment_id": assignment.id,
             "exam_completed": True,
-            "server_now": now.isoformat(),
-            "exam_started_at": assignment.exam_started_at.isoformat() if assignment.exam_started_at else None,
-            "exam_due_at": assignment.exam_due_at.isoformat() if assignment.exam_due_at else None,
+            "server_now": utc_iso(now),
+            "exam_started_at": utc_iso(assignment.exam_started_at),
+            "exam_due_at": utc_iso(assignment.exam_due_at),
+            "remaining_seconds": remaining_exam_seconds(assignment.exam_due_at, now),
             "exam_duration_minutes": course.exam_duration_minutes,
         }
     if course.exam_duration_minutes and not assignment.exam_started_at:
@@ -1001,9 +1003,10 @@ def start_exam(
     return {
         "assignment_id": assignment.id,
         "exam_completed": assignment.exam_completed,
-        "server_now": now.isoformat(),
-        "exam_started_at": assignment.exam_started_at.isoformat() if assignment.exam_started_at else None,
-        "exam_due_at": assignment.exam_due_at.isoformat() if assignment.exam_due_at else None,
+        "server_now": utc_iso(now),
+        "exam_started_at": utc_iso(assignment.exam_started_at),
+        "exam_due_at": utc_iso(assignment.exam_due_at),
+        "remaining_seconds": remaining_exam_seconds(assignment.exam_due_at, now),
         "exam_duration_minutes": course.exam_duration_minutes,
     }
 
@@ -1033,7 +1036,12 @@ def submit_exam(
         assignment.exam_due_at = now + timedelta(minutes=course.exam_duration_minutes)
         db.commit()
         db.refresh(assignment)
-    timed_out = bool(assignment.exam_due_at and now > assignment.exam_due_at)
+    timed_out = bool(assignment.exam_due_at and now >= assignment.exam_due_at)
+    if payload.auto_submit and not timed_out:
+        raise HTTPException(
+            status_code=409,
+            detail="The exam timer is still running. Premature automatic submission was rejected.",
+        )
 
     # Fetch answer key for the course
     questions = (
@@ -1059,7 +1067,7 @@ def submit_exam(
         raise HTTPException(status_code=400, detail="All questions must be answered.")
     if len(submitted_qnums) != len(set(submitted_qnums)):
         raise HTTPException(status_code=400, detail="Duplicate answers submitted.")
-    allow_partial_answers = payload.auto_submit or timed_out
+    allow_partial_answers = timed_out
     for ans in payload.answers:
         if ans.selected_option_index < 0 and not allow_partial_answers:
             raise HTTPException(status_code=400, detail="All questions must be answered.")
@@ -1070,7 +1078,7 @@ def submit_exam(
     result = _complete_exam_with_answers(assignment, course, questions, payload.answers, db)
     logger.info(
         "[Trainings] Exam submitted assignment=%s user=%s score=%.1f passed=%s timed=%s",
-        assignment_id, current_user.id, result["score"], result["passed"], timed_out or payload.auto_submit,
+        assignment_id, current_user.id, result["score"], result["passed"], timed_out,
     )
     return {
         "score": round(result["score"], 2),
@@ -1078,7 +1086,7 @@ def submit_exam(
         "passing_grade": course.passing_grade,
         "total_questions": total_questions,
         "correct_count": result["correct"],
-        "timed_out": timed_out or payload.auto_submit,
+        "timed_out": timed_out,
     }
 
 
@@ -1107,7 +1115,7 @@ def get_questions(
         if (
             assignment.exam_due_at
             and not assignment.exam_completed
-            and datetime.utcnow() > assignment.exam_due_at
+            and datetime.utcnow() >= assignment.exam_due_at
         ):
             course = _get_course_or_404(db, course_id)
             expired_questions = (
