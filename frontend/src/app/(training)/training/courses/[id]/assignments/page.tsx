@@ -61,6 +61,7 @@ export default function AssignmentsPage() {
   const [users, setUsers] = useState<UserOption[]>([])
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set())
   const [assigning, setAssigning] = useState(false)
+  const [reassigningId, setReassigningId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
@@ -137,6 +138,29 @@ export default function AssignmentsPage() {
       await loadData()
     } catch (err: any) {
       setError(err?.response?.data?.detail || 'Failed to unassign user.')
+    }
+  }
+
+  async function handleReassign(a: Assignment) {
+    if (a.exam_completed !== true || a.exam_passed !== false) return
+    const confirmed = confirm(
+      'This participant previously failed the exam. Do you want to reassign the training and create a new exam attempt?'
+    )
+    if (!confirmed) return
+
+    setReassigningId(a.id)
+    setError('')
+    setSuccess('')
+    try {
+      await api.post(`/trainings/assignments/${a.id}/reassign`)
+      setSuccess(
+        `${a.user_full_name} can now reopen the training and complete a new exam attempt.`
+      )
+      await loadData()
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Failed to reassign training.')
+    } finally {
+      setReassigningId(null)
     }
   }
 
@@ -373,6 +397,15 @@ export default function AssignmentsPage() {
                           {!a.training_completed && !a.exam_completed && (
                             <button onClick={() => handleUnassign(a)} className="text-xs text-red-500 hover:underline">
                               Remove
+                            </button>
+                          )}
+                          {a.exam_completed && a.exam_passed === false && (
+                            <button
+                              onClick={() => handleReassign(a)}
+                              disabled={reassigningId === a.id}
+                              className="text-xs font-medium text-amber-700 hover:underline disabled:opacity-50"
+                            >
+                              {reassigningId === a.id ? 'Reassigning...' : 'Reassign training'}
                             </button>
                           )}
                         </div>

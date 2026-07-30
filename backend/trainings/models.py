@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, Float, Integer, String, UniqueConstraint,
+    Boolean, Column, DateTime, Float, Integer, String, Text, UniqueConstraint,
     create_engine,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -87,6 +87,33 @@ class TrainingAssignment(Base):
     exam_started_at       = Column(DateTime, nullable=True)
     exam_due_at           = Column(DateTime, nullable=True)
     assigned_at           = Column(DateTime, default=datetime.utcnow)
+
+
+class TrainingExamAttempt(Base):
+    """Immutable result history retained when a failed assignment is retried."""
+    __tablename__ = "training_exam_attempts"
+    __table_args__ = (
+        UniqueConstraint(
+            "assignment_id",
+            "attempt_number",
+            name="uq_training_exam_attempt_number",
+        ),
+    )
+
+    id              = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    assignment_id   = Column(String, nullable=False)
+    course_id       = Column(String, nullable=False)
+    user_id         = Column(String, nullable=False)
+    attempt_number  = Column(Integer, nullable=False)
+    exam_score      = Column(Float, nullable=True)
+    exam_passed     = Column(Boolean, nullable=False)
+    exam_answers    = Column(Text, nullable=True)
+    exam_started_at = Column(DateTime, nullable=True)
+    exam_due_at     = Column(DateTime, nullable=True)
+    exam_completed_at = Column(DateTime, nullable=False)
+    recorded_at     = Column(DateTime, default=datetime.utcnow, nullable=False)
+    reassigned_by   = Column(String, nullable=True)
+    reassigned_at   = Column(DateTime, nullable=True)
 
 
 def _safe_add_column(table: str, col_def: str) -> None:

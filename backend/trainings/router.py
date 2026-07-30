@@ -10,6 +10,7 @@ Routes (all relative to /trainings):
   POST /courses/{course_id}/questions        — create/replace answer key
   POST /courses/{course_id}/assign           — assign training to users
   GET  /courses/{course_id}/assignments      — view assignments/results
+  POST /assignments/{id}/reassign            — retry a failed training/exam
   GET  /courses/{course_id}/questions        — get exam questions
   GET  /courses/{course_id}/material         — download training material
   GET  /courses/{course_id}/exam-file        — download exam display file
@@ -40,7 +41,12 @@ from trainings.models import (
     TrainingCourse,
     TrainingExamQuestion,
     TrainingAssignment,
+    TrainingExamAttempt,
     get_db,
+)
+from trainings.reassignment import (
+    can_reassign_failed_exam,
+    reset_assignment_for_retake,
 )
 from trainings.timer import remaining_exam_seconds, utc_iso
 
@@ -234,6 +240,7 @@ def _complete_exam_with_answers(
     assignment.exam_passed = passed
     assignment.exam_completed_at = datetime.utcnow()
     assignment.exam_answers = json.dumps(stored_answers)
+    _archive_exam_attempt(assignment, db)
     db.commit()
     db.refresh(assignment)
 
@@ -245,6 +252,60 @@ def _complete_exam_with_answers(
         "correct": correct_count,
         "total": total_questions,
     }
+
+
+def _archive_exam_attempt(
+    assignment: TrainingAssignment,
+    db: Session,
+    *,
+    reassigned_by: str | None = None,
+    reassigned_at: datetime | None = None,
+) -> TrainingExamAttempt:
+    """Persist the current completed result once before it is reset."""
+    if not assignment.exam_completed or assignment.exam_passed is None:
+        raise ValueError("Cannot archive an incomplete exam attempt")
+    completed_at = (
+        assignment.exam_completed_at
+        or reassigned_at
+        or datetime.utcnow()
+    )
+
+    existing = (
+        db.query(TrainingExamAttempt)
+        .filter(
+            TrainingExamAttempt.assignment_id == assignment.id,
+            TrainingExamAttempt.exam_completed_at == completed_at,
+        )
+        .first()
+    )
+    if existing:
+        if reassigned_by:
+            existing.reassigned_by = reassigned_by
+            existing.reassigned_at = reassigned_at or datetime.utcnow()
+        return existing
+
+    latest = (
+        db.query(TrainingExamAttempt)
+        .filter(TrainingExamAttempt.assignment_id == assignment.id)
+        .order_by(TrainingExamAttempt.attempt_number.desc())
+        .first()
+    )
+    attempt = TrainingExamAttempt(
+        assignment_id=assignment.id,
+        course_id=assignment.course_id,
+        user_id=assignment.user_id,
+        attempt_number=(latest.attempt_number + 1) if latest else 1,
+        exam_score=assignment.exam_score,
+        exam_passed=assignment.exam_passed,
+        exam_answers=assignment.exam_answers,
+        exam_started_at=assignment.exam_started_at,
+        exam_due_at=assignment.exam_due_at,
+        exam_completed_at=completed_at,
+        reassigned_by=reassigned_by,
+        reassigned_at=reassigned_at,
+    )
+    db.add(attempt)
+    return attempt
 
 
 def _course_to_dict(
@@ -818,6 +879,68 @@ def unassign_user(
     db.commit()
     logger.info("[Trainings] Assignment removed id=%s by=%s", assignment_id, current_user.id)
     return {"status": "removed", "assignment_id": assignment_id}
+
+
+@router.post("/assignments/{assignment_id}/reassign")
+def reassign_failed_training(
+    assignment_id: str,
+    current_user: PlatformUser = Depends(require_training_officer),
+    db: Session = Depends(get_db),
+):
+    """Archive a failed result and reset the same assignment for a clean retake."""
+    assignment = (
+        db.query(TrainingAssignment)
+        .filter(TrainingAssignment.id == assignment_id)
+        .with_for_update()
+        .first()
+    )
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    if not can_reassign_failed_exam(assignment):
+        raise HTTPException(
+            status_code=409,
+            detail="Training can only be reassigned when the latest exam result is Failed.",
+        )
+
+    course = _get_course_or_404(db, assignment.course_id)
+    question_count = db.query(TrainingExamQuestion).filter(
+        TrainingExamQuestion.course_id == assignment.course_id,
+    ).count()
+    missing = _check_readiness(course, question_count)
+    if missing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Course is not ready for reassignment. Missing: {'; '.join(missing)}",
+        )
+
+    now = datetime.utcnow()
+    archived = _archive_exam_attempt(
+        assignment,
+        db,
+        reassigned_by=current_user.id,
+        reassigned_at=now,
+    )
+    reset_assignment_for_retake(
+        assignment,
+        assigned_by=current_user.id,
+        assigned_at=now,
+    )
+    db.commit()
+    db.refresh(assignment)
+    logger.info(
+        "[Trainings] Failed assignment reassigned id=%s attempt=%s by=%s",
+        assignment_id,
+        archived.attempt_number,
+        current_user.id,
+    )
+    return {
+        "status": "reassigned",
+        "assignment_id": assignment.id,
+        "archived_attempt_number": archived.attempt_number,
+        "training_completed": assignment.training_completed,
+        "exam_completed": assignment.exam_completed,
+        "exam_passed": assignment.exam_passed,
+    }
 
 
 # ---------------------------------------------------------------------------
