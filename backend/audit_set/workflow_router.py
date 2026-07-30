@@ -187,7 +187,6 @@ def _assert_stage1_complete_gate(db: Session, audit_set_id: str) -> None:
     stage1_audit_reports = (
         db.query(AuditSetAuditReport)
         .filter_by(audit_set_id=audit_set_id, stage_type="stage_1")
-        .filter(AuditSetAuditReport.report_form.in_(["FR.231", "FR.231-1", "FR.229"]))
         .all()
     )
     if not stage1_audit_reports:

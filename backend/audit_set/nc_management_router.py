@@ -53,14 +53,6 @@ NC_STAGE_LABELS = {
     "surveillance": "Surveillance",
     "recertification": "Recertification",
 }
-REPORT_FORMS_BY_STAGE = {
-    "stage_1": {"FR.231", "FR.231-1", "FR.229"},
-    "stage_2": {"FR.232", "FR.229"},
-    "surveillance": {"FR.232", "FR.229"},
-    "recertification": {"FR.232", "FR.229"},
-}
-
-
 # ── Serialisers ───────────────────────────────────────────────────────────────
 
 def _ev_dict(ev: AuditSetNCEvidence) -> dict:
@@ -196,11 +188,9 @@ def _require_stage_lead(current_user: PlatformUser, stage: AuditSetStage) -> Non
 
 
 def _require_report_uploaded(audit_set_id: str, stage_type: str, db: Session) -> None:
-    forms = REPORT_FORMS_BY_STAGE.get(stage_type, set())
     exists = (
         db.query(AuditSetAuditReport)
         .filter_by(audit_set_id=audit_set_id, stage_type=stage_type)
-        .filter(AuditSetAuditReport.report_form.in_(forms))
         .first()
     )
     if not exists:

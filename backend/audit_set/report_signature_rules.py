@@ -6,6 +6,18 @@ from typing import Any
 
 _STAGE1_EXTRA_REVIEW_STANDARDS = ("FSMS", "ISMS", "22000", "27001")
 
+REPORT_FORM_STAGES = {
+    "FR.231": {"stage_1"},
+    "FR.231-1": {"stage_1"},
+    "FR.229": {"stage_1", "stage_2", "surveillance", "recertification"},
+    "FR.232": {"stage_2", "surveillance", "recertification"},
+}
+
+
+def audit_report_form_allowed_for_stage(report_form: str, stage_type: str) -> bool:
+    """Return whether a report form belongs to the selected audit stage."""
+    return stage_type in REPORT_FORM_STAGES.get(report_form.upper(), set())
+
 
 def audit_set_has_stage1_extra_review(audit_set: Any) -> bool:
     """FR.231's extra reviewer row is only required for FSMS/ISMS audits."""

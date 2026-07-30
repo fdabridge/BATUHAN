@@ -752,19 +752,38 @@ const STAGE_OPTS_REPORTS = [
 const FORM_OPTS: {
   value: string
   label: string
-  stageType?: string
+  stageTypes: string[]
   requiredStandard?: string
 }[] = [
-  { value: 'FR.231', label: 'FR.231 — Stage 1 Audit Report' },
+  {
+    value: 'FR.231',
+    label: 'FR.231 — Stage 1 Audit Report',
+    stageTypes: ['stage_1'],
+  },
   {
     value: 'FR.231-1',
     label: 'FR.231-1 — MDQMS Report',
-    stageType: 'stage_1',
+    stageTypes: ['stage_1'],
     requiredStandard: 'MDQMS',
   },
-  { value: 'FR.232', label: 'FR.232 — Stage 2 / Surveillance / Recertification Report' },
-  { value: 'FR.229', label: 'FR.229 — ISMS/PIMS Audit Report (ISO 27001)' },
+  {
+    value: 'FR.232',
+    label: 'FR.232 — Stage 2 / Surveillance / Recertification Report',
+    stageTypes: ['stage_2', 'surveillance', 'recertification'],
+  },
+  {
+    value: 'FR.229',
+    label: 'FR.229 — ISMS/PIMS Audit Report (ISO 27001)',
+    stageTypes: ['stage_1', 'stage_2', 'surveillance', 'recertification'],
+  },
 ]
+
+function reportFormOptionsForStage(stageType: string, standards: string[]) {
+  return FORM_OPTS.filter(option => (
+    option.stageTypes.includes(stageType)
+    && (!option.requiredStandard || standards.includes(option.requiredStandard))
+  ))
+}
 
 function AuditorReportsView({
   auditSetId,
@@ -800,10 +819,7 @@ function AuditorReportsView({
   const stageOptions = isSurveillance
     ? [{ value: 'surveillance', label: 'Surveillance' }]
     : STAGE_OPTS_REPORTS
-  const reportFormOptions = FORM_OPTS.filter(option => (
-    (!option.stageType || option.stageType === form.stage_type)
-    && (!option.requiredStandard || standards.includes(option.requiredStandard))
-  ))
+  const reportFormOptions = reportFormOptionsForStage(form.stage_type, standards)
 
   const STAGE_LABELS: Record<string, string> = {
     stage_1: 'Stage 1', stage_2: 'Stage 2',
@@ -829,7 +845,9 @@ function AuditorReportsView({
       setForm(f => ({
         ...f,
         stage_type: 'surveillance',
-        report_form: f.report_form === 'FR.231' ? 'FR.232' : f.report_form,
+        report_form: ['FR.232', 'FR.229'].includes(f.report_form)
+          ? f.report_form
+          : 'FR.232',
       }))
     }
   }, [isSurveillance])
@@ -855,7 +873,10 @@ function AuditorReportsView({
     setUploadMsg('')
     try {
       const stageType = isSurveillance ? 'surveillance' : form.stage_type
-      const reportForm = isSurveillance && form.report_form === 'FR.231' ? 'FR.232' : form.report_form
+      const validOptions = reportFormOptionsForStage(stageType, standards)
+      const reportForm = validOptions.some(option => option.value === form.report_form)
+        ? form.report_form
+        : validOptions[0].value
       const fd = new FormData()
       fd.append('stage_type', stageType)
       fd.append('report_form', reportForm)
@@ -936,13 +957,13 @@ function AuditorReportsView({
                 value={form.stage_type}
                 onChange={e => {
                   const stageType = e.target.value
-                  setForm(f => ({
-                    ...f,
-                    stage_type: stageType,
-                    report_form: f.report_form === 'FR.231-1' && stageType !== 'stage_1'
-                      ? 'FR.232'
-                      : f.report_form,
-                  }))
+                  const validOptions = reportFormOptionsForStage(stageType, standards)
+                  setForm(f => {
+                    const reportForm = validOptions.some(option => option.value === f.report_form)
+                      ? f.report_form
+                      : validOptions[0].value
+                    return { ...f, stage_type: stageType, report_form: reportForm }
+                  })
                 }}
                 className="w-full rounded-lg border bg-white px-3 py-2 text-sm"
               >

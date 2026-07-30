@@ -38,7 +38,9 @@ from audit_set.committee_slots import (
 from audit_set.doc_converter import prepare_document
 from audit_set.pdf_flattener import flatten_document, has_completed_visual_signatures
 from audit_set.report_signature_rules import (
+    REPORT_FORM_STAGES,
     audit_report_has_all_required_approvals,
+    audit_report_form_allowed_for_stage,
     audit_report_requires_certification_manager,
     audit_report_requires_appointed_reviewer,
 )
@@ -67,7 +69,7 @@ UPLOAD_ROLES  = {"auditor", "admin", "planner", "planner_us"}
 AUDITOR_ROLES = {"auditor", "admin"}
 # (OTP_EXPIRY removed — OTP signing was removed system-wide)
 
-VALID_FORMS = {"FR.231", "FR.231-1", "FR.229", "FR.232"}
+VALID_FORMS = set(REPORT_FORM_STAGES)
 
 # Portal 76 — maps AuditSet.standards abbreviations to ISO standard names
 # (same mapping as committee_router._STD_CODE_TO_ISO).
@@ -190,8 +192,11 @@ async def upload_audit_report(
         raise HTTPException(403, "Not authorized to upload audit reports")
     if report_form not in VALID_FORMS:
         raise HTTPException(400, f"report_form must be one of: {sorted(VALID_FORMS)}")
-    if report_form == "FR.231-1" and stage_type != "stage_1":
-        raise HTTPException(400, "FR.231-1 MDQMS Report is only valid for Stage 1")
+    if not audit_report_form_allowed_for_stage(report_form, stage_type):
+        raise HTTPException(
+            400,
+            f"{report_form} is not valid for stage {stage_type}",
+        )
 
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
     if not audit_set:
