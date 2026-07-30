@@ -54,7 +54,7 @@ NC_STAGE_LABELS = {
     "recertification": "Recertification",
 }
 REPORT_FORMS_BY_STAGE = {
-    "stage_1": {"FR.231", "FR.229"},
+    "stage_1": {"FR.231", "FR.231-1", "FR.229"},
     "stage_2": {"FR.232", "FR.229"},
     "surveillance": {"FR.232", "FR.229"},
     "recertification": {"FR.232", "FR.229"},

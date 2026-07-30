@@ -1,5 +1,5 @@
 """
-BATUHAN — FR.231 / FR.229 / FR.232 Audit Report Signing.
+BATUHAN — FR.231 / FR.231-1 / FR.229 / FR.232 Audit Report Signing.
 
 Lead Auditor uploads and signs via direct-sign (auditor portal).
 Assigned Reviewer Auditor (or CM/admin bypass) approves via direct-sign.
@@ -67,7 +67,7 @@ UPLOAD_ROLES  = {"auditor", "admin", "planner", "planner_us"}
 AUDITOR_ROLES = {"auditor", "admin"}
 # (OTP_EXPIRY removed — OTP signing was removed system-wide)
 
-VALID_FORMS = {"FR.231", "FR.229", "FR.232"}
+VALID_FORMS = {"FR.231", "FR.231-1", "FR.229", "FR.232"}
 
 # Portal 76 — maps AuditSet.standards abbreviations to ISO standard names
 # (same mapping as committee_router._STD_CODE_TO_ISO).
@@ -190,10 +190,24 @@ async def upload_audit_report(
         raise HTTPException(403, "Not authorized to upload audit reports")
     if report_form not in VALID_FORMS:
         raise HTTPException(400, f"report_form must be one of: {sorted(VALID_FORMS)}")
+    if report_form == "FR.231-1" and stage_type != "stage_1":
+        raise HTTPException(400, "FR.231-1 MDQMS Report is only valid for Stage 1")
 
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
     if not audit_set:
         raise HTTPException(404, "Audit set not found")
+    standards = audit_set.standards or []
+    if isinstance(standards, str):
+        standards = [standards]
+    if report_form == "FR.231-1" and not any(
+        marker in str(standard).upper()
+        for standard in standards
+        for marker in ("MDQMS", "13485")
+    ):
+        raise HTTPException(
+            400,
+            "FR.231-1 MDQMS Report requires ISO 13485 in the audit scope",
+        )
 
     safe_name = f"{secrets.token_hex(6)}_{file.filename or 'report'}"
     relative_path = f"audit_reports/{audit_set_id}/{safe_name}"
@@ -240,8 +254,8 @@ def list_audit_reports(
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
     chair = planned_committee_chair(audit_set) if audit_set else None
 
-    # FR.231 is approved by Lead Auditor + Certification Manager. FR.232 is
-    # approved by Lead Auditor + appointed committee chairperson.
+    # FR.231/FR.231-1 are approved by Lead Auditor + Certification Manager.
+    # FR.232 is approved by Lead Auditor + appointed committee chairperson.
     is_cm = current_user.role in ("certification_manager", "admin", "executive")
 
     rows = (

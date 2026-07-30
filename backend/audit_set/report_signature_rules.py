@@ -28,7 +28,7 @@ def audit_report_requires_appointed_reviewer(
     report_form = (getattr(report, "report_form", "") or "").upper()
     if report_form == "FR.232":
         return True
-    if report_form == "FR.231":
+    if report_form in {"FR.231", "FR.231-1"}:
         return False
     return False
 
@@ -39,7 +39,7 @@ def audit_report_requires_certification_manager(
 ) -> bool:
     """Return whether CB_CERT_MANAGER/CB_REVIEWER is a real required slot."""
     report_form = (getattr(report, "report_form", "") or "").upper()
-    if report_form == "FR.231":
+    if report_form in {"FR.231", "FR.231-1"}:
         return True
     if audit_report_requires_appointed_reviewer(report, audit_set):
         return False

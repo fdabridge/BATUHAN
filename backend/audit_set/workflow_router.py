@@ -169,7 +169,7 @@ def _assert_stage1_complete_gate(db: Session, audit_set_id: str) -> None:
 
     Checks:
       • All Stage 1 FR.224 (team_info) documents are fully signed.
-      • Stage 1 FR.231 (stage1_report) is uploaded and fully signed.
+      • A Stage 1 report (FR.231, FR.231-1, or FR.229) is uploaded and fully signed.
     """
     failures: list[str] = []
     audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
@@ -182,21 +182,21 @@ def _assert_stage1_complete_gate(db: Session, audit_set_id: str) -> None:
     if team_infos and any(_unsigned_required_count(db, t.id) for t in team_infos):
         failures.append("Not all Stage 1 FR.224s are fully signed by their assigned auditors")
 
-    # FR.231 is stored in AuditSetAuditReport (uploaded via report_router),
-    # not in AuditSetSharedDocument — check the correct table.
+    # Stage 1 reports are stored in AuditSetAuditReport (uploaded via
+    # report_router), not in AuditSetSharedDocument.
     stage1_audit_reports = (
         db.query(AuditSetAuditReport)
         .filter_by(audit_set_id=audit_set_id, stage_type="stage_1")
-        .filter(AuditSetAuditReport.report_form.in_(["FR.231", "FR.229"]))
+        .filter(AuditSetAuditReport.report_form.in_(["FR.231", "FR.231-1", "FR.229"]))
         .all()
     )
     if not stage1_audit_reports:
-        failures.append("Stage 1 FR.231 Stage Report has not been uploaded")
+        failures.append("Stage 1 audit report has not been uploaded")
     elif not any(
         audit_report_has_all_required_approvals(r, audit_set)
         for r in stage1_audit_reports
     ):
-        failures.append("Stage 1 FR.231 Stage Report is not fully signed")
+        failures.append("Stage 1 audit report is not fully signed")
 
     # FR.211 gate: if documents were generated, all must be signed before Stage 2 opens.
     total_assessments_s1 = db.query(AuditSetSharedDocument).filter_by(

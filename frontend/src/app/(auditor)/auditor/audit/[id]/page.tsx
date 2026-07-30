@@ -749,13 +749,32 @@ const STAGE_OPTS_REPORTS = [
   { value: 'recertification', label: 'Recertification' },
 ]
 
-const FORM_OPTS = [
+const FORM_OPTS: {
+  value: string
+  label: string
+  stageType?: string
+  requiredStandard?: string
+}[] = [
   { value: 'FR.231', label: 'FR.231 — Stage 1 Audit Report' },
+  {
+    value: 'FR.231-1',
+    label: 'FR.231-1 — MDQMS Report',
+    stageType: 'stage_1',
+    requiredStandard: 'MDQMS',
+  },
   { value: 'FR.232', label: 'FR.232 — Stage 2 / Surveillance / Recertification Report' },
   { value: 'FR.229', label: 'FR.229 — ISMS/PIMS Audit Report (ISO 27001)' },
 ]
 
-function AuditorReportsView({ auditSetId, auditType }: { auditSetId: string; auditType: string | null }) {
+function AuditorReportsView({
+  auditSetId,
+  auditType,
+  standards,
+}: {
+  auditSetId: string
+  auditType: string | null
+  standards: string[]
+}) {
   const { manualActionDatesEnabled } = useManualActionDates()
   const [reports, setReports] = useState<{
     id: string; stage_type: string; report_form: string; label: string
@@ -781,6 +800,10 @@ function AuditorReportsView({ auditSetId, auditType }: { auditSetId: string; aud
   const stageOptions = isSurveillance
     ? [{ value: 'surveillance', label: 'Surveillance' }]
     : STAGE_OPTS_REPORTS
+  const reportFormOptions = FORM_OPTS.filter(option => (
+    (!option.stageType || option.stageType === form.stage_type)
+    && (!option.requiredStandard || standards.includes(option.requiredStandard))
+  ))
 
   const STAGE_LABELS: Record<string, string> = {
     stage_1: 'Stage 1', stage_2: 'Stage 2',
@@ -911,7 +934,16 @@ function AuditorReportsView({ auditSetId, auditType }: { auditSetId: string; aud
               <label className="mb-1 block text-xs font-medium text-gray-600">Stage</label>
               <select
                 value={form.stage_type}
-                onChange={e => setForm(f => ({ ...f, stage_type: e.target.value }))}
+                onChange={e => {
+                  const stageType = e.target.value
+                  setForm(f => ({
+                    ...f,
+                    stage_type: stageType,
+                    report_form: f.report_form === 'FR.231-1' && stageType !== 'stage_1'
+                      ? 'FR.232'
+                      : f.report_form,
+                  }))
+                }}
                 className="w-full rounded-lg border bg-white px-3 py-2 text-sm"
               >
                 {stageOptions.map(s => (
@@ -926,7 +958,7 @@ function AuditorReportsView({ auditSetId, auditType }: { auditSetId: string; aud
                 onChange={e => setForm(f => ({ ...f, report_form: e.target.value }))}
                 className="w-full rounded-lg border bg-white px-3 py-2 text-sm"
               >
-                {FORM_OPTS.map(o => (
+                {reportFormOptions.map(o => (
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
@@ -1765,9 +1797,13 @@ export default function AuditorAuditDetail() {
         <AuditorDeclarationsView auditSetId={id} currentAuditorId={myAuditorId} />
       )}
 
-      {/* Reports tab — Prompt 19 (FR.231/FR.229/FR.232 two-party signing) */}
+      {/* Reports tab — FR.231/FR.231-1/FR.229/FR.232 two-party signing */}
       {tab === 'reports' && (
-        <AuditorReportsView auditSetId={id} auditType={data.audit_type ?? null} />
+        <AuditorReportsView
+          auditSetId={id}
+          auditType={data.audit_type ?? null}
+          standards={data.standards ?? []}
+        />
       )}
     </div>
   )

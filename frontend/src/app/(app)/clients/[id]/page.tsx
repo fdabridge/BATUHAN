@@ -2500,7 +2500,9 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
   })
 
   const hasReportForNCStage = useCallback((stageType: string) => {
-    const allowedForms = stageType === 'stage_1' ? ['FR.231', 'FR.229'] : ['FR.232', 'FR.229']
+    const allowedForms = stageType === 'stage_1'
+      ? ['FR.231', 'FR.231-1', 'FR.229']
+      : ['FR.232', 'FR.229']
     return auditReports.some((report) => report.stage_type === stageType && allowedForms.includes(report.report_form))
   }, [auditReports])
 
