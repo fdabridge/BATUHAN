@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from audit_set.db_models import AuditSet, AuditSetSharedDocument, AuditSetStage, AuditSetStatusEvent
+from audit_set.scope_fields import ea_code_from_required_scope
 from audit_set.schemas import (
     AuditSetCertUpdateSchema,
     AuditSetCreateSchema,
@@ -1258,6 +1259,13 @@ def update_planning(
     # Persist derived scope only when the caller provides it (don't wipe on stage-only saves)
     if data.required_scope is not None:
         audit_set.required_scope = data.required_scope
+        # required_scope is the authoritative classification edited during
+        # application review. Keep the legacy document field synchronized
+        # unless the caller explicitly supplied a separate ea_code.
+        if data.ea_code is None:
+            scoped_ea_code = ea_code_from_required_scope(data.required_scope)
+            if scoped_ea_code is not None:
+                audit_set.ea_code = scoped_ea_code or None
     if data.scope_integration_level is not None:
         audit_set.scope_integration_level = data.scope_integration_level
     if data.audit_language is not None:

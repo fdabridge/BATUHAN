@@ -24,6 +24,7 @@ from docxtpl import DocxTemplate
 
 from audit_set.committee_slots import committee_member_name, planned_committee_chair
 from audit_set.report_signature_rules import audit_set_has_stage1_extra_review
+from audit_set.scope_fields import effective_ea_code
 
 # --------------------------------------------------------------------------- #
 # Constants
@@ -403,7 +404,12 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
         "scope_en": audit_set.scope_en or "",
         "scope_tr": audit_set.scope_tr or "",
         "non_applicable_clauses": audit_set.non_applicable_clauses or "",
-        "ea_code": audit_set.ea_code or "",
+        # required_scope is revised during application review; prefer it over
+        # the legacy top-level value so regenerated plans never show stale EA.
+        "ea_code": effective_ea_code(
+            getattr(audit_set, "required_scope", None),
+            audit_set.ea_code,
+        ),
         "ea_category": audit_set.ea_category or "",
         "ea_technical_area": audit_set.ea_technical_area or "",
         "effective_employees": audit_set.effective_employees,
