@@ -11,6 +11,7 @@ import { useManualActionDates } from '@/lib/useManualActionDates'
 import { CertBadge } from '@/components/ui/CertBadge'
 import { MessageThread } from '@/components/ui/MessageThread'
 import { SharedDocumentsSection } from '@/components/ui/SharedDocumentsSection'
+import { CompanyDocumentsSection } from '@/components/ui/CompanyDocumentsSection'
 import { InternalApprovalsSection } from '@/components/ui/InternalApprovalsSection'
 import { FR233Panel } from '@/components/ui/FR233Panel'
 // Portal 55 — MeetingAttendeesSection removed from the planner view. FR.225
@@ -2767,6 +2768,9 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
           </button>
         </div>
       )}
+
+      {/* Application evidence is available before review and remains available later. */}
+      {data.submitted_via_portal && <CompanyDocumentsSection auditSetId={id} />}
 
       {/* Workflow status tracker + status-specific action panel */}
       {data.workflow_status && data.workflow_status !== 'pending_review' && (

@@ -141,6 +141,7 @@ function SectionPanel({ title, icon, children }: { title: string; icon: string; 
 
 export default function ApplyPage() {
   const [form, setForm] = useState<FormState>(INITIAL)
+  const [companyDocuments, setCompanyDocuments] = useState<File[]>([])
   const [loading, setLoading] = useState(false)
   const [success, setSuccess]         = useState(false)
   const [credentials, setCredentials] = useState<{ username: string; password: string } | null>(null)
@@ -154,6 +155,30 @@ export default function ApplyPage() {
     sel({ standards: toggleArr(form.standards, code) })
   }
 
+  function addCompanyDocuments(files: FileList | null) {
+    if (!files) return
+    setError('')
+    setCompanyDocuments(current => {
+      const next = [...current]
+      for (const file of Array.from(files)) {
+        const duplicateIndex = next.findIndex(
+          item => item.name === file.name && item.size === file.size,
+        )
+        if (duplicateIndex >= 0) next[duplicateIndex] = file
+        else next.push(file)
+      }
+      return next
+    })
+  }
+
+  function replaceCompanyDocument(index: number, files: FileList | null) {
+    const replacement = files?.[0]
+    if (!replacement) return
+    setCompanyDocuments(current =>
+      current.map((file, itemIndex) => itemIndex === index ? replacement : file),
+    )
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
@@ -163,7 +188,7 @@ export default function ApplyPage() {
     setLoading(true)
     try {
       const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-      const res = await axios.post(`${apiBase}/apply`, {
+      const applicationPayload = {
         company_name:      form.company_name,
         company_address:   form.company_address,
         city:              form.city,
@@ -218,7 +243,15 @@ export default function ApplyPage() {
         }),
         // Consultant referral
         consultant_code: consultantCode || undefined,
-      })
+      }
+      const res = companyDocuments.length > 0
+        ? await (() => {
+            const body = new FormData()
+            body.append('application', JSON.stringify(applicationPayload))
+            companyDocuments.forEach(file => body.append('company_documents', file, file.name))
+            return axios.post(`${apiBase}/apply/with-documents`, body)
+          })()
+        : await axios.post(`${apiBase}/apply`, applicationPayload)
       setCredentials({
         username: res.data.username      || form.representative_email,
         password: res.data.temp_password || '',
@@ -758,7 +791,94 @@ export default function ApplyPage() {
             </div>
           </div>
 
-          {/* ── 8. Error + Submit ──────────────────────────────────────── */}
+          {/* ── Company Documents ──────────────────────────────────────── */}
+          <div className={`${formSectionCls} space-y-4`}>
+            <div>
+              <h2 className={sectionHdCls}>Company Documents</h2>
+              <p className="-mt-2 text-xs leading-5 text-gray-500">
+                Add supporting company records for the certification team. You can remove or
+                replace files until you submit this application.
+              </p>
+            </div>
+
+            <label className="flex cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center transition hover:border-[#1A4731]/50 hover:bg-emerald-50/40">
+              <input
+                type="file"
+                multiple
+                disabled={loading}
+                className="sr-only"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.txt,.csv"
+                onChange={event => {
+                  addCompanyDocuments(event.target.files)
+                  event.target.value = ''
+                }}
+              />
+              <span>
+                <span className="block text-sm font-semibold text-[#1A4731]">
+                  Choose company documents
+                </span>
+                <span className="mt-1 block text-xs text-slate-400">
+                  PDF, Office documents, images, text or CSV · up to 20 files · 25 MB each · 100 MB total
+                </span>
+              </span>
+            </label>
+
+            {companyDocuments.length > 0 && (
+              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                {companyDocuments.map((file, index) => (
+                  <div
+                    key={`${file.name}-${file.size}-${index}`}
+                    className="flex items-center gap-3 border-b border-slate-100 px-3.5 py-3 last:border-b-0"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-slate-700">{file.name}</p>
+                      <p className="mt-0.5 text-xs text-slate-400">
+                        {file.type || file.name.split('.').pop()?.toUpperCase() || 'Document'}
+                        {' · '}
+                        {file.size < 1024 * 1024
+                          ? `${Math.max(1, Math.round(file.size / 1024))} KB`
+                          : `${(file.size / (1024 * 1024)).toFixed(1)} MB`}
+                      </p>
+                    </div>
+                    <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${
+                      loading
+                        ? 'bg-blue-50 text-blue-700'
+                        : 'bg-emerald-50 text-emerald-700'
+                    }`}>
+                      {loading ? 'Uploading' : 'Ready'}
+                    </span>
+                    <label className={`text-xs font-medium text-[#1A4731] hover:underline ${
+                      loading ? 'pointer-events-none opacity-50' : 'cursor-pointer'
+                    }`}>
+                      Replace
+                      <input
+                        type="file"
+                        disabled={loading}
+                        className="sr-only"
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.txt,.csv"
+                        onChange={event => {
+                          replaceCompanyDocument(index, event.target.files)
+                          event.target.value = ''
+                        }}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => setCompanyDocuments(current =>
+                        current.filter((_, itemIndex) => itemIndex !== index)
+                      )}
+                      className="text-xs font-medium text-red-500 hover:text-red-700 disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ── Error + Submit ──────────────────────────────────────── */}
           <div className="px-5 py-6 md:px-7 space-y-4">
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3">

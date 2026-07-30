@@ -3,28 +3,64 @@ BATUHAN — Public client application form router.
 POST /apply — no authentication required.
 """
 from __future__ import annotations
+from dataclasses import dataclass
+import mimetypes
+from pathlib import Path
+import re
 import secrets
 import string
+import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel, ValidationError
 from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from passlib.context import CryptContext
 
-from audit_set.db_models import AuditSet, AuditSetStage, AuditSetStatusEvent, get_db as get_audit_db
+from audit_set.db_models import (
+    AuditSet,
+    AuditSetCompanyDocument,
+    AuditSetStage,
+    AuditSetStatusEvent,
+    get_db as get_audit_db,
+)
 from audit_set.service import _create_auto_stages
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.policy import CLIENT_EMAIL_VERIFICATION, policy_enabled
 from auth.otp import generate_otp
 from email_service import send_client_welcome, send_otp_code
+from storage.document_store import delete as store_delete, upload as store_upload
 
 router = APIRouter(prefix="/apply", tags=["application"])
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 ALLOWED_STANDARDS = {"QMS", "EMS", "OHSMS", "FSMS", "ISMS", "MDQMS", "ABMS", "ENMS"}
 ALLOWED_AUDIT_TYPES = {"initial", "surveillance_1", "surveillance_2", "recertification"}
+ALLOWED_COMPANY_DOCUMENT_EXTENSIONS = {
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".xls",
+    ".xlsx",
+    ".ppt",
+    ".pptx",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".txt",
+    ".csv",
+}
+MAX_COMPANY_DOCUMENTS = 20
+MAX_COMPANY_DOCUMENT_BYTES = 25 * 1024 * 1024
+MAX_COMPANY_DOCUMENT_TOTAL_BYTES = 100 * 1024 * 1024
+
+
+@dataclass(frozen=True)
+class CompanyDocumentUpload:
+    file_name: str
+    content_type: str
+    content: bytes
 
 
 class SiteDetailInput(BaseModel):
@@ -100,11 +136,68 @@ def _generate_password(length: int = 12) -> str:
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 
-@router.post("")
-def submit_application(
+def _safe_storage_name(file_name: str) -> str:
+    base_name = Path(file_name).name.strip()
+    clean_name = re.sub(r"[^A-Za-z0-9._ -]", "_", base_name)
+    return clean_name[:180] or "document"
+
+
+async def _read_company_documents(
+    uploads: list[UploadFile],
+) -> list[CompanyDocumentUpload]:
+    if len(uploads) > MAX_COMPANY_DOCUMENTS:
+        raise HTTPException(
+            400,
+            f"A maximum of {MAX_COMPANY_DOCUMENTS} company documents can be uploaded.",
+        )
+
+    documents: list[CompanyDocumentUpload] = []
+    total_bytes = 0
+    for upload in uploads:
+        file_name = Path((upload.filename or "").replace("\\", "/")).name.strip()
+        if not file_name:
+            raise HTTPException(400, "Every company document must have a file name.")
+        extension = Path(file_name).suffix.lower()
+        if extension not in ALLOWED_COMPANY_DOCUMENT_EXTENSIONS:
+            raise HTTPException(
+                400,
+                f"Unsupported company document type for '{file_name}'.",
+            )
+
+        content = await upload.read(MAX_COMPANY_DOCUMENT_BYTES + 1)
+        if not content:
+            raise HTTPException(400, f"Company document '{file_name}' is empty.")
+        if len(content) > MAX_COMPANY_DOCUMENT_BYTES:
+            raise HTTPException(
+                413,
+                f"Company document '{file_name}' exceeds the 25 MB limit.",
+            )
+        total_bytes += len(content)
+        if total_bytes > MAX_COMPANY_DOCUMENT_TOTAL_BYTES:
+            raise HTTPException(
+                413,
+                "The combined company document upload exceeds the 100 MB limit.",
+            )
+        documents.append(
+            CompanyDocumentUpload(
+                file_name=file_name,
+                # Derive the served type from the allowed extension instead of
+                # trusting the caller-provided multipart Content-Type header.
+                content_type=(
+                    mimetypes.guess_type(file_name)[0]
+                    or "application/octet-stream"
+                ),
+                content=content,
+            )
+        )
+    return documents
+
+
+def _submit_application(
     payload: ClientApplicationSchema,
-    audit_db: Session = Depends(get_audit_db),
-    auth_db: Session = Depends(get_auth_db),
+    audit_db: Session,
+    auth_db: Session,
+    company_documents: list[CompanyDocumentUpload] | None = None,
 ):
     # Validate
     bad_standards = [s for s in payload.standards if s not in ALLOWED_STANDARDS]
@@ -258,8 +351,52 @@ def submit_application(
     )
     auth_db.add(user)
 
-    # Commit both DBs
-    audit_db.commit()
+    # Persist application evidence before the application becomes visible to
+    # planners. The metadata row and audit-set row are committed together.
+    stored_refs: list[str] = []
+    try:
+        auth_db.flush()  # assign the client user id for uploader traceability
+        for document in company_documents or []:
+            document_id = str(uuid.uuid4())
+            relative_path = (
+                f"company_documents/{audit_set.id}/{document_id}/"
+                f"{_safe_storage_name(document.file_name)}"
+            )
+            storage_ref = store_upload(
+                relative_path,
+                document.content,
+                content_type=document.content_type,
+            )
+            stored_refs.append(storage_ref)
+            audit_db.add(
+                AuditSetCompanyDocument(
+                    id=document_id,
+                    audit_set_id=audit_set.id,
+                    file_path=storage_ref,
+                    file_name=document.file_name,
+                    file_type=document.content_type,
+                    file_size=len(document.content),
+                    uploader_user_id=user.id,
+                    uploader_name=payload.representative_name,
+                    uploader_role="client",
+                )
+            )
+        audit_db.commit()
+    except Exception as exc:
+        audit_db.rollback()
+        auth_db.rollback()
+        for storage_ref in stored_refs:
+            try:
+                store_delete(storage_ref)
+            except Exception:
+                pass
+        if isinstance(exc, HTTPException):
+            raise
+        raise HTTPException(
+            500,
+            "The application documents could not be stored. No application was submitted.",
+        ) from exc
+
     audit_db.refresh(audit_set)
     auth_db.commit()
 
@@ -301,6 +438,32 @@ def submit_application(
         "username":     payload.representative_email,
         "temp_password": temp_password,
     }
+
+
+@router.post("")
+def submit_application(
+    payload: ClientApplicationSchema,
+    audit_db: Session = Depends(get_audit_db),
+    auth_db: Session = Depends(get_auth_db),
+):
+    """Backward-compatible JSON submission for applications without files."""
+    return _submit_application(payload, audit_db, auth_db)
+
+
+@router.post("/with-documents")
+async def submit_application_with_documents(
+    application: str = Form(...),
+    company_documents: list[UploadFile] = File(default=[]),
+    audit_db: Session = Depends(get_audit_db),
+    auth_db: Session = Depends(get_auth_db),
+):
+    """Submit an application and its final, client-selected document set."""
+    try:
+        payload = ClientApplicationSchema.model_validate_json(application)
+    except ValidationError as exc:
+        raise HTTPException(422, detail=exc.errors()) from exc
+    documents = await _read_company_documents(company_documents)
+    return _submit_application(payload, audit_db, auth_db, documents)
 
 
 @router.get("/consultants")

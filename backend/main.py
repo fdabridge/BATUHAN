@@ -26,6 +26,7 @@ from audit_set.workflow_router import router as workflow_router
 from audit_set.client_router import router as client_router
 from audit_set.messages_router import router as messages_router
 from audit_set.documents_router import router as documents_router
+from audit_set.application_documents_router import router as application_documents_router
 from audit_set.signatures_router import router as signatures_router
 from audit_set.committee_router import router as committee_router
 from audit_set.meeting_router import protected_router as meeting_protected_router
@@ -104,6 +105,7 @@ app.include_router(declaration_router)
 app.include_router(report_router)
 app.include_router(viewer_router)
 app.include_router(documents_router)
+app.include_router(application_documents_router)
 app.include_router(audit_sets_router, prefix="/audit-sets", tags=["audit-sets"])
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(admin_users_router, prefix="/admin", tags=["admin"])

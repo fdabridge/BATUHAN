@@ -415,6 +415,37 @@ class AuditSetSharedDocument(Base):
 
 
 # ---------------------------------------------------------------------------
+# Company documents supplied with the client application
+# ---------------------------------------------------------------------------
+
+class AuditSetCompanyDocument(Base):
+    """Original company evidence attached to a portal application.
+
+    These files intentionally live outside AuditSetSharedDocument: application
+    evidence is not a released/signable certification document and therefore
+    must not participate in the document-signing workflow.
+    """
+
+    __tablename__ = "audit_set_company_documents"
+
+    id               = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    audit_set_id     = Column(
+        String,
+        ForeignKey("audit_sets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    file_path        = Column(String, nullable=False)
+    file_name        = Column(String, nullable=False)
+    file_type        = Column(String, nullable=False)
+    file_size        = Column(Integer, nullable=False)
+    uploader_user_id = Column(String, nullable=True)   # soft FK → platform_users.id
+    uploader_name    = Column(String, nullable=False)
+    uploader_role    = Column(String, nullable=False, default="client")
+    uploaded_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+# ---------------------------------------------------------------------------
 # Table 6 — audit_document_signatures
 # Multi-party signature tracking for all document types.
 # CB planner signs FR.220/FR.221; future prompts add committee, auditor, guest.
