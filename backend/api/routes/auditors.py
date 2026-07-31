@@ -34,6 +34,7 @@ from auditors.service import (
 )
 from auditors.qualification_scope import (
     compute_covered_scope,
+    has_qualification_for_scope_type,
     matching_qualifications,
     normalize_scope_code,
     qualification_codes_for_standard,
@@ -502,9 +503,29 @@ def get_available_auditors(
                 legacy_accreditation_bodies=auditor.accreditation_bodies,
             )
 
+        def _has_enms_qualification_needing_scope_review(auditor) -> bool:
+            """Keep ENMS-qualified auditors visible even if complexity is absent.
+
+            Their covered_scope remains empty, so the frontend can show them for
+            planning without treating an unspecified/insufficient complexity
+            level as meeting the audit's competence requirement.
+            """
+            return has_qualification_for_scope_type(
+                auditor.standard_qualifications,
+                req_cat,
+                "energy",
+                accreditation_body=accreditation_body,
+                legacy_accreditation_bodies=auditor.accreditation_bodies,
+            )
+
         # Include a person when at least one exact standard/code pair is covered;
-        # the frontend then combines all selected eligible team members.
-        all_auditors = [a for a in all_auditors if _scope_for(a)]
+        # the frontend then combines all selected eligible team members. ENMS
+        # qualifications with missing/lower complexity remain renderable but do
+        # not receive false covered_scope credit.
+        all_auditors = [
+            a for a in all_auditors
+            if _scope_for(a) or _has_enms_qualification_needing_scope_review(a)
+        ]
     else:
         # Legacy fallback: single standard_code + ea_code filter
         # 2. Filter by the exact normalized standard and accreditation body.

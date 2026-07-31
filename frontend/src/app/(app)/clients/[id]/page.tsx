@@ -24,6 +24,7 @@ import { DeclarationManagementSection } from '@/components/ui/DeclarationManagem
 import { AuditReportSection } from '@/components/ui/AuditReportSection'
 import { WorkflowStatusBar } from '@/components/ui/WorkflowStatusBar'
 import {
+  auditorShouldRenderForRequiredScope,
   authoritativeCoverageLabel,
   computeStageCoverage,
 } from '@/lib/stageCoverage'
@@ -1836,15 +1837,14 @@ function StageCard({
   function patch(p: Partial<StageEdit>) { setEdit((prev) => ({ ...prev, ...p })) }
 
   // Determine the auditor list to render in dropdowns
-  // When required_scope is derived and availability data is loaded, exclude auditors
-  // who cover zero required codes — they add no value to this audit.
+  // When required_scope is derived, keep exact contributors plus ENMS-qualified
+  // legacy profiles that need their energy-complexity scope reviewed.
   const allDropdown: (AuditorSummary | AuditorAvailabilityItem)[] = availableAuditors ?? auditors
   const dropdownList: (AuditorSummary | AuditorAvailabilityItem)[] =
     (availableAuditors && requiredScope && Object.keys(requiredScope).length > 0)
-      ? availableAuditors.filter((a) => {
-          const coveredTotal = Object.values(a.covered_scope ?? {}).flat().length
-          return coveredTotal > 0
-        })
+      ? availableAuditors.filter((a) =>
+          auditorShouldRenderForRequiredScope(a, requiredScope)
+        )
       : allDropdown
 
   return (
@@ -2041,7 +2041,13 @@ function StageCard({
                   <span>
                     {a.name}
                     {qualificationLabel && (
-                      <span className={qualificationLabel === 'no matching qualification' ? 'text-red-600' : 'text-green-700'}>
+                      <span className={
+                        qualificationLabel === 'no matching qualification'
+                          ? 'text-red-600'
+                          : qualificationLabel.includes('scope not covered')
+                            ? 'text-amber-700'
+                            : 'text-green-700'
+                      }>
                         {' · '}{qualificationLabel}
                       </span>
                     )}
@@ -2114,7 +2120,13 @@ function StageCard({
                   <span>
                     {a.name}
                     {qualificationLabel && (
-                      <span className={qualificationLabel === 'no matching qualification' ? 'text-red-600' : 'text-green-700'}>
+                      <span className={
+                        qualificationLabel === 'no matching qualification'
+                          ? 'text-red-600'
+                          : qualificationLabel.includes('scope not covered')
+                            ? 'text-amber-700'
+                            : 'text-green-700'
+                      }>
                         {' · '}{qualificationLabel}
                       </span>
                     )}

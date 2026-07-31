@@ -167,6 +167,24 @@ function qualificationForStandard(
   )
 }
 
+export function auditorShouldRenderForRequiredScope(
+  auditor: AvailableAuditor,
+  requiredScope: StageRequiredScope,
+): boolean {
+  const coveredTotal = Object.values(auditor.covered_scope ?? {}).flat().length
+  if (coveredTotal > 0) return true
+
+  // ENMS profiles created before energy-complexity capture may have a valid
+  // ISO 50001 qualification but no scope_category. Keep them visible so the
+  // planner can review/update competence; covered_scope still controls whether
+  // the final-stage coverage gate is satisfied.
+  return Object.entries(requiredScope).some(
+    ([standard, entry]) =>
+      entry.type.toLowerCase() === 'energy'
+      && qualificationForStandard(auditor, standard).length > 0,
+  )
+}
+
 function labelName(
   name: string | null,
   technicalExpertNames: Set<string>,
@@ -259,5 +277,13 @@ export function authoritativeCoverageLabel(
   const parts = Object.entries(auditor.covered_scope ?? {})
     .filter(([, codes]) => codes.length > 0)
     .map(([standard, codes]) => `${codes.join(' ')} (${standard})`)
-  return parts.length > 0 ? parts.join(' | ') : 'no matching qualification'
+  if (parts.length > 0) return parts.join(' | ')
+  const qualifiedStandards = Array.from(new Set(
+    auditor.standard_qualifications
+      .map((qualification) => qualification.standard_code)
+      .filter(Boolean),
+  ))
+  return qualifiedStandards.length > 0
+    ? `${qualifiedStandards.join(', ')} qualified · required scope not covered`
+    : 'no matching qualification'
 }

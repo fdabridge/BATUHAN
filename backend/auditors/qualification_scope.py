@@ -31,6 +31,11 @@ _STANDARD_NUMBERS = (
 )
 _EA_STANDARD_KEYS = {"9001", "14001", "45001"}
 _CATEGORY_SCOPE_TYPES = {"food", "medical", "isms", "sector", "energy"}
+_ENERGY_COMPLEXITY_RANK = {
+    "low": 1,
+    "medium": 2,
+    "high": 3,
+}
 
 
 def _value(item: object, field: str, default: Any = None) -> Any:
@@ -89,6 +94,28 @@ def normalize_scope_code(value: object, scope_type: str = "ea") -> str:
     return re.sub(r"\s+", "", raw)
 
 
+def energy_complexity_covers(
+    qualification_complexity: object,
+    required_complexity: object,
+) -> bool:
+    """Return whether an EnMS competence level covers an audit complexity.
+
+    Higher-complexity ISO 50001 competence covers lower-complexity audits.
+    Missing or unknown values deliberately do not claim scope coverage.
+    """
+    qualification = str(qualification_complexity or "").strip().lower()
+    required = str(required_complexity or "").strip().lower()
+    qualification = qualification.removesuffix(" complexity").strip()
+    required = required.removesuffix(" complexity").strip()
+    qualification_rank = _ENERGY_COMPLEXITY_RANK.get(qualification)
+    required_rank = _ENERGY_COMPLEXITY_RANK.get(required)
+    return bool(
+        qualification_rank
+        and required_rank
+        and qualification_rank >= required_rank
+    )
+
+
 def _is_qualified(qualification: object) -> bool:
     return _value(qualification, "is_qualified", True) is not False
 
@@ -135,6 +162,30 @@ def matching_qualifications(
             legacy_accreditation_bodies,
         )
     ]
+
+
+def has_qualification_for_scope_type(
+    qualifications: Iterable[object] | None,
+    required_scope: Mapping[str, Mapping[str, object]] | None,
+    scope_type: str,
+    *,
+    accreditation_body: str | None = None,
+    legacy_accreditation_bodies: Iterable[object] | None = None,
+) -> bool:
+    """Return whether any required standard of one scope type is qualified."""
+    target_type = scope_type.strip().lower()
+    return any(
+        str(entry.get("type", "")).strip().lower() == target_type
+        and bool(
+            matching_qualifications(
+                qualifications,
+                standard,
+                accreditation_body,
+                legacy_accreditation_bodies,
+            )
+        )
+        for standard, entry in (required_scope or {}).items()
+    )
 
 
 def _split_categories(value: object) -> list[str]:
@@ -241,16 +292,26 @@ def compute_covered_scope(
         if not qualification_codes:
             continue
 
-        qualification_keys = {
-            normalize_scope_code(code, scope_type)
-            for code in qualification_codes
-            if normalize_scope_code(code, scope_type)
-        }
-        matched = [
-            code
-            for code in required_codes
-            if normalize_scope_code(code, scope_type) in qualification_keys
-        ]
+        if scope_type == "energy":
+            matched = [
+                code
+                for code in required_codes
+                if any(
+                    energy_complexity_covers(qualification_code, code)
+                    for qualification_code in qualification_codes
+                )
+            ]
+        else:
+            qualification_keys = {
+                normalize_scope_code(code, scope_type)
+                for code in qualification_codes
+                if normalize_scope_code(code, scope_type)
+            }
+            matched = [
+                code
+                for code in required_codes
+                if normalize_scope_code(code, scope_type) in qualification_keys
+            ]
         if matched:
             covered[standard] = matched
     return covered

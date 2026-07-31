@@ -2,6 +2,8 @@ from types import SimpleNamespace
 
 from auditors.qualification_scope import (
     compute_covered_scope,
+    energy_complexity_covers,
+    has_qualification_for_scope_type,
     matching_qualifications,
     normalize_scope_code,
     normalize_standard,
@@ -158,3 +160,33 @@ def test_category_codes_use_exact_case_and_spacing_normalization():
     )
 
     assert covered == {"ISO 22000": ["CI", "CIV"]}
+
+
+def test_enms_standard_aliases_and_complexity_hierarchy_are_supported():
+    qualifications = [qualification("ENMS", category="High complexity")]
+
+    assert normalize_standard("ENMS") == normalize_standard("ISO 50001:2018")
+    assert energy_complexity_covers("High", "Medium") is True
+    assert energy_complexity_covers("Medium", "High") is False
+    assert compute_covered_scope(
+        qualifications,
+        {"ISO 50001": {"type": "energy", "codes": ["Medium"]}},
+        accreditation_body="UAF",
+    ) == {"ISO 50001": ["Medium"]}
+
+
+def test_missing_enms_complexity_does_not_claim_coverage():
+    qualifications = [qualification("ISO 50001", category=None)]
+    required_scope = {"ISO 50001": {"type": "energy", "codes": ["Low"]}}
+
+    assert has_qualification_for_scope_type(
+        qualifications,
+        required_scope,
+        "energy",
+        accreditation_body="UAF",
+    ) is True
+    assert compute_covered_scope(
+        qualifications,
+        required_scope,
+        accreditation_body="UAF",
+    ) == {}

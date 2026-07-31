@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  auditorShouldRenderForRequiredScope,
   authoritativeCoverageLabel,
   computeStageCoverage,
   normalizeScopeCode,
@@ -171,4 +172,37 @@ test('selected chip label is generated from the same covered_scope as coverage',
     { 'ISO 9001': { type: 'ea', codes: ['EA 23'] } },
   )
   assert.equal(coverage[0].covered, true)
+})
+
+
+test('legacy ENMS auditor remains renderable without false complexity coverage', () => {
+  const legacyEnmsAuditor = auditor(
+    'enms',
+    'ENMS Auditor',
+    {},
+    ['ENMS'],
+  )
+  const requiredScope = {
+    'ISO 50001': { type: 'energy', codes: ['High'] },
+  }
+
+  assert.equal(
+    auditorShouldRenderForRequiredScope(legacyEnmsAuditor, requiredScope),
+    true,
+  )
+  assert.equal(
+    authoritativeCoverageLabel(
+      { id: 'enms', name: 'ENMS Auditor' },
+      [legacyEnmsAuditor],
+    ),
+    'ENMS qualified · required scope not covered',
+  )
+  const coverage = computeStageCoverage(
+    ['ISO 50001'],
+    null,
+    { leadAuditor: { id: 'enms', name: 'ENMS Auditor' } },
+    [legacyEnmsAuditor],
+    requiredScope,
+  )
+  assert.equal(coverage[0].covered, false)
 })
