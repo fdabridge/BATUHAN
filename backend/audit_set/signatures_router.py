@@ -458,35 +458,25 @@ def get_my_pending_signatures(
             ):
                 _add(s)
 
-        # ── 4. transfer reviewer / committee chair — FR.250 ──────────────────
+        # ── 4. transfer reviewer — FR.250 ────────────────────────────────────
         transfer_sets = {
             row.id
             for row in db.query(AuditSet.id)
             .filter_by(transfer_reviewer_id=auditor_id)
             .all()
         }
-        chair_sets = set()
-        for audit_set in db.query(AuditSet).filter(AuditSet.is_transfer.is_(True)).all():
-            chair = planned_committee_chair(audit_set)
-            if committee_member_auditor_id(chair) == auditor_id:
-                chair_sets.add(audit_set.id)
-
         transfer_slot_filters = []
         if transfer_sets:
             transfer_slot_filters.append((
                 "transfer_reviewer",
                 transfer_sets,
             ))
-        if chair_sets:
-            transfer_slot_filters.append((
-                "committee_chair",
-                chair_sets,
-            ))
         for role_label, audit_set_ids in transfer_slot_filters:
             for s in (
                 db.query(AuditDocumentSignature)
                 .filter(
                     AuditDocumentSignature.signer_role_label == role_label,
+                    AuditDocumentSignature.required.is_(True),
                     AuditDocumentSignature.signed_at.is_(None),
                     AuditDocumentSignature.audit_set_id.in_(audit_set_ids),
                 )

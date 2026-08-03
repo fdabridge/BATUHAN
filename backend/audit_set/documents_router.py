@@ -38,7 +38,6 @@ from storage.document_store import upload as store_upload, ensure_local, delete 
 from email_service import send_client_status_update, send_document_released
 from audit_set.doc_converter import prepare_document
 from audit_set.pdf_flattener import flatten_document, has_completed_visual_signatures
-from audit_set.committee_slots import committee_member_auditor_id, planned_committee_chair
 
 router = APIRouter(prefix="/audit-sets", tags=["documents"])
 
@@ -73,7 +72,7 @@ AUDITOR_VISIBLE_TYPES = {
     "audit_plan", "meeting_form", "nc_form",
     "stage1_report", "stage2_report", "certificate", "audit_upload",
     "fr218_review",   # visible to the appointed application reviewer (FSMS/ISMS only)
-    "transfer_review",  # visible to the appointed transfer reviewer / committee chair
+    "transfer_review",  # visible to the appointed transfer reviewer
 }
 CLIENT_VISIBLE_TYPES = {
     "quotation", "agreement", "audit_plan", "meeting_form",
@@ -102,9 +101,8 @@ DOC_SIG_SLOTS: dict[str, list[str]] = {
     # FR.234 Surveillance Notification: planner issues it, org_rep acknowledges it.
     # Signing is optional and does NOT gate workflow advance (advance fires at release time).
     "surveillance_notification": ["cb_planner", "org_rep"],
-    # FR.250 Transfer Application Control Form: planner, transfer reviewer,
-    # then certification committee chairperson.
-    "transfer_review": ["cb_planner", "transfer_reviewer", "committee_chair"],
+    # FR.250 Transfer Application Control Form: planner and transfer reviewer.
+    "transfer_review": ["cb_planner", "transfer_reviewer"],
 }
 
 # Linear order of the initial-certification status machine, used for
@@ -157,13 +155,6 @@ def _needs_reviewer(audit_set: AuditSet) -> bool:
 
 def _is_transfer_reviewer(audit_set: AuditSet | None, auditor_id: Optional[str]) -> bool:
     return bool(audit_set and auditor_id and audit_set.transfer_reviewer_id == auditor_id)
-
-
-def _is_committee_chair(audit_set: AuditSet | None, auditor_id: Optional[str]) -> bool:
-    if not audit_set or not auditor_id:
-        return False
-    chair = planned_committee_chair(audit_set)
-    return committee_member_auditor_id(chair) == auditor_id
 
 
 def _doc_to_dict(d: AuditSetSharedDocument, db: Session | None = None) -> dict:
@@ -429,8 +420,6 @@ async def release_document(
                 raise HTTPException(400, "FR.250 can only be released for transfer applications.")
             if not audit_set.transfer_reviewer_id:
                 raise HTTPException(400, "Assign a Transfer Reviewer before releasing FR.250.")
-            if not planned_committee_chair(audit_set):
-                raise HTTPException(400, "Assign the certification committee chairperson before releasing FR.250.")
 
         if document_type == "certificate":
             # A certificate is the final issuance event. Validate the same
@@ -608,10 +597,7 @@ def _visible_docs_for_user(
 
     if current_user.role == "auditor":
         audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
-        transfer_access = (
-            _is_transfer_reviewer(audit_set, current_user.auditor_id)
-            or _is_committee_chair(audit_set, current_user.auditor_id)
-        )
+        transfer_access = _is_transfer_reviewer(audit_set, current_user.auditor_id)
         if not _auditor_is_assigned(audit_set_id, current_user.auditor_id, db) and not transfer_access:
             raise HTTPException(403, "Not assigned to this audit set")
         docs = q.filter(

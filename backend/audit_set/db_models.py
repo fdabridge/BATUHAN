@@ -65,10 +65,28 @@ def _safe_drop_constraint(table: str, constraint: str) -> None:
             pass
 
 
+def _safe_retire_fr250_certification_decision_slots() -> None:
+    """Stop obsolete unsigned FR.250 committee-chair slots blocking workflows."""
+    import sqlalchemy as sa
+    with engine.connect() as conn:
+        try:
+            conn.execute(sa.text(
+                "UPDATE audit_document_signatures "
+                "SET required = FALSE "
+                "WHERE document_type = 'transfer_review' "
+                "AND signer_role_label = 'committee_chair' "
+                "AND signed_at IS NULL"
+            ))
+            conn.commit()
+        except Exception:
+            pass
+
+
 def create_tables():
     # Portal 56 — checkfirst=True (default) ensures any table added after the
     # initial deploy (e.g. client_org_employees) is created on the running DB.
     Base.metadata.create_all(bind=engine, checkfirst=True)
+    _safe_retire_fr250_certification_decision_slots()
     # Safe migrations — add columns introduced after initial deployment
     _safe_add_column("audit_sets", "required_scope JSON")
     _safe_add_column("audit_sets", "scope_integration_level VARCHAR")

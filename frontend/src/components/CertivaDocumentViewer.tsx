@@ -61,7 +61,6 @@ const SIG_LABELS: Record<string, string> = {
   APPOINTED_REVIEWER: 'Committee Chairperson',
   CERT_MANAGER_FR233: 'Certification Manager (FR.233)',
   TRANSFER_REVIEWER:  'Transfer Reviewer',
-  TRANSFER_CERT_DECISION: 'Certification Decision',
 }
 function sigLabel(key: string) {
   if (SIG_LABELS[key]) return SIG_LABELS[key]

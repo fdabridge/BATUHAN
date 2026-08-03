@@ -58,7 +58,6 @@ const SIG_KEY_LABELS: Record<string, string> = {
   CB_REVIEWER:     'Committee Reviewer',
   APPOINTED_REVIEWER: 'Committee Chairperson',
   TRANSFER_REVIEWER: 'Transfer Reviewer',
-  TRANSFER_CERT_DECISION: 'Certification Decision',
   LEAD_AUDITOR:    'Lead Auditor',
   CLIENT:          'Organisation Representative',
   ORG_REP:         'Organisation Representative',

@@ -88,7 +88,6 @@ ROLE_TO_SIG: dict[str, str] = {
     "appointed_reviewer": "APPOINTED_REVIEWER",
     # FR.250 transfer application control
     "transfer_reviewer": "TRANSFER_REVIEWER",
-    "committee_chair":   "TRANSFER_CERT_DECISION",
 }
 SIG_TO_ROLE: dict[str, str] = {v: k for k, v in ROLE_TO_SIG.items()}
 
@@ -264,6 +263,13 @@ def _suppressed_sig_keys_for_document(
     db: Session,
 ) -> set[str]:
     """Signature markers that should not behave as real slots for this record."""
+    if document_type == "shared_doc":
+        doc = db.query(AuditSetSharedDocument).filter_by(id=doc_id).first()
+        if doc and doc.document_type == "transfer_review":
+            # FR.250 no longer has a Certification Decision signature. Hide the
+            # obsolete marker on previously uploaded copies as well.
+            return {"TRANSFER_CERT_DECISION"}
+        return set()
     if document_type != "audit_report":
         return set()
     report = db.query(AuditSetAuditReport).filter_by(id=doc_id).first()
@@ -649,14 +655,6 @@ def _shared_slot_eligible(
             return False
         audit_set = db.query(AuditSet).filter_by(id=doc.audit_set_id).first()
         return audit_set is not None and audit_set.transfer_reviewer_id == current_user.auditor_id
-    if role_label == "committee_chair":
-        if role == "admin":
-            return True
-        if role != "auditor" or not current_user.auditor_id:
-            return False
-        audit_set = db.query(AuditSet).filter_by(id=doc.audit_set_id).first()
-        chair = planned_committee_chair(audit_set) if audit_set else None
-        return committee_member_auditor_id(chair) == current_user.auditor_id
     return False
 
 
