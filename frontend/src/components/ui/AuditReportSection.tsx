@@ -180,7 +180,7 @@ export function AuditReportSection({
   return (
     <div className="mt-6">
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-700">
-        Audit Reports (FR.231 / FR.229 / FR.232)
+        Audit Reports (FR.231 / FR.229 / FR.232 / FR.232-1)
       </h2>
 
       {loading ? (

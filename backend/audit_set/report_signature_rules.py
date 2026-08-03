@@ -11,6 +11,7 @@ REPORT_FORM_STAGES = {
     "FR.231-1": {"stage_1"},
     "FR.229": {"stage_1", "stage_2", "surveillance", "recertification"},
     "FR.232": {"stage_2", "surveillance", "recertification"},
+    "FR.232-1": {"stage_2", "surveillance", "recertification"},
 }
 
 

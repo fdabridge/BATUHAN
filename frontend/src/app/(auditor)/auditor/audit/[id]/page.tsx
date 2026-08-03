@@ -772,6 +772,12 @@ const FORM_OPTS: {
     stageTypes: ['stage_2', 'surveillance', 'recertification'],
   },
   {
+    value: 'FR.232-1',
+    label: 'FR.232-1 — MDQMS Stage 2 / Surveillance / Recertification Report',
+    stageTypes: ['stage_2', 'surveillance', 'recertification'],
+    requiredStandard: 'MDQMS',
+  },
+  {
     value: 'FR.229',
     label: 'FR.229 — ISMS/PIMS Audit Report (ISO 27001)',
     stageTypes: ['stage_1', 'stage_2', 'surveillance', 'recertification'],
@@ -845,7 +851,7 @@ function AuditorReportsView({
       setForm(f => ({
         ...f,
         stage_type: 'surveillance',
-        report_form: ['FR.232', 'FR.229'].includes(f.report_form)
+        report_form: ['FR.232', 'FR.232-1', 'FR.229'].includes(f.report_form)
           ? f.report_form
           : 'FR.232',
       }))
@@ -1183,7 +1189,7 @@ const SHARED_DOC_TYPE_LABELS: Record<string, string> = {
   meeting_form:  'FR.225 Meeting Form',
   nc_form:       'FR.230 NC Form',
   stage1_report: 'FR.231 Stage 1 Report',
-  stage2_report: 'FR.232 Stage 2 Report',
+  stage2_report: 'Stage 2 Audit Report',
   certificate:   'Certificate',
   audit_upload:  'Audit Upload',
 }
@@ -1818,7 +1824,7 @@ export default function AuditorAuditDetail() {
         <AuditorDeclarationsView auditSetId={id} currentAuditorId={myAuditorId} />
       )}
 
-      {/* Reports tab — FR.231/FR.231-1/FR.229/FR.232 two-party signing */}
+      {/* Reports tab — FR.231/FR.231-1/FR.229/FR.232/FR.232-1 two-party signing */}
       {tab === 'reports' && (
         <AuditorReportsView
           auditSetId={id}

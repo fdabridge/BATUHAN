@@ -131,7 +131,7 @@ const INITIAL_PANELS: Record<string, ActionPanel> = {
   },
   stage2_in_progress: {
     heading: 'Stage 2 audit in progress',
-    body: 'Stage 2 is underway. The status advances automatically when FR.232/FR.229 (Stage 2 report) is fully signed, or you can mark it complete manually.',
+    body: 'Stage 2 is underway. The status advances automatically when FR.232/FR.232-1/FR.229 (Stage 2 report) is fully signed, or you can mark it complete manually.',
     cta: { label: 'Mark Stage 2 Complete', nextStatus: 'stage2_complete' },
   },
   stage2_complete: {
@@ -247,7 +247,7 @@ const SURVEILLANCE_PANELS: Record<string, ActionPanel> = {
   },
   audit_in_progress: {
     heading: 'Surveillance audit in progress',
-    body: 'The audit is underway. The auditor uploads FR.232 (Audit Report), FR.225, and FR.230 via their portal. Status advances to Under Review automatically when documents are uploaded.',
+    body: 'The audit is underway. The auditor uploads the applicable FR.232, FR.232-1, or FR.229 Audit Report, plus FR.225 and FR.230, through their portal. Status advances to Under Review automatically when documents are uploaded.',
   },
   under_review: {
     heading: 'Under review — committee decision',

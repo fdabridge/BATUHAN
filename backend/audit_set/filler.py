@@ -480,6 +480,8 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
         "auditors": stage.auditors or [],
         "technical_experts": stage.technical_experts or [],
         "observers": stage.observers or [],
+        "trainees": getattr(stage, "trainees", None) or [],
+        "evaluators": getattr(stage, "evaluators", None) or [],
         # Portal 49a — FR.225 org attendees (rendered via {%tr for emp in org_attendees %})
         "org_attendees": org_attendees or [],
         # Personnel

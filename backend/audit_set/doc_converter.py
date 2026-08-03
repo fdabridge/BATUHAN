@@ -60,6 +60,8 @@ def _normalize_sig_key(raw_key: str, docx_basename: str) -> str:
     # Certification Manager. In FR.232 it is the appointed committee chair slot.
     if raw_key == "CB_REVIEWER" and "FR.231" in name:
         return "CB_CERT_MANAGER"
+    if raw_key == "CB_REVIEWER" and "FR.232-1" in name:
+        return "CB_CERT_MANAGER"
     if raw_key == "CB_REVIEWER" and "FR.232" in name:
         return "APPOINTED_REVIEWER"
     # FR.233 now uses the same canonical Certification Manager key as the rest

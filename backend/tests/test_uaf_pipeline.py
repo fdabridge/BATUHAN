@@ -179,6 +179,22 @@ def test_core_templates_present_per_stage(entries):
             assert fr in names, f"{fr} missing from {folder}"
 
 
+def test_integrated_mdqms_package_includes_its_stage_2_report():
+    audit_set = _audit_set()
+    audit_set.standards = ["QMS", "MDQMS"]
+
+    document_set, missing = resolve_document_set(audit_set)
+
+    assert missing == []
+    stage_2_forms = {spec.fr_number for spec in document_set["Stage_2"]}
+    assert "FR.232" in stage_2_forms
+    assert "FR.232-1" in stage_2_forms
+
+    entries = _zip_entries(build_audit_set_zip(audit_set, None))
+    assert not any(name.endswith("RENDER_ERRORS.txt") for name in entries)
+    assert _find(entries, "Stage_2", "FR.232-1") is not None
+
+
 def test_recertification_uses_front_docs_and_surveillance_templates():
     document_set, missing = resolve_document_set(_recertification_audit_set())
 
