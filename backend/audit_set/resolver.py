@@ -231,6 +231,7 @@ def _build_recertification_front_docs(
         _add(specs, seen, "FR.218", primary, sub, FR218_MAP, "all", missing)
         _add(specs, seen, "FR.220", primary, sub, {},        "all", missing)
         _add(specs, seen, "FR.221", primary, sub, {},        "all", missing)
+        _add(specs, seen, "FR.222", primary, sub, FR222_MAP, "all", missing)
 
     return specs
 

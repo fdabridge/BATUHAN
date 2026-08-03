@@ -202,14 +202,14 @@ def test_recertification_uses_front_docs_and_surveillance_templates():
     assert set(document_set) == {"Recertification"}
     by_fr = {spec.fr_number: spec for spec in document_set["Recertification"]}
     assert {
-        "FR.218", "FR.220", "FR.221",
+        "FR.218", "FR.220", "FR.221", "FR.222",
         "FR.223", "FR.224", "FR.225", "FR.230", "FR.232", "FR.211", "FR.234", "FR.233",
     } <= set(by_fr)
 
-    for fr in ("FR.218", "FR.220", "FR.221"):
-        path = by_fr[fr].template_path.as_posix()
-        assert "/Initial Certification/" in path
-        assert "/Stage 1/" in path
+    for fr in ("FR.218", "FR.220", "FR.221", "FR.222"):
+        path_parts = {part.strip() for part in by_fr[fr].template_path.parts}
+        assert "Initial Certification" in path_parts
+        assert "Stage 1" in path_parts
 
     for fr in ("FR.223", "FR.224", "FR.225", "FR.230", "FR.232", "FR.211", "FR.234", "FR.233"):
         assert "/Surveillance/" in by_fr[fr].template_path.as_posix()
@@ -218,7 +218,7 @@ def test_recertification_uses_front_docs_and_surveillance_templates():
 def test_recertification_zip_includes_front_documents():
     entries = _zip_entries(build_audit_set_zip(_recertification_audit_set(), None))
     names = " ".join(_stage_files(entries, "Recertification"))
-    for fr in ("FR.218", "FR.220", "FR.221"):
+    for fr in ("FR.218", "FR.220", "FR.221", "FR.222"):
         assert fr in names, f"{fr} missing from Recertification"
 
 
