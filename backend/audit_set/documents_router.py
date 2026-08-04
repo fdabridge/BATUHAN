@@ -105,8 +105,9 @@ DOC_SIG_SLOTS: dict[str, list[str]] = {
     "transfer_review": ["cb_planner", "transfer_reviewer"],
 }
 
-# Linear order of the initial-certification status machine, used for
-# "status X or later" gates.
+# Shared workflow order used for "status X or later" gates. The
+# recertification branch joins the initial flow through fr218_complete, then
+# uses the single-audit statuses before reaching under_review.
 STATUS_ORDER = [
     "pending_review",
     "in_planning",
@@ -115,6 +116,8 @@ STATUS_ORDER = [
     "agreement_signed",
     "fr218_in_progress",
     "fr218_complete",
+    "audit_scheduled",
+    "audit_in_progress",
     "stage1_scheduled",
     "stage1_in_progress",
     "stage1_complete",
