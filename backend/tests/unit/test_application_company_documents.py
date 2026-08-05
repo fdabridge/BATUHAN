@@ -3,30 +3,41 @@ from io import BytesIO
 from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException, UploadFile
+from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from audit_set import apply_router
-from audit_set.application_documents_router import _require_document_access
+from audit_set.application_documents_router import (
+    _require_document_access,
+    list_company_documents,
+)
 from audit_set.apply_router import (
     ClientApplicationSchema,
     CompanyDocumentUpload,
     _read_company_documents,
     _submit_application,
+    submit_application_with_documents,
 )
 from audit_set.db_models import (
     AuditSet,
     AuditSetCompanyDocument,
     Base as AuditBase,
+    get_db as get_audit_db,
 )
-from auth.db_models import Base as AuthBase, PlatformUser
+from auth.db_models import Base as AuthBase, PlatformUser, get_db as get_auth_db
 
 
 @pytest.fixture
 def application_sessions():
-    audit_engine = create_engine("sqlite:///:memory:")
-    auth_engine = create_engine("sqlite:///:memory:")
+    engine_options = {
+        "connect_args": {"check_same_thread": False},
+        "poolclass": StaticPool,
+    }
+    audit_engine = create_engine("sqlite:///:memory:", **engine_options)
+    auth_engine = create_engine("sqlite:///:memory:", **engine_options)
     AuditBase.metadata.create_all(audit_engine)
     AuthBase.metadata.create_all(auth_engine)
     audit_session = sessionmaker(bind=audit_engine)()
@@ -85,6 +96,7 @@ def test_submission_persists_document_and_uploader_metadata(
     document = audit_db.query(AuditSetCompanyDocument).one()
     user = auth_db.query(PlatformUser).one()
     assert result["success"] is True
+    assert result["company_documents_received"] == 1
     assert audit_set.workflow_status == "pending_review"
     assert document.audit_set_id == audit_set.id
     assert document.file_name == "Company Registration.pdf"
@@ -93,6 +105,100 @@ def test_submission_persists_document_and_uploader_metadata(
     assert document.uploader_user_id == user.id
     assert document.uploader_name == "Client User"
     assert uploaded["path"].startswith(f"company_documents/{audit_set.id}/")
+
+
+def test_all_selected_documents_are_persisted_and_visible_to_planner(
+    application_sessions,
+    monkeypatch,
+):
+    audit_db, auth_db = application_sessions
+    uploaded_paths = []
+    monkeypatch.setattr(apply_router, "policy_enabled", lambda *_: False)
+    monkeypatch.setattr(apply_router, "send_client_welcome", lambda **_: None)
+    monkeypatch.setattr(
+        apply_router,
+        "store_upload",
+        lambda path, _content, content_type: uploaded_paths.append((path, content_type)) or path,
+    )
+
+    result = _submit_application(
+        _payload(),
+        audit_db,
+        auth_db,
+        [
+            CompanyDocumentUpload("Registration.pdf", "application/pdf", b"registration"),
+            CompanyDocumentUpload(
+                "Tax Certificate.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                b"tax-certificate",
+            ),
+        ],
+    )
+
+    audit_set = audit_db.query(AuditSet).one()
+    planner = SimpleNamespace(role="planner", audit_set_id=None, auditor_id=None)
+    planner_documents = list_company_documents(audit_set.id, audit_db, planner)
+
+    assert result["company_documents_received"] == 2
+    assert len(uploaded_paths) == 2
+    assert {document["file_name"] for document in planner_documents} == {
+        "Registration.pdf",
+        "Tax Certificate.docx",
+    }
+
+
+def test_multipart_manifest_mismatch_is_rejected_before_application_creation(
+    application_sessions,
+):
+    audit_db, auth_db = application_sessions
+    upload = UploadFile(filename="Registration.pdf", file=BytesIO(b"registration"))
+
+    with pytest.raises(HTTPException, match="Not all selected"):
+        asyncio.run(submit_application_with_documents(
+            application=_payload().model_dump_json(),
+            company_documents=[upload],
+            company_document_count=2,
+            audit_db=audit_db,
+            auth_db=auth_db,
+        ))
+
+    assert audit_db.query(AuditSet).count() == 0
+    assert auth_db.query(PlatformUser).count() == 0
+
+
+def test_multipart_endpoint_receives_every_repeated_file_field(
+    application_sessions,
+    monkeypatch,
+):
+    audit_db, auth_db = application_sessions
+    monkeypatch.setattr(apply_router, "policy_enabled", lambda *_: False)
+    monkeypatch.setattr(apply_router, "send_client_welcome", lambda **_: None)
+    monkeypatch.setattr(
+        apply_router,
+        "store_upload",
+        lambda path, _content, content_type: path,
+    )
+
+    app = FastAPI()
+    app.include_router(apply_router.router)
+    app.dependency_overrides[get_audit_db] = lambda: audit_db
+    app.dependency_overrides[get_auth_db] = lambda: auth_db
+
+    response = TestClient(app).post(
+        "/apply/with-documents",
+        data={
+            "application": _payload().model_dump_json(),
+            "company_document_count": "2",
+        },
+        files=[
+            ("company_documents", ("Registration.pdf", b"registration", "application/pdf")),
+            ("company_documents", ("Tax Certificate.pdf", b"tax", "application/pdf")),
+        ],
+    )
+
+    assert response.status_code == 200
+    assert response.json()["company_documents_received"] == 2
+    assert audit_db.query(AuditSetCompanyDocument).count() == 2
 
 
 def test_document_storage_failure_does_not_submit_application(

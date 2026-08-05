@@ -145,6 +145,7 @@ export default function ApplyPage() {
   const [loading, setLoading] = useState(false)
   const [success, setSuccess]         = useState(false)
   const [credentials, setCredentials] = useState<{ username: string; password: string } | null>(null)
+  const [receivedDocumentCount, setReceivedDocumentCount] = useState(0)
   const [error, setError]             = useState('')
   const [consultantCode, setConsultantCode] = useState('')
 
@@ -248,6 +249,7 @@ export default function ApplyPage() {
         ? await (() => {
             const body = new FormData()
             body.append('application', JSON.stringify(applicationPayload))
+            body.append('company_document_count', String(companyDocuments.length))
             companyDocuments.forEach(file => body.append('company_documents', file, file.name))
             return axios.post(`${apiBase}/apply/with-documents`, body)
           })()
@@ -256,6 +258,11 @@ export default function ApplyPage() {
         username: res.data.username      || form.representative_email,
         password: res.data.temp_password || '',
       })
+      setReceivedDocumentCount(
+        typeof res.data.company_documents_received === 'number'
+          ? res.data.company_documents_received
+          : companyDocuments.length,
+      )
       setSuccess(true)
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
@@ -287,6 +294,11 @@ export default function ApplyPage() {
             <p className="text-sm text-gray-500">
               Thank you. Your application is under review.
             </p>
+            {receivedDocumentCount > 0 && (
+              <p className="mt-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                {receivedDocumentCount} company {receivedDocumentCount === 1 ? 'document is' : 'documents are'} available to the planner
+              </p>
+            )}
           </div>
 
           {/* Credentials box */}

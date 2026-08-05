@@ -2781,8 +2781,9 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
         </div>
       )}
 
-      {/* Application evidence is available before review and remains available later. */}
-      {data.submitted_via_portal && <CompanyDocumentsSection auditSetId={id} />}
+      {/* Always query application evidence. Legacy rows may have a stale or
+          missing submitted_via_portal flag even though document metadata exists. */}
+      <CompanyDocumentsSection auditSetId={id} />
 
       {/* Workflow status tracker + status-specific action panel */}
       {data.workflow_status && data.workflow_status !== 'pending_review' && (

@@ -199,6 +199,7 @@ def _submit_application(
     auth_db: Session,
     company_documents: list[CompanyDocumentUpload] | None = None,
 ):
+    expected_document_count = len(company_documents or [])
     # Validate
     bad_standards = [s for s in payload.standards if s not in ALLOWED_STANDARDS]
     if bad_standards:
@@ -354,6 +355,7 @@ def _submit_application(
     # Persist application evidence before the application becomes visible to
     # planners. The metadata row and audit-set row are committed together.
     stored_refs: list[str] = []
+    persisted_document_count = 0
     try:
         auth_db.flush()  # assign the client user id for uploader traceability
         for document in company_documents or []:
@@ -380,6 +382,20 @@ def _submit_application(
                     uploader_name=payload.representative_name,
                     uploader_role="client",
                 )
+            )
+        # Flush and verify the metadata manifest before exposing the application
+        # to planners. This catches any partial multipart/persistence failure
+        # while the application and uploaded objects can still be rolled back.
+        audit_db.flush()
+        persisted_document_count = (
+            audit_db.query(AuditSetCompanyDocument)
+            .filter_by(audit_set_id=audit_set.id)
+            .count()
+        )
+        if persisted_document_count != expected_document_count:
+            raise RuntimeError(
+                "Company document manifest mismatch: "
+                f"expected {expected_document_count}, persisted {persisted_document_count}"
             )
         audit_db.commit()
     except Exception as exc:
@@ -437,6 +453,7 @@ def _submit_application(
         "plan_number":  plan_number,
         "username":     payload.representative_email,
         "temp_password": temp_password,
+        "company_documents_received": persisted_document_count,
     }
 
 
@@ -454,6 +471,7 @@ def submit_application(
 async def submit_application_with_documents(
     application: str = Form(...),
     company_documents: list[UploadFile] = File(default=[]),
+    company_document_count: Optional[int] = Form(default=None),
     audit_db: Session = Depends(get_audit_db),
     auth_db: Session = Depends(get_auth_db),
 ):
@@ -463,6 +481,13 @@ async def submit_application_with_documents(
     except ValidationError as exc:
         raise HTTPException(422, detail=exc.errors()) from exc
     documents = await _read_company_documents(company_documents)
+    if company_document_count is not None and company_document_count != len(documents):
+        raise HTTPException(
+            400,
+            "Not all selected company documents reached the server. "
+            f"Expected {company_document_count}, received {len(documents)}. "
+            "Please select the files again and resubmit.",
+        )
     return _submit_application(payload, audit_db, auth_db, documents)
 
 
