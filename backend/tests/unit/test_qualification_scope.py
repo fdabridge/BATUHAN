@@ -6,6 +6,7 @@ from auditors.qualification_scope import (
     has_qualification_for_scope_type,
     matching_qualifications,
     normalize_scope_code,
+    normalize_scope_type,
     normalize_standard,
 )
 
@@ -160,6 +161,22 @@ def test_category_codes_use_exact_case_and_spacing_normalization():
     )
 
     assert covered == {"ISO 22000": ["CI", "CIV"]}
+
+
+def test_mdqms_legacy_scope_type_and_dotted_code_match_current_qualification():
+    required_scope = {
+        "ISO 13485": {"type": "medical_tas", "codes": ["A.1.1"]},
+    }
+
+    assert normalize_scope_type("medical_tas") == "medical"
+    assert normalize_scope_code("A.1.1", "medical_tas") == normalize_scope_code(
+        "A1.1", "medical"
+    )
+    assert compute_covered_scope(
+        [qualification("MDQMS", category="A1.1")],
+        required_scope,
+        accreditation_body="UAF",
+    ) == {"ISO 13485": ["A.1.1"]}
 
 
 def test_enms_standard_aliases_and_complexity_hierarchy_are_supported():

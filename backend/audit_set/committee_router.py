@@ -51,6 +51,7 @@ from audit_set.db_models import (
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
 from auth.policy import resolve_realtime_action_datetime
+from auditors.qualification_scope import normalize_scope_code, normalize_scope_type
 
 class GenerateFR233Request(BaseModel):
     released_at_override: str | None = None
@@ -328,12 +329,9 @@ def get_planning_committee_available(
         format differences between the audit set and the auditor profile do not
         silently drop auditors from the committee picker.
         """
-        def _category_key(value: str) -> str:
-            return (value or "").strip().upper().replace(" ", "")
-
         covered: dict = {}
         for iso_std, entry in req.items():
-            scope_type      = entry.get("type", "ea")
+            scope_type      = normalize_scope_type(entry.get("type", "ea"))
             required_codes: list = entry.get("codes", []) or []
             if not required_codes:
                 continue
@@ -349,8 +347,11 @@ def get_planning_committee_available(
                     continue
                 raw = qual.scope_category or ""
                 auditor_codes = [c.strip() for c in raw.split(",") if c.strip()]
-                auditor_keys = {_category_key(c) for c in auditor_codes}
-                matched = [c for c in required_codes if _category_key(c) in auditor_keys]
+                auditor_keys = {normalize_scope_code(c, scope_type) for c in auditor_codes}
+                matched = [
+                    c for c in required_codes
+                    if normalize_scope_code(c, scope_type) in auditor_keys
+                ]
             else:
                 # EA codes — numeric normalisation: "EA 36" == "EA36" == "36".
                 # Committee review is sector-competence based: if the auditor

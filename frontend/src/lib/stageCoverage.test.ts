@@ -6,6 +6,7 @@ import {
   authoritativeCoverageLabel,
   computeStageCoverage,
   normalizeScopeCode,
+  normalizeScopeType,
   normalizeStandardKey,
   type AvailableAuditor,
 } from './stageCoverage'
@@ -74,6 +75,26 @@ test('saved additional auditor resolves after reload with a stale legacy id', ()
 test('EA numeric and prefixed formats compare identically', () => {
   assert.equal(normalizeScopeCode('23', 'ea'), normalizeScopeCode('EA 23', 'ea'))
   assert.equal(normalizeScopeCode('EA23', 'ea'), normalizeScopeCode('IAF 23', 'ea'))
+})
+
+
+test('legacy MDQMS type and dotted technical area match current auditor category', () => {
+  assert.equal(normalizeScopeType('medical_tas'), 'medical')
+  assert.equal(
+    normalizeScopeCode('A.1.1', 'medical_tas'),
+    normalizeScopeCode('A1.1', 'medical'),
+  )
+
+  const result = computeStageCoverage(
+    ['MDQMS'],
+    null,
+    { leadAuditor: { id: 'mdqms', name: 'MDQMS Auditor' } },
+    [auditor('mdqms', 'MDQMS Auditor', { 'ISO 13485': ['A1.1'] }, ['ISO 13485'])],
+    { 'ISO 13485': { type: 'medical_tas', codes: ['A.1.1'] } },
+  )
+
+  assert.equal(result[0].covered, true)
+  assert.equal(result[0].codeResults?.[0].coveredBy, 'MDQMS Auditor')
 })
 
 

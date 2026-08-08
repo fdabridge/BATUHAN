@@ -31,6 +31,27 @@ _STANDARD_NUMBERS = (
 )
 _EA_STANDARD_KEYS = {"9001", "14001", "45001"}
 _CATEGORY_SCOPE_TYPES = {"food", "medical", "isms", "sector", "energy"}
+_SCOPE_TYPE_ALIASES = {
+    "ea": "ea",
+    "iaf": "ea",
+    "food": "food",
+    "foodchain": "food",
+    "foodchaincategory": "food",
+    "foodchaincategories": "food",
+    "medical": "medical",
+    "medicalta": "medical",
+    "medicaltas": "medical",
+    "medicaltechnicalarea": "medical",
+    "medicaltechnicalareas": "medical",
+    "mdqms": "medical",
+    "isms": "isms",
+    "ismstechnicalarea": "isms",
+    "ismstechnicalareas": "isms",
+    "sector": "sector",
+    "sectortype": "sector",
+    "energy": "energy",
+    "energycomplexity": "energy",
+}
 _ENERGY_COMPLEXITY_RANK = {
     "low": 1,
     "medium": 2,
@@ -77,8 +98,16 @@ def normalize_accreditation_body(value: object) -> str:
     return re.sub(r"[^A-Z0-9]", "", str(value or "").strip().upper())
 
 
+def normalize_scope_type(value: object) -> str:
+    """Normalize current and legacy required-scope type names."""
+    raw = str(value or "ea").strip().lower()
+    compact = re.sub(r"[^a-z0-9]", "", raw)
+    return _SCOPE_TYPE_ALIASES.get(compact, raw)
+
+
 def normalize_scope_code(value: object, scope_type: str = "ea") -> str:
     """Normalize EA numbers and non-EA category codes without conflating them."""
+    scope_type = normalize_scope_type(scope_type)
     if (
         scope_type == "ea"
         and isinstance(value, (int, float))
@@ -91,6 +120,11 @@ def normalize_scope_code(value: object, scope_type: str = "ea") -> str:
         match = re.fullmatch(r"(?:EA|IAF)?\s*0*(\d+)", raw)
         if match:
             return f"EA:{int(match.group(1))}"
+    if scope_type == "medical":
+        # IAF MD 9 technical areas occur in both A1.1 and legacy A.1.1
+        # notation. Punctuation is presentational and must not change scope.
+        compact = re.sub(r"[^A-Z0-9]", "", raw)
+        return f"MEDICAL:{compact}" if compact else ""
     return re.sub(r"\s+", "", raw)
 
 
@@ -173,9 +207,9 @@ def has_qualification_for_scope_type(
     legacy_accreditation_bodies: Iterable[object] | None = None,
 ) -> bool:
     """Return whether any required standard of one scope type is qualified."""
-    target_type = scope_type.strip().lower()
+    target_type = normalize_scope_type(scope_type)
     return any(
-        str(entry.get("type", "")).strip().lower() == target_type
+        normalize_scope_type(entry.get("type", "")) == target_type
         and bool(
             matching_qualifications(
                 qualifications,
@@ -235,6 +269,7 @@ def qualification_codes_for_standard(
     legacy_accreditation_bodies: Iterable[object] | None = None,
 ) -> tuple[list[object], bool]:
     """Return (codes, has_matching_qualification) for one exact standard."""
+    scope_type = normalize_scope_type(scope_type)
     matching = matching_qualifications(
         qualifications,
         standard,
@@ -274,7 +309,7 @@ def compute_covered_scope(
     """Return required codes covered by qualifications for each exact standard."""
     covered: dict[str, list[object]] = {}
     for standard, entry in (required_scope or {}).items():
-        scope_type = str(entry.get("type", "ea") or "ea").lower()
+        scope_type = normalize_scope_type(entry.get("type", "ea"))
         required_codes = _items(entry.get("codes", []))
         qualification_codes, has_qualification = qualification_codes_for_standard(
             qualifications,

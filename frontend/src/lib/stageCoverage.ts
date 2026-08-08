@@ -56,6 +56,27 @@ const STANDARD_ALIASES: Record<string, string> = {
 
 const STANDARD_NUMBERS = ['9001', '14001', '45001', '22000', '27001', '50001', '37001', '37301', '13485']
 const EA_CODE_STANDARDS = new Set(['9001', '14001', '45001'])
+const SCOPE_TYPE_ALIASES: Record<string, string> = {
+  ea: 'ea',
+  iaf: 'ea',
+  food: 'food',
+  foodchain: 'food',
+  foodchaincategory: 'food',
+  foodchaincategories: 'food',
+  medical: 'medical',
+  medicalta: 'medical',
+  medicaltas: 'medical',
+  medicaltechnicalarea: 'medical',
+  medicaltechnicalareas: 'medical',
+  mdqms: 'medical',
+  isms: 'isms',
+  ismstechnicalarea: 'isms',
+  ismstechnicalareas: 'isms',
+  sector: 'sector',
+  sectortype: 'sector',
+  energy: 'energy',
+  energycomplexity: 'energy',
+}
 
 export function normalizeStandardKey(value: string): string {
   const raw = (value ?? '').trim().toLowerCase()
@@ -69,11 +90,22 @@ export function normalizeStandardKey(value: string): string {
   return number ?? compact
 }
 
+export function normalizeScopeType(value: string): string {
+  const raw = (value ?? 'ea').trim().toLowerCase()
+  const compact = raw.replace(/[^a-z0-9]/g, '')
+  return SCOPE_TYPE_ALIASES[compact] ?? raw
+}
+
 export function normalizeScopeCode(value: string, scopeType = 'ea'): string {
+  scopeType = normalizeScopeType(scopeType)
   const raw = (value ?? '').trim().toUpperCase()
   if (scopeType === 'ea') {
     const match = raw.match(/^(?:EA|IAF)?\s*0*(\d+)$/)
     if (match) return `EA:${Number(match[1])}`
+  }
+  if (scopeType === 'medical') {
+    const compact = raw.replace(/[^A-Z0-9]/g, '')
+    return compact ? `MEDICAL:${compact}` : ''
   }
   return raw.replace(/\s+/g, '')
 }
@@ -180,7 +212,7 @@ export function auditorShouldRenderForRequiredScope(
   // the final-stage coverage gate is satisfied.
   return Object.entries(requiredScope).some(
     ([standard, entry]) =>
-      entry.type.toLowerCase() === 'energy'
+      normalizeScopeType(entry.type) === 'energy'
       && qualificationForStandard(auditor, standard).length > 0,
   )
 }

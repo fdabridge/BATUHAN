@@ -25,6 +25,10 @@ from docxtpl import DocxTemplate
 from audit_set.committee_slots import committee_member_name, planned_committee_chair
 from audit_set.report_signature_rules import audit_set_has_stage1_extra_review
 from audit_set.scope_fields import effective_ea_code
+from auditors.qualification_scope import (
+    normalize_scope_code,
+    normalize_scope_type,
+)
 
 # --------------------------------------------------------------------------- #
 # Constants
@@ -180,7 +184,7 @@ def _compute_covered_scope(qualifications, required_scope: dict) -> dict:
     """
     covered: dict = {}
     for iso_std, entry in (required_scope or {}).items():
-        scope_type = entry.get("type", "ea")
+        scope_type = normalize_scope_type(entry.get("type", "ea"))
         required_codes = entry.get("codes", []) or []
         if not required_codes:
             continue
@@ -196,7 +200,11 @@ def _compute_covered_scope(qualifications, required_scope: dict) -> dict:
             auditor_codes = [c.strip() for c in raw.split(",") if c.strip()]
         else:  # "ea"
             auditor_codes = qual.ea_codes or []
-        matched = [c for c in required_codes if c in auditor_codes]
+        auditor_keys = {normalize_scope_code(c, scope_type) for c in auditor_codes}
+        matched = [
+            c for c in required_codes
+            if normalize_scope_code(c, scope_type) in auditor_keys
+        ]
         if matched:
             covered[iso_std] = matched
     return covered
