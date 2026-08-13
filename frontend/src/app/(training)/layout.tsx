@@ -8,6 +8,7 @@ import { useAuth } from '@/lib/auth'
 
 const NAV = [
   { href: '/training/dashboard',  label: 'Training Dashboard' },
+  { href: '/training/people',     label: 'People & Exam History' },
   { href: '/training/courses/new', label: 'Create Training'    },
 ]
 

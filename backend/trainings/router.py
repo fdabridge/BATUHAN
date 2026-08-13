@@ -10,6 +10,8 @@ Routes (all relative to /trainings):
   POST /courses/{course_id}/questions        — create/replace answer key
   POST /courses/{course_id}/assign           — assign training to users
   GET  /courses/{course_id}/assignments      — view assignments/results
+  GET  /people                               — list participants with exam totals
+  GET  /users/{user_id}/exam-history         — person-based immutable exam history
   POST /assignments/{id}/reassign            — retry a failed training/exam
   GET  /courses/{course_id}/questions        — get exam questions
   GET  /courses/{course_id}/material         — download training material
@@ -343,6 +345,60 @@ def _course_to_dict(
     }
 
 
+def _person_exam_history_rows(
+    assignments: list[TrainingAssignment],
+    attempts: list[TrainingExamAttempt],
+    courses_map: dict[str, TrainingCourse],
+) -> list[dict]:
+    """Build one chronological exam history without duplicating current results.
+
+    Completed exams are archived immediately in ``training_exam_attempts``.
+    The assignment fallback keeps results created before that history table was
+    introduced visible to training officers.
+    """
+    rows: list[dict] = []
+    archived_results: set[tuple[str, datetime]] = set()
+
+    for attempt in attempts:
+        archived_results.add((attempt.assignment_id, attempt.exam_completed_at))
+        course = courses_map.get(attempt.course_id)
+        rows.append({
+            "attempt_id": attempt.id,
+            "assignment_id": attempt.assignment_id,
+            "course_id": attempt.course_id,
+            "course_title": course.title if course else "Unknown training",
+            "attempt_number": attempt.attempt_number,
+            "exam_taken_at": utc_iso(attempt.exam_completed_at),
+            "exam_score": attempt.exam_score,
+            "exam_passed": attempt.exam_passed,
+            "source": "attempt",
+        })
+
+    for assignment in assignments:
+        if not assignment.exam_completed or assignment.exam_completed_at is None:
+            continue
+        if (assignment.id, assignment.exam_completed_at) in archived_results:
+            continue
+        course = courses_map.get(assignment.course_id)
+        previous_attempts = sum(
+            1 for attempt in attempts if attempt.assignment_id == assignment.id
+        )
+        rows.append({
+            "attempt_id": None,
+            "assignment_id": assignment.id,
+            "course_id": assignment.course_id,
+            "course_title": course.title if course else "Unknown training",
+            "attempt_number": previous_attempts + 1,
+            "exam_taken_at": utc_iso(assignment.exam_completed_at),
+            "exam_score": assignment.exam_score,
+            "exam_passed": assignment.exam_passed,
+            "source": "legacy_assignment",
+        })
+
+    rows.sort(key=lambda row: row["exam_taken_at"] or "", reverse=True)
+    return rows
+
+
 # ---------------------------------------------------------------------------
 # Training Officer endpoints
 # ---------------------------------------------------------------------------
@@ -471,6 +527,100 @@ def user_training_history(
             "exam_completed_at": a.exam_completed_at.isoformat() if a.exam_completed_at else None,
         })
     return result
+
+
+@router.get("/people")
+def training_people(
+    current_user: PlatformUser = Depends(require_training_officer),
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+):
+    """List training participants with person-level exam summary counts."""
+    assignments = db.query(TrainingAssignment).all()
+    attempts = db.query(TrainingExamAttempt).all()
+    user_ids = {a.user_id for a in assignments} | {a.user_id for a in attempts}
+    if not user_ids:
+        return []
+
+    users = auth_db.query(PlatformUser).filter(PlatformUser.id.in_(user_ids)).all()
+    users_map = {user.id: user for user in users}
+    course_ids = {a.course_id for a in assignments} | {a.course_id for a in attempts}
+    courses = db.query(TrainingCourse).filter(TrainingCourse.id.in_(course_ids)).all()
+    courses_map = {course.id: course for course in courses}
+
+    result = []
+    for user_id in user_ids:
+        person_assignments = [a for a in assignments if a.user_id == user_id]
+        person_attempts = [a for a in attempts if a.user_id == user_id]
+        exams = _person_exam_history_rows(person_assignments, person_attempts, courses_map)
+        user = users_map.get(user_id)
+        result.append({
+            "user_id": user_id,
+            "full_name": user.full_name if user else "Unknown user",
+            "email": user.email if user else None,
+            "role": user.role if user else None,
+            "assignment_count": len(person_assignments),
+            "exam_count": len(exams),
+            "passed_count": sum(1 for exam in exams if exam["exam_passed"] is True),
+            "failed_count": sum(1 for exam in exams if exam["exam_passed"] is False),
+            "last_exam_at": exams[0]["exam_taken_at"] if exams else None,
+        })
+
+    return sorted(result, key=lambda person: person["full_name"].casefold())
+
+
+@router.get("/users/{user_id}/exam-history")
+def user_exam_history(
+    user_id: str,
+    current_user: PlatformUser = Depends(require_training_officer),
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+):
+    """Return every completed exam attempt for one participant."""
+    user = auth_db.query(PlatformUser).filter(PlatformUser.id == user_id).first()
+    assignments = (
+        db.query(TrainingAssignment)
+        .filter(TrainingAssignment.user_id == user_id)
+        .all()
+    )
+    attempts = (
+        db.query(TrainingExamAttempt)
+        .filter(TrainingExamAttempt.user_id == user_id)
+        .all()
+    )
+    if user is None and not assignments and not attempts:
+        raise HTTPException(status_code=404, detail="Training participant not found")
+
+    course_ids = {a.course_id for a in assignments} | {a.course_id for a in attempts}
+    courses = db.query(TrainingCourse).filter(TrainingCourse.id.in_(course_ids)).all()
+    exams = _person_exam_history_rows(
+        assignments,
+        attempts,
+        {course.id: course for course in courses},
+    )
+    return {
+        "person": {
+            "user_id": user_id,
+            "full_name": user.full_name if user else "Unknown user",
+            "email": user.email if user else None,
+            "role": user.role if user else None,
+        },
+        "summary": {
+            "exam_count": len(exams),
+            "passed_count": sum(1 for exam in exams if exam["exam_passed"] is True),
+            "failed_count": sum(1 for exam in exams if exam["exam_passed"] is False),
+            "average_score": (
+                round(
+                    sum(exam["exam_score"] for exam in exams if exam["exam_score"] is not None)
+                    / sum(1 for exam in exams if exam["exam_score"] is not None),
+                    2,
+                )
+                if any(exam["exam_score"] is not None for exam in exams)
+                else None
+            ),
+        },
+        "exams": exams,
+    }
 
 
 @router.get("/assignable-users")
