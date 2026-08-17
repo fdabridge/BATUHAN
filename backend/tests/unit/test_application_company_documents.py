@@ -12,6 +12,7 @@ from sqlalchemy.pool import StaticPool
 from audit_set import apply_router
 from audit_set.application_documents_router import (
     _require_document_access,
+    get_company_document_file,
     list_company_documents,
 )
 from audit_set.apply_router import (
@@ -27,6 +28,8 @@ from audit_set.db_models import (
     Base as AuditBase,
     get_db as get_audit_db,
 )
+from audit_set.schemas import ApplicationDataSchema, AuditSetUpdatePlanningSchema
+from audit_set.service import update_planning
 from auth.db_models import Base as AuthBase, PlatformUser, get_db as get_auth_db
 
 
@@ -140,6 +143,13 @@ def test_all_selected_documents_are_persisted_and_visible_to_planner(
     planner_documents = list_company_documents(audit_set.id, audit_db, planner)
 
     assert result["company_documents_received"] == 2
+    assert {
+        (document["file_name"], document["file_size"])
+        for document in result["company_documents"]
+    } == {
+        ("Registration.pdf", len(b"registration")),
+        ("Tax Certificate.docx", len(b"tax-certificate")),
+    }
     assert len(uploaded_paths) == 2
     assert {document["file_name"] for document in planner_documents} == {
         "Registration.pdf",
@@ -199,6 +209,85 @@ def test_multipart_endpoint_receives_every_repeated_file_field(
     assert response.status_code == 200
     assert response.json()["company_documents_received"] == 2
     assert audit_db.query(AuditSetCompanyDocument).count() == 2
+
+
+def test_application_manifest_recovers_planner_list_and_file(
+    application_sessions,
+    monkeypatch,
+    tmp_path,
+):
+    audit_db, auth_db = application_sessions
+    monkeypatch.setattr(apply_router, "policy_enabled", lambda *_: False)
+    monkeypatch.setattr(apply_router, "send_client_welcome", lambda **_: None)
+
+    stored_file = tmp_path / "registration.pdf"
+
+    def store_for_test(_path, content, content_type):
+        stored_file.write_bytes(content)
+        return str(stored_file)
+
+    monkeypatch.setattr(apply_router, "store_upload", store_for_test)
+    result = _submit_application(
+        _payload(),
+        audit_db,
+        auth_db,
+        [CompanyDocumentUpload("Registration.pdf", "application/pdf", b"registration")],
+    )
+    audit_set = audit_db.query(AuditSet).one()
+    document_id = result["company_documents"][0]["id"]
+
+    # Simulate the regression: application + object remain, but the auxiliary
+    # document row is missing. The application-owned manifest must still make
+    # the evidence visible and downloadable to the planner.
+    audit_db.query(AuditSetCompanyDocument).delete()
+    audit_db.commit()
+
+    planner = SimpleNamespace(role="planner", audit_set_id=None, auditor_id=None)
+    documents = list_company_documents(audit_set.id, audit_db, planner)
+    response = get_company_document_file(
+        audit_set.id,
+        document_id,
+        False,
+        audit_db,
+        planner,
+    )
+
+    assert [document["file_name"] for document in documents] == ["Registration.pdf"]
+    assert response.path == str(stored_file)
+
+
+def test_planner_application_data_update_preserves_document_manifest(
+    application_sessions,
+    monkeypatch,
+):
+    audit_db, auth_db = application_sessions
+    monkeypatch.setattr(apply_router, "policy_enabled", lambda *_: False)
+    monkeypatch.setattr(apply_router, "send_client_welcome", lambda **_: None)
+    monkeypatch.setattr(
+        apply_router,
+        "store_upload",
+        lambda path, _content, content_type: path,
+    )
+    _submit_application(
+        _payload(),
+        audit_db,
+        auth_db,
+        [CompanyDocumentUpload("Registration.pdf", "application/pdf", b"registration")],
+    )
+    audit_set = audit_db.query(AuditSet).one()
+    manifest = audit_set.application_data["company_document_manifest"]
+
+    update_planning(
+        audit_db,
+        audit_set.id,
+        AuditSetUpdatePlanningSchema(
+            application_data=ApplicationDataSchema(enms_num_seus=4),
+        ),
+    )
+
+    audit_db.refresh(audit_set)
+    assert audit_set.application_data["company_document_manifest"] == manifest
+    assert audit_set.application_data["enms_num_seus"] == 4
 
 
 def test_document_storage_failure_does_not_submit_application(

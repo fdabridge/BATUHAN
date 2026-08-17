@@ -77,15 +77,36 @@ def _require_document_access(
     raise HTTPException(403, "Not authorized to access these company documents")
 
 
-def _serialize(document: AuditSetCompanyDocument) -> dict:
+def _manifest_documents(audit_set: AuditSet) -> list[dict]:
+    """Return validated recovery entries stored on the application itself."""
+    application_data = audit_set.application_data or {}
+    manifest = application_data.get("company_document_manifest", [])
+    if not isinstance(manifest, list):
+        return []
+    return [
+        item
+        for item in manifest
+        if isinstance(item, dict)
+        and isinstance(item.get("id"), str)
+        and isinstance(item.get("file_path"), str)
+        and isinstance(item.get("file_name"), str)
+    ]
+
+
+def _value(document: AuditSetCompanyDocument | dict, field: str, default=None):
+    return document.get(field, default) if isinstance(document, dict) else getattr(document, field, default)
+
+
+def _serialize(document: AuditSetCompanyDocument | dict) -> dict:
+    uploaded_at = _value(document, "uploaded_at")
     return {
-        "id": document.id,
-        "file_name": document.file_name,
-        "file_type": document.file_type,
-        "file_size": document.file_size,
-        "uploaded_at": document.uploaded_at.isoformat() if document.uploaded_at else None,
-        "uploader_name": document.uploader_name,
-        "uploader_role": document.uploader_role,
+        "id": _value(document, "id"),
+        "file_name": _value(document, "file_name"),
+        "file_type": _value(document, "file_type", "application/octet-stream"),
+        "file_size": _value(document, "file_size", 0),
+        "uploaded_at": uploaded_at.isoformat() if hasattr(uploaded_at, "isoformat") else uploaded_at,
+        "uploader_name": _value(document, "uploader_name", "Client"),
+        "uploader_role": _value(document, "uploader_role", "client"),
     }
 
 
@@ -106,7 +127,16 @@ def list_company_documents(
         .order_by(AuditSetCompanyDocument.uploaded_at, AuditSetCompanyDocument.file_name)
         .all()
     )
-    return [_serialize(document) for document in documents]
+    # Prefer normalized rows, then recover any missing entries from the
+    # application-owned manifest. This is deliberately additive so existing
+    # applications without a manifest keep their current behavior.
+    known_ids = {document.id for document in documents}
+    recovered = [
+        document
+        for document in _manifest_documents(audit_set)
+        if document["id"] not in known_ids
+    ]
+    return [_serialize(document) for document in [*documents, *recovered]]
 
 
 @router.get("/{audit_set_id}/company-documents/{document_id}/file")
@@ -122,16 +152,25 @@ def get_company_document_file(
         raise HTTPException(404, "Application not found")
     _require_document_access(audit_set, current_user, db)
 
-    document = (
+    document: AuditSetCompanyDocument | dict | None = (
         db.query(AuditSetCompanyDocument)
         .filter_by(id=document_id, audit_set_id=audit_set_id)
         .first()
     )
     if not document:
+        document = next(
+            (
+                entry
+                for entry in _manifest_documents(audit_set)
+                if entry["id"] == document_id
+            ),
+            None,
+        )
+    if not document:
         raise HTTPException(404, "Company document not found")
 
     try:
-        local_path = ensure_local(document.file_path)
+        local_path = ensure_local(_value(document, "file_path"))
     except (FileNotFoundError, OSError):
         raise HTTPException(404, "Stored company document is unavailable")
     if not os.path.isfile(local_path):
@@ -140,7 +179,7 @@ def get_company_document_file(
     disposition = "attachment" if download else "inline"
     return FileResponse(
         local_path,
-        media_type=document.file_type,
-        filename=document.file_name,
+        media_type=_value(document, "file_type", "application/octet-stream"),
+        filename=_value(document, "file_name", "company-document"),
         content_disposition_type=disposition,
     )

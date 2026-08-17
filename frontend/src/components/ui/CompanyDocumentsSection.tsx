@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Download, ExternalLink, FileText, Loader2 } from 'lucide-react'
+import { Download, ExternalLink, FileText, Loader2, RefreshCw } from 'lucide-react'
 import api from '@/lib/api'
 
 interface CompanyDocument {
@@ -30,6 +30,7 @@ export function CompanyDocumentsSection({ auditSetId }: { auditSetId: string }) 
   const [loadError, setLoadError] = useState('')
   const [actionError, setActionError] = useState('')
   const [activeDocument, setActiveDocument] = useState<string | null>(null)
+  const [reloadToken, setReloadToken] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -40,14 +41,18 @@ export function CompanyDocumentsSection({ auditSetId }: { auditSetId: string }) 
       .then(response => {
         if (!cancelled) setDocuments(response.data)
       })
-      .catch(() => {
-        if (!cancelled) setLoadError('Company documents could not be loaded.')
+      .catch((error: { response?: { data?: { detail?: string } } }) => {
+        if (!cancelled) {
+          setLoadError(
+            error.response?.data?.detail || 'Company documents could not be loaded.',
+          )
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [auditSetId])
+  }, [auditSetId, reloadToken])
 
   async function openDocument(document: CompanyDocument, download: boolean) {
     const previewWindow = download ? null : window.open('', '_blank')
@@ -104,7 +109,16 @@ export function CompanyDocumentsSection({ auditSetId }: { auditSetId: string }) 
       )}
 
       {loadError && (
-        <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{loadError}</p>
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          <span>{loadError}</span>
+          <button
+            type="button"
+            onClick={() => setReloadToken(value => value + 1)}
+            className="flex shrink-0 items-center gap-1 rounded-md border border-red-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
+          >
+            <RefreshCw size={12} /> Retry
+          </button>
+        </div>
       )}
 
       {actionError && (

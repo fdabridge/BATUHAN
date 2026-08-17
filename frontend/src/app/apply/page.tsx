@@ -254,6 +254,31 @@ export default function ApplyPage() {
             return axios.post(`${apiBase}/apply/with-documents`, body)
           })()
         : await axios.post(`${apiBase}/apply`, applicationPayload)
+      if (companyDocuments.length > 0) {
+        const receivedCount = res.data.company_documents_received
+        if (typeof receivedCount !== 'number' || receivedCount !== companyDocuments.length) {
+          throw new Error(
+            `The application was received, but only ${typeof receivedCount === 'number' ? receivedCount : 0} ` +
+            `of ${companyDocuments.length} company documents were confirmed. Please contact IFC Global before resubmitting.`,
+          )
+        }
+        if (Array.isArray(res.data.company_documents)) {
+          const expected = companyDocuments
+            .map(file => `${file.name}\u0000${file.size}`)
+            .sort()
+          const confirmed = res.data.company_documents
+            .map((file: { file_name?: string; file_size?: number }) =>
+              `${file.file_name ?? ''}\u0000${file.file_size ?? -1}`,
+            )
+            .sort()
+          if (JSON.stringify(expected) !== JSON.stringify(confirmed)) {
+            throw new Error(
+              'The server confirmation did not match the selected company documents. ' +
+              'Please contact IFC Global before resubmitting.',
+            )
+          }
+        }
+      }
       setCredentials({
         username: res.data.username      || form.representative_email,
         password: res.data.temp_password || '',
@@ -265,8 +290,9 @@ export default function ApplyPage() {
       )
       setSuccess(true)
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setError(detail || 'Submission failed. Please try again.')
+      const typedError = err as { response?: { data?: { detail?: string } }; message?: string }
+      const detail = typedError.response?.data?.detail
+      setError(detail || typedError.message || 'Submission failed. Please try again.')
     } finally {
       setLoading(false)
     }

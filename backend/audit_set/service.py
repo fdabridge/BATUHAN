@@ -1275,7 +1275,14 @@ def update_planning(
     if data.application_date is not None:
         audit_set.application_date = data.application_date
     if data.application_data is not None:
-        audit_set.application_data = data.application_data.model_dump()
+        # Planner edits update the standards/calculator fields but must not
+        # erase server-owned application evidence metadata. In particular,
+        # company_document_manifest is the recovery link between the submitted
+        # application and the original uploaded objects.
+        audit_set.application_data = {
+            **(audit_set.application_data or {}),
+            **data.application_data.model_dump(),
+        }
         flag_modified(audit_set, "application_data")
     if data.transfer_reviewer_id is not None or data.transfer_reviewer_name is not None:
         _validate_transfer_reviewer_choice(audit_set, data.transfer_reviewer_id)

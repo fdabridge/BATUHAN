@@ -355,6 +355,7 @@ def _submit_application(
     # Persist application evidence before the application becomes visible to
     # planners. The metadata row and audit-set row are committed together.
     stored_refs: list[str] = []
+    document_manifest: list[dict] = []
     persisted_document_count = 0
     try:
         auth_db.flush()  # assign the client user id for uploader traceability
@@ -370,6 +371,18 @@ def _submit_application(
                 content_type=document.content_type,
             )
             stored_refs.append(storage_ref)
+            document_manifest.append(
+                {
+                    "id": document_id,
+                    "file_path": storage_ref,
+                    "file_name": document.file_name,
+                    "file_type": document.content_type,
+                    "file_size": len(document.content),
+                    "uploader_user_id": user.id,
+                    "uploader_name": payload.representative_name,
+                    "uploader_role": "client",
+                }
+            )
             audit_db.add(
                 AuditSetCompanyDocument(
                     id=document_id,
@@ -383,6 +396,15 @@ def _submit_application(
                     uploader_role="client",
                 )
             )
+        # Keep an application-owned manifest alongside the normalized rows.
+        # This gives the planner read path a durable recovery source if an
+        # older deployment or a partial table migration loses the auxiliary
+        # row while the application and stored object still exist. Storage
+        # references never leave the backend.
+        audit_set.application_data = {
+            **(audit_set.application_data or {}),
+            "company_document_manifest": document_manifest,
+        }
         # Flush and verify the metadata manifest before exposing the application
         # to planners. This catches any partial multipart/persistence failure
         # while the application and uploaded objects can still be rolled back.
@@ -454,6 +476,15 @@ def _submit_application(
         "username":     payload.representative_email,
         "temp_password": temp_password,
         "company_documents_received": persisted_document_count,
+        "company_documents": [
+            {
+                "id": document["id"],
+                "file_name": document["file_name"],
+                "file_type": document["file_type"],
+                "file_size": document["file_size"],
+            }
+            for document in document_manifest
+        ],
     }
 
 
