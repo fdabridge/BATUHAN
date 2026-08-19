@@ -163,6 +163,16 @@ def test_category_codes_use_exact_case_and_spacing_normalization():
     assert covered == {"ISO 22000": ["CI", "CIV"]}
 
 
+def test_isms_multiple_required_categories_are_covered_independently():
+    covered = compute_covered_scope(
+        [qualification("ISO 27001", category="A, C")],
+        {"ISO 27001": {"type": "isms", "codes": ["A", "B", "C"]}},
+        accreditation_body="UAF",
+    )
+
+    assert covered == {"ISO 27001": ["A", "C"]}
+
+
 def test_mdqms_legacy_scope_type_and_dotted_code_match_current_qualification():
     required_scope = {
         "ISO 13485": {"type": "medical_tas", "codes": ["A.1.1"]},

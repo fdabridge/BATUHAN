@@ -316,6 +316,8 @@ function scopeBadgeStyle(type: string, code: string): React.CSSProperties {
   return { background: '#F0FAF4', color: '#1A4731' }
 }
 
+const ISMS_SCOPE_CATEGORIES = ['A', 'B', 'C', 'D'] as const
+
 // ── Plan overview ─────────────────────────────────────────────────────────────
 
 const MD11_LEVELS = ['Low', 'Medium', 'High'] as const
@@ -806,28 +808,59 @@ function PlanOverview({
                           </button>
                         </span>
                       ))}
-                      <input
-                        type="text"
-                        placeholder="Add code…"
-                        value={newCodeInput[std] ?? ''}
-                        onChange={(e) => setNewCodeInput((p) => ({ ...p, [std]: e.target.value }))}
-                        onKeyDown={(e) => {
-                          if (e.key !== 'Enter') return
-                          e.preventDefault()
-                          const tokens = (newCodeInput[std] ?? '')
-                            .split(',')
-                            .map((t) => t.trim().toUpperCase())
-                            .filter((t) => t.length > 0 && !entry.codes.includes(t))
-                          if (tokens.length > 0) {
-                            setScopeDraft((prev) => ({
-                              ...prev,
-                              [std]: { ...entry, codes: [...entry.codes, ...tokens] },
-                            }))
-                          }
-                          setNewCodeInput((p) => ({ ...p, [std]: '' }))
-                        }}
-                        className="h-6 w-24 rounded border border-gray-200 px-1.5 text-xs focus:border-certiva-primary focus:outline-none"
-                      />
+                      {entry.type === 'isms' ? (
+                        <div className="flex items-center gap-1" aria-label="ISO 27001 categories">
+                          {ISMS_SCOPE_CATEGORIES.map(code => {
+                            const selected = entry.codes.includes(code)
+                            return (
+                              <button
+                                key={code}
+                                type="button"
+                                aria-pressed={selected}
+                                onClick={() => setScopeDraft(prev => ({
+                                  ...prev,
+                                  [std]: {
+                                    ...entry,
+                                    codes: selected
+                                      ? entry.codes.filter(item => item !== code)
+                                      : [...entry.codes, code],
+                                  },
+                                }))}
+                                className={`h-6 rounded border px-2 text-xs font-medium ${
+                                  selected
+                                    ? 'border-blue-300 bg-blue-50 text-blue-800'
+                                    : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+                                }`}
+                              >
+                                {code}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        <input
+                          type="text"
+                          placeholder="Add code…"
+                          value={newCodeInput[std] ?? ''}
+                          onChange={(e) => setNewCodeInput((p) => ({ ...p, [std]: e.target.value }))}
+                          onKeyDown={(e) => {
+                            if (e.key !== 'Enter') return
+                            e.preventDefault()
+                            const tokens = (newCodeInput[std] ?? '')
+                              .split(',')
+                              .map((t) => t.trim().toUpperCase())
+                              .filter((t) => t.length > 0 && !entry.codes.includes(t))
+                            if (tokens.length > 0) {
+                              setScopeDraft((prev) => ({
+                                ...prev,
+                                [std]: { ...entry, codes: [...entry.codes, ...tokens] },
+                              }))
+                            }
+                            setNewCodeInput((p) => ({ ...p, [std]: '' }))
+                          }}
+                          className="h-6 w-24 rounded border border-gray-200 px-1.5 text-xs focus:border-certiva-primary focus:outline-none"
+                        />
+                      )}
                       {/* Risk/complexity override — EA-type standards only */}
                       {entry.type === 'ea' && riskOptions(std).length > 0 && (
                         <select

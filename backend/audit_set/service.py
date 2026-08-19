@@ -745,10 +745,18 @@ def derive_required_scope(
             result[iso] = {"type": "energy", "codes": [complexity]}
 
         elif "27001" in norm:
-            technical_area = app_data.get("isms_technical_area") or _infer_isms_technical_area(haystack)
+            # New audits may require several ISMS technical areas. Preserve
+            # the legacy scalar field as a fallback for existing records.
+            technical_areas = _unique_preserve(
+                _as_list(app_data.get("isms_technical_areas"))
+            )
+            if not technical_areas:
+                legacy_area = app_data.get("isms_technical_area")
+                inferred_area = legacy_area or _infer_isms_technical_area(haystack)
+                technical_areas = [inferred_area] if inferred_area else []
             result[iso] = {
                 "type": "isms",
-                "codes": [technical_area] if technical_area else [],
+                "codes": technical_areas,
             }
 
         elif any(n in norm for n in ("9001", "14001", "45001")):

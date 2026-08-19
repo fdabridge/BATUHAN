@@ -82,6 +82,32 @@ def _collect_stage_auditor_ids(stages: list) -> set[str]:
     return ids
 
 
+def _merge_isms_application_scope(
+    required_scope: dict,
+    audit_standards: set[str],
+    application_data: dict | None,
+) -> dict:
+    """Repair legacy ISO 27001 scope without replacing planner selections."""
+    merged = dict(required_scope)
+    app_data = application_data or {}
+    isms_areas = app_data.get("isms_technical_areas") or []
+    if isinstance(isms_areas, str):
+        isms_areas = [area.strip() for area in isms_areas.split(",") if area.strip()]
+    if not isms_areas and app_data.get("isms_technical_area"):
+        isms_areas = [app_data["isms_technical_area"]]
+    isms_areas = list(dict.fromkeys(isms_areas))
+    if not isms_areas:
+        return merged
+
+    for iso_std in audit_standards:
+        if "27001" not in iso_std:
+            continue
+        current = merged.get(iso_std) or {}
+        if current.get("type") != "isms" or not current.get("codes"):
+            merged[iso_std] = {"type": "isms", "codes": isms_areas}
+    return merged
+
+
 @router.get("/{audit_set_id}/committee")
 def get_committee(
     audit_set_id: str,
@@ -299,11 +325,11 @@ def get_planning_committee_available(
 
     # Existing audit sets may still carry the old ISO 27001 EA-code scope.
     # Prefer the ISMS technical area captured on the application.
-    isms_area = (audit_set.application_data or {}).get("isms_technical_area")
-    if isms_area:
-        for iso_std in audit_standards:
-            if "27001" in iso_std:
-                req_cat[iso_std] = {"type": "isms", "codes": [isms_area]}
+    req_cat = _merge_isms_application_scope(
+        req_cat,
+        audit_standards,
+        audit_set.application_data,
+    )
 
     def _ea_int(code) -> int | None:
         """Strip 'EA' prefix and return the integer sector number, or None.

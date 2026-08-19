@@ -36,7 +36,7 @@ interface Step2Data {
   fsms_fssc22000: boolean
   fsms_seasonal_production: boolean
   // ISMS (ISO 27001)
-  isms_technical_area: string
+  isms_technical_areas: string[]
   isms_data_role: string
   // MDQMS (ISO 13485)
   mdqms_device_classes: string[]
@@ -50,6 +50,13 @@ const STANDARDS_GRID = [
   { code: 'OHSMS', iso: 'ISO 45001' }, { code: 'FSMS',  iso: 'ISO 22000' },
   { code: 'ISMS',  iso: 'ISO 27001' }, { code: 'MDQMS', iso: 'ISO 13485' },
   { code: 'ABMS',  iso: 'ISO 37001' }, { code: 'ENMS',  iso: 'ISO 50001' },
+]
+
+const ISMS_TECHNICAL_AREAS = [
+  { code: 'A', label: 'A — Standard IT (office systems, cloud, ERP)' },
+  { code: 'B', label: 'B — Industrial / OT (ICS, SCADA, manufacturing IT)' },
+  { code: 'C', label: 'C — Telecom / service provider infrastructure' },
+  { code: 'D', label: 'D — Specialized (data centres, medical devices, critical infrastructure)' },
 ]
 
 // Country → default spoken audit language (must mirror backend COUNTRY_LANGUAGE).
@@ -110,7 +117,7 @@ const DEFAULT_S2: Step2Data = {
   fsms_food_chain_categories: [], fsms_haccp_studies: '',
   fsms_offsite_storage_count: '', fsms_separate_head_office: false,
   fsms_fssc22000: false, fsms_seasonal_production: false,
-  isms_technical_area: '', isms_data_role: '',
+  isms_technical_areas: [], isms_data_role: '',
   mdqms_device_classes: [], mdqms_regulatory_territories: [],
 }
 
@@ -594,15 +601,35 @@ function Step2({
           <p className="text-sm font-semibold text-blue-900">🔐 ISO 27001 — ISMS Details</p>
           <div className="grid grid-cols-1 gap-4">
             <div>
-              <label className={lblCls}>Technical area (ISO/IEC 27006-1:2024)</label>
-              <select className={inputCls} value={data.isms_technical_area}
-                onChange={e => onChange({ isms_technical_area: e.target.value })}>
-                <option value="">— Select —</option>
-                <option value="A">A — Standard IT (office systems, cloud, ERP)</option>
-                <option value="B">B — Industrial / OT (ICS, SCADA, manufacturing IT)</option>
-                <option value="C">C — Telecom / service provider infrastructure</option>
-                <option value="D">D — Specialized (data centres, medical devices, critical infrastructure)</option>
-              </select>
+              <label className={lblCls}>Technical areas (ISO/IEC 27006-1:2024)</label>
+              <p className="mb-2 text-xs text-gray-400">Select every category included in this audit.</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {ISMS_TECHNICAL_AREAS.map(area => {
+                  const selected = data.isms_technical_areas.includes(area.code)
+                  return (
+                    <label
+                      key={area.code}
+                      className={`flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-xs ${
+                        selected
+                          ? 'border-blue-300 bg-blue-100/70 text-blue-900'
+                          : 'border-blue-100 bg-white text-gray-600'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => onChange({
+                          isms_technical_areas: selected
+                            ? data.isms_technical_areas.filter(code => code !== area.code)
+                            : [...data.isms_technical_areas, area.code],
+                        })}
+                        className="mt-0.5 h-4 w-4 accent-certiva-primary"
+                      />
+                      <span>{area.label}</span>
+                    </label>
+                  )
+                })}
+              </div>
             </div>
             <div>
               <label className={lblCls}>Data role</label>
@@ -726,7 +753,10 @@ export default function NewClientPage() {
           fsms_separate_head_office:     s2.fsms_separate_head_office,
           fsms_fssc22000:                s2.fsms_fssc22000,
           fsms_seasonal_production:      s2.fsms_seasonal_production,
-          isms_technical_area:           s2.isms_technical_area  || null,
+          isms_technical_areas:          s2.isms_technical_areas,
+          // Keep the first selection in the legacy scalar during the rollout;
+          // the plural list above is authoritative.
+          isms_technical_area:           s2.isms_technical_areas[0] || null,
           isms_data_role:                s2.isms_data_role        || null,
           mdqms_device_classes:          s2.mdqms_device_classes,
           mdqms_regulatory_territories:  s2.mdqms_regulatory_territories,

@@ -93,6 +93,7 @@ class ApplicationDataSchema(BaseModel):
     fsms_seasonal_production: bool = False              # seasonal production / seasonal workforce
 
     # ISO 27001 — ISMS
+    isms_technical_areas: list[str] = []              # one or more of A/B/C/D
     isms_technical_area: Optional[str] = None           # "A" | "B" | "C" | "D" per ISO 27006-1
     isms_data_role: Optional[str] = None                # "Controller" | "Processor" | "Both"
     isms_it_complexity: Optional[str] = None            # "Low" | "Medium" | "High"

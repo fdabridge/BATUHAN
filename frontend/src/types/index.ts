@@ -116,7 +116,7 @@ export interface ManDayResult {
 
 /** Single standard's derived scope entry */
 export interface RequiredScopeEntry {
-  type: 'food' | 'medical' | 'sector' | 'energy' | 'ea'
+  type: 'food' | 'medical' | 'isms' | 'sector' | 'energy' | 'ea'
   codes: string[]
   /** Risk/complexity category — only present for EA-type standards (ISO 9001/14001/45001) */
   risk?: string
@@ -504,5 +504,4 @@ export interface AuditorAvailabilityItem {
   conflict_detail: string | null
   covered_scope: Record<string, string[]>    // {standard: [covered_codes]} from required_categories
 }
-
 
