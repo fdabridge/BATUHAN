@@ -15,7 +15,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 from audit_set.field_maps import (
-    FR211_MAP, FR218_MAP, FR222_MAP, FR223_MAP,
+    FR211_MAP, FR217_MAP, FR218_MAP, FR222_MAP, FR223_MAP,
     FR224_MAP, FR225_MAP, FR230_MAP, FR231_MAP, FR232_MAP, FR233_MAP, FR234_MAP,
     FR250_MAP,
 )
@@ -131,14 +131,21 @@ def _find_template(folder: Path, fr_number: str) -> Path | None:
     """Locate a template file by FR-number prefix inside a stage folder."""
     if not folder.exists():
         return None
-    candidates = list(folder.glob(f"{fr_number}*.docx"))
+    candidates = [
+        path for path in folder.glob(f"{fr_number}*.docx")
+        if not path.name.casefold().endswith(".tmp.docx")
+    ]
     if "-" not in fr_number:
         # Exclude sub-variants such as FR.231-1 when looking up FR.231.
         candidates = [
             p for p in candidates
             if not (len(p.name) > len(fr_number) and p.name[len(fr_number)] == "-")
         ]
-    return candidates[0] if candidates else None
+    def revision_key(path: Path) -> tuple[int, str]:
+        match = re.search(r"(?:^|[_ -])R(\d+)", path.name, flags=re.IGNORECASE)
+        return (int(match.group(1)) if match else -1, path.name.casefold())
+
+    return max(candidates, key=revision_key) if candidates else None
 
 
 def _add(specs, seen, fr_number, group, stage_sub, field_map, stage_context, missing: list[str], *, allow_dup=False):
@@ -191,6 +198,7 @@ def _build_stage_1(needs_base, needs_mdqms, needs_isms, sub: str, missing: list[
 
     primary = "base" if needs_base else ("mdqms" if needs_mdqms else ("isms" if needs_isms else None))
     if primary:
+        _add(specs, seen, "FR.217", primary, sub, FR217_MAP, "all", missing)
         _add(specs, seen, "FR.218", primary, sub, FR218_MAP, "all", missing)
         _add(specs, seen, "FR.220", primary, sub, {},        "all", missing)
         _add(specs, seen, "FR.221", primary, sub, {},        "all", missing)

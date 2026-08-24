@@ -244,6 +244,28 @@ def _normalize_site(s: dict) -> dict:
     return d
 
 
+def _scope_codes_for_standard(required_scope: dict, standard_name: str) -> list[str]:
+    """Return compact, case-folded scope codes for one standard.
+
+    The Word templates use compact tokens (``03``, ``civ``, ``a11``), while
+    stored scope data may contain punctuation or an ``EA`` prefix.  Normalising
+    once in the render context keeps the templates declarative and supports
+    multiple codes for the same standard.
+    """
+    for raw_standard, entry in (required_scope or {}).items():
+        if not _std_match(raw_standard, standard_name):
+            continue
+        values: list[str] = []
+        for raw_code in (entry or {}).get("codes", []) or []:
+            compact = "".join(ch for ch in str(raw_code).casefold() if ch.isalnum())
+            if compact.startswith("ea"):
+                compact = compact[2:]
+            if compact and compact not in values:
+                values.append(compact)
+        return values
+    return []
+
+
 def build_base_context(audit_set, stage, org_attendees: list | None = None) -> dict:
     """Build the complete Jinja2 render context for one stage render.
 
@@ -266,6 +288,15 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
         }]
     sites = [_normalize_site(s) for s in sites_raw]
     integration_level = audit_set.integration_level or {}
+    required_scope = getattr(audit_set, "required_scope", None) or {}
+    application_data = {
+        "fsms_haccp_studies": None,
+        "fsms_seasonal_production": False,
+        "mdqms_device_classes": [],
+        "mdqms_regulatory_territories": [],
+        "isms_technical_areas": [],
+        **(getattr(audit_set, "application_data", None) or {}),
+    }
     audit_type = audit_set.audit_type or ""
     standards_codes = audit_set.standards or []
     standards_full = [STANDARD_NAMES[c] for c in standards_codes if c in STANDARD_NAMES]
@@ -353,6 +384,15 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
     true_count = sum(1 for v in integration_level.values() if v)
     integration_pct = round(true_count / 8 * 100) if integration_level else 0
 
+    recommended_names: list[str] = []
+    for name in [
+        stage.lead_auditor_name,
+        *[member.get("name") for member in (stage.auditors or [])],
+        *[member.get("name") for member in (stage.technical_experts or [])],
+    ]:
+        if name and name not in recommended_names:
+            recommended_names.append(name)
+
     end = stage.audit_date_end
     start = stage.audit_date_start
 
@@ -438,6 +478,8 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
         "risk_category": audit_set.risk_category,
         "audit_language": audit_set.audit_language,
         "document_language": audit_set.document_language,
+        "accreditation_body": getattr(audit_set, "accreditation_body", None) or "",
+        "is_transfer": bool(getattr(audit_set, "is_transfer", False)),
         # Standards
         "standards": standards_codes,
         "standards_str": ", ".join(standards_full),
@@ -536,12 +578,26 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
         # Integration
         "integration_level": integration_level,
         "integration_pct": integration_pct,
+        "application_data": application_data,
+        "required_scope": required_scope,
+        "qms_scope_codes": _scope_codes_for_standard(required_scope, "ISO 9001:2015"),
+        "ems_scope_codes": _scope_codes_for_standard(required_scope, "ISO 14001:2015"),
+        "ohsms_scope_codes": _scope_codes_for_standard(required_scope, "ISO 45001:2018"),
+        "fsms_scope_codes": _scope_codes_for_standard(required_scope, "ISO 22000:2018"),
+        "isms_scope_codes": _scope_codes_for_standard(required_scope, "ISO/IEC 27001:2022"),
+        "mdqms_scope_codes": _scope_codes_for_standard(required_scope, "ISO 13485:2016"),
+        "enms_scope_codes": _scope_codes_for_standard(required_scope, "ISO 50001:2018"),
+        "recommended_audit_team": ", ".join(recommended_names),
         # Man-day results
         "man_day_result": man_day,
         "standard_results_rows": standard_results_rows,
         "integration_reduction": man_day.get("integration_reduction", ""),
         "reporting_reduction":   man_day.get("reporting_reduction", ""),
         "combined_base":         man_day.get("combined_base", ""),
+        "site_addition_total":   sum(
+            (row.get("site_addition", 0) or 0)
+            for row in (man_day.get("standard_results") or [])
+        ),
         "final_total":           man_day.get("final_total", ""),
         "man_day_result_qms": get_std("ISO 9001:2015"),
         "man_day_result_ems": get_std("ISO 14001:2015"),

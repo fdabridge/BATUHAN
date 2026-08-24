@@ -179,6 +179,35 @@ def test_core_templates_present_per_stage(entries):
             assert fr in names, f"{fr} missing from {folder}"
 
 
+def test_initial_package_includes_current_application_and_review_revisions(entries):
+    stage_1_names = set(_stage_files(entries, "Stage_1"))
+    assert "FR.217_Certification_Application_Form_R15&21.08.2026.docx" in stage_1_names
+    assert "FR.218_Application_Review_Form_R9&21.08.2026.docx" in stage_1_names
+
+
+@pytest.mark.parametrize(
+    "standards",
+    [
+        ["QMS"],
+        ["MDQMS"],
+        ["ISMS"],
+        ["QMS", "MDQMS"],
+        ["QMS", "ISMS"],
+        ["QMS", "MDQMS", "ISMS"],
+    ],
+)
+def test_all_initial_standard_groups_resolve_one_fr217_and_fr218(standards):
+    audit_set = _audit_set()
+    audit_set.standards = standards
+
+    document_set, missing = resolve_document_set(audit_set)
+
+    assert missing == []
+    stage_1 = [spec.fr_number for spec in document_set["Stage_1"]]
+    assert stage_1.count("FR.217") == 1
+    assert stage_1.count("FR.218") == 1
+
+
 def test_integrated_mdqms_package_includes_its_stage_2_report():
     audit_set = _audit_set()
     audit_set.standards = ["QMS", "MDQMS"]
@@ -205,6 +234,7 @@ def test_recertification_uses_front_docs_and_surveillance_templates():
         "FR.218", "FR.220", "FR.221", "FR.222",
         "FR.223", "FR.224", "FR.225", "FR.230", "FR.232", "FR.211", "FR.234", "FR.233",
     } <= set(by_fr)
+    assert "FR.217" not in by_fr
 
     for fr in ("FR.218", "FR.220", "FR.221", "FR.222"):
         path_parts = {part.strip() for part in by_fr[fr].template_path.parts}
@@ -258,19 +288,27 @@ def test_no_unrendered_placeholders(entries):
 
 
 # --------------------------------------------------------------------------- #
-# 5. Conditional rows — in-scope standards/sites shown, out-of-scope hidden
+# 5. Conditional data — fixed R9 rows stay present, out-of-scope values blank
 # --------------------------------------------------------------------------- #
 def test_fr218_conditional_standard_and_site_rows(entries):
     body = _find(entries, "Stage_1", "FR.218")
     if body is None:
         pytest.skip("FR.218 did not render — see RENDER_ERRORS gate")
+    doc = Document(io.BytesIO(body))
     text = _docx_text(body)
-    # Use versioned names: bare numbers (e.g. "45001") also occur in static
-    # form labels, so only the full versioned name proves a data row rendered.
-    assert "ISO 9001:2015" in text and "ISO 14001:2015" in text   # in scope
-    assert "ISO 45001:2018" not in text                           # OHSMS out
-    assert "ISO/IEC 27001:2022" not in text                       # ISMS out
-    assert "Gebze" in text                                        # second site shown
+
+    # FR.218 R9 has an authoritative fixed eight-standard duration grid. The
+    # standard labels must remain visible even when a standard is out of scope;
+    # only its calculated value cells are conditional.
+    duration_rows = {
+        row.cells[0].text.strip(): [cell.text.strip() for cell in row.cells[1:]]
+        for row in doc.tables[28].rows[1:9]
+    }
+    assert any(duration_rows["ISO 9001:2015"])
+    assert any(duration_rows["ISO 14001:2015"])
+    assert not any(duration_rows["ISO 45001:2018"])
+    assert not any(duration_rows["ISO/IEC 27001:2022"])
+    assert "Gebze" in text  # second site shown
 
 
 def test_fr222_conditional_standard_rows(entries):

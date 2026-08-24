@@ -44,11 +44,10 @@ FR218_MAP = {
     "company_address":     (0, 2, 1),
     "standards_str":       (0, 3, 1),
     "scope_en":            (3, 0, 1),
-    "ea_code":             (4, 1, 0),
-    "ea_category":         (4, 1, 1),
-    "ea_technical_area":   (4, 1, 2),
+    # R9 uses full per-standard classification matrices instead of the old
+    # three-cell EA summary. Selections are instrumented from required_scope.
     "effective_employees": (1, 6, 6),   # Number of Effective Employee value cell
-    "decision_committee_chair_name": (23, 1, 1),  # Recommended Auditor/Technical Expert for Decision
+    "decision_committee_chair_name": (29, 1, 1),  # Recommended Auditor/Technical Expert for Decision
 }
 
 

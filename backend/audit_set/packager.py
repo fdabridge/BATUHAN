@@ -215,6 +215,142 @@ def apply_checkbox_selection(docx_bytes: bytes, standards_codes: list[str]) -> b
         return docx_bytes
 
 
+def apply_fr217_fr218_checkbox_selection(
+    docx_bytes: bytes,
+    context: dict,
+    fr_number: str,
+) -> bytes:
+    """Select legacy Word checkboxes in FR.217 R15 and FR.218 R9.
+
+    These authoritative revisions use actual ``w:checkBox`` form fields for
+    standards and classification matrices, so docxtpl cannot select them.
+    The positions below are tied to the guarded R15/R9 table structures and
+    support multiple category codes per standard.
+    """
+    from lxml import etree
+
+    def q(tag: str) -> str:
+        return f"{{{_W_NS}}}{tag}"
+
+    def compact(value: str) -> str:
+        token = re.sub(r"[^0-9a-z]", "", (value or "").casefold())
+        return token[2:] if token.startswith("ea") else token
+
+    def text_of(element) -> str:
+        return "".join(element.itertext()).strip()
+
+    def set_checkbox(check_box, checked: bool) -> None:
+        value = "1" if checked else "0"
+        for child_tag in ("default", "checked"):
+            child = check_box.find(q(child_tag))
+            if child is None:
+                child = etree.SubElement(check_box, q(child_tag))
+            child.set(q("val"), value)
+
+    def set_cell(cell, checked: bool, *, all_boxes: bool = True) -> None:
+        boxes = cell.findall(f".//{q('checkBox')}")
+        for check_box in boxes if all_boxes else boxes[:1]:
+            set_checkbox(check_box, checked)
+
+    try:
+        zin = zipfile.ZipFile(io.BytesIO(docx_bytes))
+        root = etree.fromstring(zin.read("word/document.xml"))
+        tables = root.findall(f".//{q('tbl')}")
+
+        if fr_number == "FR.217":
+            if len(tables) < 11:
+                return docx_bytes
+            standard_rows = (
+                (1, 0, "qms_selected"), (2, 0, "ems_selected"),
+                (3, 0, "ohsms_selected"), (4, 0, "fsms_selected"),
+                (1, 2, "isms_selected"), (2, 2, "enms_selected"),
+                (3, 2, "mdqms_selected"), (4, 2, "abms_selected"),
+            )
+            rows = tables[1].findall(q("tr"))
+            for row_index, col_index, key in standard_rows:
+                cells = rows[row_index].findall(q("tc"))
+                selected = bool(context.get(key))
+                set_cell(cells[col_index], selected)
+                set_cell(
+                    cells[col_index + 1],
+                    selected and context.get("accreditation_body") == "UAF",
+                )
+
+            audit_rows = tables[2].findall(q("tr"))
+            audit_cells = audit_rows[0].findall(q("tc"))
+            selected_audit = 1 if context.get("is_transfer") else 0
+            if context.get("audit_type") == "scope_extension":
+                selected_audit = 2
+            elif context.get("audit_type") == "change_of_address":
+                selected_audit = 3
+            for index, cell in enumerate(audit_cells):
+                set_cell(cell, index == selected_audit)
+
+        elif fr_number == "FR.218":
+            if len(tables) < 33:
+                return docx_bytes
+
+            # IAF/EA matrix for QMS, EMS, and OHSMS.
+            ea_rows = tables[4].findall(q("tr"))
+            ea_scopes = (
+                set(context.get("qms_scope_codes") or []),
+                set(context.get("ems_scope_codes") or []),
+                set(context.get("ohsms_scope_codes") or []),
+            )
+            for row in ea_rows[1:]:
+                cells = row.findall(q("tc"))
+                if len(cells) < 5:
+                    continue
+                code = compact(text_of(cells[0]))
+                for offset, selected_codes in enumerate(ea_scopes, 2):
+                    set_cell(cells[offset], bool(code and code in selected_codes))
+
+            # FSMS categories/subcategories.
+            for row in tables[5].findall(q("tr"))[1:]:
+                cells = row.findall(q("tc"))
+                if len(cells) < 2:
+                    continue
+                match = re.search(r"(?:[A-Z]+)\s*[–-]", text_of(cells[1]))
+                code = compact(match.group(0).split("–")[0].split("-")[0]) if match else ""
+                set_cell(cells[1], bool(code and code in set(context.get("fsms_scope_codes") or [])))
+
+            # MDQMS A.1.x groups; merged group labels continue over sub-rows.
+            current_mdqms_code = ""
+            mdqms_selected = set(context.get("mdqms_scope_codes") or [])
+            for row in tables[7].findall(q("tr"))[1:]:
+                cells = row.findall(q("tc"))
+                if len(cells) < 2:
+                    continue
+                match = re.search(r"A\.1\.([1-7])", text_of(cells[0]))
+                if match:
+                    current_mdqms_code = f"a1{match.group(1)}"
+                set_cell(cells[-1], bool(current_mdqms_code in mdqms_selected))
+
+            # ISMS A/B/C/D supports multiple parent technical areas.
+            current_isms_code = ""
+            isms_selected = set(context.get("isms_scope_codes") or [])
+            for row in tables[9].findall(q("tr"))[1:]:
+                cells = row.findall(q("tc"))
+                if len(cells) < 4:
+                    continue
+                raw_code = compact(text_of(cells[0]))
+                if raw_code in {"a", "b", "c", "d"}:
+                    current_isms_code = raw_code
+                set_cell(cells[-1], bool(current_isms_code in isms_selected))
+
+        new_xml = etree.tostring(
+            root, xml_declaration=True, encoding="UTF-8", standalone=True,
+        )
+        out = io.BytesIO()
+        with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zo:
+            for item in zin.namelist():
+                zo.writestr(item, new_xml if item == "word/document.xml" else zin.read(item))
+        return out.getvalue()
+    except Exception:  # pragma: no cover - defensive: never break packaging
+        logger.warning("[Packager] FR.217/FR.218 checkbox post-process failed", exc_info=True)
+        return docx_bytes
+
+
 def _blank_org_attendee_rows(n: int = 3) -> list[dict]:
     """Portal 57 — placeholder rows so FR.225 always renders signature lines.
     The BLANK sig_keys do not match the viewer's ORG_SIG_RE (which requires a
@@ -337,6 +473,8 @@ def render_single_document(audit_set, db, fr_number: str, stage_type: str) -> tu
         data = render_docx(spec.template_path, ctx)
     if fr_number == "FR.222":
         data = ensure_fr222_possible_audit_dates(data, ctx)
+    if fr_number in {"FR.217", "FR.218"}:
+        data = apply_fr217_fr218_checkbox_selection(data, ctx, fr_number)
     # Always apply colour highlighting (safe no-op on forms without standard/audit-type cells).
     data = apply_standard_highlighting(data, standards_codes)
     data = apply_audit_type_highlighting(data, audit_set.audit_type or "")
@@ -417,6 +555,8 @@ def build_audit_set_zip(audit_set, db) -> bytes:
                             data = render_docx(doc.template_path, rctx)
                         if doc.fr_number == "FR.222":
                             data = ensure_fr222_possible_audit_dates(data, rctx)
+                        if doc.fr_number in {"FR.217", "FR.218"}:
+                            data = apply_fr217_fr218_checkbox_selection(data, rctx, doc.fr_number)
                         # Always apply colour highlighting (safe no-op on forms without
                         # standard/audit-type cells).
                         data = apply_standard_highlighting(data, standards_codes)
