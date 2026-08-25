@@ -72,6 +72,30 @@ def test_iso27001_legacy_single_category_remains_supported():
     assert required_scope["ISO 27001"]["codes"] == ["D"]
 
 
+def test_food_scope_is_automatically_classified_from_doner_process():
+    required_scope = derive_required_scope(
+        standards=["FSMS"],
+        scope_tr="Döner eti üretimi ve hazır tüketime uygun ürünlerin hazırlanması",
+        scope_en="Manufacture of doner meat and prepared ready-to-eat food",
+        ea_code=None,
+        application_data={"fsms_haccp_studies": 3},
+    )
+
+    assert required_scope["ISO 22000"]["codes"] == ["CI", "CIII"]
+
+
+def test_food_farming_scope_is_not_misclassified_as_processing():
+    required_scope = derive_required_scope(
+        standards=["FSMS"],
+        scope_tr=None,
+        scope_en="Farming of fish and seafood",
+        ea_code=None,
+        application_data={},
+    )
+
+    assert required_scope["ISO 22000"]["codes"] == ["AII"]
+
+
 def test_committee_keeps_planner_edited_multiple_isms_categories():
     required_scope = {
         "ISO 27001": {"type": "isms", "codes": ["A", "C"]},

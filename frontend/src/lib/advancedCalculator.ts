@@ -71,6 +71,7 @@ export interface AdvancedCalculatorRequest {
   decrease_factors: string[]
   remote_audit_pct: number
   food_chain_categories: string[]
+  fsms_haccp_studies: number | null
   fsms_offsite_storage_count: number
   fsms_separate_head_office: boolean
   fsms_fssc22000: boolean

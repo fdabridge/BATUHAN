@@ -126,6 +126,7 @@ const initialForm: AdvancedCalculatorRequest = {
   decrease_factors: [],
   remote_audit_pct: 0,
   food_chain_categories: [],
+  fsms_haccp_studies: null,
   fsms_offsite_storage_count: 0,
   fsms_separate_head_office: false,
   fsms_fssc22000: false,
@@ -842,16 +843,21 @@ export default function CalculatorPage() {
             {hasFsms && (
               <div className={`${hasEaStandard ? 'mt-5 border-t border-gray-100 pt-5' : ''}`}>
                 <p className="mb-3 text-xs font-semibold text-gray-700">ISO 22000 / food-safety inputs</p>
-                <div className="grid gap-3 md:grid-cols-3">
+                <div className="grid gap-3 md:grid-cols-4">
                   <div className="md:col-span-2">
                     <label className={labelClass}>Food-chain categories</label>
                     <input
                       value={form.food_chain_categories.join(', ')}
                       onChange={(event) => update('food_chain_categories', event.target.value.split(/[,;/]+/).map((item) => item.trim()).filter(Boolean))}
-                      placeholder="Optional, e.g. CI, CIV, G"
+                      placeholder="Auto-detected; enter an override if needed, e.g. CI, CIV, G"
                       className={inputClass}
                     />
                   </div>
+                  <NumberField
+                    label="HACCP studies"
+                    value={form.fsms_haccp_studies}
+                    onChange={(value) => update('fsms_haccp_studies', value)}
+                  />
                   <NumberField
                     label="Off-site storage facilities"
                     value={form.fsms_offsite_storage_count}

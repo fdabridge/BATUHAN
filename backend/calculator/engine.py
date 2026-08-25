@@ -8,7 +8,7 @@ Execution order (per spec Part 4):
   2. Base time lookup (HQ)
   3. Additional site time additions
   4. Sum → integration reduction (20%, only if 2+ standards)
-  5. Reporting reduction (20%, always, same base)
+  5. Legacy reporting reduction (never applied to ISO 22000 / FSSC 22000)
   6. Final total
   7. Rounding
   8. Phase split for outputs
@@ -21,7 +21,7 @@ from .models import ExtractedFormData, StandardAuditResult, CalculationResult
 from .tables import (
     ISO9001_TABLES, ISO14001_TABLES, ISO45001_TABLES,
     ISO13485, ISO27001, ISO50001_A3, ISO50001_A4,
-    ISO22000, FOOD_CHAIN_COMPLEXITY, FSSC_REPORTING_SURCHARGE_DAYS,
+    ISO22000_CATEGORY_TIME, ISO22000_FTE_TIME, FSSC_REPORTING_SURCHARGE_DAYS,
     lookup_eps,
 )
 
@@ -111,7 +111,7 @@ def _eps_standard(data: ExtractedFormData, standard: str) -> float:
     Compute effective person count for a given standard.
     ISO 9001/14001/45001/13485: percentage-table method.
     ISO 27001: square-root method for repetitive workers.
-    ISO 50001: no repetitive reduction (energy personnel count direct).
+    ISO 22000/50001: no repetitive reduction (scheme FTE count direct).
     """
     # Risk/complexity category for repetitive reduction rate
     category = "Medium"
@@ -130,8 +130,10 @@ def _eps_standard(data: ExtractedFormData, standard: str) -> float:
         other = max(0, total - repetitive - office)
         eps = math.ceil(math.sqrt(repetitive)) + non_repetitive + other
 
-    elif _std_match(standard, "ISO 50001"):
-        # All personnel affecting energy performance — no repetitive reduction
+    elif (_std_match(standard, "ISO 22000") or _std_match(standard, "FSSC 22000")
+          or _std_match(standard, "ISO 50001")):
+        # FSMS/EnMS use the applicable FTE directly; MD 5 repetitive-worker
+        # percentage reductions do not define ISO 22003-1 Table B.1 TFTE.
         eps = total  # no reduction; part-time FTE conversion assumed via form data
 
     else:
@@ -226,33 +228,37 @@ def _lookup_standard(data: ExtractedFormData, standard: str) -> StandardAuditRes
         )
 
     elif _std_match(standard, "ISO 22000") or _std_match(standard, "FSSC 22000"):
-        # ISO 22003-1:2022 Annex B — food-safety EPS table with food chain modifier.
-        # EPS for FSMS = personnel involved in food safety activities (defaults to total).
-        row = lookup_eps(ISO22000, eps)
-        if not row:
-            raise ValueError(f"EPS {eps} out of range for {standard}")
-        _, _, init_t = row
-        # Apply food chain category complexity factor (highest factor wins when multiple)
-        cats = data.food_chain_categories or []
-        if cats:
-            factor = max((FOOD_CHAIN_COMPLEXITY.get(c, 1.0) for c in cats), default=1.0)
-        else:
-            factor = 1.0
-        init_t = round(init_t * factor, 2)
+        # ISO 22003-1:2022 Annex B: Ds = TD + TH + TFTE.
+        # The CB determines the categories from the proposed scope; calculation
+        # cannot safely proceed until a competent reviewer confirms at least one.
+        aliases = {"CO": "C0"}
+        cats = []
+        for raw in data.food_chain_categories:
+            code = aliases.get(str(raw).strip().upper(), str(raw).strip().upper())
+            if code in ISO22000_CATEGORY_TIME and code not in cats:
+                cats.append(code)
+        if not cats:
+            raise ValueError(
+                "ISO 22000 food-chain category must be determined and confirmed during application review"
+            )
 
-        # ISO 22003-1:2022 §B.2 — mandatory on-site add-ons (before phase split)
-        iso22003_addon = 0.0
-        if data.fsms_offsite_storage_count and data.fsms_offsite_storage_count > 0:
-            iso22003_addon += round(0.25 * data.fsms_offsite_storage_count, 2)   # §B.2.5: +0.25/off-site storage
-        if data.fsms_separate_head_office:
-            iso22003_addon += 0.5                                                  # §B.2.6: +0.5 separate HQ
-        if iso22003_addon > 0:
-            init_t = round(init_t + iso22003_addon, 2)
+        td = max(ISO22000_CATEGORY_TIME[code][0] for code in cats)
+        th_rate = max(ISO22000_CATEGORY_TIME[code][1] for code in cats)
+        haccp_count = max(int(data.haccp_studies or 1), 1)
+        haccp_addition = round(max(haccp_count - 1, 0) * th_rate, 2)
+
+        fte_addition = ISO22000_FTE_TIME[-1][2]
+        for minimum, maximum, days in ISO22000_FTE_TIME:
+            if eps >= minimum and (maximum is None or eps <= maximum):
+                fte_addition = days
+                break
+        init_t = round(td + haccp_addition + fte_addition, 2)
 
         ph1 = round(init_t / 3 * 2) / 2
         ph2 = round(init_t - ph1, 2)
-        surv = max(round(init_t / 3 * 2) / 2, 1.0)
-        recert_t = max(round(init_t * 2 / 3 * 2) / 2, 1.0)
+        minimum_follow_up = 0.5 if all(code.startswith(("A", "B")) for code in cats) else 1.0
+        surv = max(round(init_t / 3 * 2) / 2, minimum_follow_up)
+        recert_t = max(round(init_t * 2 / 3 * 2) / 2, minimum_follow_up)
         r_ph1 = round(recert_t / 3 * 2) / 2
         r_ph2 = round(recert_t - r_ph1, 2)
         cat_label = ",".join(cats) if cats else "unspecified"
@@ -261,7 +267,10 @@ def _lookup_standard(data: ExtractedFormData, standard: str) -> StandardAuditRes
             base_init=init_t, base_ph1=ph1, base_ph2=ph2,
             base_surv=surv, base_recert=recert_t,
             base_recert_ph1=r_ph1, base_recert_ph2=r_ph2,
-            haccp_addition=iso22003_addon if iso22003_addon > 0 else None,
+            haccp_addition=haccp_addition,
+            fsms_basic_duration=td,
+            fsms_fte_addition=fte_addition,
+            fsms_category_codes=cats,
         )
 
     elif _std_match(standard, "ISO 50001"):
@@ -396,8 +405,14 @@ def calculate(data: ExtractedFormData) -> CalculationResult:
         integration_reduction = round(combined_base - after_integration, 2)
         md11_floor_applied = True
 
-    # --- Step 6: Reporting deduction (always 20% of combined_base) ---
-    reporting_reduction = round(combined_base * 0.20, 2)
+    # ISO 22003-1:2022 B.3.1 excludes preparation and reporting from Ds; those
+    # activities therefore cannot be used as a deduction from the minimum. Keep
+    # the existing non-FSMS behavior scoped to legacy calculations.
+    has_fsms = any(
+        _std_match(s, "ISO 22000") or _std_match(s, "FSSC 22000")
+        for s in data.standards
+    )
+    reporting_reduction = 0.0 if has_fsms else round(combined_base * 0.20, 2)
 
     # --- Step 7: Final total ---
     raw_total = after_integration - reporting_reduction
@@ -482,4 +497,3 @@ def calculate(data: ExtractedFormData) -> CalculationResult:
         md11_floor_value=md11_floor_value if md11_floor_applied else None,
         fssc_reporting_surcharge=fssc_surcharge,
     )
-

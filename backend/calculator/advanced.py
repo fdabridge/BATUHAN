@@ -119,15 +119,27 @@ _OHS_HIGH = {1, 2, 10, 12, 13, 17, 20, 24, 25, 28, 39}
 _OHS_LOW = {8, 29, 30, 32, 33, 35, 36, 37}
 
 _FOOD_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "CI": ("meat", "poultry", "fish", "seafood", "dairy", "milk", "egg"),
+    "AI": ("animal farming", "livestock farming", "cattle farm", "poultry farm"),
+    "AII": ("fish farming", "farming of fish", "aquaculture", "seafood farming", "farming of seafood"),
+    "BI": ("plant handling", "harvesting fruit", "harvesting vegetable"),
+    "BII": ("grain handling", "pulse handling", "grain storage"),
+    "CI": ("meat processing", "meat product", "poultry processing", "fish processing", "seafood processing",
+           "dairy processing", "milk processing", "yogurt production", "cheese production", "egg processing",
+           "döner", "doner", "kebap", "kebab"),
     "CII": ("fresh produce", "fresh fruit", "fresh vegetable", "fresh juice"),
-    "CIII": ("ready meal", "sandwich", "prepared food", "ready-to-eat"),
+    "CIII": ("ready meal", "sandwich", "prepared food", "ready-to-eat", "hazır yemek", "hazır gıda", "hazır tüketim"),
     "CIV": ("bakery", "bread", "confectionery", "snack", "canned", "pasta", "beverage"),
     "D": ("animal feed", "pet food", "feedstuff"),
     "E": ("catering", "restaurant", "canteen", "food service"),
     "FI": ("food retail", "supermarket", "food wholesale"),
     "FII": ("food broker", "food trader", "food distribution"),
     "G": ("food storage", "cold chain", "food logistics", "food warehousing"),
+    "H": ("food service support", "food transport service", "transport support"),
+    "I": ("food packaging", "packaging material", "food contact material"),
+    "J": ("food equipment", "processing equipment", "vending machine"),
+    "K": ("food chemical", "food additive", "food enzyme", "ingredient manufacture"),
+    "BIII": ("plant pre-process", "sorting plant", "packing whole plant"),
+    "C0": ("slaughter", "slaughterhouse", "abattoir"),
 }
 
 _MEDICAL_KEYWORDS: dict[str, tuple[str, ...]] = {
@@ -239,6 +251,7 @@ class AdvancedCalculationRequest(BaseModel):
     remote_audit_pct: float = Field(default=0, ge=0, le=20)
 
     food_chain_categories: list[str] = Field(default_factory=list)
+    fsms_haccp_studies: int | None = Field(default=None, ge=1)
     fsms_offsite_storage_count: int = Field(default=0, ge=0)
     fsms_separate_head_office: bool = False
     fsms_fssc22000: bool = False
@@ -568,6 +581,7 @@ def calculate_advanced(data: AdvancedCalculationRequest) -> AdvancedCalculationR
                 item.codes for item in classifications if item.scope_type == "Food chain"
             ), [])
         ),
+        haccp_studies=data.fsms_haccp_studies,
         fsms_offsite_storage_count=data.fsms_offsite_storage_count,
         fsms_separate_head_office=data.fsms_separate_head_office,
         fsms_fssc22000=data.fsms_fssc22000,

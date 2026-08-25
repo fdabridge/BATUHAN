@@ -96,23 +96,33 @@ COUNTRY_LANGUAGE: dict[str, str] = {
 
 # ── Scope-derivation keyword maps ──────────────────────────────────────────
 _FOOD_CHAIN_KW: dict[str, tuple[str, ...]] = {
-    "CI":   ("meat", "poultry", "fish", "seafood", "dairy", "milk", "yogurt", "cheese", "ice cream", "egg"),
+    "AI":   ("animal farming", "livestock farming", "cattle farm", "poultry farm", "egg farm", "dairy farm"),
+    "AII":  ("fish farming", "farming of fish", "aquaculture", "seafood farming", "farming of seafood"),
+    "BI":   ("plant handling", "harvesting fruit", "harvesting vegetable", "crop handling"),
+    "BII":  ("grain handling", "pulse handling", "grain storage", "pulse storage"),
+    "CI":   ("meat processing", "meat product", "poultry processing", "fish processing", "seafood processing",
+             "dairy processing", "milk processing", "yogurt production", "cheese production", "ice cream production",
+             "egg processing", "döner", "doner", "kebap", "kebab", "et işleme", "et ürünü"),
     "CII":  ("fresh juice", "cut vegetable", "fresh produce", "perishable plant", "fresh fruit"),
-    "CIII": ("ready meal", "sandwich", "mixed perishable", "prepared food", "ready-to-eat"),
+    "CIII": ("ready meal", "sandwich", "mixed perishable", "prepared food", "ready-to-eat",
+             "hazır yemek", "hazır gıda", "hazır tüketim", "tüketime hazır"),
     "CIV":  ("confection", "chocolate", "candy", "biscuit", "cookie", "snack", "chip", "cracker",
              "canned", "ambient", "dried", "cereal", "flour", "rice", "pasta", "edible oil",
              "sauce", "condiment", "frozen", "beverage", "juice in carton", "soft drink", "bottled water",
              "coffee", "tea", "cake", "tortilla", "bread", "bakery", "pastry", "wrap", "gluten",
              "noodle", "wafer"),
     "D":    ("animal feed", "pet food", "feedstuff"),
-    "E":    ("catering", "restaurant", "canteen", "food service", "hospitality kitchen"),
+    "E":    ("catering", "restaurant", "canteen", "food service", "hospitality kitchen",
+             "yemek hizmeti", "restoran", "kantin"),
     "FI":   ("food retail", "food wholesale", "supermarket", "grocer"),
     "FII":  ("food broker", "food distribution", "food trader"),
     "G":    ("food storage", "cold chain", "food logistics", "food warehousing"),
+    "H":    ("food service support", "food transport service", "transport support"),
     "I":    ("food packaging", "packaging material", "food contact material"),
+    "J":    ("food equipment", "processing equipment", "vending machine manufacture"),
     "K":    ("food chemical", "food additive", "ingredient manufacture", "food enzyme", "vitamin"),
     "BIII": ("plant pre-process", "cleaning of plant", "sorting plant", "packing whole plant"),
-    "C0":   ("slaughter", "slaughterhouse", "abattoir", "animal primary"),
+    "C0":   ("slaughter", "slaughterhouse", "abattoir", "animal primary", "kesimhane", "hayvan kesimi"),
 }
 
 _MEDICAL_TA_KW: dict[str, tuple[str, ...]] = {

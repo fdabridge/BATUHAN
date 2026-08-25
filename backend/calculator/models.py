@@ -61,12 +61,14 @@ class ExtractedFormData(BaseModel):
     scope_integration_level: Optional[str] = None   # "Low" | "Medium" | "High"
 
     # Food chain categories in scope (ISO 22003-1:2022) — e.g. ["CI", "CIV"]
-    # Used to apply the complexity factor to ISO 22000 / FSSC 22000 base time.
+    # Determined by the certification body from scope/products/processes and
+    # confirmed during application review.
     food_chain_categories: list[str] = Field(default_factory=list)
 
-    # FSMS — ISO 22003-1:2022 mandatory on-site add-ons (separate from table base time)
-    fsms_offsite_storage_count: int = 0        # +0.25 auditor-day per off-site storage facility (§B.2.5)
-    fsms_separate_head_office: bool = False    # +0.5 auditor-day when HQ separate from production (§B.2.6)
+    # FSMS site facts. These inform site planning; ISO 22003-1 does not assign
+    # the former fixed +0.25 / +0.5 day increments to these fields.
+    fsms_offsite_storage_count: int = 0
+    fsms_separate_head_office: bool = False
     fsms_fssc22000: bool = False               # FSSC 22000 add-on requested (triggers reporting surcharge)
 
     # Raw Claude response for traceability
@@ -97,6 +99,9 @@ class StandardAuditResult(BaseModel):
 
     # FSMS only — extra person-days for HACCP studies (ISO 22003-1). None when N/A.
     haccp_addition: Optional[float] = None
+    fsms_basic_duration: Optional[float] = None
+    fsms_fte_addition: Optional[float] = None
+    fsms_category_codes: list[str] = Field(default_factory=list)
 
     # ISMS only — business / IT complexity scores shown in FR.218 Table 22.
     isms_business_score: Optional[int] = None
@@ -120,7 +125,7 @@ class CalculationResult(BaseModel):
     # Aggregation
     combined_base: float        # Sum of all standards' base times (incl. sites)
     integration_reduction: float   # 20% off if 2+ standards; 0 if single
-    reporting_reduction: float     # Always 20% off combined_base
+    reporting_reduction: float     # Legacy non-FSMS reporting adjustment; zero for FSMS
 
     final_total: float          # After both deductions + rounding
 
@@ -167,4 +172,3 @@ class CalculationResult(BaseModel):
 
     # Error / warning message (e.g. missing EnMS form)
     warning: Optional[str] = None
-

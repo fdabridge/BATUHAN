@@ -49,6 +49,24 @@ def test_manual_ea_and_category_override_take_precedence():
     assert qms.source == "manual category override"
 
 
+def test_food_scope_is_classified_and_haccp_studies_affect_duration():
+    result = calculate_advanced(_request(
+        scope="Manufacture of döner meat and prepared ready-to-eat products",
+        standards=["FSMS"],
+        full_time_personnel=14,
+        office_personnel=2,
+        repetitive_personnel=10,
+        fsms_haccp_studies=3,
+    ))
+
+    assert result.classifications[0].codes == ["CI", "CIII"]
+    assert result.classifications[0].source == "scope analysis"
+    assert result.base_time == 3.5
+    assert result.final_audit_time == 3.5
+    assert result.stage_1_time == 1.0
+    assert result.stage_2_time == 2.5
+
+
 def test_md1_initial_sample_uses_square_root_and_requires_eligibility():
     sites = [
         AdvancedSiteInput(

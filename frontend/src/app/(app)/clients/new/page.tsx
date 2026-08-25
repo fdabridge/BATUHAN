@@ -535,19 +535,25 @@ function Step2({
             <p className="text-xs text-gray-500 mb-2">Select all that apply (ISO 22003-1:2022 Annex B).</p>
             <div className="grid grid-cols-1 gap-1 max-h-52 overflow-y-auto">
               {[
-                { code: 'CI',   label: 'CI — Animal farming / perishable animal products' },
-                { code: 'CII',  label: 'CII — Perishable plant (fresh produce)' },
-                { code: 'CIII', label: 'CIII — Processed perishable / ready-to-eat' },
-                { code: 'CIV',  label: 'CIV — Ambient-stable food (bakery, confectionery, beverages)' },
-                { code: 'C0',   label: 'C0 — Slaughter / abattoir' },
-                { code: 'D',    label: 'D — Animal feed' },
+                { code: 'AI',   label: 'AI — Farming of animals for meat, milk, eggs or honey' },
+                { code: 'AII',  label: 'AII — Farming of fish and seafood' },
+                { code: 'BI',   label: 'BI — Farming / handling plants other than grains and pulses' },
+                { code: 'BII',  label: 'BII — Farming / handling grains and pulses' },
+                { code: 'BIII', label: 'BIII — Pre-process handling of plant products' },
+                { code: 'C0',   label: 'C0 — Primary conversion of animal products' },
+                { code: 'CI',   label: 'CI — Processing of perishable animal products' },
+                { code: 'CII',  label: 'CII — Processing of perishable plant-based products' },
+                { code: 'CIII', label: 'CIII — Processing of mixed perishable animal and plant products' },
+                { code: 'CIV',  label: 'CIV — Processing of ambient-stable products' },
+                { code: 'D',    label: 'D — Feed and animal-food processing' },
                 { code: 'E',    label: 'E — Catering / food service' },
-                { code: 'FI',   label: 'FI — Food retail' },
-                { code: 'FII',  label: 'FII — Food wholesale / brokerage' },
-                { code: 'G',    label: 'G — Food storage / cold-chain logistics' },
-                { code: 'I',    label: 'I — Food packaging / food contact materials' },
-                { code: 'K',    label: 'K — Food additives / ingredients' },
-                { code: 'BIII', label: 'BIII — Plant pre-processing' },
+                { code: 'FI',   label: 'FI — Retail / wholesale' },
+                { code: 'FII',  label: 'FII — Brokering / trading' },
+                { code: 'G',    label: 'G — Transport and storage services' },
+                { code: 'H',    label: 'H — Provision of food-chain services' },
+                { code: 'I',    label: 'I — Production of packaging material' },
+                { code: 'J',    label: 'J — Production of equipment' },
+                { code: 'K',    label: 'K — Chemical and bio-chemical production' },
               ].map(cat => (
                 <label key={cat.code} className="flex items-center gap-2 cursor-pointer py-0.5">
                   <input type="checkbox"
@@ -566,7 +572,7 @@ function Step2({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className={lblCls}>HACCP studies</label>
-              <input className={inputCls} type="number" min="0" placeholder="0"
+              <input className={inputCls} type="number" min="1" placeholder="1"
                 value={data.fsms_haccp_studies}
                 onChange={e => onChange({ fsms_haccp_studies: e.target.value })} />
             </div>
@@ -575,13 +581,13 @@ function Step2({
               <input className={inputCls} type="number" min="0" placeholder="0"
                 value={data.fsms_offsite_storage_count}
                 onChange={e => onChange({ fsms_offsite_storage_count: e.target.value })} />
-              <p className="text-xs text-gray-400 mt-1">+0.25 audit day each (ISO 22003-1 §B.2.5)</p>
+              <p className="text-xs text-gray-400 mt-1">Used when defining sites and the audit programme.</p>
             </div>
           </div>
           <div className="space-y-2">
             {([
-              { key: 'fsms_separate_head_office', label: 'Head office separate from production site (+0.5 day)' },
-              { key: 'fsms_fssc22000',            label: 'FSSC 22000 scheme (+1.0 day reporting surcharge)' },
+              { key: 'fsms_separate_head_office', label: 'Head office separate from production site' },
+              { key: 'fsms_fssc22000',            label: 'FSSC 22000 certification scheme' },
               { key: 'fsms_seasonal_production',  label: 'Seasonal production' },
             ] as { key: keyof Step2Data; label: string }[]).map(({ key, label }) => (
               <label key={String(key)} className="flex items-center gap-2 cursor-pointer">

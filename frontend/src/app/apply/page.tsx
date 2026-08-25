@@ -18,22 +18,6 @@ const STANDARDS = [
 ]
 
 
-const FOOD_CHAIN_CATEGORIES = [
-  { code: 'CI',   label: 'CI — Animal farming / perishable animal products' },
-  { code: 'CII',  label: 'CII — Perishable plant products (fresh produce)' },
-  { code: 'CIII', label: 'CIII — Processed perishable / ready-to-eat' },
-  { code: 'CIV',  label: 'CIV — Ambient-stable food (bakery, confectionery, beverages, dried)' },
-  { code: 'C0',   label: 'C0 — Slaughter / primary processing of animal products' },
-  { code: 'D',    label: 'D — Production of animal feed / pet food' },
-  { code: 'E',    label: 'E — Catering / food service / restaurant' },
-  { code: 'FI',   label: 'FI — Food retail' },
-  { code: 'FII',  label: 'FII — Food wholesale / distribution / brokerage' },
-  { code: 'G',    label: 'G — Food storage / cold-chain logistics' },
-  { code: 'I',    label: 'I — Food packaging materials / food contact materials' },
-  { code: 'K',    label: 'K — Food chemicals / additives / ingredient manufacture' },
-  { code: 'BIII', label: 'BIII — Plant pre-processing (sorting, cleaning, packing whole plants)' },
-]
-
 const MDQMS_DEVICE_CLASSES = [
   'Class I (low risk)', 'Class IIa (medium risk)', 'Class IIb (medium-high risk)',
   'Class III (high risk)', 'In-vitro diagnostics (IVD)', 'Active implantable devices',
@@ -693,31 +677,18 @@ export default function ApplyPage() {
                 Required for audit duration calculation per ISO 22003-1:2022.
               </p>
 
-              {/* Food chain categories */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Food chain categories in scope *
-                </label>
-                <p className="text-xs text-gray-500 mb-2">Select all that apply.</p>
-                <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-                  {FOOD_CHAIN_CATEGORIES.map(cat => (
-                    <label key={cat.code} className="flex items-start gap-2 cursor-pointer group">
-                      <input type="checkbox"
-                        checked={form.fsms_food_chain_categories.includes(cat.code)}
-                        onChange={() => sel({ fsms_food_chain_categories: toggleArr(form.fsms_food_chain_categories, cat.code) })}
-                        className="mt-0.5 w-4 h-4 accent-[#1A4731] shrink-0" />
-                      <span className="text-xs text-gray-700 group-hover:text-gray-900">{cat.label}</span>
-                    </label>
-                  ))}
-                </div>
+              <div className="rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3 text-xs text-blue-900">
+                Certiva will determine the applicable ISO 22003-1 food-chain category from your
+                certification scope, products and processes. The assigned planner will confirm it
+                during application review; you do not need to classify your own organization.
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Number of HACCP / food safety studies" hint="Distinct HACCP plans in scope">
-                  <input className={inputCls} type="number" min="0" value={form.fsms_haccp_studies}
+                <Field label="Number of HACCP / food safety studies" hint="Distinct HACCP plans in the requested certification scope">
+                  <input className={inputCls} type="number" min="1" required value={form.fsms_haccp_studies}
                     onChange={e => sel({ fsms_haccp_studies: e.target.value })} />
                 </Field>
-                <Field label="Off-site storage facilities in scope" hint="+0.25 audit day each (ISO 22003-1 §B.2.5)">
+                <Field label="Off-site storage facilities in scope" hint="Used by Certiva when defining sites and the audit programme">
                   <input className={inputCls} type="number" min="0" value={form.fsms_offsite_storage_count}
                     onChange={e => sel({ fsms_offsite_storage_count: e.target.value })} />
                 </Field>
@@ -725,8 +696,8 @@ export default function ApplyPage() {
 
               <div className="space-y-2">
                 {[
-                  { key: 'fsms_separate_head_office' as const, label: 'Head office is separate from production site (+0.5 audit day)' },
-                  { key: 'fsms_fssc22000' as const,            label: 'Applying for FSSC 22000 certification scheme (+1.0 day reporting surcharge)' },
+                  { key: 'fsms_separate_head_office' as const, label: 'Head office is separate from the production site' },
+                  { key: 'fsms_fssc22000' as const,            label: 'Applying for the FSSC 22000 certification scheme' },
                   { key: 'fsms_seasonal_production' as const,  label: 'Seasonal production (production stops for part of the year)' },
                 ].map(({ key, label }) => (
                   <label key={key} className="flex items-center gap-2 cursor-pointer">

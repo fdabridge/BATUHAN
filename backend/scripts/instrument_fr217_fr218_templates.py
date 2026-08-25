@@ -290,12 +290,19 @@ def instrument_fr218(source: Path, destination: Path) -> None:
     _set_cell(doc.tables[25].cell(0, 3), '{{ man_day_result_isms.category if man_day_result_isms else "" }}')
 
     fsms = doc.tables[26]
-    _set_cell(fsms.cell(2, 1), '{{ man_day_result_fsms.base_ph1 if man_day_result_fsms else "" }}')
+    _set_cell(fsms.cell(0, 0), "ISO 22000 (Ds)")
+    _set_cell(fsms.cell(1, 0), "Formula: Ds = TD + TH + TFTE")
+    _set_cell(fsms.cell(2, 0), "Basic audit duration for the category/subcategory (TD)")
+    _set_cell(fsms.cell(2, 1), '{{ man_day_result_fsms.fsms_basic_duration if man_day_result_fsms else "" }}')
     _set_cell(fsms.cell(2, 3), '{{ man_day_result_fsms.haccp_addition if man_day_result_fsms else "" }}')
-    _set_cell(fsms.cell(3, 1), '{{ man_day_result_fsms.base_init if man_day_result_fsms else "" }}')
-    _set_cell(fsms.cell(3, 3), '{{ man_day_result_fsms.eps if man_day_result_fsms else "" }}')
+    _set_cell(fsms.cell(3, 0), "Effective food-safety FTE used")
+    _set_cell(fsms.cell(3, 1), '{{ man_day_result_fsms.eps if man_day_result_fsms else "" }}')
+    _set_cell(fsms.cell(3, 2), "Audit-day contribution for FTE (TFTE)")
+    _set_cell(fsms.cell(3, 3), '{{ man_day_result_fsms.fsms_fte_addition if man_day_result_fsms else "" }}')
+    _set_cell(fsms.cell(4, 0), "Additional audited-site duration")
     _set_cell(fsms.cell(4, 1), '{{ man_day_result_fsms.site_addition if man_day_result_fsms else "" }}')
-    _set_cell(fsms.cell(4, 3), '{{ man_day_result_fsms.ad if man_day_result_fsms else "" }}')
+    _set_cell(fsms.cell(4, 2), "Ds value (Stage 1 + Stage 2)")
+    _set_cell(fsms.cell(4, 3), '{{ man_day_result_fsms.base_init if man_day_result_fsms else "" }}')
 
     enms = doc.tables[27]
     enms_values = (
