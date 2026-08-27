@@ -49,7 +49,7 @@ def _make_generated(job_id: str, content: str = "Good content.") -> GeneratedRep
     section = ReportSection(title="Scope", content=content, order_index=0)
     return GeneratedReport(
         job_id=job_id,
-        standard=ISOStandard.QMS,
+        standards=[ISOStandard.QMS],
         stage=AuditStage.STAGE_1,
         sections=[section],
         raw_output="raw",
@@ -118,7 +118,7 @@ class TestAssertEvidenceValid:
     def test_empty_evidence_aborts(self):
         # All named fields empty by default → zero evidence
         ev = ExtractedEvidence(job_id="j2", raw_output="")
-        with patch("backend.safety.failure_handler.save_text_artifact"):
+        with patch("safety.failure_handler.save_text_artifact"):
             with pytest.raises(PipelineAbort, match="no sections"):
                 assert_evidence_valid(ev, "j2")
 
@@ -127,7 +127,7 @@ class TestStepCFallback:
     def test_returns_valid_report_and_log(self):
         gen = _make_generated("j3")
         exc = RuntimeError("Claude timed out")
-        with patch("backend.safety.failure_handler.save_text_artifact"):
+        with patch("safety.failure_handler.save_text_artifact"):
             report, log = step_c_fallback("j3", gen, exc)
         assert report.job_id == "j3"
         assert report.sections == gen.sections
@@ -136,7 +136,7 @@ class TestStepCFallback:
 
     def test_writes_warning_artifact(self):
         gen = _make_generated("j4")
-        with patch("backend.safety.failure_handler.save_text_artifact") as mock_save:
+        with patch("safety.failure_handler.save_text_artifact") as mock_save:
             step_c_fallback("j4", gen, ValueError("boom"))
         mock_save.assert_called_once()
         filename = mock_save.call_args[0][1]
@@ -181,7 +181,7 @@ class TestScanReportForLeakage:
     def test_write_leakage_report_persists(self):
         report = _make_report("j9")
         leakage = LeakageReport(job_id="j9", is_clean=True, has_critical=False)
-        with patch("backend.safety.leakage_detector.save_text_artifact") as mock_save:
+        with patch("safety.leakage_detector.save_text_artifact") as mock_save:
             write_leakage_report("j9", leakage)
         mock_save.assert_called_once()
         assert mock_save.call_args[0][1] == "leakage_scan.json"
@@ -215,8 +215,8 @@ class TestBuildAuditTrail:
         corr = {"correction_count": 3, "validated_at": "2024-01-01T00:00:00"}
 
         read_fn = self._mock_read(bundle, status, evidence, report_b, corr)
-        with patch("backend.safety.audit_trail.read_text_artifact", side_effect=read_fn), \
-             patch("backend.safety.audit_trail.list_files", return_value=[]):
+        with patch("safety.audit_trail.read_text_artifact", side_effect=read_fn), \
+             patch("safety.audit_trail.list_files", return_value=[]):
             trail = build_audit_trail("j10")
 
         assert trail["job_id"] == "j10"
@@ -227,9 +227,8 @@ class TestBuildAuditTrail:
         assert "claude_model" in trail
 
     def test_trail_handles_missing_artifacts_gracefully(self):
-        with patch("backend.safety.audit_trail.read_text_artifact", side_effect=FileNotFoundError), \
-             patch("backend.safety.audit_trail.list_files", return_value=[]):
+        with patch("safety.audit_trail.read_text_artifact", side_effect=FileNotFoundError), \
+             patch("safety.audit_trail.list_files", return_value=[]):
             trail = build_audit_trail("j11")
         # Should not raise; should contain error keys instead
         assert "bundle_error" in trail or "status_error" in trail
-

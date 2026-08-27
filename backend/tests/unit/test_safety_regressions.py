@@ -16,7 +16,8 @@ from pipeline.step_a.evidence_parser import (
     REQUIRED_SECTIONS, _is_weak,
 )
 from safety.leakage_detector import (
-    scan_report_for_leakage, _scan_placeholders, _scan_company_names, _scan_phrase_copy,
+    LeakageReport, format_critical_violations, scan_report_for_leakage, _scan_placeholders,
+    _scan_company_names, _scan_phrase_copy,
 )
 from safety.failure_handler import (
     PipelineAbort, filter_readable_documents, assert_template_valid,
@@ -90,6 +91,37 @@ class TestLeakagePlaceholders:
     def test_clean_content_has_no_violations(self):
         clean = "The organisation demonstrated effective implementation of its QMS."
         assert _scan_placeholders("Section", clean) == []
+
+    @pytest.mark.parametrize("content", [
+        "Status [Compliant] and verification [Yes].",
+        "Risk rating [High]; evidence [Documented Information].",
+        "Controls reviewed [A.5.1] against [ISO 27001:2022].",
+        "Integrated findings [QMS], [EMS], [OHSMS], and [FSMS].",
+    ])
+    def test_legitimate_bracketed_audit_text_is_not_a_placeholder(self, content):
+        assert _scan_placeholders("Section", content) == []
+
+    @pytest.mark.parametrize("content", [
+        "Client: [COMPANY NAME]",
+        "Auditor: [AUDITOR_NAME]",
+        "Date: [Enter date here]",
+        "Signature date: [DATE]",
+    ])
+    def test_explicit_bracketed_template_fields_remain_critical(self, content):
+        violations = _scan_placeholders("Section", content)
+        assert violations
+        assert all(violation.severity == "CRITICAL" for violation in violations)
+
+    def test_critical_summary_is_suitable_for_failed_job_message(self):
+        report = LeakageReport(
+            job_id="j1",
+            is_clean=False,
+            has_critical=True,
+            violations=_scan_placeholders("Scope", "Client: [COMPANY NAME]"),
+        )
+        summary = format_critical_violations(report)
+        assert "Scope" in summary
+        assert "COMPANY NAME" in summary
 
 
 # ---------------------------------------------------------------------------
@@ -177,17 +209,17 @@ class TestFailureHandlerGuards:
 
     def test_assert_evidence_valid_raises_on_zero_items(self, tmp_path):
         evidence = ExtractedEvidence(job_id="j1", raw_output="")
-        with patch("backend.safety.failure_handler.save_text_artifact"):
+        with patch("safety.failure_handler.save_text_artifact"):
             with pytest.raises(PipelineAbort, match="returned no sections"):
                 assert_evidence_valid(evidence, "j1")
 
     def test_step_c_fallback_returns_valid_report_and_log(self, tmp_path):
         sec = ReportSection(title="Introduction", content="Content.", order_index=0)
         report = GeneratedReport(
-            job_id="j1", standard=ISOStandard.QMS,
+            job_id="j1", standards=[ISOStandard.QMS],
             stage=AuditStage.STAGE_2, sections=[sec], raw_output="",
         )
-        with patch("backend.safety.failure_handler.save_text_artifact"):
+        with patch("safety.failure_handler.save_text_artifact"):
             validated, log = step_c_fallback("j1", report, RuntimeError("Step C crashed"))
         assert validated.job_id == "j1"
         assert log.correction_count == 0
@@ -215,7 +247,7 @@ class TestStepBSafetyChecker:
             TemplateSection(title="Key Findings", order_index=1, placeholder_text=""),
         ], source_path="/tmp/t.docx")
         report = GeneratedReport(
-            job_id="j1", standard=ISOStandard.QMS, stage=AuditStage.STAGE_2,
+            job_id="j1", standards=[ISOStandard.QMS], stage=AuditStage.STAGE_2,
             sections=[
                 ReportSection(title="Introduction", content="Intro content.", order_index=0),
                 # "Key Findings" is missing
@@ -226,4 +258,3 @@ class TestStepBSafetyChecker:
         violations = check_report_safety(report, tm, guidance)
         rules = [v.rule for v in violations]
         assert any("missing" in r.lower() for r in rules)
-

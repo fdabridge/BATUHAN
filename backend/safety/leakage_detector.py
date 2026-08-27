@@ -59,6 +59,41 @@ _LEGITIMATE_BRACKET = re.compile(
     re.VERBOSE | re.IGNORECASE,
 )
 
+_BRACKET_PLACEHOLDER_IMPERATIVE = re.compile(
+    r"^\s*(?:insert|add|enter|specify|describe|type|replace|fill|complete|provide|select|choose)\b",
+    re.IGNORECASE,
+)
+_BRACKET_PLACEHOLDER_FIELD = re.compile(
+    r"\b(?:company|client|organisation|organization|auditor|employee|representative|"
+    r"name|address|date|signature|scope|standard|value|text|details|information)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_bracket_placeholder(inner: str) -> bool:
+    """Distinguish explicit template prompts from ordinary bracketed report text."""
+    value = inner.strip()
+    if not value or _LEGITIMATE_BRACKET.match(value):
+        return False
+    if _BRACKET_PLACEHOLDER_IMPERATIVE.match(value):
+        return True
+    if re.search(r"\bhere\s*$", value, re.IGNORECASE) and _BRACKET_PLACEHOLDER_FIELD.search(value):
+        return True
+    if value.upper() in {"COMPANY", "CLIENT", "NAME", "ADDRESS", "DATE", "SIGNATURE", "VALUE"}:
+        return True
+
+    # Template field tokens are commonly all-caps or snake_case, for example
+    # [COMPANY NAME] and [AUDITOR_NAME].  Require a known field word so normal
+    # audit labels such as [COMPLIANT], [HIGH], and [YES] remain valid content.
+    field_search_value = value.replace("_", " ")
+    is_template_token = "_" in value or (value.upper() == value and any(ch.isalpha() for ch in value))
+    has_separator = "_" in value or " " in value
+    return bool(
+        is_template_token
+        and has_separator
+        and _BRACKET_PLACEHOLDER_FIELD.search(field_search_value)
+    )
+
 _PHRASE_MIN_LEN = 80   # chars — shorter matches are too common to flag
 
 
@@ -96,10 +131,12 @@ def _scan_placeholders(section_title: str, content: str) -> list[LeakageViolatio
         for match in pattern.finditer(content):
             matched_text = match.group()
 
-            # For [bracket] matches: skip legitimate ISO clause / standard references.
+            # For [bracket] matches, flag only explicit template prompts/tokens.
+            # Brackets are also normal audit-report notation and are not inherently
+            # evidence of leakage.
             if pattern is bracket_pattern:
                 inner = matched_text[1:-1]        # strip the [ and ]
-                if _LEGITIMATE_BRACKET.match(inner):
+                if not _is_bracket_placeholder(inner):
                     continue
 
             # Deduplicate: same matched text in the same section → one violation.
@@ -222,3 +259,11 @@ def write_leakage_report(job_id: str, leakage: LeakageReport) -> str:
         logger.info(f"[Leakage] Clean scan for job {job_id}.")
     return path
 
+
+def format_critical_violations(leakage: LeakageReport, limit: int = 3) -> str:
+    """Return a short user-facing explanation for blocked report delivery."""
+    critical = [v for v in leakage.violations if v.severity == "CRITICAL"]
+    details = [f"{v.section_title}: {v.detail}" for v in critical[:limit]]
+    if len(critical) > limit:
+        details.append(f"and {len(critical) - limit} more")
+    return "; ".join(details)

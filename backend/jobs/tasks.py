@@ -29,7 +29,11 @@ from safety.failure_handler import (
     assert_evidence_valid,
     step_c_fallback,
 )
-from safety.leakage_detector import scan_report_for_leakage, write_leakage_report
+from safety.leakage_detector import (
+    format_critical_violations,
+    scan_report_for_leakage,
+    write_leakage_report,
+)
 from safety.audit_trail import write_audit_trail
 
 settings = get_settings()
@@ -386,10 +390,14 @@ def run_pipeline(
         leakage = scan_report_for_leakage(validated_report, style_guidance)
         write_leakage_report(job_id, leakage)
         if leakage.has_critical:
+            critical_count = sum(
+                1 for violation in leakage.violations
+                if violation.severity == "CRITICAL"
+            )
             raise PipelineAbort(
                 f"Leakage scan blocked delivery: "
-                f"{sum(1 for v in leakage.violations if v.severity == 'CRITICAL')} critical violation(s). "
-                "See leakage_scan.json for details."
+                f"{critical_count} critical violation(s). "
+                f"Details: {format_critical_violations(leakage)}"
             )
 
         # -----------------------------------------------------------

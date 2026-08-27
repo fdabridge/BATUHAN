@@ -107,7 +107,8 @@ RULES — FOLLOW EXACTLY:
     - Opening Meeting, Closing Meeting, Site Tour, walkthroughs: standard="" clauses="".
 12. For break rows (is_break=true): standard="", clauses="", activity="Lunch Break", auditors="".
 
-OUTPUT: Return ONLY valid JSON — no markdown fences, no explanation.
+OUTPUT: Submit the completed schedule through the provided submit_audit_schedule tool.
+Do not add prose before or after the tool call.
 
 Schema:
 {
@@ -130,6 +131,93 @@ Schema:
   ]
 }
 """
+
+_SCHEDULE_TOOL_NAME = "submit_audit_schedule"
+_SCHEDULE_TOOL = {
+    "name": _SCHEDULE_TOOL_NAME,
+    "description": "Submit the complete structured audit schedule.",
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["days"],
+        "properties": {
+            "days": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["day_number", "date", "site", "slots"],
+                    "properties": {
+                        "day_number": {"type": "integer", "minimum": 1},
+                        "date": {"type": "string"},
+                        "site": {"type": "string"},
+                        "slots": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "required": [
+                                    "time", "is_break", "standard", "clauses",
+                                    "activity", "auditors",
+                                ],
+                                "properties": {
+                                    "time": {"type": "string"},
+                                    "is_break": {"type": "boolean"},
+                                    "standard": {"type": "string"},
+                                    "clauses": {"type": "string"},
+                                    "activity": {"type": "string"},
+                                    "auditors": {"type": "string"},
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    },
+}
+
+
+def _content_value(block, key: str, default=None):
+    """Read an Anthropic content block or a lightweight test double."""
+    if isinstance(block, dict):
+        return block.get(key, default)
+    return getattr(block, key, default)
+
+
+def _extract_schedule_payload(response) -> dict:
+    """Prefer the forced tool payload, with text JSON as a compatibility fallback."""
+    content = getattr(response, "content", None) or []
+    for block in content:
+        if (
+            _content_value(block, "type") == "tool_use"
+            and _content_value(block, "name") == _SCHEDULE_TOOL_NAME
+        ):
+            payload = _content_value(block, "input")
+            if isinstance(payload, dict):
+                return payload
+            raise ValueError("Claude returned a non-object audit schedule tool payload.")
+
+    text_parts = [
+        str(_content_value(block, "text", ""))
+        for block in content
+        if _content_value(block, "type") in (None, "text")
+        and _content_value(block, "text", "")
+    ]
+    raw = "\n".join(text_parts).strip()
+    if not raw:
+        raise ValueError("Claude returned no audit schedule content.")
+
+    raw_clean = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
+    raw_clean = re.sub(r"\s*```$", "", raw_clean, flags=re.IGNORECASE).strip()
+    try:
+        payload = json.loads(raw_clean)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Claude returned malformed audit schedule JSON: {exc.msg}.") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("Claude returned a non-object audit schedule payload.")
+    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -429,7 +517,7 @@ INSTRUCTIONS:
 - Group sub-clauses: never one sub-clause alone in a slot unless it genuinely needs a full slot.
 - Site for each day: use HQ address unless additional sites are listed above.
 - Time format: "HH.MM – HH.MM" (dot separator). Example: "09.00 – 10.30".
-- Return ONLY valid JSON."""
+- Submit the complete schedule using the submit_audit_schedule tool."""
 
     logger.info(
         f"[AuditPlan] Calling Claude for schedule | org='{ctx.org_name}' "
@@ -438,43 +526,56 @@ INSTRUCTIONS:
 
     _MAX_ATTEMPTS = 2
     payload: dict = {}
+    last_error = "Claude returned no schedule."
+    last_stop_reason = "unknown"
     for attempt in range(1, _MAX_ATTEMPTS + 1):
         response = client.messages.create(
             model=settings.claude_model,
-            max_tokens=8192,
+            # Multi-standard, multi-day schedules can legitimately exceed 8k tokens.
+            max_tokens=16000,
             system=_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_message}],
+            tools=[_SCHEDULE_TOOL],
+            tool_choice={"type": "tool", "name": _SCHEDULE_TOOL_NAME},
         )
-
-        raw = response.content[0].text.strip()
-        logger.debug(
-            f"[AuditPlan] Claude raw response attempt {attempt} ({len(raw)} chars): {raw[:400]}"
-        )
-
-        # Strip markdown fences if present
-        raw_clean = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
-        raw_clean = re.sub(r"\s*```$", "", raw_clean, flags=re.IGNORECASE).strip()
-
+        last_stop_reason = str(getattr(response, "stop_reason", None) or "unknown")
         try:
-            payload = json.loads(raw_clean)
+            payload = _extract_schedule_payload(response)
             break  # success
-        except json.JSONDecodeError as exc:
-            logger.error(
-                f"[AuditPlan] Claude returned invalid JSON (attempt {attempt}/{_MAX_ATTEMPTS}): "
-                f"{exc}\nRaw: {raw[:600]}"
+        except ValueError as exc:
+            last_error = str(exc)
+            logger.warning(
+                "[AuditPlan] Invalid Claude schedule response "
+                "(attempt %s/%s, stop_reason=%s): %s",
+                attempt, _MAX_ATTEMPTS, last_stop_reason, last_error,
             )
             if attempt == _MAX_ATTEMPTS:
-                raise ValueError(f"Claude returned invalid JSON after {_MAX_ATTEMPTS} attempts: {exc}") from exc
+                reason = (
+                    "The response reached its output limit before the schedule was complete."
+                    if last_stop_reason == "max_tokens"
+                    else last_error
+                )
+                raise ValueError(
+                    f"Claude could not produce a complete audit schedule after {_MAX_ATTEMPTS} attempts. "
+                    f"{reason} Please try again."
+                ) from exc
             logger.info("[AuditPlan] Retrying Claude call...")
 
     days_raw = payload.get("days", [])
-    if not days_raw:
+    if not isinstance(days_raw, list) or not days_raw:
         raise ValueError("Claude returned an empty schedule (no days).")
 
     days: list[DaySchedule] = []
     for d in days_raw:
+        if not isinstance(d, dict):
+            raise ValueError("Claude returned an invalid schedule day.")
+        raw_slots = d.get("slots", [])
+        if not isinstance(raw_slots, list):
+            raise ValueError("Claude returned invalid schedule slots.")
         slots: list[Slot] = []
-        for s in d.get("slots", []):
+        for s in raw_slots:
+            if not isinstance(s, dict):
+                raise ValueError("Claude returned an invalid schedule slot.")
             slots.append(Slot(
                 time=_normalise_time(s.get("time", "")),
                 is_break=bool(s.get("is_break", False)),
