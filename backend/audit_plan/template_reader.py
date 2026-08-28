@@ -5,13 +5,14 @@ and extracts all context needed for schedule generation.
 
 Table layout (from real documents):
   Table 0 — header  (15 rows, 5 cols, many merged cells)
-  Table 1 — sites + audit team  (12 rows)
-  Table 2 — schedule  (header row + empty rows — we fill this)
-  Table 3 — signature block  (DO NOT MODIFY)
+  English/UAF: sites + team share Table 1; schedule is Table 2.
+  Turkish/TÜRKAK: sites and team are separate; schedule is Table 4.
+  Signature tables are never modified.
 """
 
 from __future__ import annotations
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from io import BytesIO
 
@@ -120,6 +121,40 @@ def _normalise_standards(raw: str) -> list[str]:
     return standards
 
 
+def _fold_label(value: str) -> str:
+    value = unicodedata.normalize("NFKD", value or "")
+    value = "".join(char for char in value if not unicodedata.combining(char))
+    return value.lower().translate(str.maketrans({"ı": "i", "ş": "s", "ğ": "g"}))
+
+
+_TEAM_ROLE_ALIASES = {
+    "lead auditor": "Lead Auditor",
+    "basdenetci": "Lead Auditor",
+    "auditor": "Auditor",
+    "denetci": "Auditor",
+    "trainee auditor": "Trainee Auditor",
+    "aday denetci": "Trainee Auditor",
+    "technical expert": "Technical Expert",
+    "technical experts": "Technical Expert",
+    "teknik uzman": "Technical Expert",
+    "observer": "Observer",
+    "gozlemci": "Observer",
+}
+
+
+def _canonical_team_role(raw: str) -> str | None:
+    folded = _fold_label(raw).strip()
+    for alias, canonical in _TEAM_ROLE_ALIASES.items():
+        if alias in folded:
+            return canonical
+    return None
+
+
+def _is_team_header(cells: list[str]) -> bool:
+    folded = _fold_label(" ".join(cells))
+    return "name surname" in folded or "ad soyad" in folded
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -178,48 +213,58 @@ def read_template(docx_bytes: bytes) -> AuditPlanContext:
     # Normalise audit type
     audit_type = normalize_audit_type(audit_type_raw) or "Stage 2"
 
-    # ---- Table 1: sites + audit team ----
+    # ---- Sites + audit team (combined in English, separate in Turkish) ----
     auditors: list[AuditorEntry] = []
     sites: list[SiteEntry] = []
-    TEAM_ROLES = {"lead auditor", "auditor", "trainee auditor", "technical expert", "technical experts", "observer"}
-    SITE_HEADER_KEYWORDS = {"site/s", "site address", "address", "process/activity"}
+    SITE_HEADER_KEYWORDS = {
+        "site/s", "site address", "address", "process/activity",
+        "saha/lar", "adres", "proses/faaliyet",
+    }
 
-    in_team_section = False
+    team_tables = []
+    for table in doc.tables[1:]:
+        if any(_is_team_header(_unique_cells(row)) for row in table.rows):
+            team_tables.append(table)
+
+    # Sites always live in the second table, even when the Turkish team is separate.
     for row in tbl1.rows:
         cells = _unique_cells(row)
-
-        # Detect transition to team section BEFORE any empty-cell guard.
-        # The header row that contains "Name Surname" may have an empty cells[0]
-        # (it is a merged/spanned header), so checking it first is critical.
-        if "name surname" in " ".join(cells).lower():
-            in_team_section = True
-            continue
-
         if not cells or not cells[0]:
             continue
-        first = cells[0].lower().strip()
+        first = _fold_label(cells[0]).strip()
+        if _is_team_header(cells):
+            break
+        # Site rows: skip header row, grab data rows
+        if any(kw in first for kw in SITE_HEADER_KEYWORDS):
+            continue
+        addr    = cells[1] if len(cells) > 1 else ""
+        process = cells[2] if len(cells) > 2 else ""
+        emps    = cells[3] if len(cells) > 3 else ""
+        if addr:
+            sites.append(SiteEntry(address=addr, process=process, employees=emps))
 
-        if in_team_section:
-            if any(role in first for role in TEAM_ROLES):
-                name = cells[1] if len(cells) > 1 else ""
-                std  = cells[2] if len(cells) > 2 else ""
-                ea   = cells[3] if len(cells) > 3 else ""
-                if name:
-                    auditors.append(AuditorEntry(
-                        role=cells[0].strip(),
-                        name=name,
-                        standard=std,
-                        ea_code=ea,
-                    ))
-        else:
-            # Site rows: skip header row, grab data rows
-            if any(kw in first for kw in SITE_HEADER_KEYWORDS):
+    for table in team_tables:
+        in_team_section = False
+        for row in table.rows:
+            cells = _unique_cells(row)
+            if _is_team_header(cells):
+                in_team_section = True
                 continue
-            addr    = cells[1] if len(cells) > 1 else ""
-            process = cells[2] if len(cells) > 2 else ""
-            emps    = cells[3] if len(cells) > 3 else ""
-            if addr:
-                sites.append(SiteEntry(address=addr, process=process, employees=emps))
+            if not in_team_section or not cells:
+                continue
+            role = _canonical_team_role(cells[0])
+            if not role:
+                continue
+            name = cells[1] if len(cells) > 1 else ""
+            std = cells[2] if len(cells) > 2 else ""
+            ea = cells[3] if len(cells) > 3 else ""
+            if name:
+                auditors.append(AuditorEntry(
+                    role=role,
+                    name=name,
+                    standard=std,
+                    ea_code=ea,
+                ))
 
     return AuditPlanContext(
         date=date, project_number=project_number, org_name=org_name,

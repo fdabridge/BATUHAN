@@ -8,6 +8,11 @@ import pytest
 from audit_plan.schedule_generator import (
     _SCHEDULE_TOOL_NAME,
     _extract_schedule_payload,
+    _integrated_mode,
+    _repair_days_from_windows,
+    _validate_schedule,
+    DaySchedule,
+    Slot,
     generate_schedule,
 )
 from audit_plan.clause_map import CLAUSE_MAP, normalize_standard
@@ -20,14 +25,48 @@ def _payload() -> dict:
             "day_number": 1,
             "date": "17.08.2026",
             "site": "Main site",
-            "slots": [{
-                "time": "09:00 - 09:30",
-                "is_break": False,
-                "standard": "",
-                "clauses": "",
-                "activity": "Opening Meeting",
-                "auditors": "Lead Auditor (LA)",
-            }],
+            "slots": [
+                {
+                    "time": "09:00 - 09:30",
+                    "is_break": False,
+                    "standard": "",
+                    "clauses": "",
+                    "activity": "Opening Meeting",
+                    "auditors": "Lead Auditor (LA)",
+                },
+                {
+                    "time": "09:30 - 13:00",
+                    "is_break": False,
+                    "standard": "ISO 9001:2015",
+                    "clauses": CLAUSE_MAP["ISO 9001:2015"]["Stage 2"],
+                    "activity": "QMS audit",
+                    "auditors": "Lead Auditor (LA)",
+                },
+                {
+                    "time": "13:00 - 14:00",
+                    "is_break": True,
+                    "standard": "",
+                    "clauses": "",
+                    "activity": "Lunch Break",
+                    "auditors": "",
+                },
+                {
+                    "time": "14:00 - 16:30",
+                    "is_break": False,
+                    "standard": "ISO 9001:2015",
+                    "clauses": "5.1-5.2",
+                    "activity": "QMS audit",
+                    "auditors": "Lead Auditor (LA)",
+                },
+                {
+                    "time": "16:30 - 17:00",
+                    "is_break": False,
+                    "standard": "",
+                    "clauses": "",
+                    "activity": "Closing Meeting",
+                    "auditors": "Lead Auditor (LA)",
+                },
+            ],
         }],
     }
 
@@ -111,6 +150,28 @@ def test_generate_schedule_retries_empty_response_then_uses_tool_payload():
     assert request["max_tokens"] == 16000
     assert request["tool_choice"] == {"type": "tool", "name": _SCHEDULE_TOOL_NAME}
     assert request["tools"][0]["input_schema"]["required"] == ["days"]
+
+
+def test_generate_schedule_retries_a_structurally_valid_but_incomplete_plan():
+    incomplete = _payload()
+    incomplete["days"][0]["slots"][1]["clauses"] = "4.1"
+    messages = MagicMock()
+    messages.create.side_effect = [
+        _response([_tool_block(incomplete)]),
+        _response([_tool_block()]),
+    ]
+    client = SimpleNamespace(messages=messages)
+
+    with (
+        patch("audit_plan.schedule_generator.get_settings", return_value=SimpleNamespace(
+            anthropic_api_key="test", claude_model="test-model",
+        )),
+        patch("audit_plan.schedule_generator.anthropic.Anthropic", return_value=client),
+    ):
+        days = generate_schedule(_context())
+
+    assert messages.create.call_count == 2
+    assert len(days) == 1
 
 
 def test_generate_schedule_reports_output_limit_instead_of_json_decoder_error():
@@ -201,7 +262,14 @@ def test_stage1_qms_fsms_integrated_prompt_contains_both_clause_sets():
     ctx.category = "CI"
 
     messages = MagicMock()
-    messages.create.return_value = _response([_tool_block()])
+    integrated_payload = _payload()
+    for slot in integrated_payload["days"][0]["slots"]:
+        if slot["standard"]:
+            slot["standard"] = "ISO 9001:2015\nISO 22000:2018"
+    integrated_payload["days"][0]["slots"][1]["clauses"] += (
+        " / " + CLAUSE_MAP["ISO 22000:2018"]["Stage 1"]
+    )
+    messages.create.return_value = _response([_tool_block(integrated_payload)])
     client = SimpleNamespace(messages=messages)
 
     with (
@@ -217,3 +285,75 @@ def test_stage1_qms_fsms_integrated_prompt_contains_both_clause_sets():
         assert f"{standard} (Stage 1): {CLAUSE_MAP[standard]['Stage 1']}" in prompt
     assert "INTEGRATED MODE: SIMULTANEOUS" in prompt
     assert "CATEGORY / TECHNICAL AREA: CI" in prompt
+
+
+@pytest.mark.parametrize("standards, days, expected", [
+    (["ISO 22000:2018"], 5, "SINGLE"),
+    (["ISO 9001:2015", "ISO 22000:2018"], 4, "SIMULTANEOUS"),
+    (["ISO 9001:2015", "ISO 22000:2018"], 5, "BLOCK"),
+    (["ISO 9001:2015", "ISO 14001:2015", "ISO 22000:2018"], 6, "SIMULTANEOUS"),
+    (["ISO 9001:2015", "ISO 14001:2015", "ISO 22000:2018"], 7, "BLOCK"),
+])
+def test_integrated_day_mapping_mode_matrix(standards, days, expected):
+    assert _integrated_mode(standards, days) == expected
+
+
+def test_authoritative_windows_replace_model_date_and_site():
+    ctx = _context()
+    days = [DaySchedule(1, "wrong", "wrong", [
+        Slot("09.00 – 09.30", False, "", "", "Opening Meeting", "LA"),
+    ])]
+    repaired = _repair_days_from_windows(days, ctx.day_windows, ctx.address)
+    assert repaired[0].date == "17.08.2026"
+    assert repaired[0].site == "Main site"
+
+
+def test_authoritative_windows_reject_wrong_day_count():
+    ctx = _context()
+    with pytest.raises(ValueError, match="authoritative day window"):
+        _repair_days_from_windows([], ctx.day_windows, ctx.address)
+
+
+def test_integrated_schedule_rejects_an_omitted_standard():
+    ctx = _context()
+    ctx.standards = ["ISO 9001:2015", "ISO 22000:2018"]
+    days_raw = _payload()["days"]
+    days = [DaySchedule(
+        day_number=1,
+        date="17.08.2026",
+        site="Main site",
+        slots=[Slot(**slot) for slot in days_raw[0]["slots"]],
+    )]
+    with pytest.raises(ValueError, match="omitted standard.*ISO 22000"):
+        _validate_schedule(days, ctx)
+
+
+def test_schedule_rejects_wrong_lunch_window_and_not_applicable_clause():
+    ctx = _context()
+    days_raw = _payload()["days"]
+    days_raw[0]["slots"][2]["time"] = "12:30 - 13:30"
+    days = [DaySchedule(1, "17.08.2026", "Main site", [
+        Slot(**slot) for slot in days_raw[0]["slots"]
+    ])]
+    with pytest.raises(ValueError, match="lunch window"):
+        _validate_schedule(days, ctx)
+
+    days_raw = _payload()["days"]
+    days_raw[0]["slots"][1]["clauses"] = "8.3-8.4"
+    ctx.not_applicable = "Clause 8.3 is not applicable"
+    days = [DaySchedule(1, "17.08.2026", "Main site", [
+        Slot(**slot) for slot in days_raw[0]["slots"]
+    ])]
+    with pytest.raises(ValueError, match="not-applicable.*8.3"):
+        _validate_schedule(days, ctx)
+
+
+def test_schedule_rejects_omitted_required_clauses():
+    ctx = _context()
+    days_raw = _payload()["days"]
+    days_raw[0]["slots"][1]["clauses"] = "4.1-4.2"
+    days = [DaySchedule(1, "17.08.2026", "Main site", [
+        Slot(**slot) for slot in days_raw[0]["slots"]
+    ])]
+    with pytest.raises(ValueError, match="omitted required clause"):
+        _validate_schedule(days, ctx)

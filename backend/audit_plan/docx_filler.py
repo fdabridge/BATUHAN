@@ -4,7 +4,7 @@ Injects the generated schedule into Table 2 of the pre-filled FR.223 template.
 
 Strategy:
   1. Open uploaded template bytes with python-docx.
-  2. Locate Table 2 (schedule table, index 2).
+  2. Locate the schedule table by its bilingual column headers.
   3. Keep header row (Row 0), delete all subsequent rows.
   4. For each day: insert a day-header row, then one row per slot.
      Break slots get a single merged row.
@@ -34,6 +34,22 @@ _COL_WIDTHS = [1728, 1280, 1414, 3705, 1756]
 _TABLE_WIDTH = sum(_COL_WIDTHS)   # 9883
 _FONT        = "Times New Roman"
 _FONT_SIZE   = "20"               # half-points → 10 pt
+
+
+def _find_schedule_table_index(doc: Document) -> int:
+    """Locate the FR.223 schedule by headers across English/Turkish set layouts."""
+    for index, table in enumerate(doc.tables):
+        if not table.rows:
+            continue
+        header = " ".join(cell.text.strip().lower() for cell in table.rows[0].cells)
+        has_time = "hour" in header or "saat" in header
+        has_clause = "clause" in header or "madde" in header
+        has_team = "audit team" in header or "denetim ekibi" in header
+        if has_time and has_clause and has_team:
+            return index
+    raise ValueError(
+        "Could not find the FR.223 schedule table by its Hour/Clause/Audit Team headers."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -206,7 +222,7 @@ def fill_schedule(
     ctx: "AuditPlanContext | None" = None,
 ) -> bytes:
     """
-    Fill Table 1 (sites) and Table 2 (schedule) of the uploaded template.
+    Fill the sites and schedule tables of the uploaded template.
 
     Args:
         docx_bytes: Raw bytes of the uploaded pre-filled FR.223 template.
@@ -231,8 +247,8 @@ def fill_schedule(
     if ctx is not None:
         _fill_sites(doc, ctx)
 
-    # ---- Table 2: fill schedule ----
-    tbl = doc.tables[2]
+    # ---- Fill the schedule table (index differs between English and Turkish sets) ----
+    tbl = doc.tables[_find_schedule_table_index(doc)]
     tbl_elem = tbl._tbl
 
     # Keep the header row (index 0); remove all other rows

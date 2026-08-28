@@ -16,7 +16,10 @@ from typing import List
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
-from schemas.models import ReviewJobStatus, ReviewJobState
+from schemas.models import (
+    AuditStage, ISOStandard, ReviewJobStatus, ReviewJobState,
+)
+from schemas.certivai import normalize_iso_standard_inputs
 from config.review_profiles.loader import load_review_profile, list_available_profiles
 from storage.file_store import save_text_artifact, read_text_artifact, read_binary_artifact
 from auth.db_models import PlatformUser
@@ -25,8 +28,9 @@ from auth.dependencies import require_any
 router = APIRouter(prefix="/review", tags=["review"])
 logger = logging.getLogger(__name__)
 
-_VALID_STANDARDS = ["QMS", "EMS", "OHSMS", "FSMS", "MDQMS", "ISMS", "ABMS", "ENMS"]
-_VALID_STAGES = ["Stage 1", "Stage 2", "Surveillance", "Recertification"]
+_VALID_STANDARDS = [standard.value for standard in ISOStandard]
+_VALID_STAGES = [stage.value for stage in AuditStage]
+_LEGACY_STAGES = ["Surveillance"]
 
 
 def _normalize_standard_inputs(
@@ -37,13 +41,7 @@ def _normalize_standard_inputs(
     if legacy_standard:
         raw_values.append(legacy_standard)
 
-    selected: list[str] = []
-    for raw in raw_values:
-        for part in raw.replace("+", ",").split(","):
-            code = part.strip().upper()
-            if code and code not in selected:
-                selected.append(code)
-    return selected
+    return normalize_iso_standard_inputs(raw_values)
 
 
 def _reference_summary(profile: dict) -> dict:
@@ -78,7 +76,7 @@ async def submit_review(
     report: UploadFile = File(..., description="The audit report PDF or DOCX to review"),
     standards: List[str] | None = Form(default=None, description="One or more standard codes: QMS, EMS, OHSMS, FSMS, MDQMS, ISMS, ABMS, ENMS"),
     standard: str | None = Form(default=None, description="Legacy single standard code"),
-    stage: str = Form(..., description="Stage 1, Stage 2, Surveillance, or Recertification"),
+    stage: str = Form(..., description="Stage 1, Stage 2, Surveillance 1, Surveillance 2, or Recertification"),
     accreditation_body: str = Form(..., description="UAF, IAF, or TURKAK"),
     _: PlatformUser = Depends(require_any),
 ):
@@ -112,7 +110,7 @@ async def submit_review(
     standards_label = " + ".join(selected_standards)
 
     # Validate stage
-    if stage not in _VALID_STAGES:
+    if stage not in _VALID_STAGES and stage not in _LEGACY_STAGES:
         raise HTTPException(
             status_code=400,
             detail=f"stage must be one of {_VALID_STAGES}",

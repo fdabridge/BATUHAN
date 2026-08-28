@@ -169,6 +169,8 @@ def run_pipeline(
     language_value: str = "EN",   # "EN" or "TR"
     accreditation_body: str = "UAF",  # "UAF" or "TURKAK"
     auditor_config: dict | None = None,
+    org_scope_en: str | None = None,
+    org_scope_tr: str | None = None,
 ) -> dict:
     """
     Execute the full BATUHAN pipeline for a job:
@@ -265,6 +267,16 @@ def run_pipeline(
         # build_corpus handles text extraction + OCR + deduplication in one pass
         all_docs = build_corpus(company_paths)
 
+        from schemas.certivai import submitted_scope_text
+        submitted_scope = submitted_scope_text(org_scope_en, org_scope_tr)
+        if submitted_scope:
+            from schemas.models import ParsedDocument
+            all_docs.append(ParsedDocument(
+                filename="certivai_submitted_scope.txt",
+                text=submitted_scope,
+                char_count=len(submitted_scope),
+            ))
+
         # T31: skip unreadable files, abort if ALL documents are empty
         corpus = filter_readable_documents(company_paths, all_docs)
 
@@ -295,6 +307,24 @@ def run_pipeline(
                     )
             except Exception as exc:
                 logger.warning("[Pipeline] Could not filter certifier names from blocked list: %s", exc)
+
+        # A prior report from the same auditee is a valid evidence/style input.
+        # Its company name must remain available in the generated report and is
+        # not cross-client leakage.
+        if org_name and style_guidance.blocked_company_names:
+            from schemas.certivai import company_name_matches_target
+            before = len(style_guidance.blocked_company_names)
+            style_guidance.blocked_company_names = [
+                name for name in style_guidance.blocked_company_names
+                if not company_name_matches_target(name, org_name)
+            ]
+            removed = before - len(style_guidance.blocked_company_names)
+            if removed:
+                logger.info(
+                    "[Pipeline] Removed %d current-auditee name(s) from leakage block list. job=%s",
+                    removed,
+                    job_id,
+                )
 
         # -----------------------------------------------------------
         # STEP 0 — Scope Analysis (clause applicability)
@@ -411,6 +441,8 @@ def run_pipeline(
             "name": org_name or "",
             "address": org_address or "",
             "phone": org_phone or "",
+            "scope_en": org_scope_en or "",
+            "scope_tr": org_scope_tr or "",
         }
         package_results(
             job_id=job_id,

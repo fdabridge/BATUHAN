@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import api from '@/lib/api'
+import { apiErrorMessage } from '@/lib/apiError'
 import {
   AlertTriangle,
   ArrowLeft,
@@ -77,7 +78,7 @@ const FALLBACK_REFERENCES: ReviewReferences = {
     },
   ],
   standards: ['QMS', 'EMS', 'OHSMS', 'FSMS', 'MDQMS', 'ISMS', 'ABMS', 'ENMS'],
-  stages: ['Stage 1', 'Stage 2', 'Surveillance', 'Recertification'],
+  stages: ['Stage 1', 'Stage 2', 'Surveillance 1', 'Surveillance 2', 'Recertification'],
   file_types: ['.pdf', '.docx'],
 }
 
@@ -222,8 +223,8 @@ export default function CertivAIReviewPage() {
         standard_code: standardLabel,
         accreditation_body: profileCode,
       })
-    } catch (error: any) {
-      setMessage(error?.response?.data?.detail || 'Could not submit the report for review.')
+    } catch (error: unknown) {
+      setMessage(await apiErrorMessage(error, 'Could not submit the report for review.'))
     } finally {
       setBusy(false)
     }

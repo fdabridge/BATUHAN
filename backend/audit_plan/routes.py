@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -69,14 +70,14 @@ def _parse_standards(raw: str | None) -> tuple[list[str], str]:
         else:
             parts = [value]
     except json.JSONDecodeError:
-        import re as _re
-        parts = [p.strip() for p in _re.split(r"[,\n;]+", value) if p.strip()]
+        parts = [p.strip() for p in re.split(r"[,\n;+]+", value) if p.strip()]
 
     standards: list[str] = []
     for part in parts:
-        norm = normalize_standard(part)
-        if norm and norm not in standards:
-            standards.append(norm)
+        for candidate in re.split(r"[,\n;+]+", part):
+            norm = normalize_standard(candidate)
+            if norm and norm not in standards:
+                standards.append(norm)
     return standards, ", ".join(standards or parts)
 
 

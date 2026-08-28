@@ -537,7 +537,9 @@ def _build_prompt(
         for s in selected_standards
     )
     # Build the org_info block injected into the prompt
-    if org_info and any(org_info.get(k) for k in ("name", "address", "phone")):
+    if org_info and any(
+        org_info.get(k) for k in ("name", "address", "phone", "scope_en", "scope_tr")
+    ):
         org_lines = ["Use these submitted values verbatim — they override anything in the template:"]
         if org_info.get("name"):
             org_lines.append(f"  Organisation / Auditee Name: {org_info['name']}")
@@ -545,6 +547,10 @@ def _build_prompt(
             org_lines.append(f"  Address / Site: {org_info['address']}")
         if org_info.get("phone"):
             org_lines.append(f"  Phone: {org_info['phone']}")
+        if org_info.get("scope_en"):
+            org_lines.append(f"  Certification Scope (English): {org_info['scope_en']}")
+        if org_info.get("scope_tr"):
+            org_lines.append(f"  Certification Scope (Turkish): {org_info['scope_tr']}")
         org_block = "\n".join(org_lines)
     else:
         org_block = "(No explicit organisation details submitted — infer from report content.)"
@@ -820,4 +826,3 @@ def get_cell_mapping(
             "Check assembly_cell_mapping_raw_chunk*.txt artifacts for raw output."
         )
     return all_mappings
-

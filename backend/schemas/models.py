@@ -8,6 +8,7 @@ from enum import Enum
 from typing import Optional
 from pydantic import BaseModel, Field
 from datetime import datetime
+import re
 
 
 # ---------------------------------------------------------------------------
@@ -31,6 +32,42 @@ class AuditStage(str, Enum):
     SURVEILLANCE_1 = "Surveillance 1"
     SURVEILLANCE_2 = "Surveillance 2"
     RECERTIFICATION = "Recertification"
+
+
+_ISO_STANDARD_NUMBER_TO_CODE: dict[str, ISOStandard] = {
+    "9001": ISOStandard.QMS,
+    "14001": ISOStandard.EMS,
+    "45001": ISOStandard.OHSMS,
+    "22000": ISOStandard.FSMS,
+    "13485": ISOStandard.MDQMS,
+    "27001": ISOStandard.ISMS,
+    "37001": ISOStandard.ABMS,
+    "50001": ISOStandard.ENMS,
+}
+
+_ISO_STANDARD_ALIAS_TO_CODE: dict[str, ISOStandard] = {
+    standard.value.lower(): standard for standard in ISOStandard
+}
+_ISO_STANDARD_ALIAS_TO_CODE.update({
+    "mdms": ISOStandard.MDQMS,
+})
+
+
+def normalize_iso_standard(value: object) -> ISOStandard | None:
+    """Return the canonical Certiv.AI code for a short or full ISO label."""
+    if isinstance(value, ISOStandard):
+        return value
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return None
+    compact = re.sub(r"[^a-z0-9]", "", raw)
+    alias = _ISO_STANDARD_ALIAS_TO_CODE.get(compact)
+    if alias:
+        return alias
+    for number, standard in _ISO_STANDARD_NUMBER_TO_CODE.items():
+        if re.search(rf"(^|\D){number}(\D|$)", raw):
+            return standard
+    return None
 
 
 class ReportLanguage(str, Enum):

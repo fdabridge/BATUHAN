@@ -14,7 +14,10 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
-from schemas.models import ISOStandard, AuditStage, JobStatus, JobState, ReportLanguage, JobAuditorConfig
+from schemas.models import (
+    ISOStandard, AuditStage, JobStatus, JobState, ReportLanguage,
+    JobAuditorConfig, normalize_iso_standard,
+)
 from typing import List
 from storage.file_store import (
     generate_job_id, validate_extension, save_text_artifact,
@@ -54,6 +57,8 @@ async def create_job(
     org_name: str | None = Form(None, description="Auditee / organisation name"),
     org_address: str | None = Form(None, description="Organisation address or site"),
     org_phone: str | None = Form(None, description="Organisation phone number"),
+    org_scope_en: str | None = Form(None, description="English certification scope"),
+    org_scope_tr: str | None = Form(None, description="Turkish certification scope"),
     language: ReportLanguage = Form(ReportLanguage.EN, description="Report writing language: EN (English) or TR (Turkish)"),
     accreditation_body: str = Form(default="UAF",
         description="Accreditation body: UAF or TURKAK"),
@@ -67,10 +72,19 @@ async def create_job(
     to the Celery task through Redis — no shared filesystem is required.
     """
     # Validate and deduplicate standard codes
-    try:
-        parsed_standards = list(dict.fromkeys(ISOStandard(s) for s in standards))
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid standard code: {exc}")
+    parsed_standards: list[ISOStandard] = []
+    invalid_standards: list[str] = []
+    for raw_standard in standards:
+        parsed = normalize_iso_standard(raw_standard)
+        if parsed is None:
+            invalid_standards.append(raw_standard)
+        elif parsed not in parsed_standards:
+            parsed_standards.append(parsed)
+    if invalid_standards:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid standard value(s): {invalid_standards}",
+        )
     if not parsed_standards:
         raise HTTPException(status_code=400, detail="At least one standard must be selected.")
 
@@ -158,6 +172,8 @@ async def create_job(
             language.value,
             accreditation_body.upper(),
             parsed_auditor_config.model_dump() if parsed_auditor_config else None,
+            org_scope_en or "",
+            org_scope_tr or "",
         )
         logger.info(
             f"Job {job_id} queued with {len(company_files)} company docs, "

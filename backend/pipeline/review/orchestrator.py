@@ -16,6 +16,7 @@ from anthropic import Anthropic
 from schemas.models import (
     ReviewResult, ReviewFinding, ReviewFindingType, ReviewFindingSeverity,
 )
+from schemas.certivai import normalize_iso_standard_inputs, review_stage_key
 from config.review_profiles.loader import load_review_profile
 from config.clause_configs.loader import load_clause_config, get_mandatory_clause_ids
 from storage.file_store import save_text_artifact
@@ -103,16 +104,7 @@ def _profile_to_text(profile: dict) -> str:
 
 
 def _stage_to_key(stage: str) -> str:
-    normalized = stage.strip().lower().replace("-", " ")
-    if "stage 1" in normalized:
-        return "stage_1"
-    if "stage 2" in normalized:
-        return "stage_2"
-    if "surveillance" in normalized:
-        return "surveillance"
-    if "recert" in normalized:
-        return "recertification"
-    return "stage_2"
+    return review_stage_key(stage)
 
 
 def _get_stage_specific_rules(profile: dict, stage: str) -> str:
@@ -132,11 +124,7 @@ def _get_stage_specific_rules(profile: dict, stage: str) -> str:
 
 
 def _split_standard_label(standard: str) -> list[str]:
-    standards: list[str] = []
-    for part in standard.replace("+", ",").split(","):
-        code = part.strip().upper()
-        if code and code not in standards:
-            standards.append(code)
+    standards = normalize_iso_standard_inputs([standard])
     return standards or [standard.strip().upper()]
 
 

@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, BrainCircuit, Check, FileText, Layers3, Loader2, Upload, X, Zap } from 'lucide-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
+import { normalizeISOStandardCodes } from '@/lib/isoStandards'
 import type { AuditSetResponse, JobCreateResponse } from '@/types'
 
 const STANDARDS = [
@@ -65,10 +66,6 @@ interface FormState {
   company_name: string
   scope_tr: string
   scope_en: string
-}
-
-function unique(values: (string | null | undefined)[]): string[] {
-  return Array.from(new Set(values.filter(Boolean) as string[]))
 }
 
 function formatApiError(err: unknown, fallback: string): string {
@@ -248,7 +245,7 @@ export default function NewReportPage() {
 
   useEffect(() => {
     if (!client) return
-    const clientStandards = unique(client.standards ?? [])
+    const clientStandards = normalizeISOStandardCodes(client.standards ?? [])
     const mappedStage =
       client.audit_type === 'surveillance_1' ? 'Surveillance 1'
       : client.audit_type === 'surveillance_2' ? 'Surveillance 2'
@@ -293,7 +290,9 @@ export default function NewReportPage() {
       fd.append('accreditation_body', form.accreditation_body)
       fd.append('language', form.accreditation_body === 'TURKAK' ? 'TR' : 'EN')
       fd.append('org_name', form.company_name.trim())
-      fd.append('org_address', `EN: ${form.scope_en.trim()}\nTR: ${form.scope_tr.trim()}`)
+      fd.append('org_address', client?.company_address?.trim() ?? '')
+      fd.append('org_scope_en', form.scope_en.trim())
+      fd.append('org_scope_tr', form.scope_tr.trim())
       docs.forEach((f) => fd.append('company_documents', f))
       fd.append('template', template[0])
       const res = await api.post<JobCreateResponse>('/jobs/create', fd, {

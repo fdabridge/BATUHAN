@@ -140,6 +140,13 @@
         "Traceability system evidence with a specific tested example",
         "Verification related to PRPs and control measures"
       ]
+    },
+    "MDQMS": {
+      "required_elements": [
+        "Design and development exclusion justified if claimed",
+        "Regulatory compliance evidence where applicable",
+        "Post-market surveillance evidence where applicable"
+      ]
     }
   },
 

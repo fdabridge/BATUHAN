@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 import anthropic
 
 from config.settings import get_settings
-from .clause_map import CLAUSE_MAP
+from .clause_map import CLAUSE_MAP, normalize_standard
 from .template_reader import AuditPlanContext, DayWindow
 
 logger = logging.getLogger(__name__)
@@ -393,23 +393,183 @@ def _repair_days_from_windows(
     if not windows:
         return days
 
-    repaired = days[:len(windows)]
-    while len(repaired) < len(windows):
-        repaired.append(DaySchedule(
-            day_number=len(repaired) + 1,
-            date="",
-            site=fallback_site,
-            slots=[],
-        ))
+    if len(days) != len(windows):
+        raise ValueError(
+            f"The generated schedule contained {len(days)} day(s), but the planner "
+            f"provided {len(windows)} authoritative day window(s)."
+        )
+
+    repaired = days
 
     for index, window in enumerate(windows):
         day = repaired[index]
         day.day_number = index + 1
-        if not day.date:
-            day.date = window.date
-        if not day.site:
-            day.site = window.site or fallback_site
+        day.date = window.date
+        day.site = window.site or fallback_site
     return repaired
+
+
+def _clock_minutes(raw: str) -> int | None:
+    match = re.fullmatch(r"\s*(\d{1,2})[.:](\d{2})\s*", raw or "")
+    if not match:
+        return None
+    hour, minute = int(match.group(1)), int(match.group(2))
+    if hour > 23 or minute > 59:
+        return None
+    return hour * 60 + minute
+
+
+def _slot_minutes(raw: str) -> tuple[int, int] | None:
+    match = re.search(
+        r"(\d{1,2})[.:](\d{2})\s*[-\u2013]+\s*(\d{1,2})[.:](\d{2})",
+        raw or "",
+    )
+    if not match:
+        return None
+    start = _clock_minutes(f"{match.group(1)}.{match.group(2)}")
+    end = _clock_minutes(f"{match.group(3)}.{match.group(4)}")
+    if start is None or end is None or end <= start:
+        return None
+    return start, end
+
+
+def _validate_schedule(days: list[DaySchedule], ctx: AuditPlanContext) -> None:
+    """Reject AI output that conflicts with authoritative Certiv.AI inputs."""
+    if not days:
+        raise ValueError("The generated audit schedule is empty.")
+
+    if ctx.day_windows:
+        for index, (day, window) in enumerate(zip(days, ctx.day_windows), start=1):
+            if not day.slots:
+                raise ValueError(f"Generated audit day {index} has no schedule rows.")
+            day_start = _clock_minutes(window.start_time)
+            day_end = _clock_minutes(window.end_time)
+            lunch_start = _clock_minutes(window.lunch_start)
+            lunch_end = _clock_minutes(window.lunch_end)
+            if None in {day_start, day_end, lunch_start, lunch_end}:
+                raise ValueError(f"Planner day {index} contains an invalid time window.")
+
+            breaks = [slot for slot in day.slots if slot.is_break]
+            if len(breaks) != 1:
+                raise ValueError(
+                    f"Generated audit day {index} must contain exactly one lunch break."
+                )
+            break_range = _slot_minutes(breaks[0].time)
+            if break_range != (lunch_start, lunch_end):
+                raise ValueError(
+                    f"Generated audit day {index} did not use the planner's lunch window."
+                )
+
+            for slot in day.slots:
+                slot_range = _slot_minutes(slot.time)
+                if slot_range is None:
+                    raise ValueError(
+                        f"Generated audit day {index} contains an invalid time range: '{slot.time}'."
+                    )
+                if slot_range[0] < day_start or slot_range[1] > day_end:
+                    raise ValueError(
+                        f"Generated audit day {index} contains a row outside the planner's day window."
+                    )
+
+        first_slot = days[0].slots[0]
+        first_range = _slot_minutes(first_slot.time)
+        if "opening meeting" not in first_slot.activity.lower() or first_range is None:
+            raise ValueError("The generated audit schedule must begin with an Opening Meeting.")
+        if first_range[0] != _clock_minutes(ctx.day_windows[0].start_time):
+            raise ValueError("The Opening Meeting does not start at the planner's start time.")
+
+        final_slot = days[-1].slots[-1]
+        final_range = _slot_minutes(final_slot.time)
+        if "closing meeting" not in final_slot.activity.lower() or final_range is None:
+            raise ValueError("The generated audit schedule must end with a Closing Meeting.")
+        if final_range[1] != _clock_minutes(ctx.day_windows[-1].end_time):
+            raise ValueError("The Closing Meeting does not end at the planner's end time.")
+
+    scheduled_standards: set[str] = set()
+    scheduled_clause_ids: set[str] = set()
+    for day in days:
+        for slot in day.slots:
+            for part in re.split(r"[,\n;+]+", slot.standard or ""):
+                normalized = normalize_standard(part)
+                if normalized:
+                    scheduled_standards.add(normalized)
+            scheduled_clause_ids.update(_extract_clause_ids(slot.clauses))
+
+    missing_standards = [
+        standard for standard in ctx.standards
+        if CLAUSE_MAP.get(standard, {}).get(ctx.audit_type)
+        and standard not in scheduled_standards
+    ]
+    if missing_standards:
+        raise ValueError(
+            "The generated integrated audit schedule omitted standard(s): "
+            + ", ".join(missing_standards)
+            + "."
+        )
+
+    excluded = set(_extract_clause_ids(ctx.not_applicable))
+    scheduled_excluded = sorted(excluded & scheduled_clause_ids)
+    if scheduled_excluded:
+        raise ValueError(
+            "The generated schedule included not-applicable clause(s): "
+            + ", ".join(scheduled_excluded)
+            + "."
+        )
+
+    required_clause_ids: set[str] = set()
+    for standard in ctx.standards:
+        required_clause_ids.update(
+            _extract_clause_ids(CLAUSE_MAP.get(standard, {}).get(ctx.audit_type, ""))
+        )
+    missing_clause_ids = sorted(required_clause_ids - excluded - scheduled_clause_ids)
+    if missing_clause_ids:
+        raise ValueError(
+            "The generated schedule omitted required clause(s): "
+            + ", ".join(missing_clause_ids)
+            + "."
+        )
+
+
+def _integrated_mode(standards: list[str], total_days: int) -> str:
+    if len(standards) < 2 or total_days <= 0:
+        return "SINGLE"
+    return "BLOCK" if total_days / len(standards) > 2 else "SIMULTANEOUS"
+
+
+def _days_from_payload(payload: dict, ctx: AuditPlanContext) -> list[DaySchedule]:
+    days_raw = payload.get("days", [])
+    if not isinstance(days_raw, list) or not days_raw:
+        raise ValueError("Claude returned an empty schedule (no days).")
+
+    days: list[DaySchedule] = []
+    for d in days_raw:
+        if not isinstance(d, dict):
+            raise ValueError("Claude returned an invalid schedule day.")
+        raw_slots = d.get("slots", [])
+        if not isinstance(raw_slots, list):
+            raise ValueError("Claude returned invalid schedule slots.")
+        slots: list[Slot] = []
+        for s in raw_slots:
+            if not isinstance(s, dict):
+                raise ValueError("Claude returned an invalid schedule slot.")
+            slots.append(Slot(
+                time=_normalise_time(s.get("time", "")),
+                is_break=bool(s.get("is_break", False)),
+                standard=s.get("standard", ""),
+                clauses=s.get("clauses", ""),
+                activity=s.get("activity", ""),
+                auditors=s.get("auditors", ""),
+            ))
+        days.append(DaySchedule(
+            day_number=int(d.get("day_number", len(days) + 1)),
+            date=d.get("date", ""),
+            site=d.get("site", ctx.address),
+            slots=slots,
+        ))
+
+    days = _repair_days_from_windows(days, ctx.day_windows, ctx.address)
+    _validate_schedule(days, ctx)
+    return days
 
 
 # ---------------------------------------------------------------------------
@@ -451,12 +611,7 @@ def generate_schedule(ctx: AuditPlanContext) -> list[DaySchedule]:
 
     # Determine integrated audit strategy (block vs simultaneous)
     total_days, day_window_summary = _day_windows_for_prompt(ctx)
-    num_stds     = len(ctx.standards)
-    if num_stds >= 2 and total_days > 0:
-        days_per_std = total_days / num_stds
-        int_mode     = "BLOCK" if days_per_std > 2 else "SIMULTANEOUS"
-    else:
-        int_mode     = "SINGLE"  # not an integrated audit
+    int_mode = _integrated_mode(ctx.standards, total_days)
 
     int_mode_instruction = {
         "SIMULTANEOUS": (
@@ -540,6 +695,7 @@ INSTRUCTIONS:
 
     _MAX_ATTEMPTS = 2
     payload: dict = {}
+    days: list[DaySchedule] = []
     last_error = "Claude returned no schedule."
     last_stop_reason = "unknown"
     for attempt in range(1, _MAX_ATTEMPTS + 1):
@@ -571,6 +727,7 @@ INSTRUCTIONS:
         last_stop_reason = str(getattr(response, "stop_reason", None) or "unknown")
         try:
             payload = _extract_schedule_payload(response)
+            days = _days_from_payload(payload, ctx)
             break  # success
         except ValueError as exc:
             last_error = str(exc)
@@ -590,38 +747,6 @@ INSTRUCTIONS:
                     f"{reason} Please try again."
                 ) from exc
             logger.info("[AuditPlan] Retrying Claude call...")
-
-    days_raw = payload.get("days", [])
-    if not isinstance(days_raw, list) or not days_raw:
-        raise ValueError("Claude returned an empty schedule (no days).")
-
-    days: list[DaySchedule] = []
-    for d in days_raw:
-        if not isinstance(d, dict):
-            raise ValueError("Claude returned an invalid schedule day.")
-        raw_slots = d.get("slots", [])
-        if not isinstance(raw_slots, list):
-            raise ValueError("Claude returned invalid schedule slots.")
-        slots: list[Slot] = []
-        for s in raw_slots:
-            if not isinstance(s, dict):
-                raise ValueError("Claude returned an invalid schedule slot.")
-            slots.append(Slot(
-                time=_normalise_time(s.get("time", "")),
-                is_break=bool(s.get("is_break", False)),
-                standard=s.get("standard", ""),
-                clauses=s.get("clauses", ""),
-                activity=s.get("activity", ""),
-                auditors=s.get("auditors", ""),
-            ))
-        days.append(DaySchedule(
-            day_number=int(d.get("day_number", len(days) + 1)),
-            date=d.get("date", ""),
-            site=d.get("site", ctx.address),
-            slots=slots,
-        ))
-
-    days = _repair_days_from_windows(days, ctx.day_windows, ctx.address)
 
     logger.info(f"[AuditPlan] Schedule generated: {len(days)} day(s), "
                 f"{sum(len(d.slots) for d in days)} total slots.")
