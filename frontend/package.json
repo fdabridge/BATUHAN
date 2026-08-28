@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test:coverage": "tsc --noEmit false --incremental false --target ES2020 --module commonjs --moduleResolution node --esModuleInterop true --skipLibCheck true --outDir /tmp/certiva-frontend-tests src/lib/stageCoverage.ts src/lib/stageCoverage.test.ts src/lib/examTimer.ts src/lib/examTimer.test.ts && node --test /tmp/certiva-frontend-tests/*.test.js"
+    "test:coverage": "tsc --noEmit false --incremental false --target ES2020 --module commonjs --moduleResolution node --esModuleInterop true --skipLibCheck true --outDir /tmp/certiva-frontend-tests src/lib/stageCoverage.ts src/lib/stageCoverage.test.ts src/lib/examTimer.ts src/lib/examTimer.test.ts src/lib/apiError.ts src/lib/apiError.test.ts && node --test /tmp/certiva-frontend-tests/*.test.js"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.0.2",

@@ -10,7 +10,8 @@ from audit_plan.schedule_generator import (
     _extract_schedule_payload,
     generate_schedule,
 )
-from audit_plan.template_reader import AuditPlanContext, DayWindow
+from audit_plan.clause_map import CLAUSE_MAP, normalize_standard
+from audit_plan.template_reader import AuditPlanContext, DayWindow, _normalise_standards
 
 
 def _payload() -> dict:
@@ -127,3 +128,92 @@ def test_generate_schedule_reports_output_limit_instead_of_json_decoder_error():
         generate_schedule(_context())
 
     assert "line 1 column 1" not in str(exc_info.value)
+
+
+def test_generate_schedule_retries_temporary_claude_api_failure():
+    class APIConnectionError(Exception):
+        pass
+
+    messages = MagicMock()
+    messages.create.side_effect = [
+        APIConnectionError("connection reset"),
+        _response([_tool_block()]),
+    ]
+    client = SimpleNamespace(messages=messages)
+
+    with (
+        patch("audit_plan.schedule_generator.get_settings", return_value=SimpleNamespace(
+            anthropic_api_key="test", claude_model="test-model",
+        )),
+        patch("audit_plan.schedule_generator.anthropic.Anthropic", return_value=client),
+        patch("audit_plan.schedule_generator.time.sleep") as sleep,
+    ):
+        days = generate_schedule(_context())
+
+    assert len(days) == 1
+    assert messages.create.call_count == 2
+    sleep.assert_called_once_with(0.5)
+
+
+def test_generate_schedule_explains_repeated_temporary_api_failure():
+    class RateLimitError(Exception):
+        status_code = 429
+
+    messages = MagicMock()
+    messages.create.side_effect = RateLimitError("overloaded")
+    client = SimpleNamespace(messages=messages)
+
+    with (
+        patch("audit_plan.schedule_generator.get_settings", return_value=SimpleNamespace(
+            anthropic_api_key="test", claude_model="test-model",
+        )),
+        patch("audit_plan.schedule_generator.anthropic.Anthropic", return_value=client),
+        patch("audit_plan.schedule_generator.time.sleep"),
+        pytest.raises(ValueError, match="temporarily unavailable"),
+    ):
+        generate_schedule(_context())
+
+    assert messages.create.call_count == 2
+
+
+@pytest.mark.parametrize("raw, expected", [
+    ("FSMS", "ISO 22000:2018"),
+    ("ISO 22000", "ISO 22000:2018"),
+    ("QMS", "ISO 9001:2015"),
+])
+def test_management_system_aliases_normalize_for_integrated_plans(raw, expected):
+    assert normalize_standard(raw) == expected
+
+
+def test_qms_fsms_plus_separated_template_text_preserves_both_standards():
+    assert _normalise_standards("QMS + FSMS") == [
+        "ISO 9001:2015",
+        "ISO 22000:2018",
+    ]
+
+
+def test_stage1_qms_fsms_integrated_prompt_contains_both_clause_sets():
+    ctx = _context()
+    ctx.standards_raw = "QMS + FSMS"
+    ctx.standards = ["ISO 9001:2015", "ISO 22000:2018"]
+    ctx.audit_type_raw = "Stage 1"
+    ctx.audit_type = "Stage 1"
+    ctx.category = "CI"
+
+    messages = MagicMock()
+    messages.create.return_value = _response([_tool_block()])
+    client = SimpleNamespace(messages=messages)
+
+    with (
+        patch("audit_plan.schedule_generator.get_settings", return_value=SimpleNamespace(
+            anthropic_api_key="test", claude_model="test-model",
+        )),
+        patch("audit_plan.schedule_generator.anthropic.Anthropic", return_value=client),
+    ):
+        generate_schedule(ctx)
+
+    prompt = messages.create.call_args.kwargs["messages"][0]["content"]
+    for standard in ctx.standards:
+        assert f"{standard} (Stage 1): {CLAUSE_MAP[standard]['Stage 1']}" in prompt
+    assert "INTEGRATED MODE: SIMULTANEOUS" in prompt
+    assert "CATEGORY / TECHNICAL AREA: CI" in prompt

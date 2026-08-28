@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, CalendarPlus, Download, FileUp, Loader2, Plus, Sparkles, Trash2, Wand2 } from 'lucide-react'
 import api from '@/lib/api'
+import { apiErrorMessage } from '@/lib/apiError'
 
 type DayWindow = {
   date: string
@@ -125,20 +126,11 @@ export default function CertivAIAuditPlanPage() {
       window.URL.revokeObjectURL(url)
       setSuccessName(filename)
     } catch (err: unknown) {
-      const maybeAxios = err as { response?: { data?: Blob | { detail?: string } } }
-      const data = maybeAxios.response?.data
-      if (data instanceof Blob) {
-        try {
-          const parsed = JSON.parse(await data.text()) as { detail?: string }
-          setError(parsed.detail || 'Could not generate the audit plan.')
-        } catch {
-          setError('Could not generate the audit plan.')
-        }
-      } else if (data && typeof data === 'object' && 'detail' in data) {
-        setError(String((data as { detail?: string }).detail || 'Could not generate the audit plan.'))
-      } else {
-        setError('Could not generate the audit plan.')
-      }
+      setError(await apiErrorMessage(
+        err,
+        'Could not generate the audit plan.',
+        'audit-plan service',
+      ))
     } finally {
       setLoading(false)
     }

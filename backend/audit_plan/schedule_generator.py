@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 
 import anthropic
@@ -218,6 +219,19 @@ def _extract_schedule_payload(response) -> dict:
     if not isinstance(payload, dict):
         raise ValueError("Claude returned a non-object audit schedule payload.")
     return payload
+
+
+def _is_retryable_claude_error(exc: Exception) -> bool:
+    """Return True for transient Anthropic/network failures worth one retry."""
+    status_code = getattr(exc, "status_code", None)
+    if status_code in {408, 409, 429, 500, 502, 503, 504, 529}:
+        return True
+    return exc.__class__.__name__ in {
+        "APIConnectionError",
+        "APITimeoutError",
+        "InternalServerError",
+        "RateLimitError",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -529,15 +543,31 @@ INSTRUCTIONS:
     last_error = "Claude returned no schedule."
     last_stop_reason = "unknown"
     for attempt in range(1, _MAX_ATTEMPTS + 1):
-        response = client.messages.create(
-            model=settings.claude_model,
-            # Multi-standard, multi-day schedules can legitimately exceed 8k tokens.
-            max_tokens=16000,
-            system=_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_message}],
-            tools=[_SCHEDULE_TOOL],
-            tool_choice={"type": "tool", "name": _SCHEDULE_TOOL_NAME},
-        )
+        try:
+            response = client.messages.create(
+                model=settings.claude_model,
+                # Multi-standard, multi-day schedules can legitimately exceed 8k tokens.
+                max_tokens=16000,
+                system=_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": user_message}],
+                tools=[_SCHEDULE_TOOL],
+                tool_choice={"type": "tool", "name": _SCHEDULE_TOOL_NAME},
+            )
+        except Exception as exc:
+            if not _is_retryable_claude_error(exc):
+                raise
+            logger.warning(
+                "[AuditPlan] Temporary Claude API failure (attempt %s/%s): %s",
+                attempt, _MAX_ATTEMPTS, exc,
+            )
+            if attempt == _MAX_ATTEMPTS:
+                raise ValueError(
+                    "The AI scheduling service is temporarily unavailable. "
+                    "Please try generating the audit plan again."
+                ) from exc
+            time.sleep(0.5)
+            continue
+
         last_stop_reason = str(getattr(response, "stop_reason", None) or "unknown")
         try:
             payload = _extract_schedule_payload(response)

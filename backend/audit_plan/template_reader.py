@@ -11,6 +11,7 @@ Table layout (from real documents):
 """
 
 from __future__ import annotations
+import re
 from dataclasses import dataclass, field
 from io import BytesIO
 
@@ -109,6 +110,16 @@ def _find_value(table, *labels: str) -> str:
     return ""
 
 
+def _normalise_standards(raw: str) -> list[str]:
+    """Parse full ISO names or management-system aliases from integrated text."""
+    standards: list[str] = []
+    for part in re.split(r"[,\n;+]+", raw):
+        norm = normalize_standard(part.strip())
+        if norm and norm not in standards:
+            standards.append(norm)
+    return standards
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -162,13 +173,7 @@ def read_template(docx_bytes: bytes) -> AuditPlanContext:
     audit_objectives= _find_value(tbl0, "audit objectives")
 
     # Normalise standards (may be comma/newline separated)
-    import re as _re
-    raw_std_parts = _re.split(r"[,\n]+", standards_raw)
-    standards: list[str] = []
-    for part in raw_std_parts:
-        norm = normalize_standard(part.strip())
-        if norm and norm not in standards:
-            standards.append(norm)
+    standards = _normalise_standards(standards_raw)
 
     # Normalise audit type
     audit_type = normalize_audit_type(audit_type_raw) or "Stage 2"
