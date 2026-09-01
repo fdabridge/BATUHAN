@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import api from '@/lib/api'
+import { Download, Loader2 } from 'lucide-react'
 
 interface CRMAuditorRow {
   id: string
@@ -14,9 +15,13 @@ interface CRMCalendarEntry {
   audit_set_id: string
   plan_number: number
   company_name: string
+  location: string
+  standards: string[]
+  audit_type: string
   stage_type: string
   date_start: string
   date_end: string
+  audit_days: number
   auditor_role: string
 }
 
@@ -47,6 +52,8 @@ export default function AuditorCalendar() {
   const [year, setYear]               = useState(() => new Date().getFullYear())
   const [month, setMonth]             = useState(() => new Date().getMonth())
   const [activeDay, setActiveDay]     = useState<string | null>(null)
+  const [exporting, setExporting]     = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
   const popoverRef                    = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -89,6 +96,31 @@ export default function AuditorCalendar() {
     return entries.filter(e => e.date_start <= day && day <= e.date_end)
   }
 
+  async function exportCalendar() {
+    if (!selectedId) return
+    setExporting(true)
+    setExportError(null)
+    try {
+      const response = await api.get<Blob>(`/crm/auditors/${selectedId}/calendar/export`, {
+        responseType: 'blob',
+      })
+      const auditor = auditors.find((item) => item.id === selectedId)
+      const safeName = (auditor?.name || 'Auditor').replace(/[^A-Za-z0-9_-]+/g, '_')
+      const url = URL.createObjectURL(response.data)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `Auditor_Schedule_${safeName}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+    } catch {
+      setExportError('Could not export this auditor schedule. Please try again.')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const todayISO = toISO(new Date())
   const grid = buildGrid(year, month)
 
@@ -97,7 +129,7 @@ export default function AuditorCalendar() {
       <h1 className="text-xl font-semibold text-gray-900">Auditor Calendar</h1>
 
       {/* Auditor selector */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <label className="text-sm font-medium text-gray-600">Select auditor:</label>
         {loadingA ? (
           <span className="text-sm text-gray-400">Loading…</span>
@@ -105,7 +137,7 @@ export default function AuditorCalendar() {
           <select
             className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             value={selectedId}
-            onChange={(e) => { setSelectedId(e.target.value); setActiveDay(null) }}
+            onChange={(e) => { setSelectedId(e.target.value); setActiveDay(null); setExportError(null) }}
           >
             <option value="">— choose an auditor —</option>
             {auditors.map((a) => (
@@ -114,7 +146,23 @@ export default function AuditorCalendar() {
           </select>
         )}
         {loadingE && <span className="text-xs text-gray-400">Loading calendar…</span>}
+        <button
+          type="button"
+          onClick={exportCalendar}
+          disabled={!selectedId || loadingE || exporting}
+          className="inline-flex items-center gap-2 rounded-lg border border-[#1A4731] bg-[#1A4731] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#123623] disabled:cursor-not-allowed disabled:opacity-45"
+          title="Export occupied audit periods only"
+        >
+          {exporting ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+          {exporting ? 'Preparing Excel…' : 'Export Excel'}
+        </button>
       </div>
+      {selectedId && (
+        <p className="-mt-4 text-xs text-gray-400">
+          The export lists all scheduled audit periods for this auditor; empty calendar days are omitted.
+        </p>
+      )}
+      {exportError && <p className="-mt-4 text-sm text-red-600">{exportError}</p>}
 
       {/* Calendar */}
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
@@ -186,8 +234,10 @@ export default function AuditorCalendar() {
             <div key={`${e.audit_set_id}-${e.stage_type}`} className="rounded-lg border border-gray-100 bg-gray-50 p-4">
               <p className="font-semibold text-gray-900">{e.company_name}</p>
               <p className="text-sm text-gray-500 mt-0.5">
-                {e.stage_type} Audit · <span className={e.auditor_role === 'Lead Auditor' ? 'text-emerald-700 font-medium' : 'text-blue-600 font-medium'}>{e.auditor_role}</span>
+                {e.audit_type} · {e.stage_type} · <span className={e.auditor_role === 'Lead Auditor' ? 'text-emerald-700 font-medium' : 'text-blue-600 font-medium'}>{e.auditor_role}</span>
               </p>
+              <p className="text-xs text-gray-500 mt-1">{e.standards.join(' + ') || 'Standard not specified'}</p>
+              {e.location && <p className="text-xs text-gray-400 mt-1">{e.location}</p>}
               <p className="text-xs text-gray-400 mt-1">
                 #{e.plan_number} · {e.date_start === e.date_end ? e.date_start : `${e.date_start} → ${e.date_end}`}
               </p>

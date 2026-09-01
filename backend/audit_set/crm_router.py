@@ -21,6 +21,11 @@ from audit_set.db_models import AuditSet, AuditSetStage, CRMCertificateCommercia
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
 from auditors.models import Auditor, get_db as get_auditors_db
+from audit_set.crm_calendar import (
+    build_auditor_schedule_workbook,
+    calendar_rows,
+    safe_export_name,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["crm"])
@@ -365,9 +370,13 @@ class CRMCalendarEntry(BaseModel):
     audit_set_id:  str
     plan_number:   int
     company_name:  str
+    location:      str
+    standards:     list[str]
+    audit_type:    str
     stage_type:    str
     date_start:    str
     date_end:      str
+    audit_days:    int
     auditor_role:  str
 
 
@@ -412,45 +421,48 @@ def crm_auditor_calendar(
         logger.error("[CRM] calendar DB error: %s", exc)
         return []
 
-    result: list[CRMCalendarEntry] = []
-    for stage in stages:
-        is_lead = stage.lead_auditor_id == auditor_id
-        team: list[dict] = stage.auditors or []
-        is_team = any(str(m.get("id", "")) == auditor_id for m in team if isinstance(m, dict))
-        if not (is_lead or is_team):
-            continue
+    return [
+        CRMCalendarEntry(**{
+            **row,
+            "date_start": row["date_start"].isoformat(),
+            "date_end": row["date_end"].isoformat(),
+        })
+        for row in calendar_rows(stages, auditor_id)
+    ]
 
-        audit_set = stage.audit_set
-        if not audit_set:
-            continue
 
-        date_start = stage.audit_date_start
-        date_end   = stage.audit_date_end or date_start
+@router.get("/crm/auditors/{auditor_id}/calendar/export")
+def crm_auditor_calendar_export(
+    auditor_id: str,
+    db: Session = Depends(get_db),
+    auditors_db: Session = Depends(get_auditors_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """Export the selected auditor's occupied audit periods as formatted Excel."""
+    if current_user.role not in CRM_ROLES:
+        raise HTTPException(403, "Not authorized")
 
-        stype = (stage.stage_type or "").lower()
-        if "stage_1" in stype or stype in ("stage1", "1"):
-            label = "Stage 1"
-        elif "stage_2" in stype or stype in ("stage2", "2"):
-            label = "Stage 2"
-        elif "surveillance" in stype:
-            label = "Surveillance"
-        elif "recert" in stype:
-            label = "Recertification"
-        else:
-            label = stage.stage_type or "Audit"
+    auditor = auditors_db.query(Auditor).filter(Auditor.id == auditor_id).first()
+    if not auditor:
+        raise HTTPException(404, "Auditor not found")
 
-        result.append(CRMCalendarEntry(
-            audit_set_id = audit_set.id,
-            plan_number  = audit_set.plan_number,
-            company_name = audit_set.company_name or "",
-            stage_type   = label,
-            date_start   = date_start.isoformat(),
-            date_end     = date_end.isoformat(),
-            auditor_role = "Lead Auditor" if is_lead else "Team Auditor",
-        ))
+    stages = (
+        db.query(AuditSetStage)
+        .join(AuditSet, AuditSetStage.audit_set_id == AuditSet.id)
+        .filter(AuditSetStage.audit_date_start.isnot(None))
+        .all()
+    )
+    rows = calendar_rows(stages, auditor_id)
+    workbook = build_auditor_schedule_workbook(auditor.name or "Auditor", rows)
 
-    result.sort(key=lambda r: r.date_start)
-    return result
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(
+        iter([workbook]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_export_name(auditor.name or "Auditor")}"',
+        },
+    )
 
 
 # ── Portal 106 — Consultant revenue summary ─────────────────────────────────
