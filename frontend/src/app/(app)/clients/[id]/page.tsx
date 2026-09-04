@@ -28,6 +28,10 @@ import {
   authoritativeCoverageLabel,
   computeStageCoverage,
 } from '@/lib/stageCoverage'
+import {
+  ENMS_ENERGY_COMPLEXITY_OPTIONS,
+  normalizeEnmsEnergyComplexity,
+} from '@/lib/isoStandards'
 import type { AuditSetResponse, AuditSite, CommitteeTeamMember, StageResponse, ManDayResult, AuditorSummary, AuditorAvailabilityItem, RequiredScope } from '@/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -56,6 +60,7 @@ const ISO_LABEL_MAP: Record<string, string> = {
   'FSMS':       'ISO 22000',
   'FSSC 22000': 'FSSC 22000',
   'ISMS':       'ISO 27001',
+  'ENMS':       'ISO 50001',
   'EnMS':       'ISO 50001',
   'ABMS':       'ISO 37001',
   'MDMS':       'ISO 13485',
@@ -808,7 +813,22 @@ function PlanOverview({
                           </button>
                         </span>
                       ))}
-                      {entry.type === 'isms' ? (
+                      {entry.type === 'energy' ? (
+                        <select
+                          aria-label={`${std} Energy complexity`}
+                          className="h-6 rounded border border-gray-200 px-1 text-xs focus:border-certiva-primary focus:outline-none"
+                          value={normalizeEnmsEnergyComplexity(entry.codes[0])}
+                          onChange={(e) => setScopeDraft((prev) => ({
+                            ...prev,
+                            [std]: { ...entry, codes: [e.target.value] },
+                          }))}
+                        >
+                          <option value="" disabled>— Energy complexity —</option>
+                          {ENMS_ENERGY_COMPLEXITY_OPTIONS.map((level) => (
+                            <option key={level} value={level}>{level}</option>
+                          ))}
+                        </select>
+                      ) : entry.type === 'isms' ? (
                         <div className="flex items-center gap-1" aria-label="ISO 27001 categories">
                           {ISMS_SCOPE_CATEGORIES.map(code => {
                             const selected = entry.codes.includes(code)

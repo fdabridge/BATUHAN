@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { normalizeISOStandardCode, normalizeISOStandardCodes } from './isoStandards'
+import {
+  ENMS_ENERGY_COMPLEXITY_OPTIONS,
+  normalizeEnmsEnergyComplexity,
+  normalizeISOStandardCode,
+  normalizeISOStandardCodes,
+  qualificationScopeType,
+} from './isoStandards'
 
 test('normalizes every supported full ISO label to the Certiv.AI code', () => {
   assert.deepEqual(normalizeISOStandardCodes([
@@ -19,4 +25,19 @@ test('normalizes every supported full ISO label to the Certiv.AI code', () => {
 test('supports short aliases, deduplicates, and rejects unknown standards', () => {
   assert.deepEqual(normalizeISOStandardCodes(['FSMS', 'ISO 22000', 'QMS']), ['FSMS', 'QMS'])
   assert.equal(normalizeISOStandardCode('unknown'), null)
+})
+
+test('recognizes EnMS qualification scope for every supported planner spelling', () => {
+  for (const value of ['ENMS', 'EnMS', 'ISO 50001', 'ISO 50001:2018', 'ISO 50001 (ENMS)']) {
+    assert.equal(qualificationScopeType(value), 'energy')
+  }
+})
+
+test('provides and normalizes the EnMS energy-complexity categories', () => {
+  assert.deepEqual(ENMS_ENERGY_COMPLEXITY_OPTIONS, ['Low', 'Medium', 'High'])
+  assert.equal(normalizeEnmsEnergyComplexity('low'), 'Low')
+  assert.equal(normalizeEnmsEnergyComplexity('Medium complexity'), 'Medium')
+  assert.equal(normalizeEnmsEnergyComplexity('HIGH COMPLEXITY'), 'High')
+  assert.equal(normalizeEnmsEnergyComplexity(''), '')
+  assert.equal(normalizeEnmsEnergyComplexity('unknown'), '')
 })

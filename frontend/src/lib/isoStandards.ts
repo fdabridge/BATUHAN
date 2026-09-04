@@ -4,6 +4,11 @@ export const ISO_STANDARD_CODES = [
 
 export type ISOStandardCode = (typeof ISO_STANDARD_CODES)[number]
 
+export type QualificationScopeType = 'ea' | 'food' | 'medical' | 'isms' | 'sector' | 'energy'
+
+export const ENMS_ENERGY_COMPLEXITY_OPTIONS = ['Low', 'Medium', 'High'] as const
+export type EnmsEnergyComplexity = (typeof ENMS_ENERGY_COMPLEXITY_OPTIONS)[number]
+
 const STANDARD_BY_NUMBER: Record<string, ISOStandardCode> = {
   '9001': 'QMS',
   '14001': 'EMS',
@@ -45,4 +50,39 @@ export function normalizeISOStandardCodes(values: unknown[]): ISOStandardCode[] 
     if (code && !normalized.includes(code)) normalized.push(code)
   })
   return normalized
+}
+
+/** Return the qualification-scope family for every supported standard spelling. */
+export function qualificationScopeType(value: unknown): QualificationScopeType {
+  const raw = String(value ?? '').trim().toLowerCase()
+  const compact = raw.replace(/[^a-z0-9]/g, '')
+  if (compact.startsWith('fssc')) return 'food'
+  if (compact === 'cms' || /(^|\D)37301(\D|$)/.test(raw)) return 'sector'
+
+  switch (normalizeISOStandardCode(value)) {
+    case 'FSMS':
+      return 'food'
+    case 'MDQMS':
+      return 'medical'
+    case 'ISMS':
+      return 'isms'
+    case 'ABMS':
+      return 'sector'
+    case 'ENMS':
+      return 'energy'
+    default:
+      return 'ea'
+  }
+}
+
+/** Normalize current and legacy EnMS labels to the value stored in qualifications. */
+export function normalizeEnmsEnergyComplexity(value: unknown): EnmsEnergyComplexity | '' {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+complexity$/, '')
+    .trim()
+  return ENMS_ENERGY_COMPLEXITY_OPTIONS.find(
+    (option) => option.toLowerCase() === normalized,
+  ) ?? ''
 }

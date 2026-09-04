@@ -6,6 +6,11 @@ import Link from 'next/link'
 import { ArrowLeft, AlertTriangle, CheckCircle2, Loader2, Plus, Trash2, XCircle } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
+import {
+  ENMS_ENERGY_COMPLEXITY_OPTIONS,
+  normalizeEnmsEnergyComplexity,
+  qualificationScopeType,
+} from '@/lib/isoStandards'
 import type {
   AuditorResponse, EligibilityCheckRequest, EligibilityResult, EligibilityRoleValue,
   WitnessRecord, WitnessStatus,
@@ -154,18 +159,8 @@ const EA_CODES: string[] = [
   'EA 41','EA 42',
 ]
 
-function getStandardType(code: string): 'ea' | 'food' | 'medical' | 'isms' | 'sector' | 'energy' {
-  const c = code.toLowerCase()
-  if (['22000','fssc'].some((s) => c.includes(s)))  return 'food'
-  if (['13485'].some((s) => c.includes(s)))         return 'medical'
-  if (c.includes('27001'))                          return 'isms'
-  if (['37001','37301'].some((s) => c.includes(s))) return 'sector'
-  if (c.includes('50001'))                          return 'energy'
-  return 'ea'
-}
-
 function scopeLabel(q: { standard_code?: string | null; ea_codes?: string[] | null; scope_category?: string | null }): string | null {
-  const type = getStandardType(q.standard_code ?? '')
+  const type = qualificationScopeType(q.standard_code ?? '')
   // Category-based: only scope_category matters
   if (type === 'food' || type === 'medical' || type === 'isms' || type === 'sector' || type === 'energy')
     return q.scope_category || null
@@ -183,7 +178,7 @@ function ScopeInput({ standardCode, eaCodes, scopeCategory, onChangeEA, onChange
   onChangeEA:    (v: string[]) => void
   onChangeScope: (v: string) => void
 }) {
-  const type = getStandardType(standardCode)
+  const type = qualificationScopeType(standardCode)
   const c    = standardCode.toLowerCase()
 
   const riskLabel   = c.includes('14001') ? 'EMS complexity'
@@ -298,15 +293,17 @@ function ScopeInput({ standardCode, eaCodes, scopeCategory, onChangeEA, onChange
   }
 
   if (type === 'energy') {
+    const selectedComplexity = normalizeEnmsEnergyComplexity(scopeCategory)
     return (
       <div className="mt-2">
         <label className="block text-xs text-gray-400 mb-1">Energy complexity</label>
-        <select className={inputCls} value={scopeCategory} onChange={(e) => onChangeScope(e.target.value)}>
-          <option value="">— Select —</option>
-          <option>Low</option>
-          <option>Medium</option>
-          <option>High</option>
+        <select className={inputCls} value={selectedComplexity} onChange={(e) => onChangeScope(e.target.value)}>
+          <option value="" disabled>— Select energy complexity —</option>
+          {ENMS_ENERGY_COMPLEXITY_OPTIONS.map((level) => (
+            <option key={level} value={level}>{level}</option>
+          ))}
         </select>
+        <p className="mt-1 text-[11px] text-gray-400">Required for ISO 50001 auditor matching in Planner.</p>
       </div>
     )
   }
@@ -407,7 +404,7 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
         ea_codes: null,  // auto-derived by the backend from per-standard qual ea_codes
         standard_qualifications: rows.map((r) => {
           const yrs   = parseInt(r.experience_years, 10)
-          const stype = getStandardType(r.standard_code.trim())
+          const stype = qualificationScopeType(r.standard_code.trim())
           const isEA  = stype === 'ea'
           const rowEA = r.ea_codes.map((s) => s.trim()).filter(Boolean)
           return {
@@ -415,7 +412,9 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
             accreditation_body: r.accreditation_body.trim() || null,
             // EA-code standards get ea_codes; all others get empty array
             ea_codes:           isEA ? (rowEA.length ? rowEA : []) : [],
-            scope_category:     r.scope_category.trim() || null,
+            scope_category:     stype === 'energy'
+              ? (normalizeEnmsEnergyComplexity(r.scope_category) || null)
+              : (r.scope_category.trim() || null),
             technical_depth:    r.technical_depth || null,
             experience_years:   Number.isFinite(yrs) ? yrs : null,
             is_qualified:       true,
@@ -441,6 +440,13 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
   function attemptSave() {
     if (rows.some((r) => !r.standard_code.trim())) {
       setValidationErr('Standard code is required for each row.')
+      return
+    }
+    if (rows.some((r) =>
+      qualificationScopeType(r.standard_code) === 'energy'
+      && !normalizeEnmsEnergyComplexity(r.scope_category)
+    )) {
+      setValidationErr('Select an Energy complexity for every ISO 50001 qualification.')
       return
     }
     setValidationErr(null)
@@ -573,7 +579,7 @@ function QualifiedStandards({ a, id }: { a: AuditorResponse; id: string }) {
                 )}
                 {(() => {
                   const label = scopeLabel(q)
-                  const type  = getStandardType(q.standard_code ?? '')
+                  const type  = qualificationScopeType(q.standard_code ?? '')
                   if (!label) {
                     if (type === 'ea') {
                       return <p className="mt-1 text-xs text-gray-400 italic">No EA codes on file</p>

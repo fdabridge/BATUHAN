@@ -8,6 +8,11 @@ import {
 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
+import {
+  ENMS_ENERGY_COMPLEXITY_OPTIONS,
+  normalizeEnmsEnergyComplexity,
+  qualificationScopeType,
+} from '@/lib/isoStandards'
 import type { AuditorDashboardEntry, AuditorIngestResult, AuditorQualificationSummary, WitnessStatus } from '@/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -88,7 +93,7 @@ function AuditorRow({ a, quals, witness, onClick }: {
       <td className="px-4 py-3">
         <div className="flex flex-wrap gap-1">
           {visible.map((q) => {
-            const stype = getStandardType(q.standard_code ?? '')
+            const stype = qualificationScopeType(q.standard_code ?? '')
             const cats  = q.scope_category
               ? q.scope_category.split(',').map((s) => s.trim()).filter(Boolean)
               : []
@@ -243,23 +248,10 @@ const EA_CODES: string[] = [
   'EA 31','EA 32','EA 33','EA 34','EA 35','EA 36','EA 37','EA 38','EA 39','EA 40',
   'EA 41','EA 42',
 ]
-const FOOD_STANDARDS    = ['22000','fssc']
-const MEDICAL_STANDARDS = ['13485']
-const SECTOR_STANDARDS  = ['37001','37301']
 const STANDARD_OPTIONS  = [
   'ISO 9001', 'ISO 14001', 'ISO 45001', 'ISO 27001', 'ISO 22000',
   'FSSC 22000', 'ISO 13485', 'ISO 50001', 'ISO 37001', 'ISO 37301',
 ]
-
-function getStandardType(code: string): 'ea' | 'food' | 'medical' | 'isms' | 'sector' | 'energy' {
-  const c = code.toLowerCase()
-  if (FOOD_STANDARDS.some((s) => c.includes(s)))    return 'food'
-  if (MEDICAL_STANDARDS.some((s) => c.includes(s))) return 'medical'
-  if (c.includes('27001'))                           return 'isms'
-  if (SECTOR_STANDARDS.some((s) => c.includes(s)))  return 'sector'
-  if (c.includes('50001'))                           return 'energy'
-  return 'ea'
-}
 
 function ScopeInput({ standardCode, eaCodes, scopeCategory, onChangeEA, onChangeScope }: {
   standardCode:  string
@@ -268,7 +260,7 @@ function ScopeInput({ standardCode, eaCodes, scopeCategory, onChangeEA, onChange
   onChangeEA:    (v: string[]) => void
   onChangeScope: (v: string) => void
 }) {
-  const type = getStandardType(standardCode)
+  const type = qualificationScopeType(standardCode)
   const c    = standardCode.toLowerCase()
 
   const riskLabel   = c.includes('14001') ? 'EMS complexity'
@@ -384,18 +376,20 @@ function ScopeInput({ standardCode, eaCodes, scopeCategory, onChangeEA, onChange
   }
 
   if (type === 'energy') {
+    const selectedComplexity = normalizeEnmsEnergyComplexity(scopeCategory)
     return (
       <div className="mt-2">
         <label className="block text-xs text-gray-400 mb-1">Energy complexity</label>
         <select
           className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm"
-          value={scopeCategory}
+          value={selectedComplexity}
           onChange={(e) => onChangeScope(e.target.value)}>
-          <option value="">— Select —</option>
-          <option>Low</option>
-          <option>Medium</option>
-          <option>High</option>
+          <option value="" disabled>— Select energy complexity —</option>
+          {ENMS_ENERGY_COMPLEXITY_OPTIONS.map((level) => (
+            <option key={level} value={level}>{level}</option>
+          ))}
         </select>
+        <p className="mt-1 text-[11px] text-gray-400">Required for ISO 50001 auditor matching in Planner.</p>
       </div>
     )
   }
@@ -493,7 +487,7 @@ function AddAuditorPanel({ onClose, onCreated }: { onClose: () => void; onCreate
       const cleanQuals = quals.filter((q) => q.standard_code.trim())
       const derivedEaCodes = Array.from(new Set(
         cleanQuals
-          .filter((q) => getStandardType(q.standard_code.trim()) === 'ea')
+          .filter((q) => qualificationScopeType(q.standard_code.trim()) === 'ea')
           .flatMap((q) => q.ea_codes)
           .map((code) => code.trim())
           .filter(Boolean),
@@ -513,7 +507,7 @@ function AddAuditorPanel({ onClose, onCreated }: { onClose: () => void; onCreate
         languages:             preview.languages       ?? [],
         standard_qualifications: cleanQuals.map((q) => {
           const yrs  = parseInt(q.experience_years, 10)
-          const stype = getStandardType(q.standard_code.trim())
+          const stype = qualificationScopeType(q.standard_code.trim())
           const isEA  = stype === 'ea'
           return {
             standard_code:      q.standard_code.trim(),
@@ -522,7 +516,9 @@ function AddAuditorPanel({ onClose, onCreated }: { onClose: () => void; onCreate
             experience_years:   Number.isFinite(yrs) ? yrs : null,
             // EA-code standards get ea_codes; all others get empty array
             ea_codes:           isEA ? (q.ea_codes.length ? q.ea_codes : []) : [],
-            scope_category:     q.scope_category || null,
+            scope_category:     stype === 'energy'
+              ? (normalizeEnmsEnergyComplexity(q.scope_category) || null)
+              : (q.scope_category || null),
             is_qualified:       true,
           }
         }),
@@ -563,6 +559,13 @@ function AddAuditorPanel({ onClose, onCreated }: { onClose: () => void; onCreate
     }
     if (!quals.some((q) => q.standard_code.trim())) {
       setValidationErr('Add at least one qualification with a standard code.')
+      return
+    }
+    if (quals.some((q) =>
+      qualificationScopeType(q.standard_code) === 'energy'
+      && !normalizeEnmsEnergyComplexity(q.scope_category)
+    )) {
+      setValidationErr('Select an Energy complexity for every ISO 50001 qualification.')
       return
     }
     setValidationErr(null)
