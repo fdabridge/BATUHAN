@@ -3,6 +3,10 @@
 import { useState } from 'react'
 import axios from 'axios'
 import { CertivaAdSlot } from '@/components/ads/CertivaAdSlot'
+import {
+  mergeCompanyDocumentSelection,
+  snapshotCompanyDocumentSelection,
+} from '@/lib/applicationCompanyDocuments'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -141,23 +145,18 @@ export default function ApplyPage() {
   }
 
   function addCompanyDocuments(files: FileList | null) {
-    if (!files) return
+    // FileList is live and is emptied when the input value is reset below.
+    // Snapshot it synchronously before scheduling the React state update.
+    const selectedFiles = snapshotCompanyDocumentSelection(files)
+    if (selectedFiles.length === 0) return
     setError('')
-    setCompanyDocuments(current => {
-      const next = [...current]
-      for (const file of Array.from(files)) {
-        const duplicateIndex = next.findIndex(
-          item => item.name === file.name && item.size === file.size,
-        )
-        if (duplicateIndex >= 0) next[duplicateIndex] = file
-        else next.push(file)
-      }
-      return next
-    })
+    setCompanyDocuments(current =>
+      mergeCompanyDocumentSelection(current, selectedFiles),
+    )
   }
 
   function replaceCompanyDocument(index: number, files: FileList | null) {
-    const replacement = files?.[0]
+    const replacement = snapshotCompanyDocumentSelection(files)[0]
     if (!replacement) return
     setCompanyDocuments(current =>
       current.map((file, itemIndex) => itemIndex === index ? replacement : file),
