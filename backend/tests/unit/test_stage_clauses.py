@@ -16,10 +16,31 @@ STAGE_1_CLAUSES = {
     "ISO 37001:2016": "4.1-4.2-4.3-4.4-4.5 / 5.2-5.3 / 6.1-6.2 / 7.2-7.3-7.5 / 8.1 / 9.1-9.2-9.3",
 }
 
+STAGE_2_CLAUSES = {
+    "ISO 9001:2015": "4.1-4.2-4.3-4.4 / 5.1-5.2-5.3 / 6.1-6.2-6.3 / 7.1-7.2-7.3-7.4-7.5 / 8.1-8.2-8.3-8.4-8.5-8.6-8.7 / 9.1-9.2-9.3 / 10.1-10.2-10.3",
+    "ISO 14001:2015": "4.1-4.2-4.3-4.4 / 5.1-5.2-5.3 / 6.1-6.2 / 7.1-7.2-7.3-7.4-7.5 / 8.1-8.2 / 9.1-9.2-9.3 / 10.1-10.2-10.3",
+    "ISO 45001:2018": "4.1-4.2-4.3-4.4 / 5.1-5.2-5.3-5.4 / 6.1-6.2 / 7.1-7.2-7.3-7.4-7.5 / 8.1-8.2 / 9.1-9.2-9.3 / 10.1-10.2-10.3",
+    "ISO 22000:2018": "4.1-4.2-4.3-4.4 / 5.1-5.2-5.3 / 6.1-6.2-6.3 / 7.1-7.2-7.3-7.4-7.5 / 8.1-8.2-8.3-8.4-8.5-8.6-8.7-8.8-8.9 / 9.1-9.2-9.3 / 10.1-10.2-10.3",
+    "ISO/IEC 27001:2022": "4.1-4.2-4.3-4.4 / 5.1-5.2-5.3 / 6.1-6.2-6.3 / 7.1-7.2-7.3-7.4-7.5 / 8.1-8.2-8.3 / 9.1-9.2-9.3 / 10.1-10.2 / Annex A: 5-6-7-8",
+    "ISO 50001:2018": "4.1-4.2-4.3-4.4 / 5.1-5.2-5.3 / 6.1-6.2-6.3-6.4-6.5-6.6 / 7.1-7.2-7.3-7.4-7.5 / 8.1-8.2-8.3 / 9.1-9.2-9.3 / 10.1-10.2-10.3",
+    "ISO 13485:2016": "4.1-4.2 / 5.1-5.2-5.3-5.4-5.5-5.6 / 6.1-6.2-6.3-6.4 / 7.1-7.2-7.3-7.4-7.5-7.6 / 8.1-8.2-8.3-8.4-8.5",
+    "ISO 37001:2016": "4.1-4.2-4.3-4.4-4.5 / 5.1-5.2-5.3 / 6.1-6.2 / 7.1-7.2-7.3-7.4-7.5 / 8.1-8.2-8.3-8.4-8.5-8.6-8.7-8.8-8.9-8.10 / 9.1-9.2-9.3 / 10.1-10.2",
+}
+
 
 @pytest.mark.parametrize(("standard", "clauses"), STAGE_1_CLAUSES.items())
 def test_stage_1_clauses_match_fr222(standard, clauses):
     assert STAGE_CLAUSES[(standard, "stage_1")] == clauses
+
+
+@pytest.mark.parametrize(("standard", "clauses"), STAGE_2_CLAUSES.items())
+def test_stage_2_clauses_match_fr222(standard, clauses):
+    assert STAGE_CLAUSES[(standard, "stage_2")] == clauses
+
+
+@pytest.mark.parametrize(("standard", "clauses"), STAGE_2_CLAUSES.items())
+def test_recertification_uses_fr222_stage_2_clauses(standard, clauses):
+    assert STAGE_CLAUSES[(standard, "recertification")] == clauses
 
 
 def test_stage_1_team_member_receives_stage_1_clauses():
@@ -38,5 +59,33 @@ def test_stage_1_team_member_receives_stage_1_clauses():
             "name": "Lead Auditor",
             "person_standards": ["ISO 9001:2015"],
             "person_clauses": [STAGE_1_CLAUSES["ISO 9001:2015"]],
+        }
+    ]
+
+
+def test_integrated_stage_2_team_member_receives_fr222_clauses():
+    stage = SimpleNamespace(
+        stage_type="stage_2",
+        lead_auditor_id=7,
+        lead_auditor_name="Lead Auditor",
+        auditors=[],
+        technical_experts=[],
+    )
+
+    members = build_team_members(stage, {}, ["EMS", "ISMS", "MDQMS"])
+
+    assert members == [
+        {
+            "name": "Lead Auditor",
+            "person_standards": [
+                "ISO 14001:2015",
+                "ISO/IEC 27001:2022",
+                "ISO 13485:2016",
+            ],
+            "person_clauses": [
+                STAGE_2_CLAUSES["ISO 14001:2015"],
+                STAGE_2_CLAUSES["ISO/IEC 27001:2022"],
+                STAGE_2_CLAUSES["ISO 13485:2016"],
+            ],
         }
     ]
