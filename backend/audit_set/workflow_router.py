@@ -32,6 +32,7 @@ from audit_set.db_models import (
 )
 from audit_set.pipeline_triggers import fire_phase_triggers
 from audit_set.report_signature_rules import audit_report_has_all_required_approvals
+from audit_set.workflow_policy import transition_matches_version
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
 from auth.policy import resolve_realtime_action_datetime
@@ -45,6 +46,7 @@ VALID_TRANSITIONS: dict[tuple[Optional[str], str], set[str]] = {
     (None,                "pending_review"):    {"system"},
     ("pending_review",    "in_planning"):       {"admin", "planner", "planner_us"},
     ("in_planning",       "quotation_sent"):    {"admin", "planner", "planner_us"},
+    ("in_planning",       "fr218_in_progress"): {"admin", "planner", "planner_us"},
     # ── Surveillance: notification replaces quotation + agreement ─────────────
     ("in_planning",          "notification_sent"):  {"admin", "planner", "planner_us"},
     ("notification_sent",    "audit_scheduled"):    {"admin", "planner", "planner_us"},
@@ -59,6 +61,7 @@ VALID_TRANSITIONS: dict[tuple[Optional[str], str], set[str]] = {
     # corrections by admin still go through the normal endpoint.
     ("agreement_signed",  "fr218_in_progress"): {"admin"},
     ("fr218_in_progress", "fr218_complete"):    {"admin", "planner", "planner_us", "certification_manager"},
+    ("fr218_complete",    "quotation_sent"):    {"admin", "planner", "planner_us"},
     # Recertification uses FR.218, then continues to the single-audit path.
     ("fr218_complete",     "audit_scheduled"):   {"admin", "planner", "planner_us"},
     # ── Initial certification — Stage 1 ──────────────────────────────────────
@@ -66,6 +69,7 @@ VALID_TRANSITIONS: dict[tuple[Optional[str], str], set[str]] = {
     # directly to stage1_in_progress (gated below). Scheduled statuses are
     # kept for legacy sets only.
     ("fr218_complete",     "stage1_in_progress"): {"admin", "planner", "planner_us"},
+    ("agreement_signed",   "stage1_in_progress"): {"admin", "planner", "planner_us"},
     ("fr218_complete",     "stage1_scheduled"):   {"admin", "planner", "planner_us"},  # legacy
     ("agreement_signed",   "stage1_scheduled"):   {"admin", "planner", "planner_us"},  # retroactive / legacy
     ("stage1_scheduled",   "stage1_in_progress"): {"admin", "planner", "planner_us", "auditor"},
@@ -482,6 +486,12 @@ def update_workflow_status(
     allowed_roles = VALID_TRANSITIONS.get((from_status, to_status))
     if allowed_roles is None:
         raise HTTPException(400, f"Invalid transition: {from_status} → {to_status}")
+    if not transition_matches_version(audit_set, from_status, to_status):
+        raise HTTPException(
+            400,
+            f"Invalid transition for workflow version {audit_set.workflow_version or 1}: "
+            f"{from_status} → {to_status}",
+        )
     if current_user.role not in allowed_roles:
         raise HTTPException(403, f"Role '{current_user.role}' cannot make this transition")
 

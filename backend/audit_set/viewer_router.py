@@ -64,6 +64,7 @@ from audit_set.report_signature_rules import (
     audit_report_requires_appointed_reviewer,
 )
 from audit_set.signature_image import normalize_signature_data_url
+from audit_set.workflow_policy import quotation_source_status
 from auth.db_models import PlatformUser, UserSignature, get_db as get_auth_db
 from auth.dependencies import get_current_user
 from auth.policy import resolve_realtime_action_datetime
@@ -1428,11 +1429,12 @@ def _commit_existing_signing_record(
                 # Portal 49b gate chain: quotation_sent fires when the client
                 # signs FR.220 (GM signature is enforced upstream by the
                 # released-status gate in _assert_can_sign).
-                if audit_set.workflow_status == "in_planning":
+                expected_status = quotation_source_status(audit_set)
+                if audit_set.workflow_status == expected_status:
                     audit_set.workflow_status = "quotation_sent"
                     db.add(AuditSetStatusEvent(
                         audit_set_id=doc.audit_set_id,
-                        from_status="in_planning",
+                        from_status=expected_status,
                         to_status="quotation_sent",
                         triggered_by=current_user.id,
                         notes="Quotation signed by client via Certiva viewer",

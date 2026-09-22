@@ -62,6 +62,15 @@ const WORKFLOW_STEPS = [
   },
 ]
 
+const WORKFLOW_STEPS_FR218_FIRST = [
+  WORKFLOW_STEPS[0], // Application
+  WORKFLOW_STEPS[1], // Planning
+  WORKFLOW_STEPS[4], // FR.218
+  WORKFLOW_STEPS[2], // Quotation
+  { ...WORKFLOW_STEPS[3], label: 'Contract Confirmed' },
+  ...WORKFLOW_STEPS.slice(5),
+]
+
 const STANDARD_NAMES: Record<string, string> = {
   QMS:   'ISO 9001:2015',
   EMS:   'ISO 14001:2015',
@@ -92,6 +101,7 @@ interface ClientAuditSet {
   accreditation_body: string | null
   scope_en: string | null
   workflow_status: string | null
+  workflow_version: number
   cert_issued_date: string | null
   cert_expiry_date: string | null
   cert_status: string | null
@@ -137,6 +147,7 @@ function computeNextAction(
   employees:       OrgEmployee[],
   unsignedDocCount: number,
   pendingForClient: number,
+  workflowVersion: number,
 ): ActionCard {
   // Highest priority — documents needing the CLIENT's signature
   if (pendingForClient > 0) {
@@ -219,7 +230,13 @@ function computeNextAction(
     agreement_signed:    { urgency: 'info',   title: 'Agreement confirmed',          body: "We'll notify you when your audit preparation begins." },
     // ── Document review (FR.218) ───────────────────────────────────────────
     fr218_in_progress:   { urgency: 'info',   title: 'Document review in progress',  body: 'Our team is reviewing your management system documentation. No action needed.' },
-    fr218_complete:      { urgency: 'info',   title: 'Document review complete',     body: 'Your documents have been reviewed. Stage 1 will be scheduled next.' },
+    fr218_complete:      {
+      urgency: 'info',
+      title: 'Document review complete',
+      body: workflowVersion >= 2
+        ? 'Your documents have been reviewed. The quotation will be prepared next.'
+        : 'Your documents have been reviewed. Stage 1 will be scheduled next.',
+    },
     // ── Stage 1 ────────────────────────────────────────────────────────────
     stage1_scheduled:    { urgency: 'medium', title: 'Stage 1 audit scheduled',      body: 'Prepare your documentation and ensure your employees are listed with signatures.' },
     stage1_in_progress:  { urgency: 'info',   title: 'Stage 1 audit in progress',    body: 'Your Stage 1 audit is underway. Sign any forms you receive.' },
@@ -262,7 +279,12 @@ export default function ClientOverviewPage() {
   if (loading) return <div className="p-8 text-gray-400">Loading\u2026</div>
   if (!data)   return <div className="p-8 text-red-500">Could not load your data.</div>
 
-  const currentIdx = WORKFLOW_STEPS.findIndex(
+  const usesFr218First = (
+    data.workflow_version >= 2
+    && !(data.audit_type ?? '').startsWith('surveillance')
+  )
+  const workflowSteps = usesFr218First ? WORKFLOW_STEPS_FR218_FIRST : WORKFLOW_STEPS
+  const currentIdx = workflowSteps.findIndex(
     (s) => s.statuses.includes(data.workflow_status ?? '')
   )
   const stage1 = data.stages?.find((s) => s.stage_type === 'stage_1')
@@ -279,6 +301,7 @@ export default function ClientOverviewPage() {
     employees,
     waitingOnCbCount,
     pendingForClient,
+    data.workflow_version ?? 1,
   )
 
   // Checklist
@@ -394,7 +417,7 @@ export default function ClientOverviewPage() {
       <div className="rounded-xl border bg-white p-5">
         <h2 className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">Certification Progress</h2>
         <div className="space-y-0">
-          {WORKFLOW_STEPS.map((step, idx) => {
+          {workflowSteps.map((step, idx) => {
             const isDone    = currentIdx >= 0 && idx <  currentIdx
             const isCurrent = currentIdx >= 0 && idx === currentIdx
             const isFuture  = currentIdx <  0 || idx >  currentIdx
@@ -411,7 +434,7 @@ export default function ClientOverviewPage() {
                   ].join(' ')}>
                     {isDone ? '\u2713' : idx + 1}
                   </div>
-                  {idx < WORKFLOW_STEPS.length - 1 && (
+                  {idx < workflowSteps.length - 1 && (
                     <div className={`mt-0.5 h-6 w-0.5 ${isDone ? 'bg-[#1A4731]' : 'bg-gray-200'}`} />
                   )}
                 </div>

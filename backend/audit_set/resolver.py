@@ -22,6 +22,10 @@ from audit_set.field_maps import (
 
 
 from config.settings import get_settings
+from audit_set.workflow_policy import (
+    commercial_documents_unlocked,
+    uses_fr218_before_commercial,
+)
 BLANK_SET_PATH = Path(get_settings().blank_set_path)
 
 # Standard group → folder name (under BLANK_SET_PATH)
@@ -319,6 +323,18 @@ def _build_surveillance(
 # --------------------------------------------------------------------------- #
 # Public entry point
 # --------------------------------------------------------------------------- #
+def _apply_workflow_document_gate(
+    document_set: dict[str, list[DocumentSpec]], audit_set,
+) -> dict[str, list[DocumentSpec]]:
+    """Hide commercial forms from early version-2 package generation."""
+    if uses_fr218_before_commercial(audit_set) and not commercial_documents_unlocked(audit_set):
+        for folder, specs in document_set.items():
+            document_set[folder] = [
+                spec for spec in specs if spec.fr_number not in {"FR.220", "FR.221"}
+            ]
+    return document_set
+
+
 def resolve_document_set(audit_set) -> tuple[dict[str, list[DocumentSpec]], list[str]]:
     """
     Returns ``(document_set, missing)`` where:
@@ -373,5 +389,10 @@ def resolve_document_set(audit_set) -> tuple[dict[str, list[DocumentSpec]], list
                 first_folder = "Stage_1"
             document_set.setdefault(first_folder, [])
             document_set[first_folder].insert(0, spec)
+
+    # Version-2 applications may download an early package to prepare FR.218,
+    # but FR.220/FR.221 must not be generated until that review is complete.
+    # Version-1 records keep their historical package contents unchanged.
+    _apply_workflow_document_gate(document_set, audit_set)
 
     return document_set, missing

@@ -25,6 +25,7 @@ from audit_set.db_models import (
     AuditSetStatusEvent,
     get_db as get_audit_db,
 )
+from audit_set.workflow_policy import FR218_BEFORE_COMMERCIAL_VERSION
 from audit_set.service import _create_auto_stages
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.policy import CLIENT_EMAIL_VERIFICATION, policy_enabled
@@ -292,6 +293,7 @@ def _submit_application(
         accreditation_body="UAF",
         status="draft",
         workflow_status="pending_review",
+        workflow_version=FR218_BEFORE_COMMERCIAL_VERSION,
         submitted_via_portal=True,
         consultant_id=consultant_id,
         personnel={

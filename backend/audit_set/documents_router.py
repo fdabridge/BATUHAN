@@ -38,6 +38,13 @@ from storage.document_store import upload as store_upload, ensure_local, delete 
 from email_service import send_client_status_update, send_document_released
 from audit_set.doc_converter import prepare_document
 from audit_set.pdf_flattener import flatten_document, has_completed_visual_signatures
+from audit_set.workflow_policy import (
+    LEGACY_STATUS_ORDER,
+    commercial_documents_unlocked,
+    status_at_least,
+    uses_fr218_before_commercial,
+    workflow_version,
+)
 
 router = APIRouter(prefix="/audit-sets", tags=["documents"])
 
@@ -108,36 +115,16 @@ DOC_SIG_SLOTS: dict[str, list[str]] = {
 # Shared workflow order used for "status X or later" gates. The
 # recertification branch joins the initial flow through fr218_complete, then
 # uses the single-audit statuses before reaching under_review.
-STATUS_ORDER = [
-    "pending_review",
-    "in_planning",
-    "notification_sent",
-    "quotation_sent",
-    "agreement_signed",
-    "fr218_in_progress",
-    "fr218_complete",
-    "audit_scheduled",
-    "audit_in_progress",
-    "stage1_scheduled",
-    "stage1_in_progress",
-    "stage1_complete",
-    "stage2_scheduled",
-    "stage2_in_progress",
-    "stage2_complete",
-    "under_review",
-    "committee_review",
-    "certified",
-]
+STATUS_ORDER = LEGACY_STATUS_ORDER
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
-def _status_at_least(current: Optional[str], threshold: str) -> bool:
+def _status_at_least(
+    current: Optional[str], threshold: str, version: int = 1,
+) -> bool:
     """True if `current` is at or past `threshold` in the status machine."""
-    try:
-        return STATUS_ORDER.index(current or "") >= STATUS_ORDER.index(threshold)
-    except ValueError:
-        return False
+    return status_at_least(current, threshold, version)
 
 
 def _needs_reviewer(audit_set: AuditSet) -> bool:
@@ -355,6 +342,15 @@ async def release_document(
         raise HTTPException(404, "Audit set not found")
 
     try:
+        # Version 2 moves FR.218 before the commercial documents. Historical
+        # records stay on version 1 and intentionally retain the old behavior.
+        if document_type == "quotation" and not commercial_documents_unlocked(audit_set):
+            raise HTTPException(
+                400,
+                "Cannot release the quotation (FR.220) before the application "
+                "review (FR.218) is complete.",
+            )
+
         if document_type == "fr233":
             existing_record = db.query(AuditSetFR233Record).filter_by(
                 audit_set_id=audit_set_id,
@@ -405,7 +401,11 @@ async def release_document(
         # (FR.218) to be complete before they can be uploaded.
         is_surveillance = (audit_set.audit_type or "").lower().startswith("surveillance")
         if document_type in ("audit_programme", "team_info") and not is_surveillance:
-            if not _status_at_least(audit_set.workflow_status, "fr218_complete"):
+            if not _status_at_least(
+                audit_set.workflow_status,
+                "fr218_complete",
+                workflow_version(audit_set),
+            ):
                 raise HTTPException(
                     400,
                     f"Cannot upload {document_type} before the application review "
@@ -534,6 +534,16 @@ async def release_document(
         if requires_cb_sig:
             # Workflow advance + client email are deferred to the client signature.
             return {"id": doc.id, "status": "pending_cb_signature", "signature_ids": sig_ids}
+
+        # Releasing FR.218 is the phase-opening action for new applications.
+        if document_type == "fr218_review" and uses_fr218_before_commercial(audit_set):
+            _auto_advance_workflow(
+                db, auth_db, audit_set,
+                expected_from="in_planning",
+                to_status="fr218_in_progress",
+                triggered_by=current_user.id,
+                notes="FR.218 released; application review opened before quotation",
+            )
 
         # Surveillance path: releasing FR.234 notification auto-advances to notification_sent.
         if document_type == "surveillance_notification":
@@ -750,7 +760,9 @@ async def upload_assessment(
 
     # Gates: Stage 1 batch opens after stage1_complete; Stage 2 batch after certified.
     threshold = "stage1_complete" if stage_type == "stage_1" else "certified"
-    if not _status_at_least(audit_set.workflow_status, threshold):
+    if not _status_at_least(
+        audit_set.workflow_status, threshold, workflow_version(audit_set),
+    ):
         raise HTTPException(
             400,
             f"Assessments for {stage_type} open once the audit set reaches '{threshold}'.",
@@ -855,7 +867,9 @@ async def upload_audit_document(
         if stage_type not in ("stage_1", "stage_2"):
             raise HTTPException(400, "stage_type must be 'stage_1' or 'stage_2' for auditor_assessment")
         threshold = "stage1_complete" if stage_type == "stage_1" else "stage2_complete"
-        if not _status_at_least(audit_set.workflow_status, threshold):
+        if not _status_at_least(
+            audit_set.workflow_status, threshold, workflow_version(audit_set),
+        ):
             raise HTTPException(
                 400,
                 f"Auditor assessment for {stage_type} opens once the audit set reaches '{threshold}'.",

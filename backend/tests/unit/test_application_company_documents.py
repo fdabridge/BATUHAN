@@ -101,6 +101,7 @@ def test_submission_persists_document_and_uploader_metadata(
     assert result["success"] is True
     assert result["company_documents_received"] == 1
     assert audit_set.workflow_status == "pending_review"
+    assert audit_set.workflow_version == 2
     assert document.audit_set_id == audit_set.id
     assert document.file_name == "Company Registration.pdf"
     assert document.file_type == "application/pdf"

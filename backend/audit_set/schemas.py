@@ -232,6 +232,7 @@ class AuditSetResponse(BaseModel):
     audit_language: Optional[str] = None
     document_language: Optional[str] = None
     workflow_status: Optional[str] = None
+    workflow_version: int = 1
     submitted_via_portal: bool = False
     application_date: Optional[date] = None          # retroactive override
     # Portal 51 — FR.218 Application Reviewer (FSMS/ISMS only)

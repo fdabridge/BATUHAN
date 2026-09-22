@@ -95,6 +95,7 @@ def get_my_audit_set(
         "accreditation_body": audit_set.accreditation_body,
         "scope_en":           audit_set.scope_en,
         "workflow_status":    audit_set.workflow_status,
+        "workflow_version":   audit_set.workflow_version or 1,
         "cert_issued_date":   audit_set.cert_issued_date.isoformat() if audit_set.cert_issued_date else None,
         "cert_expiry_date":   audit_set.cert_expiry_date.isoformat() if audit_set.cert_expiry_date else None,
         "cert_status":        audit_set.cert_status,

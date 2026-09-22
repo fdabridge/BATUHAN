@@ -2845,6 +2845,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
           currentStatus={data.workflow_status}
           currentUserRole={currentUser?.role ?? ''}
           auditType={data.audit_type ?? null}
+          workflowVersion={data.workflow_version ?? 1}
           onAdvanced={invalidate}
         />
       )}
@@ -2945,6 +2946,8 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
         auditSetId={id}
         stages={displayStages}
         auditType={data.audit_type ?? null}
+        workflowStatus={data.workflow_status ?? null}
+        workflowVersion={data.workflow_version ?? 1}
         isTransfer={data.is_transfer}
         onDocumentReleased={invalidate}
       />

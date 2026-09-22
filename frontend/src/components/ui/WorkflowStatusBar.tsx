@@ -10,6 +10,7 @@ interface WorkflowStatusBarProps {
   currentStatus:   string | null
   currentUserRole: string
   auditType:       string | null   // "initial" | "surveillance" | "recertification" | null
+  workflowVersion: number
   onAdvanced:      () => void
 }
 
@@ -20,6 +21,21 @@ const INITIAL_STEPS = [
   { key: 'agreement_signed',   label: 'Agreement'  },
   { key: 'fr218_in_progress',  label: 'FR.218'     },
   { key: 'fr218_complete',     label: 'FR.218 ✓'   },
+  { key: 'stage1_in_progress', label: 'S1 Audit'   },
+  { key: 'stage1_complete',    label: 'S1 Done'    },
+  { key: 'stage2_in_progress', label: 'S2 Audit'   },
+  { key: 'stage2_complete',    label: 'S2 Done'    },
+  { key: 'committee_review',   label: 'Committee'  },
+  { key: 'certified',          label: 'Certified'  },
+]
+
+const INITIAL_FR218_FIRST_STEPS = [
+  { key: 'pending_review',     label: 'Pending'    },
+  { key: 'in_planning',        label: 'Planning'   },
+  { key: 'fr218_in_progress',  label: 'FR.218'     },
+  { key: 'fr218_complete',     label: 'FR.218 ✓'   },
+  { key: 'quotation_sent',     label: 'Quotation'  },
+  { key: 'agreement_signed',   label: 'Contract'   },
   { key: 'stage1_in_progress', label: 'S1 Audit'   },
   { key: 'stage1_complete',    label: 'S1 Done'    },
   { key: 'stage2_in_progress', label: 'S2 Audit'   },
@@ -60,6 +76,19 @@ const RECERTIFICATION_STEPS = [
   { key: 'certified',         label: 'Recertified'},
 ]
 
+const RECERTIFICATION_FR218_FIRST_STEPS = [
+  { key: 'pending_review',    label: 'Pending'    },
+  { key: 'in_planning',       label: 'Planning'   },
+  { key: 'fr218_in_progress', label: 'FR.218'     },
+  { key: 'fr218_complete',    label: 'FR.218 ✓'   },
+  { key: 'quotation_sent',    label: 'Quotation'  },
+  { key: 'agreement_signed',  label: 'Contract'   },
+  { key: 'audit_scheduled',   label: 'Scheduled'  },
+  { key: 'audit_in_progress', label: 'In Progress'},
+  { key: 'under_review',      label: 'Review'     },
+  { key: 'certified',         label: 'Recertified'},
+]
+
 const SURVEILLANCE_STEPS = [
   { key: 'pending_review',    label: 'Pending'    },
   { key: 'in_planning',       label: 'Planning'   },
@@ -74,9 +103,9 @@ function isSurveillanceAudit(auditType: string | null): boolean {
   return auditType != null && auditType.startsWith('surveillance')
 }
 
-function getSteps(auditType: string | null) {
-  if (auditType === 'initial') return INITIAL_STEPS
-  if (auditType === 'recertification') return RECERTIFICATION_STEPS
+function getSteps(auditType: string | null, fr218First: boolean) {
+  if (auditType === 'initial') return fr218First ? INITIAL_FR218_FIRST_STEPS : INITIAL_STEPS
+  if (auditType === 'recertification') return fr218First ? RECERTIFICATION_FR218_FIRST_STEPS : RECERTIFICATION_STEPS
   if (isSurveillanceAudit(auditType)) return SURVEILLANCE_STEPS
   return STANDARD_STEPS
 }
@@ -151,6 +180,23 @@ const INITIAL_PANELS: Record<string, ActionPanel> = {
   certified: {
     heading: 'Certified ✓',
     body: 'The certification has been issued.',
+  },
+}
+
+const INITIAL_FR218_FIRST_PANELS: Record<string, ActionPanel> = {
+  ...INITIAL_PANELS,
+  in_planning: {
+    heading: 'Application approved — complete FR.218 next',
+    body: 'Generate and release FR.218 from Shared Documents. Quotation and agreement actions remain locked until the application review is fully signed.',
+  },
+  fr218_complete: {
+    heading: 'FR.218 complete — ready to send quotation',
+    body: 'The application review is fully signed. Generate and release FR.220, then collect the required quotation signatures before releasing FR.221.',
+  },
+  agreement_signed: {
+    heading: 'Contract confirmed — ready for Stage 1',
+    body: 'Upload FR.222, the per-auditor FR.224 forms, and the Stage 1 FR.223. Stage 1 can begin when the existing document and signature gates are satisfied.',
+    cta: { label: 'Begin Stage 1', nextStatus: 'stage1_in_progress', allowedRoles: ['admin', 'planner', 'planner_us'] },
   },
 }
 
@@ -230,6 +276,23 @@ const RECERTIFICATION_PANELS: Record<string, ActionPanel> = {
   },
 }
 
+const RECERTIFICATION_FR218_FIRST_PANELS: Record<string, ActionPanel> = {
+  ...RECERTIFICATION_PANELS,
+  in_planning: {
+    heading: 'Application approved — complete FR.218 next',
+    body: 'Generate and release FR.218. The recertification quotation and agreement remain locked until the review is fully signed.',
+  },
+  fr218_complete: {
+    heading: 'FR.218 complete — ready to send quotation',
+    body: 'The application review is fully signed. Generate and release FR.220, then collect the quotation signatures before releasing FR.221.',
+  },
+  agreement_signed: {
+    heading: 'Contract confirmed — ready to schedule recertification audit',
+    body: 'The new pre-audit sequence is complete. Confirm the audit dates, then mark the one-stage recertification audit as scheduled.',
+    cta: { label: 'Mark Recertification Audit Scheduled', nextStatus: 'audit_scheduled', allowedRoles: ['admin', 'planner', 'planner_us'] },
+  },
+}
+
 const SURVEILLANCE_PANELS: Record<string, ActionPanel> = {
   in_planning: {
     heading: 'Prepare surveillance notification',
@@ -260,14 +323,14 @@ const SURVEILLANCE_PANELS: Record<string, ActionPanel> = {
   },
 }
 
-function getPanels(auditType: string | null) {
-  if (auditType === 'initial') return INITIAL_PANELS
-  if (auditType === 'recertification') return RECERTIFICATION_PANELS
+function getPanels(auditType: string | null, fr218First: boolean) {
+  if (auditType === 'initial') return fr218First ? INITIAL_FR218_FIRST_PANELS : INITIAL_PANELS
+  if (auditType === 'recertification') return fr218First ? RECERTIFICATION_FR218_FIRST_PANELS : RECERTIFICATION_PANELS
   if (isSurveillanceAudit(auditType)) return SURVEILLANCE_PANELS
   return STANDARD_PANELS
 }
 
-export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, auditType, onAdvanced }: WorkflowStatusBarProps) {
+export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, auditType, workflowVersion, onAdvanced }: WorkflowStatusBarProps) {
   const isRealtimeMode = currentUserRole === 'planner_us'
   const { manualActionDatesEnabled } = useManualActionDates()
   const [errMsg, setErrMsg] = useState<string | null>(null)
@@ -313,8 +376,9 @@ export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, 
     }
   }
 
-  const STEPS  = getSteps(auditType)
-  const PANELS = getPanels(auditType)
+  const fr218First = workflowVersion >= 2 && !isSurveillanceAudit(auditType)
+  const STEPS  = getSteps(auditType, fr218First)
+  const PANELS = getPanels(auditType, fr218First)
 
   if (currentStatus === 'pending_review') return null
 

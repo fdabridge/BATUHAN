@@ -26,6 +26,7 @@ from audit_set.db_models import (
     AuditSetStage,
     AuditSetStatusEvent,
 )
+from audit_set.workflow_policy import uses_fr218_before_commercial
 
 # Standards that require an independent reviewer slot on FR.218.
 FSMS_ISMS_STANDARDS = {"FSMS", "ISMS", "ISO 22000", "ISO 27001", "FSSC 22000"}
@@ -89,7 +90,12 @@ def _trigger_fr218_phase(
     """Auto-advance agreement_signed → fr218_in_progress.
     Slot seeding is now handled by the document upload flow (documents_router
     release_document when document_type == 'fr218_review')."""
-    if audit_set.workflow_status != "agreement_signed":
+    # Version 2 already completed FR.218 before the commercial documents.
+    # Never move those applications backwards after the agreement is signed.
+    if (
+        audit_set.workflow_status != "agreement_signed"
+        or uses_fr218_before_commercial(audit_set)
+    ):
         return
 
     from_status = audit_set.workflow_status

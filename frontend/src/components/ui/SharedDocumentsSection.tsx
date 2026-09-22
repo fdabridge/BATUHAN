@@ -21,6 +21,20 @@ interface SharedDoc {
   cb_sig_id: string | null
 }
 
+const FR218_FIRST_STATUS_ORDER = [
+  'pending_review', 'in_planning', 'fr218_in_progress', 'fr218_complete',
+  'quotation_sent', 'agreement_signed', 'audit_scheduled', 'audit_in_progress',
+  'stage1_scheduled', 'stage1_in_progress', 'stage1_complete',
+  'stage2_scheduled', 'stage2_in_progress', 'stage2_complete',
+  'under_review', 'committee_review', 'certified',
+]
+
+function statusAtLeast(current: string | null, threshold: string): boolean {
+  const currentIndex = FR218_FIRST_STATUS_ORDER.indexOf(current ?? '')
+  const thresholdIndex = FR218_FIRST_STATUS_ORDER.indexOf(threshold)
+  return currentIndex >= 0 && thresholdIndex >= 0 && currentIndex >= thresholdIndex
+}
+
 // DOC_TYPES is computed inside the component based on auditType — see below.
 
 // Document types tagged to a specific stage when released.
@@ -67,18 +81,26 @@ export function SharedDocumentsSection({
   auditSetId,
   stages = [],
   auditType = null,
+  workflowStatus = null,
+  workflowVersion = 1,
   isTransfer = false,
   onDocumentReleased,
 }: {
   auditSetId: string
   stages?: StageResponse[]
   auditType?: string | null
+  workflowStatus?: string | null
+  workflowVersion?: number
   isTransfer?: boolean
   onDocumentReleased?: () => void
 }) {
+  const isSurveillance = (auditType ?? '').startsWith('surveillance')
+  const fr218First = workflowVersion >= 2 && !isSurveillance
+  const commercialLocked = fr218First && !statusAtLeast(workflowStatus, 'fr218_complete')
+  const agreementLocked = fr218First && !statusAtLeast(workflowStatus, 'quotation_sent')
+
   // Document types available in the release form, filtered by audit type.
   const DOC_TYPES = (() => {
-    const isSurveillance = (auditType ?? '').startsWith('surveillance')
     const transferTypes = isTransfer
       ? [{ value: 'transfer_review', label: 'Transfer Application Control (FR.250)' }]
       : []
@@ -92,6 +114,18 @@ export function SharedDocumentsSection({
       ]
     }
     // Initial certification / recertification / unset
+    if (fr218First) {
+      return [
+        ...transferTypes,
+        { value: 'fr218_review',    label: 'Application Review (FR.218)' },
+        { value: 'quotation',       label: commercialLocked ? 'Quotation (FR.220) — complete FR.218 first' : 'Quotation (FR.220)', disabled: commercialLocked },
+        { value: 'agreement',       label: agreementLocked ? 'Contract (FR.221) — complete quotation first' : 'Contract (FR.221)', disabled: agreementLocked },
+        { value: 'audit_programme', label: 'Audit Programme (FR.222)' },
+        { value: 'team_info',       label: 'Audit Team Info (FR.224)' },
+        { value: 'review_decision', label: 'Review & Decision (FR.233)' },
+        { value: 'certificate',     label: 'Certificate' },
+      ]
+    }
     return [
       ...transferTypes,
       { value: 'quotation',       label: 'Quotation (FR.220)' },
@@ -106,15 +140,19 @@ export function SharedDocumentsSection({
     ]
   })()
 
+  function defaultDocumentType(): string {
+    if (isTransfer) return 'transfer_review'
+    if (isSurveillance) return 'surveillance_notification'
+    if (fr218First && commercialLocked) return 'fr218_review'
+    if (fr218First && workflowStatus === 'quotation_sent') return 'agreement'
+    return 'quotation'
+  }
+
   const [docs, setDocs]     = useState<SharedDoc[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [label, setLabel]     = useState('')
-  const [docType, setDocType] = useState(() => {
-    const isSurveillance = (auditType ?? '').startsWith('surveillance')
-    if (isTransfer) return 'transfer_review'
-    return isSurveillance ? 'surveillance_notification' : 'quotation'
-  })
+  const [docType, setDocType] = useState(() => defaultDocumentType())
   const [stageType, setStageType] = useState('')
   const [auditorId, setAuditorId] = useState('')
   const [file, setFile]       = useState<File | null>(null)
@@ -186,6 +224,10 @@ export function SharedDocumentsSection({
     if (docType === 'team_info' && !auditorId) {
       setError('FR.224 is per-auditor — please select the assigned auditor.'); return
     }
+    const selectedType = DOC_TYPES.find((type) => type.value === docType)
+    if (selectedType && 'disabled' in selectedType && selectedType.disabled) {
+      setError('This document is locked until the preceding workflow stage is complete.'); return
+    }
     setSubmitting(true)
     try {
       const fd = new FormData()
@@ -200,12 +242,13 @@ export function SharedDocumentsSection({
       })
       const releasedFR233 = docType === 'review_decision'
       setLabel(''); setFile(null)
-      setDocType(isTransfer ? 'transfer_review' : ((auditType ?? '').startsWith('surveillance') ? 'surveillance_notification' : 'quotation'))
+      setDocType(defaultDocumentType())
       setStageType(''); setAuditorId('')
       setReleaseDate(new Date().toISOString().slice(0, 10))
       if (fileRef.current) fileRef.current.value = ''
       setShowForm(false)
       await load()
+      onDocumentReleased?.()
       if (releasedFR233) {
         window.dispatchEvent(new CustomEvent('certiva:fr233-updated', {
           detail: { auditSetId },
@@ -281,7 +324,13 @@ export function SharedDocumentsSection({
                 className="mt-1 w-full rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A4731]/30"
               >
                 {DOC_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
+                  <option
+                    key={t.value}
+                    value={t.value}
+                    disabled={'disabled' in t && Boolean(t.disabled)}
+                  >
+                    {t.label}
+                  </option>
                 ))}
               </select>
             </div>

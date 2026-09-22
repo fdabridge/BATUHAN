@@ -96,6 +96,9 @@ def create_tables():
     # Client portal additions
     _safe_add_column("audit_sets", "workflow_status VARCHAR")
     _safe_add_column("audit_sets", "submitted_via_portal BOOLEAN DEFAULT 0")
+    # Version 1 preserves every historical workflow. New portal applications
+    # explicitly opt into version 2 in apply_router.
+    _safe_add_column("audit_sets", "workflow_version INTEGER DEFAULT 1")
     # Prompt 25 — visual signing placements (guard columns added after first deploy)
     _safe_add_column("visual_signature_placements", "otp_hash TEXT")
     _safe_add_column("visual_signature_placements", "otp_expires TIMESTAMP")
@@ -293,6 +296,7 @@ class AuditSet(Base):
     # NULL = audit set created internally (not via client portal) — existing rows
     workflow_status      = Column(String, nullable=True)
     submitted_via_portal = Column(Boolean, default=False, nullable=False, server_default="0")
+    workflow_version     = Column(Integer, default=1, nullable=False, server_default="1")
 
     # ── Timestamps ────────────────────────────────────────────────────────────
     created_at = Column(DateTime, default=datetime.utcnow)

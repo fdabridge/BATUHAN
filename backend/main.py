@@ -171,12 +171,17 @@ def on_startup():
             get_db as audit_get_db,
         )
         from audit_set.pipeline_triggers import seed_fr218_slots
+        from audit_set.workflow_policy import uses_fr218_before_commercial
         from datetime import datetime as _dt
         adb = next(audit_get_db())
         try:
             stuck = adb.query(AuditSet).filter_by(workflow_status="agreement_signed").all()
             backfilled = 0
             for aset in stuck:
+                # Version-2 applications completed FR.218 before the agreement.
+                # This legacy repair must never move them backwards.
+                if uses_fr218_before_commercial(aset):
+                    continue
                 has_slots = (
                     adb.query(AuditDocumentSignature)
                     .filter_by(audit_set_id=aset.id, document_type="FR218")

@@ -161,6 +161,7 @@ export interface AuditSetResponse {
   cert_status?: 'active' | 'approaching_expiry' | 'expired' | null
   // Client portal workflow (Prompt 01 — null on internally created sets)
   workflow_status?: string | null
+  workflow_version?: number
   submitted_via_portal?: boolean
   // Retroactive operation support (Prompt 33)
   application_date?: string | null
@@ -504,4 +505,3 @@ export interface AuditorAvailabilityItem {
   conflict_detail: string | null
   covered_scope: Record<string, string[]>    // {standard: [covered_codes]} from required_categories
 }
-
