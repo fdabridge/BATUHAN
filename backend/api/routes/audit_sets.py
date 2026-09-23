@@ -291,7 +291,7 @@ def run_generate_nac(
     _: PlatformUser = Depends(require_planner),
 ):
     """
-    Ask Claude which clauses are likely non-applicable for this organisation's
+    Ask the configured AI model which clauses are likely non-applicable for this organisation's
     scope + standards.  Returns suggestions only — caller must explicitly save
     the chosen `non_applicable_clauses` via PUT /{id}/planning.
     """

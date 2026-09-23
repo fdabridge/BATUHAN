@@ -100,7 +100,7 @@ async def ingest_document(
 ):
     """
     Upload a PDF or DOCX auditor CV / FR.201 form.
-    Returns the Claude-extracted profile as JSON — nothing is saved to the DB.
+    Returns the AI-extracted profile as JSON — nothing is saved to the DB.
     Use POST / afterwards to persist the (possibly corrected) data.
     """
     file_bytes = await file.read()

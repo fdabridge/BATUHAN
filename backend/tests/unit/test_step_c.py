@@ -42,7 +42,7 @@ STYLE_GUIDANCE = StyleGuidance(
 
 CLEAN_REPORT = GeneratedReport(
     job_id="job-c-1",
-    standard=ISOStandard.QMS,
+    standards=[ISOStandard.QMS],
     stage=AuditStage.STAGE_1,
     sections=[
         ReportSection(title="Introduction and Scope", content="The audit covered the main site.", order_index=0),
@@ -112,7 +112,7 @@ def test_pre_validation_passes_clean_report():
 
 def test_pre_validation_detects_missing_section():
     partial = GeneratedReport(
-        job_id="j", standard=ISOStandard.QMS, stage=AuditStage.STAGE_1,
+        job_id="j", standards=[ISOStandard.QMS], stage=AuditStage.STAGE_1,
         sections=[
             ReportSection(title="Introduction and Scope", content="Content A", order_index=0),
             ReportSection(title="Key Findings", content="Content C", order_index=2),
@@ -125,7 +125,7 @@ def test_pre_validation_detects_missing_section():
 
 def test_pre_validation_detects_empty_content():
     report = GeneratedReport(
-        job_id="j", standard=ISOStandard.QMS, stage=AuditStage.STAGE_1,
+        job_id="j", standards=[ISOStandard.QMS], stage=AuditStage.STAGE_1,
         sections=[
             ReportSection(title="Introduction and Scope", content="", order_index=0),
             ReportSection(title="Documented Information Review", content="Content", order_index=1),
@@ -139,7 +139,7 @@ def test_pre_validation_detects_empty_content():
 
 def test_pre_validation_detects_placeholder():
     report = GeneratedReport(
-        job_id="j", standard=ISOStandard.QMS, stage=AuditStage.STAGE_1,
+        job_id="j", standards=[ISOStandard.QMS], stage=AuditStage.STAGE_1,
         sections=[
             ReportSection(title="Introduction and Scope", content="[INSERT COMPANY NAME HERE]", order_index=0),
             ReportSection(title="Documented Information Review", content="Fine.", order_index=1),
@@ -153,7 +153,7 @@ def test_pre_validation_detects_placeholder():
 
 def test_pre_validation_detects_sample_leakage():
     report = GeneratedReport(
-        job_id="j", standard=ISOStandard.QMS, stage=AuditStage.STAGE_1,
+        job_id="j", standards=[ISOStandard.QMS], stage=AuditStage.STAGE_1,
         sections=[
             ReportSection(title="Introduction and Scope", content="SampleCorp is the auditee.", order_index=0),
             ReportSection(title="Documented Information Review", content="Fine.", order_index=1),
@@ -311,4 +311,3 @@ def test_post_validation_error_carries_violations():
         run_post_validation(vr, TEMPLATE_MAP)
     # Should carry at least MISSING_SECTION + EMPTY_CONTENT
     assert len(exc_info.value.violations) >= 2
-

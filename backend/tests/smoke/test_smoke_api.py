@@ -6,7 +6,7 @@ These tests use FastAPI's TestClient (no live network needed for CI), but
 can also be pointed at a real deployment via BASE_URL env variable.
 
 Run locally:
-    ANTHROPIC_API_KEY=test-key pytest backend/tests/smoke/ -v
+    OPENAI_API_KEY=test-key pytest backend/tests/smoke/ -v
 
 Run against staging:
     BASE_URL=http://staging-host:8000 pytest backend/tests/smoke/ -v
@@ -39,7 +39,7 @@ else:
     @pytest.fixture(scope="session")
     def client():
         # Patch health_checker so TestClient works without Redis
-        with patch("backend.monitoring.health_checker.run_health_checks") as mock_hc:
+        with patch("monitoring.health_checker.run_health_checks") as mock_hc:
             mock_hc.return_value = {
                 "healthy": True,
                 "timestamp": "2026-01-01T00:00:00+00:00",
@@ -153,4 +153,3 @@ class TestJobCreation:
         unknown_id = f"smoke-test-nonexistent-{uuid.uuid4()}"
         r = client.get(f"/jobs/{unknown_id}/status")
         assert r.status_code == 404
-

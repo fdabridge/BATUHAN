@@ -1,6 +1,6 @@
 """
 BATUHAN — Audit Plan: Schedule Generator
-Calls Claude to produce a structured hourly schedule JSON from the template
+Calls OpenAI to produce a structured hourly schedule from the template
 context and the hardcoded CLAUSE_MAP.
 """
 
@@ -11,7 +11,7 @@ import re
 import time
 from dataclasses import dataclass, field
 
-import anthropic
+from ai.openai_client import OpenAIClient
 
 from config.settings import get_settings
 from .clause_map import CLAUSE_MAP, normalize_standard
@@ -181,7 +181,7 @@ _SCHEDULE_TOOL = {
 
 
 def _content_value(block, key: str, default=None):
-    """Read an Anthropic content block or a lightweight test double."""
+    """Read an AI content block or a lightweight test double."""
     if isinstance(block, dict):
         return block.get(key, default)
     return getattr(block, key, default)
@@ -198,7 +198,7 @@ def _extract_schedule_payload(response) -> dict:
             payload = _content_value(block, "input")
             if isinstance(payload, dict):
                 return payload
-            raise ValueError("Claude returned a non-object audit schedule tool payload.")
+            raise ValueError("AI returned a non-object audit schedule tool payload.")
 
     text_parts = [
         str(_content_value(block, "text", ""))
@@ -208,21 +208,21 @@ def _extract_schedule_payload(response) -> dict:
     ]
     raw = "\n".join(text_parts).strip()
     if not raw:
-        raise ValueError("Claude returned no audit schedule content.")
+        raise ValueError("AI returned no audit schedule content.")
 
     raw_clean = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
     raw_clean = re.sub(r"\s*```$", "", raw_clean, flags=re.IGNORECASE).strip()
     try:
         payload = json.loads(raw_clean)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Claude returned malformed audit schedule JSON: {exc.msg}.") from exc
+        raise ValueError(f"AI returned malformed audit schedule JSON: {exc.msg}.") from exc
     if not isinstance(payload, dict):
-        raise ValueError("Claude returned a non-object audit schedule payload.")
+        raise ValueError("AI returned a non-object audit schedule payload.")
     return payload
 
 
-def _is_retryable_claude_error(exc: Exception) -> bool:
-    """Return True for transient Anthropic/network failures worth one retry."""
+def _is_retryable_ai_error(exc: Exception) -> bool:
+    """Return True for transient provider/network failures worth one retry."""
     status_code = getattr(exc, "status_code", None)
     if status_code in {408, 409, 429, 500, 502, 503, 504, 529}:
         return True
@@ -286,12 +286,12 @@ def _day_windows_for_prompt(ctx: AuditPlanContext) -> tuple[int, str]:
 
 def _build_auditor_tracks(ctx: AuditPlanContext) -> tuple[str, str, str]:
     """
-    Derive three strings consumed by the Claude prompt:
+    Derive three strings consumed by the AI prompt:
 
     Returns:
         track_summary  — one line per parallel track, describing who runs it
         whole_team_str — the string to use in Opening/Closing/whole-team slots
-        strategy_note  — additional note for Claude about LA+TA pairing
+        strategy_note  — additional note for the model about LA+TA pairing
     """
     la_list  = [a for a in ctx.auditors if a.name and "lead"     in a.role.lower()]
     a_list   = [a for a in ctx.auditors if a.name and a.role.lower().strip() == "auditor"]
@@ -355,7 +355,7 @@ def _build_auditor_tracks(ctx: AuditPlanContext) -> tuple[str, str, str]:
 
 def _normalise_time(raw: str) -> str:
     """
-    Convert any time range string returned by Claude into the canonical
+    Convert any time range string returned by the AI into the canonical
     "HH.MM – HH.MM" format (dot separator, en-dash, two-digit hours and minutes).
 
     Handles inputs like: "0900 – 1030", "09:00 – 10:30", "09.00-10.30", "9.00 – 10.30"
@@ -539,19 +539,19 @@ def _integrated_mode(standards: list[str], total_days: int) -> str:
 def _days_from_payload(payload: dict, ctx: AuditPlanContext) -> list[DaySchedule]:
     days_raw = payload.get("days", [])
     if not isinstance(days_raw, list) or not days_raw:
-        raise ValueError("Claude returned an empty schedule (no days).")
+        raise ValueError("AI returned an empty schedule (no days).")
 
     days: list[DaySchedule] = []
     for d in days_raw:
         if not isinstance(d, dict):
-            raise ValueError("Claude returned an invalid schedule day.")
+            raise ValueError("AI returned an invalid schedule day.")
         raw_slots = d.get("slots", [])
         if not isinstance(raw_slots, list):
-            raise ValueError("Claude returned invalid schedule slots.")
+            raise ValueError("AI returned invalid schedule slots.")
         slots: list[Slot] = []
         for s in raw_slots:
             if not isinstance(s, dict):
-                raise ValueError("Claude returned an invalid schedule slot.")
+                raise ValueError("AI returned an invalid schedule slot.")
             slots.append(Slot(
                 time=_normalise_time(s.get("time", "")),
                 is_break=bool(s.get("is_break", False)),
@@ -578,7 +578,7 @@ def _days_from_payload(payload: dict, ctx: AuditPlanContext) -> list[DaySchedule
 
 def generate_schedule(ctx: AuditPlanContext) -> list[DaySchedule]:
     """
-    Call Claude to generate a full audit schedule from the template context.
+    Call the configured AI model to generate a full audit schedule from the template context.
 
     Args:
         ctx: Parsed AuditPlanContext from the uploaded template.
@@ -587,10 +587,13 @@ def generate_schedule(ctx: AuditPlanContext) -> list[DaySchedule]:
         List of DaySchedule objects (one per audit day).
 
     Raises:
-        ValueError: If Claude returns invalid JSON or the schedule is empty.
+        ValueError: If the AI returns invalid JSON or the schedule is empty.
     """
     settings = get_settings()
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    client = OpenAIClient(
+        api_key=settings.openai_api_key,
+        reasoning_effort=settings.ai_reasoning_effort,
+    )
 
     # Build clause summary for all selected standards
     clause_blocks: list[str] = []
@@ -689,19 +692,19 @@ INSTRUCTIONS:
 - Submit the complete schedule using the submit_audit_schedule tool."""
 
     logger.info(
-        f"[AuditPlan] Calling Claude for schedule | org='{ctx.org_name}' "
+        f"[AuditPlan] Calling OpenAI for schedule | org='{ctx.org_name}' "
         f"standards={ctx.standards} type='{ctx.audit_type}' dates='{ctx.audit_dates}'"
     )
 
     _MAX_ATTEMPTS = 2
     payload: dict = {}
     days: list[DaySchedule] = []
-    last_error = "Claude returned no schedule."
+    last_error = "AI returned no schedule."
     last_stop_reason = "unknown"
     for attempt in range(1, _MAX_ATTEMPTS + 1):
         try:
             response = client.messages.create(
-                model=settings.claude_model,
+                model=settings.ai_model,
                 # Multi-standard, multi-day schedules can legitimately exceed 8k tokens.
                 max_tokens=16000,
                 system=_SYSTEM_PROMPT,
@@ -710,10 +713,10 @@ INSTRUCTIONS:
                 tool_choice={"type": "tool", "name": _SCHEDULE_TOOL_NAME},
             )
         except Exception as exc:
-            if not _is_retryable_claude_error(exc):
+            if not _is_retryable_ai_error(exc):
                 raise
             logger.warning(
-                "[AuditPlan] Temporary Claude API failure (attempt %s/%s): %s",
+                "[AuditPlan] Temporary OpenAI API failure (attempt %s/%s): %s",
                 attempt, _MAX_ATTEMPTS, exc,
             )
             if attempt == _MAX_ATTEMPTS:
@@ -732,7 +735,7 @@ INSTRUCTIONS:
         except ValueError as exc:
             last_error = str(exc)
             logger.warning(
-                "[AuditPlan] Invalid Claude schedule response "
+                "[AuditPlan] Invalid AI schedule response "
                 "(attempt %s/%s, stop_reason=%s): %s",
                 attempt, _MAX_ATTEMPTS, last_stop_reason, last_error,
             )
@@ -743,10 +746,10 @@ INSTRUCTIONS:
                     else last_error
                 )
                 raise ValueError(
-                    f"Claude could not produce a complete audit schedule after {_MAX_ATTEMPTS} attempts. "
+                    f"AI could not produce a complete audit schedule after {_MAX_ATTEMPTS} attempts. "
                     f"{reason} Please try again."
                 ) from exc
-            logger.info("[AuditPlan] Retrying Claude call...")
+            logger.info("[AuditPlan] Retrying AI call...")
 
     logger.info(f"[AuditPlan] Schedule generated: {len(days)} day(s), "
                 f"{sum(len(d.slots) for d in days)} total slots.")

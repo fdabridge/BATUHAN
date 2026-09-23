@@ -46,10 +46,14 @@ In Railway: **Project → Service → Variables**. Add every variable below.
 | `REDIS_URL` | Auto-injected by Railway Redis service — verify it exists |
 | `ALLOWED_ORIGINS` | The Railway domain (and custom domain if set), comma-separated |
 
-### Anthropic / Claude
+### OpenAI
 | Variable | Value |
 |---|---|
-| `ANTHROPIC_API_KEY` | CB's or shared Anthropic API key |
+| `OPENAI_API_KEY` | Project-scoped OpenAI API key stored only in Railway secrets |
+| `AI_MODEL` | `gpt-6-sol` |
+| `AI_FAST_MODEL` | `gpt-6-luna` |
+| `AI_ESCALATION_MODEL` | `gpt-6-astra` |
+| `AI_REASONING_EFFORT` | `medium` |
 
 ### Branding
 | Variable | Example value |

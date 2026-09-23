@@ -2,7 +2,7 @@
 BATUHAN — Audit Plan: API Route
 POST /audit-plan/generate
   Accepts one pre-filled FR.223 .docx template, generates a schedule with
-  Claude, fills Table 2, and returns the completed .docx for download.
+  the configured AI service, fills Table 2, and returns the completed .docx for download.
   Fully synchronous — no Celery queue.
 """
 
@@ -197,7 +197,7 @@ async def audit_plan_generate(
 
     1. Reads org info, audit type, dates, and team from the uploaded template.
     2. Looks up the correct clauses from the hardcoded FR.222 CLAUSE_MAP.
-    3. Calls Claude to generate an hourly schedule.
+    3. Calls the AI service to generate an hourly schedule.
     4. Injects the schedule into Table 2 of the uploaded template.
     5. Returns the completed .docx as a file download.
     """
@@ -262,7 +262,7 @@ async def audit_plan_generate(
         f"standards={ctx.standards} type='{ctx.audit_type}' dates='{ctx.audit_dates}'"
     )
 
-    # ---- Step 2: Generate schedule with Claude (blocking I/O — run in thread pool) ----
+    # ---- Step 2: Generate schedule with AI (blocking I/O — run in thread pool) ----
     try:
         days = await asyncio.to_thread(generate_schedule, ctx)
     except ValueError as exc:
@@ -271,7 +271,7 @@ async def audit_plan_generate(
         logger.error(f"[AuditPlan] Schedule generation failed: {exc}", exc_info=True)
         raise HTTPException(
             status_code=502,
-            detail=f"Claude schedule generation error: {exc}",
+            detail=f"AI schedule generation error: {exc}",
         )
 
     # ---- Step 3: Fill Table 1 (sites) + Table 2 (schedule) in the template ----

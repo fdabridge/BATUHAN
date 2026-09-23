@@ -80,12 +80,12 @@ def format_meeting_out(m: Meeting) -> dict:
 
 def parse_nl_meeting(text: str) -> dict:
     """
-    Parse a natural-language meeting description (Turkish/English) using Claude.
+    Parse a natural-language meeting description (Turkish/English) using AI.
     Returns a dict with keys: title, start_date, start_time, duration_minutes, description.
-    Raises ValueError if Claude returns unparseable output.
+    Raises ValueError if the AI returns unparseable output.
     """
     import json as _json
-    import anthropic
+    from ai.openai_client import OpenAIClient
     from config.settings import get_settings
 
     now_trt = datetime.now(TRT)
@@ -116,14 +116,17 @@ Rules:
 - description: any extra context not in the title, otherwise null"""
 
     settings = get_settings()
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    client = OpenAIClient(
+        api_key=settings.openai_api_key,
+        reasoning_effort=settings.ai_reasoning_effort,
+    )
     msg = client.messages.create(
-        model=settings.claude_model,
+        model=settings.ai_fast_model,
         max_tokens=256,
         messages=[{"role": "user", "content": prompt}],
     )
     raw = msg.content[0].text.strip()
-    # Strip markdown code fences if Claude wraps the JSON
+    # Strip markdown code fences if the model wraps the JSON
     if raw.startswith("```"):
         raw = raw.split("```")[1]
         if raw.startswith("json"):

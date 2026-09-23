@@ -1,6 +1,6 @@
 """
 BATUHAN — Step C: Response Parser (T21)
-Parses the raw Claude Prompt C response into:
+Parses the raw AI Prompt C response into:
   - ValidatedReport  (corrected sections, same structure as Step B)
   - CorrectionLog    (structured list of corrections made)
 
@@ -214,4 +214,3 @@ def parse_validation_output(
         raw_output=raw_output,
     )
     return validated_report, correction_log
-

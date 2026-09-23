@@ -1,7 +1,7 @@
 """
 BATUHAN — Step B: Context Builder (T16 + T17)
 Builds the stage-specific and standard-specific instruction blocks
-injected into Prompt B before sending to Claude.
+injected into Prompt B before sending to the model.
 """
 
 from __future__ import annotations
@@ -185,13 +185,13 @@ def get_standard_instructions(standard: ISOStandard) -> str:
 def get_combined_standard_instructions(standards: list[ISOStandard]) -> str:
     """
     Return combined instruction blocks for all selected standards.
-    For integrated audits this concatenates each standard's block so Claude
+    For integrated audits this concatenates each standard's block so the model
     knows the requirements of every selected standard simultaneously.
     """
     blocks = [get_standard_instructions(s) for s in standards]
     if len(blocks) == 1:
         return blocks[0]
-    # Prefix each block with a clear separator so Claude distinguishes them
+    # Prefix each block with a clear separator so the model distinguishes them
     labelled = []
     for s, block in zip(standards, blocks):
         labelled.append(f"--- {s.value} ---\n{block}")

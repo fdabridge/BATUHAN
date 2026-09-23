@@ -1,14 +1,14 @@
 """
 BATUHAN — Coverage Validator
 Post-assembly check: verifies all mandatory clauses have filled Findings cells.
-Fires targeted single-cell Claude retries for any that are empty.
+Fires targeted single-cell AI retries for any that are empty.
 """
 
 from __future__ import annotations
 import re
 import logging
 
-from anthropic import Anthropic
+from ai.openai_client import OpenAIClient
 from schemas.models import ScopeAnalysisResult
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ def validate_and_repair_coverage(
     template_structure_text: str,
     scope_analysis: "ScopeAnalysisResult | None",
     report_content: str,
-    client: Anthropic,
+    client: OpenAIClient,
     model: str,
     max_tokens: int,
     temperature: float,
@@ -182,14 +182,14 @@ def _repair_clause_cells(
     clause_id: str,
     coords: list,
     report_content: str,
-    client: Anthropic,
+    client: OpenAIClient,
     model: str,
     max_tokens: int,
     temperature: float,
     selected_standards: list,
 ) -> dict:
     """
-    Targeted single-clause Claude call. Returns {coord: content} for the given coords.
+    Targeted single-clause AI call. Returns {coord: content} for the given coords.
     """
     coords_list = "\n".join([f"CELL: {c}" for c in coords])
     standards_str = ", ".join(selected_standards)

@@ -136,7 +136,7 @@ def format_violations(violations: list[SafetyViolation]) -> str:
 def get_sections_needing_retry(violations: list[SafetyViolation]) -> set[str]:
     """
     Return the set of section titles that failed safety checks
-    and need to be retried with Claude.
+    and need to be retried with the model.
     """
     RETRYABLE_RULES = {"PLACEHOLDER_PRESENT", "EMPTY_CONTENT", "SAMPLE_LEAKAGE", "PHRASE_LEAKAGE"}
     return {
@@ -144,4 +144,3 @@ def get_sections_needing_retry(violations: list[SafetyViolation]) -> set[str]:
         for v in violations
         if v.rule in RETRYABLE_RULES and v.section_title
     }
-

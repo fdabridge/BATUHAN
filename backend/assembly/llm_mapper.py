@@ -2,7 +2,7 @@
 BATUHAN — LLM-Guided DOCX Assembly Mapper
 ==========================================
 Converts the blank template to a coordinate-tagged text representation,
-sends it (plus the generated report content) to Claude, and asks Claude
+sends it (plus the generated report content) to the configured model, and asks it
 to return a cell-by-cell content mapping.  The mapping is then applied
 to the open document XML — no brittle bold/caps heuristics required.
 
@@ -68,7 +68,7 @@ _TICK_SYMBOLS = {"√", "☑", "✓", "✔", "x", "X"}
 # ---------------------------------------------------------------------------
 # Chunking thresholds for large-table assembly
 # ---------------------------------------------------------------------------
-# Tables with more empty cells than this get their own Claude call instead of
+# Tables with more empty cells than this get their own AI call instead of
 # being bundled with other small tables.
 _LARGE_TABLE_THRESHOLD = 40
 # When a single table's empty cells exceed this further, it is split into
@@ -307,7 +307,7 @@ def _build_table_structure_lines(
 
     row_start / row_end are 1-based inclusive; row_end=None means the last row.
     The returned lines do NOT include the global header block — callers
-    must prepend that before passing the text to Claude.
+    must prepend that before passing the text to the model.
     """
     belongs_to = _tbl_belongs_to_standard(tbl)
     is_other = belongs_to is not None and belongs_to not in selected_values
@@ -359,7 +359,7 @@ def template_to_structure_text(template_path: str, selected_standards: list[ISOS
     representation suitable for inclusion in an LLM prompt.
 
     Each cell is labelled T<table>_R<row>_C<col> (all 1-based).
-    Tables belonging to non-selected standards are annotated so Claude
+    Tables belonging to non-selected standards are annotated so the model
     knows to write "Not applicable" messages for them.
     For integrated audits, ALL selected standards are treated as active.
     """
@@ -398,7 +398,7 @@ def _plan_call_chunks(
     selected_standards: list[ISOStandard],
 ) -> list[dict]:
     """
-    Analyse the template and group tables into Claude call chunks so that
+    Analyse the template and group tables into AI call chunks so that
     no single call is overwhelmed by too many empty cells.
 
     Rules
@@ -460,7 +460,7 @@ def _plan_call_chunks(
 
         # Very large (e.g. Annex A with 90+ controls): split into row-range sub-chunks.
         # The first sub-chunk starts at row 1 so the column header row is included.
-        # Subsequent sub-chunks prepend the header row again for Claude's context.
+        # Subsequent sub-chunks prepend the header row again for model context.
         hdr_lines, _ = _build_table_structure_lines(tbl, tbl_num, selected_values, 1, 1)
         chunk_start = 1
         while chunk_start <= total_rows:
@@ -469,7 +469,7 @@ def _plan_call_chunks(
                 tbl, tbl_num, selected_values, chunk_start, chunk_end,
             )
             if chunk_start > 1 and c_empty > 0:
-                # Repeat header row so Claude knows column layout in every sub-chunk
+                # Repeat header row so the model knows column layout in every sub-chunk
                 c_lines = (
                     hdr_lines[:-1]
                     + [f"  ... (continuing — rows {chunk_start}–{chunk_end}) ..."]
@@ -569,16 +569,19 @@ def _build_prompt(
 
 
 # ---------------------------------------------------------------------------
-# Claude API call
+# AI API call
 # ---------------------------------------------------------------------------
 
-def _call_claude(prompt: str) -> str:
-    """Send prompt to Claude and return raw text response."""
-    import anthropic
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+def _call_ai(prompt: str) -> str:
+    """Send a prompt to the configured OpenAI model and return text."""
+    from ai.openai_client import OpenAIClient
+    client = OpenAIClient(
+        api_key=settings.openai_api_key,
+        reasoning_effort=settings.ai_reasoning_effort,
+    )
     message = client.messages.create(
-        model=settings.claude_model,
-        max_tokens=settings.claude_max_tokens,
+        model=settings.ai_model,
+        max_tokens=settings.ai_max_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
     return message.content[0].text
@@ -590,7 +593,7 @@ def _call_claude(prompt: str) -> str:
 
 def parse_cell_mapping(response: str) -> dict[str, str]:
     """
-    Parse Claude's cell-mapping response into a {coordinate: content} dict.
+    Parse the AI cell-mapping response into a {coordinate: content} dict.
 
     Expected format for each cell assignment:
 
@@ -609,12 +612,12 @@ def parse_cell_mapping(response: str) -> dict[str, str]:
         content = m.group(2).strip()
         if content:
             mapping[coord] = content
-    logger.info("[LLM Mapper] Parsed %d cell assignments from Claude.", len(mapping))
+    logger.info("[LLM Mapper] Parsed %d cell assignments from AI.", len(mapping))
     return mapping
 
 
 # ---------------------------------------------------------------------------
-# Auto-tick helper — post-fills Conclusion cells when Claude missed them
+# Auto-tick helper — post-fills Conclusion cells when the model missed them
 # ---------------------------------------------------------------------------
 
 def _auto_tick_conclusion_cells(
@@ -626,7 +629,7 @@ def _auto_tick_conclusion_cells(
     For each table, detect the Findings column and the Conclusion/Result column
     from the header row, then add √ to any Conclusion cell that is:
       • empty in the template, AND
-      • not already assigned by Claude in *mapping*, AND
+      • not already assigned by the model in *mapping*, AND
       • in the same row as a Findings cell that *is* in the mapping.
 
     Uses semantic_map for column-role detection when available;
@@ -711,7 +714,7 @@ def apply_cell_mapping(
     Apply coordinate→content mapping to the document body XML.
 
     First runs _auto_tick_conclusion_cells to guarantee that every row with
-    a Findings entry also gets a Conclusion tick (in case Claude omitted it).
+    a Findings entry also gets a Conclusion tick (in case the model omitted it).
     Then builds an index of all table cells by their T_R_C coordinate and
     fills matched cells.  Returns the total number of cells modified.
 
@@ -764,11 +767,11 @@ def get_cell_mapping(
     semantic_map: "ColumnSemanticMap | None" = None,
 ) -> dict[str, str]:
     """
-    Full LLM-guided mapping flow using chunked Claude calls:
+    Full LLM-guided mapping flow using chunked AI calls:
       1. Plan chunks — group tables by empty-cell count to avoid token-limit
          truncation.  Large tables (e.g. ISO 27001 Annex A) are automatically
          split into row-range sub-chunks of _ROW_CHUNK_SIZE rows each.
-      2. For each active chunk: build prompt → call Claude → parse response.
+      2. For each active chunk: build prompt → call AI → parse response.
       3. Merge all partial mappings into one {coordinate: content} dict.
 
     Chunks with zero empty cells are skipped.
@@ -806,7 +809,7 @@ def get_cell_mapping(
                 chunk["structure_text"],
             )
 
-        raw_response = _call_claude(prompt)
+        raw_response = _call_ai(prompt)
 
         if job_id:
             from storage.file_store import save_text_artifact

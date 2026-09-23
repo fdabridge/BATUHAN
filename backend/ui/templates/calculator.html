@@ -46,12 +46,12 @@
 {% block content %}
 <div class="loading-overlay" id="loading-overlay">
   <div class="big-spinner"></div>
-  <span id="loading-msg">Extracting form data with Claude…</span>
+  <span id="loading-msg">Extracting form data with AI…</span>
 </div>
 
 <div style="margin-bottom:1.75rem;">
   <h1 class="page-title">⏱ Audit Time Calculator</h1>
-  <p class="page-subtitle">Upload your certification application form — Claude will extract the data and calculate audit days automatically.</p>
+  <p class="page-subtitle">Upload your certification application form — AI will extract the data and calculate audit days automatically.</p>
 </div>
 
 <div id="upload-section">
@@ -73,7 +73,7 @@
       <button class="btn btn-primary btn-lg" id="calc-btn" onclick="runCalculation()">
         Calculate Audit Time
       </button>
-      <span class="hint" style="margin:0;">Claude will read the form and compute audit days using ISO tables.</span>
+      <span class="hint" style="margin:0;">AI will read the form and compute audit days using ISO tables.</span>
     </div>
   </div>
 </div>
@@ -168,7 +168,7 @@ async function runCalculation() {
   hideError();
   if (selectedFiles.length === 0) { showError('Please upload at least one application form file.'); return; }
 
-  showLoading('Extracting form data with Claude…');
+  showLoading('Extracting form data with AI…');
 
   const form = new FormData();
   selectedFiles.forEach(f => form.append('files', f));
@@ -328,4 +328,3 @@ function showError(msg) {
 function hideError() { document.getElementById('error-banner').style.display = 'none'; }
 </script>
 {% endblock %}
-

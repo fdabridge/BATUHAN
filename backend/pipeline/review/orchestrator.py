@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from anthropic import Anthropic
+from ai.openai_client import OpenAIClient
 from schemas.models import (
     ReviewResult, ReviewFinding, ReviewFindingType, ReviewFindingSeverity,
 )
@@ -300,7 +300,7 @@ def _extract_json_object(raw: str) -> dict[str, Any]:
 
 
 def _repair_json_response(
-    client: Anthropic,
+    client: OpenAIClient,
     model: str,
     raw: str,
     parse_error: Exception,
@@ -458,7 +458,7 @@ def run_review(
     stage: str,
     accreditation_body: str,
     review_job_id: str,
-    client: Anthropic,
+    client: OpenAIClient,
     model: str,
     max_tokens: int,
     temperature: float,
@@ -472,10 +472,10 @@ def run_review(
         stage:             Audit stage string ("Stage 1" or "Stage 2").
         accreditation_body: Accreditation body code ("UAF" or "TURKAK").
         review_job_id:     The review job ID for artifact labelling.
-        client:            Anthropic client instance.
-        model:             Claude model identifier.
-        max_tokens:        Max tokens for Claude response.
-        temperature:       Claude temperature setting.
+        client:            OpenAI client adapter instance.
+        model:             OpenAI model identifier.
+        max_tokens:        Maximum model output tokens.
+        temperature:       Sampling temperature for compatible models.
 
     Returns:
         ReviewResult with per-clause findings and overall assessment.
@@ -518,7 +518,7 @@ def run_review(
         review_job_id, len(prompt), standard_label, stage, accreditation_body,
     )
 
-    # Call Claude — retry and repair parse failures before failing the job.
+    # Call AI — retry and repair parse failures before failing the job.
     parsed: dict | None = None
     last_parse_error: Exception | None = None
     response_max_tokens = min(max(max_tokens, 4096), 12000)
@@ -539,7 +539,7 @@ def run_review(
             )
             parsed = _extract_json_object(raw)
             logger.info(
-                "Review [%s]: Claude response parsed on attempt %d",
+                "Review [%s]: AI response parsed on attempt %d",
                 review_job_id, attempt + 1,
             )
             break
@@ -568,7 +568,7 @@ def run_review(
                 )
                 parsed = _extract_json_object(repaired)
                 logger.info(
-                    "Review [%s]: repaired Claude response parsed on attempt %d",
+                    "Review [%s]: repaired AI response parsed on attempt %d",
                     review_job_id,
                     attempt + 1,
                 )

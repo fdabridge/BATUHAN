@@ -3,7 +3,7 @@ BATUHAN — Step C Orchestrator (T19)
 Runs the full validation & correction step:
   1. Pre-validate the Step B report deterministically (T20)
   2. Build Prompt C context: report + evidence + standard + stage
-  3. Call Claude with Prompt C
+  3. Call the configured AI model with Prompt C
   4. Parse corrected report + correction log (T21)
   5. Post-validate final corrected report structure (T22)
   6. Persist all artifacts
@@ -54,12 +54,15 @@ def _build_prompt(template: str, ctx: dict[str, str]) -> str:
     return result
 
 
-def _call_claude(prompt: str) -> str:
-    import anthropic
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+def _call_ai(prompt: str) -> str:
+    from ai.openai_client import OpenAIClient
+    client = OpenAIClient(
+        api_key=settings.openai_api_key,
+        reasoning_effort=settings.ai_reasoning_effort,
+    )
     message = client.messages.create(
-        model=settings.claude_model,
-        max_tokens=settings.claude_max_tokens,
+        model=settings.ai_model,
+        max_tokens=settings.ai_max_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
     return message.content[0].text
@@ -91,7 +94,7 @@ def run_step_c(
         (ValidatedReport, CorrectionLog) — both persisted as artifacts.
 
     Raises:
-        ValueError: If Claude returns unparseable output after retries.
+        ValueError: If the AI returns unparseable output after retries.
         PostValidationError: If the corrected report fails structural checks.
         FileNotFoundError: If prompt_c.txt is missing.
     """
@@ -152,15 +155,15 @@ def run_step_c(
             f"\n\n---\n\nPRE-VALIDATION NOTES (fix these specifically):\n{pre_issues_text}"
         )
 
-    # --- T19: Call Claude ---
+    # --- T19: Call AI ---
     last_error: Exception | None = None
     validated_report: ValidatedReport | None = None
     correction_log: CorrectionLog | None = None
 
     for attempt in range(1, MAX_RETRIES + 2):
-        logger.info(f"[Step C] Calling Claude (attempt {attempt}/{MAX_RETRIES + 1})")
+        logger.info(f"[Step C] Calling AI (attempt {attempt}/{MAX_RETRIES + 1})")
         try:
-            raw_output = _call_claude(prompt_text)
+            raw_output = _call_ai(prompt_text)
             validated_report, correction_log = parse_validation_output(
                 raw_output, job_id,
                 generated_report.standards, generated_report.stage,
@@ -204,4 +207,3 @@ def run_step_c(
         f"{correction_log.correction_count} correction(s)"
     )
     return validated_report, correction_log
-

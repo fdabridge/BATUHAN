@@ -174,7 +174,7 @@ class ExtractedEvidence(BaseModel):
     evidence_of_system_implementation: list[EvidenceItem] = Field(default_factory=list)
     audit_relevant_records: list[EvidenceItem] = Field(default_factory=list)
     identified_gaps: list[EvidenceItem] = Field(default_factory=list)
-    raw_output: str = Field(description="Raw Claude response for audit trail")
+    raw_output: str = Field(description="Raw AI response for audit trail")
     extracted_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -196,7 +196,7 @@ class GeneratedReport(BaseModel):
     standards: list[ISOStandard]   # One or more selected standards
     stage: AuditStage
     sections: list[ReportSection]
-    raw_output: str = Field(description="Raw Claude response for audit trail")
+    raw_output: str = Field(description="Raw AI response for audit trail")
     generated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -223,7 +223,7 @@ class ValidatedReport(BaseModel):
     job_id: str
     sections: list[ReportSection]
     correction_log: CorrectionLog
-    raw_output: str = Field(description="Raw Claude response for audit trail")
+    raw_output: str = Field(description="Raw AI response for audit trail")
     validated_at: datetime = Field(default_factory=datetime.utcnow)
 
 

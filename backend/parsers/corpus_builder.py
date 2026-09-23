@@ -13,7 +13,7 @@ from parsers.ocr_pipeline import run_ocr_pipeline
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Size limits — keep the prompt within Claude's practical sweet spot.
+# Size limits — keep the prompt within the model's practical context range.
 # Very large inputs slow inference without improving evidence quality.
 # ---------------------------------------------------------------------------
 _MAX_CHARS_PER_DOC   = 40_000   # ~10 k tokens per document
@@ -68,7 +68,7 @@ def format_corpus_for_prompt(corpus: list[ParsedDocument]) -> str:
     Each document is clearly labelled with its filename and OCR flag.
 
     Size limits (_MAX_CHARS_PER_DOC / _MAX_CHARS_TOTAL) prevent the prompt
-    from growing so large that Claude inference times out or becomes very slow.
+    from growing so large that model inference times out or becomes very slow.
     Each document is truncated individually first, then the combined corpus
     is hard-capped to _MAX_CHARS_TOTAL.
     """
@@ -117,4 +117,3 @@ def format_corpus_for_prompt(corpus: list[ParsedDocument]) -> str:
         f"{len(combined):,} chars total (cap: {_MAX_CHARS_TOTAL:,})"
     )
     return combined
-

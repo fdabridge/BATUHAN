@@ -334,18 +334,21 @@ def run_pipeline(
         from parsers.corpus_builder import format_corpus_for_prompt
         from storage.file_store import save_text_artifact
         from pipeline.step_0.orchestrator import run_step_0
-        import anthropic as _anthropic
+        from ai.openai_client import OpenAIClient
 
         full_corpus_text = format_corpus_for_prompt(corpus)
-        anthropic_client = _anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        ai_client = OpenAIClient(
+            api_key=settings.openai_api_key,
+            reasoning_effort=settings.ai_reasoning_effort,
+        )
 
         scope_analysis = run_step_0(
             document_corpus=full_corpus_text,
             clause_configs=clause_configs,
-            client=anthropic_client,
-            model=settings.claude_model,
+            client=ai_client,
+            model=settings.ai_model,
             max_tokens=1024,
-            temperature=settings.claude_temperature,
+            temperature=settings.ai_temperature,
         )
 
         scope_analysis_json = scope_analysis.model_dump_json(indent=2)

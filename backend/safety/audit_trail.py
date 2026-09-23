@@ -4,7 +4,7 @@ Builds and persists audit_trail.json for every completed job.
 
 Records:
   - All uploaded files (names + sizes in bytes)
-  - Prompt version and Claude model used
+  - Prompt version and AI provider/model used
   - ISO standard and audit stage
   - Step A evidence summary (section count, weak items)
   - Step B report summary (section count)
@@ -46,7 +46,8 @@ def build_audit_trail(job_id: str) -> dict:
         "job_id": job_id,
         "system": "BATUHAN",
         "prompt_version": settings.prompt_version,
-        "claude_model": settings.claude_model,
+        "ai_provider": "openai",
+        "ai_model": settings.ai_model,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -134,4 +135,3 @@ def write_audit_trail(job_id: str) -> str:
         f"{len(trail.get('artifacts', []))} artifacts recorded."
     )
     return path
-

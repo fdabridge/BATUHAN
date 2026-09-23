@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 
 # ---------------------------------------------------------------------------
-# Extracted form data (output of Claude extraction step)
+# Extracted form data (output of the AI extraction step)
 # ---------------------------------------------------------------------------
 
 class SiteInfo(BaseModel):
@@ -21,14 +21,14 @@ class SiteInfo(BaseModel):
 
 
 class StandardClassification(BaseModel):
-    """Claude's sector classification for one ISO standard."""
+    """AI sector classification for one ISO standard."""
     standard: str            # e.g. "ISO 9001"
     sector_name: str         # e.g. "Food/beverages/tobacco"
     category: str            # "High" | "Medium" | "Low" | "Limited"
 
 
 class ExtractedFormData(BaseModel):
-    """Everything Claude extracts from the uploaded application form(s)."""
+    """Everything the model extracts from uploaded application form(s)."""
     org_name: str = ""
     standards: list[str] = Field(default_factory=list)   # e.g. ["ISO 9001", "ISO 14001"]
     audit_type: str = "Initial"   # Initial | Transfer | Scope Extension | Recertification
@@ -49,7 +49,7 @@ class ExtractedFormData(BaseModel):
     haccp_studies: Optional[int] = None        # ISO 22000
     integration_yes_count: int = 0            # 0-8 (page 3 ticked YES boxes)
 
-    # Sector classification per standard (Claude determines these)
+    # Sector classification per standard (the model determines these)
     classifications: list[StandardClassification] = Field(default_factory=list)
 
     # ISO 50001 / EnMS — from additional form
@@ -71,7 +71,7 @@ class ExtractedFormData(BaseModel):
     fsms_separate_head_office: bool = False
     fsms_fssc22000: bool = False               # FSSC 22000 add-on requested (triggers reporting surcharge)
 
-    # Raw Claude response for traceability
+    # Raw AI response for traceability
     raw_extraction: str = ""
 
 

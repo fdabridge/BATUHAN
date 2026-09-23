@@ -107,7 +107,7 @@ def delete_meeting(meeting_id: int, db: Session = Depends(get_db)):
 @router.post("/parse", response_model=MeetingOut, status_code=201)
 def parse_and_create(payload: ParseRequest, db: Session = Depends(get_db)):
     """
-    Parse a natural-language meeting description with Claude, then immediately
+    Parse a natural-language meeting description with AI, then immediately
     create and return the meeting. Accepts Turkish or English input.
     Example: "Yarın 15:00 Şebnem Hanım ile UAF toplantısı"
     """

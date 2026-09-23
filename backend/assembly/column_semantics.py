@@ -1,11 +1,11 @@
 """
 BATUHAN — Column Semantic Map
 Classifies every column in every template table by semantic role (findings,
-conclusion, clause_ref, label, other) via a single Claude call.
+conclusion, clause_ref, label, other) via a single AI call.
 The result is reused across all assembly chunks to guide auto-tick logic.
 """
 
-from anthropic import Anthropic
+from ai.openai_client import OpenAIClient
 from dataclasses import dataclass
 import json, logging, re
 
@@ -34,11 +34,11 @@ class ColumnSemanticMap:
 
 def build_column_semantic_map(
     template_structure_text: str,
-    client: Anthropic,
+    client: OpenAIClient,
     model: str,
 ) -> ColumnSemanticMap:
     """
-    Sends the template structure to Claude once and asks it to classify
+    Sends the template structure to the model once and asks it to classify
     every column in every table by semantic role.
     Returns a ColumnSemanticMap usable for the rest of assembly.
     """

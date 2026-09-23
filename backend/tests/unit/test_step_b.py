@@ -129,7 +129,7 @@ def test_ohsms_instructions_mention_hazard():
 
 def test_build_prompt_b_context_returns_all_keys():
     ctx = build_prompt_b_context(
-        standard=ISOStandard.QMS,
+        standards=[ISOStandard.QMS],
         stage=AuditStage.STAGE_1,
         template_map=TEMPLATE_MAP,
         style_guidance=STYLE_GUIDANCE,
@@ -183,18 +183,18 @@ def test_is_weak_section_detects_phrases():
 def test_parse_report_output_valid():
     report = parse_report_output(
         VALID_REPORT_OUTPUT, "job-b-1",
-        ISOStandard.QMS, AuditStage.STAGE_1,
+        [ISOStandard.QMS], AuditStage.STAGE_1,
         expected_titles=["Introduction and Scope", "Documented Information Review", "Key Findings"],
     )
     assert report.job_id == "job-b-1"
     assert len(report.sections) == 3
-    assert report.standard == ISOStandard.QMS
+    assert report.standards == [ISOStandard.QMS]
     assert report.stage == AuditStage.STAGE_1
 
 def test_parse_report_output_flags_weak_sections():
     report = parse_report_output(
         VALID_REPORT_OUTPUT, "job-b-2",
-        ISOStandard.QMS, AuditStage.STAGE_2,
+        [ISOStandard.QMS], AuditStage.STAGE_2,
     )
     weak_sections = [s for s in report.sections if s.has_weak_evidence]
     assert len(weak_sections) >= 1
@@ -203,18 +203,18 @@ def test_parse_report_output_respects_template_order():
     expected = ["Introduction and Scope", "Documented Information Review", "Key Findings"]
     report = parse_report_output(
         VALID_REPORT_OUTPUT, "job-b-3",
-        ISOStandard.QMS, AuditStage.STAGE_1, expected_titles=expected,
+        [ISOStandard.QMS], AuditStage.STAGE_1, expected_titles=expected,
     )
     for i, section in enumerate(report.sections):
         assert section.order_index == i
 
 def test_parse_report_output_empty_raises():
     with pytest.raises(ValueError, match="empty output"):
-        parse_report_output("", "job-b-4", ISOStandard.QMS, AuditStage.STAGE_1)
+        parse_report_output("", "job-b-4", [ISOStandard.QMS], AuditStage.STAGE_1)
 
 def test_parse_report_output_no_sections_raises():
     with pytest.raises(ValueError):
-        parse_report_output("completely unparseable garbage", "job-b-5", ISOStandard.QMS, AuditStage.STAGE_1)
+        parse_report_output("completely unparseable garbage", "job-b-5", [ISOStandard.QMS], AuditStage.STAGE_1)
 
 # ---------------------------------------------------------------------------
 # Tests: safety_checker (T18)
@@ -223,7 +223,7 @@ def test_parse_report_output_no_sections_raises():
 def test_safety_check_passes_clean_report():
     report = parse_report_output(
         VALID_REPORT_OUTPUT, "job-b-6",
-        ISOStandard.QMS, AuditStage.STAGE_1,
+        [ISOStandard.QMS], AuditStage.STAGE_1,
         expected_titles=["Introduction and Scope", "Documented Information Review", "Key Findings"],
     )
     violations = check_report_safety(report, TEMPLATE_MAP, STYLE_GUIDANCE)
@@ -232,7 +232,7 @@ def test_safety_check_passes_clean_report():
 def test_safety_check_detects_placeholder():
     report = parse_report_output(
         PLACEHOLDER_OUTPUT, "job-b-7",
-        ISOStandard.QMS, AuditStage.STAGE_1,
+        [ISOStandard.QMS], AuditStage.STAGE_1,
     )
     # Inject a template that matches the section title
     tm = TemplateMap(source_path="t.docx", sections=[
@@ -246,7 +246,7 @@ def test_safety_check_detects_missing_section():
     # Report only has 2 of the 3 template sections
     report = GeneratedReport(
         job_id="job-b-8",
-        standard=ISOStandard.QMS,
+        standards=[ISOStandard.QMS],
         stage=AuditStage.STAGE_1,
         sections=[
             ReportSection(title="Introduction and Scope", content="Content A", order_index=0),
@@ -261,7 +261,7 @@ def test_safety_check_detects_missing_section():
 def test_safety_check_detects_extra_section():
     report = GeneratedReport(
         job_id="job-b-9",
-        standard=ISOStandard.QMS,
+        standards=[ISOStandard.QMS],
         stage=AuditStage.STAGE_1,
         sections=[
             ReportSection(title="Introduction and Scope", content="Content A", order_index=0),
@@ -278,7 +278,7 @@ def test_safety_check_detects_extra_section():
 def test_safety_check_detects_blocked_company_name():
     report = GeneratedReport(
         job_id="job-b-10",
-        standard=ISOStandard.QMS,
+        standards=[ISOStandard.QMS],
         stage=AuditStage.STAGE_1,
         sections=[
             ReportSection(title="Introduction and Scope", content="SampleCorp is the auditee.", order_index=0),
@@ -310,4 +310,3 @@ def test_format_violations_with_violations():
     result = format_violations([v])
     assert "1 violation" in result
     assert "Intro" in result
-

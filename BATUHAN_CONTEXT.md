@@ -57,8 +57,8 @@ User Uploads → PREPROCESSING → STEP A → STEP B → STEP C → ASSEMBLING �
   whether they appear in the blank template
 
 ### STEP A — Evidence Extraction (Prompt A)
-- Sends the full document corpus + selected standard(s) + stage to Claude
-- Claude extracts structured evidence into **7 categories**:
+- Sends the full document corpus + selected standard(s) + stage to the configured OpenAI model
+- The model extracts structured evidence into **7 categories**:
   1. `company_overview`
   2. `scope_of_activities`
   3. `documented_information`
@@ -72,7 +72,7 @@ User Uploads → PREPROCESSING → STEP A → STEP B → STEP C → ASSEMBLING �
 
 ### STEP B — Report Generation (Prompt B)
 - Receives `ExtractedEvidence` (no raw documents beyond this point)
-- Claude writes one content block per template section using the evidence + style guidance
+- The model writes one content block per template section using the evidence + style guidance
 - Supports EN (English) and TR (Turkish) output language
 - Runs safety checks on sections (placeholder detection, style violations)
 - Persists: `step_b_report.json`, `step_b_formatted.txt`, `step_b_safety_check.txt`
@@ -80,8 +80,8 @@ User Uploads → PREPROCESSING → STEP A → STEP B → STEP C → ASSEMBLING �
 ### STEP C — Validation & Correction (Prompt C)
 - Pre-validates the Step B report deterministically (missing sections, empty content,
   blocked names still present, placeholder patterns)
-- Sends the report + evidence back to Claude for correction
-- Claude rewrites any incorrect/incomplete sections and logs each change
+- Sends the report + evidence back to the model for correction
+- The model rewrites any incorrect/incomplete sections and logs each change
 - Post-validates corrected output for structural integrity
 - Falls back to Step B output if Step C itself fails (graceful degradation)
 - Persists: `step_c_report.json`, `step_c_correction_log.json`, `step_c_formatted.txt`
@@ -102,10 +102,10 @@ BATUHAN uses a **coordinate-based assembly** system:
    or `[TEMPLATE INSTRUCTION — DO NOT OUTPUT]`.
 2. The structure text is chunked to avoid the 8192-token output limit:
    - Small tables (≤40 empty cells) are bundled together
-   - Large tables (>40) get their own Claude call
+   - Large tables (>40) get their own AI call
    - Very large tables (>80, e.g. ISO 27001 Annex A with 168 empty cells) are split into
      row-range sub-chunks of 35 rows each, with the header row repeated for context
-3. Claude returns cell assignments in a structured format:
+3. The model returns cell assignments in a structured format:
    ```
    CELL: T18_R3_C2
    CONTENT:
@@ -114,7 +114,7 @@ BATUHAN uses a **coordinate-based assembly** system:
    ```
 4. After mapping, `_auto_tick_conclusion_cells` post-processes the result: any
    `Conclusion(✓ / NC / OBS)` or `Result` column cell adjacent to a filled Findings cell
-   that Claude left empty is automatically filled with `√`
+   that the model left empty is automatically filled with `√`
 5. Word checkbox controls (modern SDT, legacy fldChar, Unicode ☐) are activated natively
 6. Template instruction cells are stripped before saving
 
@@ -166,35 +166,38 @@ or `FAILED` at any point.
 ### Audit Plan Generator (synchronous, ~10s)
 `POST /audit-plan/generate` — Upload a pre-filled FR.223 `.docx` (Tables 0 and 1 already
 filled by the user). BATUHAN reads org info, selected standards, audit dates, and team;
-calls Claude to generate an hourly schedule; fills Table 2; returns the completed `.docx`.
+calls OpenAI to generate an hourly schedule; fills Table 2; returns the completed `.docx`.
 
 Schedule rules: 09:00–17:00, lunch 13:00–14:00, TA always paired with LA,
 no "Wash-up Meeting" or "Write Draft Report" slots.
 
 ### Audit Time Calculator (synchronous, ~5s)
 `POST /calculator/calculate` — Upload one or more application form files (PDF/DOCX/TXT).
-Claude extracts org name, employee count, and standards from the form. The calculation
+The OpenAI extraction model identifies the organisation name, employee count, and standards from the form. The calculation
 engine applies EA/IAF tables to produce:
 - `final_ph1` (Stage 1 days), `final_ph2` (Stage 2 days), `final_total`
 - Surveillance and recertification splits
 
 ---
 
-## 6. Claude API Configuration & Cost
+## 6. OpenAI API Configuration & Cost
 
 | Setting | Value |
 |---------|-------|
-| Model | `claude-sonnet-4-6` (env: `CLAUDE_MODEL`) |
-| Max output tokens | `8192` (env: `CLAUDE_MAX_TOKENS`) |
+| Main model | `gpt-6-sol` (env: `AI_MODEL`) |
+| Fast model | `gpt-6-luna` (env: `AI_FAST_MODEL`) |
+| Escalation model | `gpt-6-astra` (env: `AI_ESCALATION_MODEL`) |
+| Max output tokens | `8192` (env: `AI_MAX_TOKENS`) |
 | Temperature | `0.2` |
+| API storage | Disabled with `store=false` |
 | Step A retries | up to 3× on malformed parse |
 | Step B retries | up to 3× on malformed parse |
 | Step C retries | up to 2× then falls back to Step B |
 | Assembly calls | 2–6 per job depending on template size |
 
-**Cost estimate per job** (Claude Sonnet list pricing ~$3/MTok input, $15/MTok output):
-- Simple single-standard report: ~5 Claude calls → ~**$0.30–$0.50**
-- ISO 27001 with full Annex A: ~8–9 Claude calls → ~**$0.60–$0.90**
+**Cost control:** record input, cached-input, and output tokens for real jobs and
+calculate the operating budget from measured usage. Do not rely on historical
+provider estimates after the OpenAI migration.
 - `max_retries=0` on the Celery task — jobs do NOT auto-retry (would re-bill API)
 
 ---
@@ -272,10 +275,10 @@ Enums: `ISOStandard` (8 values), `AuditStage` (Stage 1/2), `ReportLanguage` (EN/
 |----------|---------|
 | `_build_table_structure_lines(tbl, tbl_num, selected_values, row_start, row_end)` | Coordinate-tagged lines for one table / row-range slice; returns `(lines, empty_count)` |
 | `template_to_structure_text(template_path, selected_standards)` | Full-template structure string (used for debugging) |
-| `_plan_call_chunks(template_path, selected_standards)` | Groups tables into Claude call chunks by empty-cell count |
-| `get_cell_mapping(...)` | Main entry: iterates chunks, calls Claude per chunk, merges all mappings |
+| `_plan_call_chunks(template_path, selected_standards)` | Groups tables into AI call chunks by empty-cell count |
+| `get_cell_mapping(...)` | Main entry: iterates chunks, calls the model per chunk, merges all mappings |
 | `parse_cell_mapping(response)` | Parses `CELL:/CONTENT:/END_CELL` blocks → `{coord: content}` dict |
-| `_auto_tick_conclusion_cells(body, mapping)` | Detects Findings/Conclusion column pairs; auto-fills `√` where Claude missed |
+| `_auto_tick_conclusion_cells(body, mapping)` | Detects Findings/Conclusion column pairs; auto-fills `√` where the model missed |
 | `apply_cell_mapping(body, mapping)` | Builds coord→`tc` index; fills cells; handles checkbox activation |
 | `_tick_checkbox_cell(tc)` | Activates modern SDT checkbox, legacy fldChar, or replaces Unicode ☐ |
 | `strip_template_instruction_cells(body)` | Clears boilerplate instruction cells before saving |
@@ -314,13 +317,13 @@ Enums: `ISOStandard` (8 values), `AuditStage` (Stage 1/2), `ReportLanguage` (EN/
 - Turkish-language output via `language_instruction` in prompts
 - OCR for scanned PDFs and images
 - ISO 27001 Annex A: all 93 controls filled across chunked calls (fixed 2026-05)
-- Conclusion tick columns: auto-filled even when Claude misses them (fixed 2026-05)
+- Conclusion tick columns: auto-filled even when the model misses them (fixed 2026-05)
 
 ### Degrades with ⚠️
 - **Thin evidence** (<5,000 chars of company docs): findings will be generic
 - **Complex/unusual templates**: heavily merged cells or non-standard layouts may confuse mapper
 - **Stage 2 depth**: requires richer docs (procedures, records) than Stage 1 (just documentation)
-- **Very large integrated audits** (3+ standards): more Claude calls = more latency
+- **Very large integrated audits** (3+ standards): more AI calls = more latency
 
 ### Fallbacks
 - Step C failure → Step B output used (graceful degradation)
@@ -345,10 +348,13 @@ Enums: `ISOStandard` (8 values), `AuditStage` (Stage 1/2), `ReportLanguage` (EN/
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | required | Claude API key |
-| `CLAUDE_MODEL` | `claude-sonnet-4-6` | Model identifier |
-| `CLAUDE_MAX_TOKENS` | `8192` | Max output tokens per call |
-| `CLAUDE_TEMPERATURE` | `0.2` | Temperature (all calls) |
+| `OPENAI_API_KEY` | required | Project-scoped OpenAI API key |
+| `AI_MODEL` | `gpt-6-sol` | Main generation/review model |
+| `AI_FAST_MODEL` | `gpt-6-luna` | Extraction and lightweight mapping model |
+| `AI_ESCALATION_MODEL` | `gpt-6-astra` | Reserved escalation model |
+| `AI_MAX_TOKENS` | `8192` | Max output tokens per call |
+| `AI_TEMPERATURE` | `0.2` | Temperature for compatible models |
+| `AI_REASONING_EFFORT` | `medium` | Reasoning effort for GPT models |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis connection |
 | `CELERY_BROKER_URL` | (= REDIS_URL) | Celery broker |
 | `CELERY_RESULT_BACKEND` | `redis://localhost:6379/1` | Celery results |

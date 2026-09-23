@@ -59,7 +59,7 @@ def _assemble_with_llm_mapper(
     from assembly.column_semantics import build_column_semantic_map
     from schemas.models import ISOStandard
     from config.settings import get_settings
-    import anthropic as _anthropic
+    from ai.openai_client import OpenAIClient
 
     selected_standards: list[ISOStandard] = list(standards) if standards else [ISOStandard.QMS]
 
@@ -71,7 +71,10 @@ def _assemble_with_llm_mapper(
     # Build semantic column map once — used by _auto_tick_conclusion_cells
     # to determine Findings/Conclusion columns without relying on regex alone.
     _settings = get_settings()
-    _client = _anthropic.Anthropic(api_key=_settings.anthropic_api_key)
+    _client = OpenAIClient(
+        api_key=_settings.openai_api_key,
+        reasoning_effort=_settings.ai_reasoning_effort,
+    )
 
     template_structure_text = template_to_structure_text(template_path, selected_standards)
 
@@ -80,7 +83,7 @@ def _assemble_with_llm_mapper(
         semantic_map = build_column_semantic_map(
             template_structure_text=template_structure_text,
             client=_client,
-            model=_settings.claude_model,
+            model=_settings.ai_model,
         )
     except Exception as e:
         logger.warning(
@@ -111,9 +114,9 @@ def _assemble_with_llm_mapper(
             scope_analysis=scope_analysis,
             report_content=_format_report_sections(validated_report),
             client=_client,
-            model=_settings.claude_model,
-            max_tokens=_settings.claude_max_tokens,
-            temperature=_settings.claude_temperature,
+            model=_settings.ai_model,
+            max_tokens=_settings.ai_max_tokens,
+            temperature=_settings.ai_temperature,
             selected_standards=[s.value for s in selected_standards],
         )
         if job_id:

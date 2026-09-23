@@ -4,7 +4,7 @@ Runs the full report generation step:
   1. Load prompt_b.txt
   2. Build stage + standard context (T16, T17)
   3. Inject evidence, template sections, style guidance
-  4. Call Claude with retry
+  4. Call the configured AI model with retry
   5. Parse section-by-section output into GeneratedReport
   6. Run safety checks (T18) — retry flagged sections if needed
   7. Persist report + safety log
@@ -53,12 +53,15 @@ def _build_prompt(template: str, ctx: dict[str, str]) -> str:
     return result
 
 
-def _call_claude(prompt: str) -> str:
-    import anthropic
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+def _call_ai(prompt: str) -> str:
+    from ai.openai_client import OpenAIClient
+    client = OpenAIClient(
+        api_key=settings.openai_api_key,
+        reasoning_effort=settings.ai_reasoning_effort,
+    )
     message = client.messages.create(
-        model=settings.claude_model,
-        max_tokens=settings.claude_max_tokens,
+        model=settings.ai_model,
+        max_tokens=settings.ai_max_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
     return message.content[0].text
@@ -93,7 +96,7 @@ def run_step_b(
         GeneratedReport with all sections filled and safety-checked.
 
     Raises:
-        ValueError: If Claude returns unusable output after all retries.
+        ValueError: If the AI returns unusable output after all retries.
         FileNotFoundError: If prompt_b.txt is missing.
     """
     logger.info(
@@ -135,9 +138,9 @@ def run_step_b(
     report: GeneratedReport | None = None
 
     for attempt in range(1, MAX_RETRIES + 2):
-        logger.info(f"[Step B] Calling Claude (attempt {attempt}/{MAX_RETRIES + 1})")
+        logger.info(f"[Step B] Calling AI (attempt {attempt}/{MAX_RETRIES + 1})")
         try:
-            raw_output = _call_claude(prompt)
+            raw_output = _call_ai(prompt)
             report = parse_report_output(raw_output, job_id, standards, stage, expected_titles)
             break
         except ValueError as e:
@@ -165,7 +168,7 @@ def run_step_b(
                 + ", ".join(f"'{s}'" for s in retry_sections)
             )
             # Sections are flagged — Step C will correct them.
-            # We do not re-call Claude here to avoid infinite loops;
+            # We do not re-call the model here to avoid infinite loops;
             # Prompt C is the correction mechanism.
 
     # --- Persist ---
@@ -183,4 +186,3 @@ def run_step_b(
         f"{len(violations)} safety violation(s)"
     )
     return report
-

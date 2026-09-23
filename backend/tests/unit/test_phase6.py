@@ -189,7 +189,7 @@ def test_package_results_creates_all_artifacts(tmp_path):
     Path(correction_log_output).write_text(correction_log_txt, encoding="utf-8")
     summary = _build_summary(
         job_id="job-d-9",
-        standard=ISOStandard.QMS,
+        standards=[ISOStandard.QMS],
         stage=AuditStage.STAGE_1,
         files_used=["quality_manual.pdf", "procedures.docx"],
         correction_count=report.correction_log.correction_count,
@@ -222,7 +222,7 @@ def test_package_results_summary_json_written(tmp_path):
     Path(correction_log_output).write_text(correction_log_txt, encoding="utf-8")
     summary = _build_summary(
         job_id="job-d-10",
-        standard=ISOStandard.EMS,
+        standards=[ISOStandard.EMS],
         stage=AuditStage.STAGE_2,
         files_used=["env_manual.pdf"],
         correction_count=report.correction_log.correction_count,
@@ -235,4 +235,3 @@ def test_package_results_summary_json_written(tmp_path):
     assert summary_data["standard"] == "EMS"
     assert summary_data["stage"] == "Stage 2"
     assert "env_manual.pdf" in summary_data["files_used"]
-

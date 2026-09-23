@@ -1,15 +1,15 @@
 """
 BATUHAN — Step 0 Orchestrator: Scope Analysis
 For each selected standard, extracts the scope statement from the document
-corpus and asks Claude which scope-conditional clauses apply.
-Always-applicable clauses are included automatically without a Claude call.
+corpus and asks AI which scope-conditional clauses apply.
+Always-applicable clauses are included automatically without an AI call.
 """
 
 from __future__ import annotations
 import json
 import logging
 
-import anthropic
+from ai.openai_client import OpenAIClient
 
 from schemas.models import ScopeAnalysisResult, StandardScopeResult, ClauseApplicabilityDecision
 from config.clause_configs.schema import StandardClauseConfig, Applicability
@@ -20,15 +20,15 @@ logger = logging.getLogger(__name__)
 def run_step_0(
     document_corpus: str,
     clause_configs: dict[str, StandardClauseConfig],
-    client: anthropic.Anthropic,
+    client: OpenAIClient,
     model: str,
     max_tokens: int,
     temperature: float,
 ) -> ScopeAnalysisResult:
     """
     For each selected standard, extracts the scope statement from the corpus
-    and asks Claude which scope_conditional clauses apply.
-    Always-applicable clauses are included automatically without asking Claude.
+    and asks the model which scope_conditional clauses apply.
+    Always-applicable clauses are included automatically without asking the model.
     """
     scope_statement = _extract_scope_statement(document_corpus)
     standards_results: dict[str, StandardScopeResult] = {}
@@ -47,7 +47,7 @@ def run_step_0(
             if c.applicability == Applicability.NEVER
         ]
 
-        # If no conditional clauses, no Claude call needed
+        # If no conditional clauses, no AI call is needed
         if not conditional_clauses:
             standards_results[standard_code] = StandardScopeResult(
                 standard_code=standard_code,
@@ -58,7 +58,7 @@ def run_step_0(
             )
             continue
 
-        # Build Claude prompt
+        # Build AI prompt
         clauses_text = "\n".join([
             f"- {c.clause_id} | {c.title} | CONDITION: {c.condition}"
             for c in conditional_clauses
@@ -104,7 +104,7 @@ For each clause, respond in this exact JSON format only. No prose, no explanatio
             decisions_raw = parsed.get("decisions", [])
         except Exception as e:
             logger.warning(
-                f"Step 0 Claude call failed for {standard_code}: {e}. "
+                f"Step 0 AI call failed for {standard_code}: {e}. "
                 "Defaulting all conditional clauses to applicable."
             )
             decisions_raw = [
@@ -141,14 +141,14 @@ For each clause, respond in this exact JSON format only. No prose, no explanatio
             else:
                 applicable_conditional_ids.append(cid)
 
-        # Any conditional clause not returned by Claude defaults to applicable
+        # Any conditional clause not returned by the model defaults to applicable
         returned_ids = {d.clause_id for d in decisions}
         for c in conditional_clauses:
             if c.clause_id not in returned_ids:
                 applicable_conditional_ids.append(c.clause_id)
                 logger.warning(
                     f"Step 0: {standard_code} clause {c.clause_id} "
-                    "not returned by Claude — defaulting to applicable"
+                    "not returned by AI — defaulting to applicable"
                 )
 
         standards_results[standard_code] = StandardScopeResult(

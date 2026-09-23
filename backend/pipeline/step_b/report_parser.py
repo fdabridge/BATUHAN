@@ -1,6 +1,6 @@
 """
 BATUHAN — Step B: Report Parser
-Parses the raw Claude Prompt B response into a validated GeneratedReport object.
+Parses the raw AI Prompt B response into a validated GeneratedReport object.
 Expected output format (per prompt_b.txt):
 
     Section Title:
@@ -56,7 +56,7 @@ def _is_weak_section(content: str) -> bool:
 def _strip_markdown(text: str) -> str:
     """
     Remove common markdown formatting characters from a single line so that
-    label-matching regexes work regardless of how Claude wraps them.
+    label-matching regexes work regardless of how the model wraps them.
 
     Handles:
       **Section Title:**  →  Section Title:
@@ -149,7 +149,7 @@ def parse_report_output(
     Parse the raw Prompt B response into a GeneratedReport.
 
     Args:
-        raw_output:      Full Claude response text.
+        raw_output:      Full AI response text.
         job_id:          Current job ID.
         standards:       Selected ISO standard(s).
         stage:           Audit stage.
@@ -217,4 +217,3 @@ def parse_report_output(
         sections=sections,
         raw_output=raw_output,
     )
-

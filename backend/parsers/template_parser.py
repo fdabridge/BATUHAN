@@ -236,10 +236,9 @@ def parse_template(template_path: str) -> TemplateMap:
 def format_sections_for_prompt(template_map: TemplateMap) -> str:
     """
     Format the template section list as a string for injection into Prompt B.
-    Lists all section titles in order so Claude knows exactly what to fill.
+    Lists all section titles in order so the model knows exactly what to fill.
     """
     lines = ["The report must contain the following sections in this exact order:\n"]
     for s in template_map.sections:
         lines.append(f"{s.order_index + 1}. {s.title}")
     return "\n".join(lines)
-

@@ -74,13 +74,16 @@ def run_review_job(
         )
 
         # ------------------------------------------------------------------
-        # REVIEWING — Claude reviews report against accreditation rule profile
+        # REVIEWING — AI reviews report against accreditation rule profile
         # ------------------------------------------------------------------
         update_review_state(ReviewJobState.REVIEWING)
         from pipeline.review.orchestrator import run_review
-        from anthropic import Anthropic
+        from ai.openai_client import OpenAIClient
 
-        client = Anthropic(api_key=settings.anthropic_api_key)
+        client = OpenAIClient(
+            api_key=settings.openai_api_key,
+            reasoning_effort=settings.ai_reasoning_effort,
+        )
         review_result = run_review(
             report_text=report_text,
             standard=standard,
@@ -88,9 +91,9 @@ def run_review_job(
             accreditation_body=accreditation_body,
             review_job_id=review_job_id,
             client=client,
-            model=settings.claude_model,
-            max_tokens=settings.claude_max_tokens,
-            temperature=settings.claude_temperature,
+            model=settings.ai_model,
+            max_tokens=settings.ai_max_tokens,
+            temperature=settings.ai_temperature,
         )
         save_text_artifact(
             review_job_id,

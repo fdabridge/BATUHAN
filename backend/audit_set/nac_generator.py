@@ -1,7 +1,7 @@
 """
 BATUHAN — AI generation of suggested Non-Applicable Clauses (NAC).
 
-Uses Claude to analyse the organisation scope + selected ISO standards and
+Uses AI to analyse the organisation scope + selected ISO standards and
 return a list of clauses that are likely structurally non-applicable, each
 with a justification.  The result is *suggested* only — the caller does not
 persist it; the user reviews and explicitly saves via the planning endpoint.
@@ -112,7 +112,7 @@ def _filter_suggestions(suggestions: list, candidates: dict[str, dict[str, str]]
 
 
 def generate_nac_ai(audit_set: AuditSet) -> dict:
-    """Ask Claude which clauses are likely N/A for this audit set's scope.
+    """Ask the configured AI model which clauses are likely N/A for this audit set's scope.
 
     Returns: {"suggestions": [ {clause, standard, title, justification, confidence} ], "nac_text": str}
     Always returns a dict; on any error returns empty suggestions + empty nac_text.
@@ -170,17 +170,20 @@ Return ONLY the JSON object, no surrounding prose.
 """
 
     try:
-        import anthropic
+        from ai.openai_client import OpenAIClient
         settings = get_settings()
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        client = OpenAIClient(
+            api_key=settings.openai_api_key,
+            reasoning_effort=settings.ai_reasoning_effort,
+        )
         message = client.messages.create(
-            model=settings.claude_model,
+            model=settings.ai_fast_model,
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
         )
         response_text = message.content[0].text
     except Exception as exc:
-        logger.warning("[NAC] Claude call failed for audit_set=%s: %s", audit_set.id, exc)
+        logger.warning("[NAC] AI call failed for audit_set=%s: %s", audit_set.id, exc)
         return {"suggestions": [], "nac_text": ""}
 
     # Strip ```json fences if present then locate the JSON object
@@ -188,7 +191,7 @@ Return ONLY the JSON object, no surrounding prose.
     cleaned = re.sub(r"\s*```$", "", cleaned)
     json_match = re.search(r"\{.*\}", cleaned, re.DOTALL)
     if not json_match:
-        logger.warning("[NAC] No JSON object in Claude response for audit_set=%s", audit_set.id)
+        logger.warning("[NAC] No JSON object in AI response for audit_set=%s", audit_set.id)
         return {"suggestions": [], "nac_text": ""}
 
     try:

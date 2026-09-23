@@ -1,6 +1,6 @@
 """
 BATUHAN — Step A: Evidence Parser (T13)
-Parses the raw Claude Prompt A response into a validated ExtractedEvidence object.
+Parses the raw AI Prompt A response into a validated ExtractedEvidence object.
 Enforces the 7 required sections. Flags weak evidence. Rejects malformed output.
 """
 
@@ -9,11 +9,11 @@ import re
 import logging
 from schemas.models import ExtractedEvidence, EvidenceItem
 
-# Strips leading numeric prefixes Claude sometimes adds: "1. ", "2) ", etc.
+# Strips leading numeric prefixes the model sometimes adds: "1. ", "2) ", etc.
 _NUMERIC_PREFIX_RE = re.compile(r"^\d+[\.\)]\s*")
 
 # Unique discriminating keywords per section — used for fuzzy fallback matching
-# when Claude rephrases a heading (e.g. "COMPANY INFORMATION" → "Company Overview").
+# when the model rephrases a heading (e.g. "COMPANY INFORMATION" → "Company Overview").
 _SECTION_KEYWORDS: dict[str, list[str]] = {
     "Company Overview":                   ["company", "overview", "organisation", "organization"],
     "Scope of Activities":                ["scope", "activities"],
@@ -85,7 +85,7 @@ def _parse_bullets(text: str) -> list[str]:
 
 def _split_into_sections(raw_output: str) -> dict[str, str]:
     """
-    Split the Claude response into sections by ## headings.
+    Split the AI response into sections by ## headings.
     Returns dict of {section_title: section_body_text}.
     """
     sections: dict[str, str] = {}
@@ -110,7 +110,7 @@ def _find_section(sections: dict[str, str], expected_title: str) -> str:
     Matching order (first hit wins):
     1. Exact match on raw title.
     2. Case-insensitive exact match after stripping numeric prefixes
-       ("1. ", "2) ", …) that Claude sometimes prepends.
+       ("1. ", "2) ", …) that the model sometimes prepends.
     3. Substring match either way (handles abbreviations / extra words).
     4. Keyword-scoring fallback — each expected section has a list of
        unique discriminating words; the candidate with the highest overlap
@@ -254,14 +254,14 @@ def format_evidence_for_prompt(evidence: ExtractedEvidence) -> str:
     Format the ExtractedEvidence object as a string for injection into Prompt B/C.
 
     Prepends a numbered "DOCUMENTS REVIEWED IN THIS AUDIT" block drawn from the
-    "Documented Information Identified" section so that Claude can cite specific
+    "Documented Information Identified" section so that the model can cite specific
     document titles in every finding without having to hunt through the corpus.
     Weak-evidence tags are suppressed — Step B must treat all evidence positively.
     """
     parts: list[str] = []
 
     # ------------------------------------------------------------------ #
-    # Hoist document titles to the very top for maximum Claude visibility #
+    # Hoist document titles to the very top for maximum model visibility #
     # ------------------------------------------------------------------ #
     doc_items: list[EvidenceItem] = getattr(evidence, "documented_information", [])
     doc_titles = [
@@ -295,4 +295,3 @@ def format_evidence_for_prompt(evidence: ExtractedEvidence) -> str:
                 parts.append(f"- {item.statement}{src_tag}")
         parts.append("")
     return "\n".join(parts)
-

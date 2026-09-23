@@ -2,7 +2,7 @@
 BATUHAN — Audit Time Calculator: API Route
 POST /calculator/calculate
   Accepts one or more uploaded files (PDF/DOCX/TXT of the application form),
-  extracts data with Claude, runs the calculation engine, and returns a
+  extracts data with AI, runs the calculation engine, and returns a
   CalculationResult JSON immediately (synchronous — no job queue).
 """
 
@@ -56,7 +56,7 @@ async def calculator_calculate(
     ),
 ) -> CalculationResult:
     """
-    Extract data from uploaded application form(s) using Claude, then calculate
+    Extract data from uploaded application form(s) using AI, then calculate
     audit time according to ISO-specific tables and rules.
 
     Returns a CalculationResult with all phase splits and surveillance values.
@@ -114,17 +114,17 @@ async def calculator_calculate(
                 ),
             )
 
-        # ---- Extract structured data with Claude ----
-        logger.info(f"Starting Claude extraction for {len(document_texts)} file(s).")
+        # ---- Extract structured data with AI ----
+        logger.info(f"Starting AI extraction for {len(document_texts)} file(s).")
         try:
             extracted = extract_form_data(document_texts)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
         except Exception as e:
-            logger.error(f"Claude extraction failed: {e}", exc_info=True)
+            logger.error(f"AI extraction failed: {e}", exc_info=True)
             raise HTTPException(
                 status_code=502,
-                detail=f"Claude extraction error: {e}",
+                detail=f"AI extraction error: {e}",
             )
 
         logger.info(

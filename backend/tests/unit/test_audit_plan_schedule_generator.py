@@ -138,9 +138,9 @@ def test_generate_schedule_retries_empty_response_then_uses_tool_payload():
 
     with (
         patch("audit_plan.schedule_generator.get_settings", return_value=SimpleNamespace(
-            anthropic_api_key="test", claude_model="test-model",
+            openai_api_key="test", ai_model="test-model", ai_reasoning_effort="medium",
         )),
-        patch("audit_plan.schedule_generator.anthropic.Anthropic", return_value=client),
+        patch("audit_plan.schedule_generator.OpenAIClient", return_value=client),
     ):
         days = generate_schedule(_context())
 
@@ -164,9 +164,9 @@ def test_generate_schedule_retries_a_structurally_valid_but_incomplete_plan():
 
     with (
         patch("audit_plan.schedule_generator.get_settings", return_value=SimpleNamespace(
-            anthropic_api_key="test", claude_model="test-model",
+            openai_api_key="test", ai_model="test-model", ai_reasoning_effort="medium",
         )),
-        patch("audit_plan.schedule_generator.anthropic.Anthropic", return_value=client),
+        patch("audit_plan.schedule_generator.OpenAIClient", return_value=client),
     ):
         days = generate_schedule(_context())
 
@@ -181,9 +181,9 @@ def test_generate_schedule_reports_output_limit_instead_of_json_decoder_error():
 
     with (
         patch("audit_plan.schedule_generator.get_settings", return_value=SimpleNamespace(
-            anthropic_api_key="test", claude_model="test-model",
+            openai_api_key="test", ai_model="test-model", ai_reasoning_effort="medium",
         )),
-        patch("audit_plan.schedule_generator.anthropic.Anthropic", return_value=client),
+        patch("audit_plan.schedule_generator.OpenAIClient", return_value=client),
         pytest.raises(ValueError, match="output limit") as exc_info,
     ):
         generate_schedule(_context())
@@ -191,7 +191,7 @@ def test_generate_schedule_reports_output_limit_instead_of_json_decoder_error():
     assert "line 1 column 1" not in str(exc_info.value)
 
 
-def test_generate_schedule_retries_temporary_claude_api_failure():
+def test_generate_schedule_retries_temporary_ai_api_failure():
     class APIConnectionError(Exception):
         pass
 
@@ -204,9 +204,9 @@ def test_generate_schedule_retries_temporary_claude_api_failure():
 
     with (
         patch("audit_plan.schedule_generator.get_settings", return_value=SimpleNamespace(
-            anthropic_api_key="test", claude_model="test-model",
+            openai_api_key="test", ai_model="test-model", ai_reasoning_effort="medium",
         )),
-        patch("audit_plan.schedule_generator.anthropic.Anthropic", return_value=client),
+        patch("audit_plan.schedule_generator.OpenAIClient", return_value=client),
         patch("audit_plan.schedule_generator.time.sleep") as sleep,
     ):
         days = generate_schedule(_context())
@@ -226,9 +226,9 @@ def test_generate_schedule_explains_repeated_temporary_api_failure():
 
     with (
         patch("audit_plan.schedule_generator.get_settings", return_value=SimpleNamespace(
-            anthropic_api_key="test", claude_model="test-model",
+            openai_api_key="test", ai_model="test-model", ai_reasoning_effort="medium",
         )),
-        patch("audit_plan.schedule_generator.anthropic.Anthropic", return_value=client),
+        patch("audit_plan.schedule_generator.OpenAIClient", return_value=client),
         patch("audit_plan.schedule_generator.time.sleep"),
         pytest.raises(ValueError, match="temporarily unavailable"),
     ):
@@ -274,9 +274,9 @@ def test_stage1_qms_fsms_integrated_prompt_contains_both_clause_sets():
 
     with (
         patch("audit_plan.schedule_generator.get_settings", return_value=SimpleNamespace(
-            anthropic_api_key="test", claude_model="test-model",
+            openai_api_key="test", ai_model="test-model", ai_reasoning_effort="medium",
         )),
-        patch("audit_plan.schedule_generator.anthropic.Anthropic", return_value=client),
+        patch("audit_plan.schedule_generator.OpenAIClient", return_value=client),
     ):
         generate_schedule(ctx)
 

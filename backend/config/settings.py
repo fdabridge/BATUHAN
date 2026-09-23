@@ -17,12 +17,15 @@ class Settings(BaseSettings):
     )
 
     # -----------------------------------------------------------------------
-    # Anthropic / Claude
+    # OpenAI
     # -----------------------------------------------------------------------
-    anthropic_api_key: str
-    claude_model: str = "claude-sonnet-4-6"  # Claude Sonnet 4.6 Extended
-    claude_max_tokens: int = 8192
-    claude_temperature: float = 0.2  # Low temp for factual audit writing
+    openai_api_key: str = ""
+    ai_model: str = "gpt-6-sol"
+    ai_fast_model: str = "gpt-6-luna"
+    ai_escalation_model: str = "gpt-6-astra"
+    ai_max_tokens: int = 8192
+    ai_temperature: float = 0.2  # Low temperature for factual audit writing
+    ai_reasoning_effort: str = "medium"
 
     # -----------------------------------------------------------------------
     # Application
@@ -142,4 +145,3 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Return cached settings instance. Call this everywhere."""
     return Settings()
-

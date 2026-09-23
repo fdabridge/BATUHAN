@@ -1,8 +1,8 @@
 """
-BATUHAN — Auditor Profile: Document extraction via Claude.
+BATUHAN — Auditor Profile: Document extraction via AI.
 
 extract_auditor_from_document(file_bytes, filename) -> dict
-  Accepts PDF or DOCX bytes, extracts text, then asks Claude to parse
+  Accepts PDF or DOCX bytes, extracts text, then asks AI to parse
   all auditor profile fields into a structured JSON dict.
   Returns the parsed dict (nulls allowed) or {"error": str}.
 """
@@ -222,7 +222,7 @@ Default to "Medium" if unclear.
 
 
 # ── Keyword maps for Python-side scope_category fallback ──────────────────────
-# Runs after Claude extraction: if Claude leaves scope_category empty for a
+# Runs after AI extraction: if the model leaves scope_category empty for a
 # category-based standard, we infer it from the CV text using these maps.
 
 _FOOD_CHAIN_KEYWORDS: dict[str, tuple[str, ...]] = {
@@ -303,11 +303,11 @@ def _backfill_scope_categories(result: dict, raw_document_text: str = "") -> Non
     """For each qualification missing scope_category, infer from the CV text.
 
     raw_document_text is the full source text extracted from the PDF/DOCX.
-    It is always included in the keyword-search haystack so that even if Claude
+    It is always included in the keyword-search haystack so that even if the model
     summarises or truncates field_of_expertise, the backfill still has the
     complete document to search through.
     """
-    # Build a haystack: Claude-extracted structured fields + full raw source text.
+    # Build a haystack: AI-extracted structured fields + full raw source text.
     text_parts: list[str] = []
     if result.get("field_of_expertise"):
         text_parts.append(str(result["field_of_expertise"]))
@@ -324,7 +324,7 @@ def _backfill_scope_categories(result: dict, raw_document_text: str = "") -> Non
     for q in result.get("standard_qualifications") or []:
         code = (q.get("standard_code") or "").lower()
         if q.get("scope_category"):
-            continue  # Claude already populated it; trust Claude.
+            continue  # The model already populated it; trust the structured value.
 
         if "22000" in code or "fssc" in code:
             inferred = _infer_food_categories(haystack)
@@ -396,13 +396,16 @@ def extract_auditor_from_document(file_bytes: bytes, filename: str) -> dict:
             return {"error": "Could not extract any text from the document."}
 
         from config.settings import get_settings
-        import anthropic
+        from ai.openai_client import OpenAIClient
 
         settings = get_settings()
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        client = OpenAIClient(
+            api_key=settings.openai_api_key,
+            reasoning_effort=settings.ai_reasoning_effort,
+        )
 
         msg = client.messages.create(
-            model=settings.claude_model,
+            model=settings.ai_fast_model,
             max_tokens=8192,
             system=_SYSTEM_PROMPT,
             messages=[{
@@ -422,7 +425,7 @@ def extract_auditor_from_document(file_bytes: bytes, filename: str) -> dict:
         if raw.endswith("```"):
             raw = raw[:-3].strip()
 
-        # Use json_repair to handle any malformed JSON from Claude
+        # Use json_repair to handle any malformed JSON from the model
         from json_repair import repair_json
         result = json.loads(repair_json(raw))
 
@@ -480,14 +483,14 @@ def extract_auditor_from_document(file_bytes: bytes, filename: str) -> dict:
             if not q.get("accreditation_body"):
                 q["_needs_review"] = True
 
-        # Log what Claude returned per qualification before backfill (debug visibility)
+        # Log what the model returned per qualification before backfill (debug visibility)
         for q in result.get("standard_qualifications") or []:
-            logger.info("[Auditors/Extractor] Claude returned: standard=%s scope_category=%r ea_codes=%s",
+            logger.info("[Auditors/Extractor] AI returned: standard=%s scope_category=%r ea_codes=%s",
                         q.get("standard_code"), q.get("scope_category"), q.get("ea_codes"))
 
-        # Backfill scope_category from CV text for any qualification Claude left empty.
+        # Backfill scope_category from CV text for any qualification the model left empty.
         # Pass the full raw document text so the haystack is never empty even if
-        # Claude's extracted fields were truncated.
+        # The model's extracted fields were truncated.
         _backfill_scope_categories(result, raw_document_text=text)
 
         logger.info("[Auditors/Extractor] Parsed '%s' — name=%s", filename, result.get("name"))

@@ -219,8 +219,8 @@ def test_format_evidence_for_prompt_contains_all_sections():
     for section in REQUIRED_SECTIONS:
         assert section in formatted
 
-def test_format_evidence_for_prompt_flags_weak():
+def test_format_evidence_for_prompt_keeps_weak_language_without_internal_tag():
     evidence = parse_evidence_output(VALID_PROMPT_A_OUTPUT, job_id="fmt-job-2")
     formatted = format_evidence_for_prompt(evidence)
-    assert "[WEAK EVIDENCE]" in formatted
-
+    assert "[WEAK EVIDENCE]" not in formatted
+    assert "not clearly evidenced" in formatted.lower()

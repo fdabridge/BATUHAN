@@ -6,7 +6,7 @@ Checks:
   - Redis connectivity (required for Celery job queue)
   - Disk space on the storage path (warn if <500 MB free)
   - Stuck jobs: any job in STEP_A / STEP_B / STEP_C for >10 minutes
-  - Claude API key presence (does NOT make a live API call to save cost)
+  - OpenAI API key presence (does NOT make a live API call to save cost)
 
 Returns a dict suitable for direct JSON serialisation.
 """
@@ -62,12 +62,12 @@ def _check_disk() -> dict:
 
 
 def _check_api_key() -> dict:
-    """Verify the Anthropic API key is configured (non-empty, non-placeholder)."""
-    key = settings.anthropic_api_key or ""
-    ok = bool(key) and key != "your-anthropic-api-key-here"
+    """Verify the OpenAI API key is configured (non-empty, non-placeholder)."""
+    key = settings.openai_api_key or ""
+    ok = bool(key) and not key.startswith("your-")
     return {
         "ok": ok,
-        "detail": "API key configured" if ok else "ANTHROPIC_API_KEY is missing or placeholder",
+        "detail": "API key configured" if ok else "OPENAI_API_KEY is missing or placeholder",
     }
 
 
@@ -146,4 +146,3 @@ def run_health_checks() -> dict:
             "stuck_jobs": stuck_result,
         },
     }
-

@@ -1,7 +1,7 @@
 """
 BATUHAN — Integration Tests: Full A→B→C Pipeline (T34)
 Runs the complete evidence extraction → report generation → validation pipeline
-with mocked Claude API calls. No real network requests, no real prompts.
+with mocked OpenAI API calls. No real network requests, no real prompts.
 """
 
 import pytest
@@ -48,7 +48,7 @@ MOCK_STEP_A_RESPONSE = """\
 - Nonconformance log entries were reviewed with appropriate corrective actions closed.
 
 ## Identified Gaps and Observations
-- No formal documented supplier evaluation procedure was found during the audit.
+- A formal documented supplier evaluation procedure was not found during the audit.
 - Customer complaint response timelines require strengthening.
 """
 
@@ -146,10 +146,10 @@ def _make_style_guidance() -> StyleGuidance:
 class TestStepAIntegration:
     def test_step_a_returns_evidence_with_all_sections(self, tmp_path):
         corpus = _make_corpus(tmp_path)
-        with patch("backend.pipeline.step_a.orchestrator._call_claude", return_value=MOCK_STEP_A_RESPONSE), \
-             patch("backend.pipeline.step_a.orchestrator._load_prompt_a", return_value="Prompt: {document_corpus} {standard} {stage}"), \
-             patch("backend.pipeline.step_a.orchestrator.save_text_artifact", return_value=str(tmp_path / "artifact.txt")):
-            evidence = run_step_a("job-e2e-1", corpus, ISOStandard.QMS, AuditStage.STAGE_2)
+        with patch("pipeline.step_a.orchestrator._call_ai", return_value=MOCK_STEP_A_RESPONSE), \
+             patch("pipeline.step_a.orchestrator._load_prompt_a", return_value="Prompt: {document_corpus} {standard} {stage}"), \
+             patch("pipeline.step_a.orchestrator.save_text_artifact", return_value=str(tmp_path / "artifact.txt")):
+            evidence = run_step_a("job-e2e-1", corpus, [ISOStandard.QMS], AuditStage.STAGE_2)
 
         assert evidence.job_id == "job-e2e-1"
         assert len(evidence.company_overview) >= 1
@@ -158,10 +158,10 @@ class TestStepAIntegration:
 
     def test_step_a_marks_weak_evidence_items(self, tmp_path):
         corpus = _make_corpus(tmp_path)
-        with patch("backend.pipeline.step_a.orchestrator._call_claude", return_value=MOCK_STEP_A_RESPONSE), \
-             patch("backend.pipeline.step_a.orchestrator._load_prompt_a", return_value="Prompt: {document_corpus} {standard} {stage}"), \
-             patch("backend.pipeline.step_a.orchestrator.save_text_artifact", return_value=str(tmp_path / "a.txt")):
-            evidence = run_step_a("job-e2e-2", corpus, ISOStandard.QMS, AuditStage.STAGE_2)
+        with patch("pipeline.step_a.orchestrator._call_ai", return_value=MOCK_STEP_A_RESPONSE), \
+             patch("pipeline.step_a.orchestrator._load_prompt_a", return_value="Prompt: {document_corpus} {standard} {stage}"), \
+             patch("pipeline.step_a.orchestrator.save_text_artifact", return_value=str(tmp_path / "a.txt")):
+            evidence = run_step_a("job-e2e-2", corpus, [ISOStandard.QMS], AuditStage.STAGE_2)
 
         all_items = evidence.identified_gaps
         # "No formal documented supplier evaluation procedure was found" → should be weak
@@ -178,15 +178,15 @@ class TestStepBIntegration:
         template_map = _make_template_map(tmp_path)
         style_guidance = _make_style_guidance()
 
-        with patch("backend.pipeline.step_a.orchestrator._call_claude", return_value=MOCK_STEP_A_RESPONSE), \
-             patch("backend.pipeline.step_a.orchestrator._load_prompt_a", return_value="Prompt: {document_corpus} {standard} {stage}"), \
-             patch("backend.pipeline.step_a.orchestrator.save_text_artifact", return_value=str(tmp_path / "a.txt")):
-            evidence = run_step_a("job-e2e-3", corpus, ISOStandard.QMS, AuditStage.STAGE_2)
+        with patch("pipeline.step_a.orchestrator._call_ai", return_value=MOCK_STEP_A_RESPONSE), \
+             patch("pipeline.step_a.orchestrator._load_prompt_a", return_value="Prompt: {document_corpus} {standard} {stage}"), \
+             patch("pipeline.step_a.orchestrator.save_text_artifact", return_value=str(tmp_path / "a.txt")):
+            evidence = run_step_a("job-e2e-3", corpus, [ISOStandard.QMS], AuditStage.STAGE_2)
 
-        with patch("backend.pipeline.step_b.orchestrator._call_claude", return_value=MOCK_STEP_B_RESPONSE), \
-             patch("backend.pipeline.step_b.orchestrator._load_prompt_b", return_value="Prompt B template"), \
-             patch("backend.pipeline.step_b.orchestrator.save_text_artifact", return_value=str(tmp_path / "b.txt")):
-            report = run_step_b("job-e2e-3", evidence, template_map, style_guidance, ISOStandard.QMS, AuditStage.STAGE_2)
+        with patch("pipeline.step_b.orchestrator._call_ai", return_value=MOCK_STEP_B_RESPONSE), \
+             patch("pipeline.step_b.orchestrator._load_prompt_b", return_value="Prompt B template"), \
+             patch("pipeline.step_b.orchestrator.save_text_artifact", return_value=str(tmp_path / "b.txt")):
+            report = run_step_b("job-e2e-3", evidence, template_map, style_guidance, [ISOStandard.QMS], AuditStage.STAGE_2)
 
         assert report.job_id == "job-e2e-3"
         assert len(report.sections) == 2
@@ -206,21 +206,21 @@ class TestFullPipelineE2E:
         style_guidance = _make_style_guidance()
 
         # Step A
-        with patch("backend.pipeline.step_a.orchestrator._call_claude", return_value=MOCK_STEP_A_RESPONSE), \
-             patch("backend.pipeline.step_a.orchestrator._load_prompt_a", return_value="Prompt: {document_corpus} {standard} {stage}"), \
-             patch("backend.pipeline.step_a.orchestrator.save_text_artifact", return_value=str(tmp_path / "a.txt")):
-            evidence = run_step_a("job-e2e-full", corpus, ISOStandard.QMS, AuditStage.STAGE_2)
+        with patch("pipeline.step_a.orchestrator._call_ai", return_value=MOCK_STEP_A_RESPONSE), \
+             patch("pipeline.step_a.orchestrator._load_prompt_a", return_value="Prompt: {document_corpus} {standard} {stage}"), \
+             patch("pipeline.step_a.orchestrator.save_text_artifact", return_value=str(tmp_path / "a.txt")):
+            evidence = run_step_a("job-e2e-full", corpus, [ISOStandard.QMS], AuditStage.STAGE_2)
 
         # Step B
-        with patch("backend.pipeline.step_b.orchestrator._call_claude", return_value=MOCK_STEP_B_RESPONSE), \
-             patch("backend.pipeline.step_b.orchestrator._load_prompt_b", return_value="Prompt B template"), \
-             patch("backend.pipeline.step_b.orchestrator.save_text_artifact", return_value=str(tmp_path / "b.txt")):
-            report = run_step_b("job-e2e-full", evidence, template_map, style_guidance, ISOStandard.QMS, AuditStage.STAGE_2)
+        with patch("pipeline.step_b.orchestrator._call_ai", return_value=MOCK_STEP_B_RESPONSE), \
+             patch("pipeline.step_b.orchestrator._load_prompt_b", return_value="Prompt B template"), \
+             patch("pipeline.step_b.orchestrator.save_text_artifact", return_value=str(tmp_path / "b.txt")):
+            report = run_step_b("job-e2e-full", evidence, template_map, style_guidance, [ISOStandard.QMS], AuditStage.STAGE_2)
 
         # Step C
-        with patch("backend.pipeline.step_c.orchestrator._call_claude", return_value=MOCK_STEP_C_RESPONSE), \
-             patch("backend.pipeline.step_c.orchestrator._load_prompt_c", return_value="Prompt C template"), \
-             patch("backend.pipeline.step_c.orchestrator.save_text_artifact", return_value=str(tmp_path / "c.txt")):
+        with patch("pipeline.step_c.orchestrator._call_ai", return_value=MOCK_STEP_C_RESPONSE), \
+             patch("pipeline.step_c.orchestrator._load_prompt_c", return_value="Prompt C template"), \
+             patch("pipeline.step_c.orchestrator.save_text_artifact", return_value=str(tmp_path / "c.txt")):
             validated, correction_log = run_step_c("job-e2e-full", report, evidence, template_map, style_guidance)
 
         # Validate output contracts
@@ -238,22 +238,21 @@ class TestFullPipelineE2E:
         template_map = _make_template_map(tmp_path)
         style_guidance = _make_style_guidance()
 
-        with patch("backend.pipeline.step_a.orchestrator._call_claude", return_value=MOCK_STEP_A_RESPONSE), \
-             patch("backend.pipeline.step_a.orchestrator._load_prompt_a", return_value="Prompt: {document_corpus} {standard} {stage}"), \
-             patch("backend.pipeline.step_a.orchestrator.save_text_artifact", return_value=str(tmp_path / "a.txt")):
-            evidence = run_step_a("job-e2e-order", corpus, ISOStandard.QMS, AuditStage.STAGE_2)
+        with patch("pipeline.step_a.orchestrator._call_ai", return_value=MOCK_STEP_A_RESPONSE), \
+             patch("pipeline.step_a.orchestrator._load_prompt_a", return_value="Prompt: {document_corpus} {standard} {stage}"), \
+             patch("pipeline.step_a.orchestrator.save_text_artifact", return_value=str(tmp_path / "a.txt")):
+            evidence = run_step_a("job-e2e-order", corpus, [ISOStandard.QMS], AuditStage.STAGE_2)
 
-        with patch("backend.pipeline.step_b.orchestrator._call_claude", return_value=MOCK_STEP_B_RESPONSE), \
-             patch("backend.pipeline.step_b.orchestrator._load_prompt_b", return_value="Prompt B template"), \
-             patch("backend.pipeline.step_b.orchestrator.save_text_artifact", return_value=str(tmp_path / "b.txt")):
-            report = run_step_b("job-e2e-order", evidence, template_map, style_guidance, ISOStandard.QMS, AuditStage.STAGE_2)
+        with patch("pipeline.step_b.orchestrator._call_ai", return_value=MOCK_STEP_B_RESPONSE), \
+             patch("pipeline.step_b.orchestrator._load_prompt_b", return_value="Prompt B template"), \
+             patch("pipeline.step_b.orchestrator.save_text_artifact", return_value=str(tmp_path / "b.txt")):
+            report = run_step_b("job-e2e-order", evidence, template_map, style_guidance, [ISOStandard.QMS], AuditStage.STAGE_2)
 
-        with patch("backend.pipeline.step_c.orchestrator._call_claude", return_value=MOCK_STEP_C_RESPONSE), \
-             patch("backend.pipeline.step_c.orchestrator._load_prompt_c", return_value="Prompt C template"), \
-             patch("backend.pipeline.step_c.orchestrator.save_text_artifact", return_value=str(tmp_path / "c.txt")):
+        with patch("pipeline.step_c.orchestrator._call_ai", return_value=MOCK_STEP_C_RESPONSE), \
+             patch("pipeline.step_c.orchestrator._load_prompt_c", return_value="Prompt C template"), \
+             patch("pipeline.step_c.orchestrator.save_text_artifact", return_value=str(tmp_path / "c.txt")):
             validated, _ = run_step_c("job-e2e-order", report, evidence, template_map, style_guidance)
 
         # Order indices must be sequential
         indices = [s.order_index for s in validated.sections]
         assert indices == sorted(indices)
-

@@ -1,10 +1,10 @@
 """
-BATUHAN — Audit Time Calculator: Claude Extractor
-Uses Claude to read uploaded application form(s) and extract all structured
+BATUHAN — Audit Time Calculator: AI Extractor
+Uses OpenAI to read uploaded application form(s) and extract all structured
 data needed for the audit time calculation.
 
 The sector classification tables are embedded directly in the system prompt
-so Claude never guesses — it always maps to the hardcoded categories.
+so the model never guesses — it always maps to the hardcoded categories.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import logging
 import re
 from typing import Optional
 
-import anthropic
+from ai.openai_client import OpenAIClient
 
 from config.settings import get_settings
 from .models import ExtractedFormData, SiteInfo, StandardClassification
@@ -21,7 +21,7 @@ from .models import ExtractedFormData, SiteInfo, StandardClassification
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# System prompt (sector tables embedded so Claude never guesses)
+# System prompt (sector tables embedded so the model never guesses)
 # ---------------------------------------------------------------------------
 
 SYSTEM_PROMPT = """You are an ISO audit time calculation assistant. Your sole job is to read
@@ -121,16 +121,19 @@ Rules:
 
 def extract_form_data(document_texts: list[dict[str, str]]) -> ExtractedFormData:
     """
-    Call Claude with the content of all uploaded form files and return ExtractedFormData.
+    Call the configured AI model with all uploaded form content and return ExtractedFormData.
 
     Args:
         document_texts: List of {"filename": str, "text": str} dicts from the parser.
 
     Returns:
-        ExtractedFormData parsed from Claude's JSON response.
+        ExtractedFormData parsed from the AI JSON response.
     """
     settings = get_settings()
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    client = OpenAIClient(
+        api_key=settings.openai_api_key,
+        reasoning_effort=settings.ai_reasoning_effort,
+    )
 
     # Build user message: concatenate all documents
     parts = []
@@ -141,11 +144,11 @@ def extract_form_data(document_texts: list[dict[str, str]]) -> ExtractedFormData
     if not user_content.strip():
         raise ValueError("No readable text found in uploaded documents.")
 
-    logger.info(f"Sending {len(document_texts)} document(s) to Claude for extraction "
+    logger.info(f"Sending {len(document_texts)} document(s) to OpenAI for extraction "
                 f"({sum(len(d['text']) for d in document_texts)} chars total)")
 
     response = client.messages.create(
-        model=settings.claude_model,
+        model=settings.ai_fast_model,
         max_tokens=2048,
         system=SYSTEM_PROMPT,
         messages=[
@@ -161,7 +164,7 @@ def extract_form_data(document_texts: list[dict[str, str]]) -> ExtractedFormData
     )
 
     raw = response.content[0].text.strip()
-    logger.debug(f"Claude raw extraction response ({len(raw)} chars): {raw[:300]}...")
+    logger.debug(f"AI raw extraction response ({len(raw)} chars): {raw[:300]}...")
 
     # Strip markdown fences if present
     raw_clean = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
@@ -170,14 +173,14 @@ def extract_form_data(document_texts: list[dict[str, str]]) -> ExtractedFormData
     try:
         payload = json.loads(raw_clean)
     except json.JSONDecodeError as e:
-        logger.error(f"Claude returned invalid JSON: {e}\nRaw: {raw[:500]}")
-        raise ValueError(f"Claude returned invalid JSON: {e}") from e
+        logger.error(f"AI returned invalid JSON: {e}\nRaw: {raw[:500]}")
+        raise ValueError(f"AI returned invalid JSON: {e}") from e
 
     return _parse_payload(payload, raw)
 
 
 def _parse_payload(payload: dict, raw: str) -> ExtractedFormData:
-    """Convert the raw JSON dict from Claude into a validated ExtractedFormData."""
+    """Convert the raw JSON dict from the model into validated ExtractedFormData."""
     sites = [
         SiteInfo(
             address=s.get("address", ""),
@@ -234,4 +237,3 @@ def _opt_float(val) -> Optional[float]:
         return float(val)
     except (TypeError, ValueError):
         return None
-

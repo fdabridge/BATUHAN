@@ -1,7 +1,7 @@
 """
 BATUHAN — Audit Time Calculator: Hardcoded Lookup Tables
 All sector classification lists and audit time tables from IAF MD5.
-DO NOT modify without updating the corresponding Claude prompt tables.
+DO NOT modify without updating the corresponding AI prompt tables.
 
 Table row format for ISO 9001/14001/45001:
   (min_eps, max_eps, init_total, ph1, ph2, surv, recert_total, recert_ph1, recert_ph2)

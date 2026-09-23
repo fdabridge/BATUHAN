@@ -3,7 +3,7 @@ BATUHAN — Step A Orchestrator (T12)
 Runs the full evidence extraction step:
   1. Load prompt_a.txt
   2. Inject document corpus + standard + stage
-  3. Call Claude (with retry on malformed output)
+  3. Call the configured AI model (with retry on malformed output)
   4. Parse + validate the 7-section output
   5. Attach source traceability to each item
   6. Persist evidence + traceability report
@@ -68,13 +68,16 @@ def _build_prompt(
     )
 
 
-def _call_claude(prompt: str) -> str:
-    """Send the prompt to Claude and return the raw text response."""
-    import anthropic
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+def _call_ai(prompt: str) -> str:
+    """Send the prompt to the configured OpenAI model and return text."""
+    from ai.openai_client import OpenAIClient
+    client = OpenAIClient(
+        api_key=settings.openai_api_key,
+        reasoning_effort=settings.ai_reasoning_effort,
+    )
     message = client.messages.create(
-        model=settings.claude_model,
-        max_tokens=settings.claude_max_tokens,
+        model=settings.ai_model,
+        max_tokens=settings.ai_max_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
     return message.content[0].text
@@ -92,7 +95,7 @@ def _run_single_standard_extraction(
 ) -> ExtractedEvidence:
     """
     Core evidence extraction for a single ISO standard.
-    Runs the full prompt→Claude→parse→validate→traceability loop.
+    Runs the full prompt→AI→parse→validate→traceability loop.
 
     Args:
         std_code:              Standard code string (e.g. "QMS").
@@ -122,13 +125,13 @@ def _run_single_standard_extraction(
     last_error: Exception | None = None
     for attempt in range(1, MAX_RETRIES + 2):
         logger.info(
-            f"[Step A] Calling Claude for {std_code} "
+            f"[Step A] Calling AI for {std_code} "
             f"(attempt {attempt}/{MAX_RETRIES + 1})"
         )
         try:
-            raw_output = _call_claude(prompt)
+            raw_output = _call_ai(prompt)
             logger.info(
-                f"[Step A] Claude response for {std_code}: "
+                f"[Step A] AI response for {std_code}: "
                 f"{len(raw_output):,} chars | preview: {raw_output[:200]!r}"
             )
             evidence = parse_evidence_output(raw_output, job_id)
@@ -175,7 +178,7 @@ def run_step_a(
         Validated ExtractedEvidence with traceability attached.
 
     Raises:
-        ValueError: If Claude returns malformed output after all retries.
+        ValueError: If the AI returns malformed output after all retries.
         FileNotFoundError: If prompt_a.txt is missing.
     """
     logger.info(f"[Step A] Starting evidence extraction | job={job_id}")
@@ -261,14 +264,17 @@ def run_step_a(
                 )
 
         # Merge all per-standard results
-        import anthropic as _anthropic
-        _client = _anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        from ai.openai_client import OpenAIClient
+        _client = OpenAIClient(
+            api_key=settings.openai_api_key,
+            reasoning_effort=settings.ai_reasoning_effort,
+        )
         evidence = merge_per_standard_evidence(
             per_standard_evidence=per_standard_evidence,
             client=_client,
-            model=settings.claude_model,
-            max_tokens=settings.claude_max_tokens,
-            temperature=settings.claude_temperature,
+            model=settings.ai_model,
+            max_tokens=settings.ai_max_tokens,
+            temperature=settings.ai_temperature,
             job_id=job_id,
         )
         logger.info(
@@ -323,4 +329,3 @@ def run_step_a(
         f"{total_items} evidence items | {weak_items} weak"
     )
     return evidence
-

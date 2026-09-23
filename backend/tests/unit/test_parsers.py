@@ -125,7 +125,7 @@ class TestTemplateParser:
         doc = Document()
         doc.add_paragraph("No headings here — just normal text")
         doc.save(str(p))
-        with pytest.raises(ValueError, match="No heading-style sections"):
+        with pytest.raises(ValueError, match="No section headings found"):
             parse_template(str(p))
 
     def test_parse_template_raises_on_missing_file(self, tmp_path):
@@ -207,4 +207,3 @@ class TestSchemaModels:
         assert status.error_message is None
         assert status.step_timestamps == {}
         assert status.completed_at is None
-

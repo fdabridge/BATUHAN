@@ -126,7 +126,7 @@ class TestAssertEvidenceValid:
 class TestStepCFallback:
     def test_returns_valid_report_and_log(self):
         gen = _make_generated("j3")
-        exc = RuntimeError("Claude timed out")
+        exc = RuntimeError("AI provider timed out")
         with patch("safety.failure_handler.save_text_artifact"):
             report, log = step_c_fallback("j3", gen, exc)
         assert report.job_id == "j3"
@@ -224,7 +224,8 @@ class TestBuildAuditTrail:
         assert trail["step_b"]["section_count"] == 2
         assert trail["step_c"]["correction_count"] == 3
         assert "prompt_version" in trail
-        assert "claude_model" in trail
+        assert trail["ai_provider"] == "openai"
+        assert "ai_model" in trail
 
     def test_trail_handles_missing_artifacts_gracefully(self):
         with patch("safety.audit_trail.read_text_artifact", side_effect=FileNotFoundError), \

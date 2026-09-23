@@ -2,7 +2,7 @@
 BATUHAN — Step C: Pre-Validation Layer (T20)
 Runs deterministic checks on the Step B GeneratedReport BEFORE
 calling Prompt C. Produces a list of flagged issues that are
-included in the Prompt C context so Claude knows what to fix.
+included in the Prompt C context so the model knows what to fix.
 
 Checks:
   1. All template sections are present
@@ -131,7 +131,7 @@ def run_pre_validation(
 def format_issues_for_prompt(issues: list[PreValidationIssue]) -> str:
     """
     Format the pre-validation issues into a text block that can be
-    injected into the Prompt C context so Claude knows what to focus on.
+    injected into the Prompt C context so the model knows what to focus on.
     """
     if not issues:
         return "Pre-validation passed: no issues flagged before this review."
@@ -160,4 +160,3 @@ def format_report_for_prompt(report: GeneratedReport) -> str:
         )
         parts.append("---")
     return "\n\n".join(parts)
-

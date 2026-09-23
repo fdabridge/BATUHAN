@@ -9,7 +9,7 @@ import json
 import logging
 import re
 
-from anthropic import Anthropic
+from ai.openai_client import OpenAIClient
 from schemas.models import ExtractedEvidence, EvidenceItem
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ _CATEGORIES = [
 
 def merge_per_standard_evidence(
     per_standard_evidence: dict,  # {standard_code: ExtractedEvidence}
-    client: Anthropic,
+    client: OpenAIClient,
     model: str,
     max_tokens: int,
     temperature: float,
@@ -157,6 +157,6 @@ def _concatenate_evidence(
             merged[cat].extend(getattr(evidence, cat, []))
     return ExtractedEvidence(
         job_id=job_id,
-        raw_output="[concatenated fallback — merge Claude call failed]",
+        raw_output="[concatenated fallback — merge AI call failed]",
         **merged,
     )
