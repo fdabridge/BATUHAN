@@ -53,6 +53,7 @@ def _assemble_with_llm_mapper(
     from assembly.llm_mapper import (
         get_cell_mapping,
         apply_cell_mapping,
+        sanitize_cell_mapping,
         strip_template_instruction_cells,
         template_to_structure_text,
     )
@@ -125,11 +126,6 @@ def _assemble_with_llm_mapper(
                 "coverage_validation_report.txt",
                 generate_coverage_report_text(coverage_report_lines),
             )
-            save_text_artifact(
-                job_id,
-                "assembly_cell_mapping_final.json",
-                json.dumps(mapping, indent=2, ensure_ascii=False),
-            )
     except Exception as coverage_err:
         logger.warning(
             "[Packager] Coverage validation/repair failed (%s); continuing with original mapping. | job=%s",
@@ -146,7 +142,19 @@ def _assemble_with_llm_mapper(
     doc = Document(template_path)
     body = doc.element.body
 
+    # The model proposes content, but the Word template owns the layout.  Repair
+    # or reject unsafe coordinates before persisting diagnostics and writing the
+    # document so the saved mapping exactly matches the generated report.
+    mapping = sanitize_cell_mapping(body, mapping, semantic_map=semantic_map)
     filled = apply_cell_mapping(body, mapping, semantic_map=semantic_map)
+    if job_id:
+        # apply_cell_mapping also appends deterministic conclusion ticks; save
+        # after that pass so diagnostics mirror the DOCX exactly.
+        save_text_artifact(
+            job_id,
+            "assembly_cell_mapping_final.json",
+            json.dumps(mapping, indent=2, ensure_ascii=False),
+        )
     cleared = strip_template_instruction_cells(body)
 
     logger.info(

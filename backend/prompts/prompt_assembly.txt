@@ -36,6 +36,9 @@ A. SELECTED STANDARD TABLES
        Any column whose header contains "✓" → tick symbol: √, NC, or OBS
    - Match report section titles / clause numbers to the corresponding data row.
    - Use the report content to write the findings; derive the result from the content.
+   - ONE CLAUSE ROW = ONE FINDING. Never combine findings for multiple numbered
+     clauses (for example 8.7, 9.1, and 9.2) in one cell. Split the evidence and
+     place each clause's narrative in that clause's own Findings cell.
    - Fill EVERY empty content cell in the selected standard's tables — this means
      BOTH the Findings column AND the Conclusion/Result column for every data row.
    - For the Conclusion/Result column:
@@ -209,4 +212,3 @@ TEMPLATE STRUCTURE:
 
 GENERATED REPORT CONTENT:
 {report_content}
-

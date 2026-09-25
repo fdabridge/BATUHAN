@@ -17,6 +17,7 @@ parse_cell_mapping(response) -> dict       (exposed for testing)
 from __future__ import annotations
 import logging
 import re
+from copy import deepcopy
 from pathlib import Path
 from lxml import etree
 from docx import Document
@@ -80,6 +81,23 @@ _ROW_CHUNK_SIZE = 35
 _CONCLUSION_COL_RE = re.compile(r"conclusion|result|\u2713|tick|\bnc\b|\bobs\b", re.IGNORECASE)
 _FINDINGS_COL_RE   = re.compile(r"finding|observation|remark",                re.IGNORECASE)
 
+_CLAUSE_COL_RE = re.compile(
+    r"requirement|control|(?:standard\s*/\s*)?clause(?:\s*(?:no|number))?",
+    re.IGNORECASE,
+)
+_CONFORMING_WORD_RE = re.compile(r"^(?:conforming|compliant|passed|pass|yes|ok)$", re.I)
+_OBS_WORD_RE = re.compile(r"\b(?:obs|observation)\b", re.I)
+_NC_WORD_RE = re.compile(r"\b(?:nc|non[- ]?conform(?:ity|ing))\b", re.I)
+_CLAUSE_SECTION_MARKER_RE = re.compile(
+    r"(?im)^\s*((?:[4-9]|10)\.\d+(?:\.\d+)?|A\.\d+\.\d+)\s*[—–:-]\s*"
+)
+
+_COLUMN_HEADER_HINT_RE = re.compile(
+    r"findings?|conclusion|result|requirements?|controls?|clause|remarks?|observations?"
+    r"|non[- ]?conformity statement|degree|reasons?",
+    re.IGNORECASE,
+)
+
 
 def _wtag(name: str) -> str:
     return f"{{{_WNS}}}{name}"
@@ -93,9 +111,13 @@ def _get_cell_text(tc) -> str:
     return "".join(t.text or "" for t in tc.iter(_wtag("t"))).strip()
 
 
-def _make_text_para_elem(text: str):
+def _make_text_para_elem(text: str, p_pr=None, r_pr=None):
     p = etree.Element(_wtag("p"))
+    if p_pr is not None:
+        p.append(deepcopy(p_pr))
     r = etree.SubElement(p, _wtag("r"))
+    if r_pr is not None:
+        r.append(deepcopy(r_pr))
     t = etree.SubElement(r, _wtag("t"))
     t.text = text
     t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
@@ -103,11 +125,23 @@ def _make_text_para_elem(text: str):
 
 
 def _fill_tc_elem(tc_elem, content_lines: list[str]) -> None:
-    """Replace all paragraphs in a table cell with new content lines."""
-    for p in list(tc_elem.findall(_wtag("p"))):
+    """Replace cell text while retaining the template's paragraph/run styling."""
+    existing_paragraphs = list(tc_elem.findall(_wtag("p")))
+    p_pr = None
+    r_pr = None
+    for paragraph in existing_paragraphs:
+        if p_pr is None:
+            p_pr = paragraph.find(_wtag("pPr"))
+        if r_pr is None:
+            run = paragraph.find(_wtag("r"))
+            if run is not None:
+                r_pr = run.find(_wtag("rPr"))
+        if p_pr is not None and r_pr is not None:
+            break
+    for p in existing_paragraphs:
         tc_elem.remove(p)
     for line in content_lines:
-        tc_elem.append(_make_text_para_elem(line))
+        tc_elem.append(_make_text_para_elem(line, p_pr=p_pr, r_pr=r_pr))
 
 
 # ---------------------------------------------------------------------------
@@ -205,6 +239,22 @@ def _tick_checkbox_cell(tc) -> bool:
         return True
 
     return False
+
+
+def _cell_has_checkbox(tc) -> bool:
+    """Return whether a cell contains a real or Unicode checkbox control."""
+    for sdt in tc.iter(_wtag("sdt")):
+        sdt_pr = sdt.find(_wtag("sdtPr"))
+        if sdt_pr is not None and sdt_pr.find(_w14tag("checkbox")) is not None:
+            return True
+    for fld_char in tc.iter(_wtag("fldChar")):
+        ff_data = fld_char.find(_wtag("ffData"))
+        if ff_data is not None and ff_data.find(_wtag("checkBox")) is not None:
+            return True
+    return any(
+        any(ch in (text.text or "") for ch in ("☐", "□", "▢"))
+        for text in tc.iter(_wtag("t"))
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -461,7 +511,34 @@ def _plan_call_chunks(
         # Very large (e.g. Annex A with 90+ controls): split into row-range sub-chunks.
         # The first sub-chunk starts at row 1 so the column header row is included.
         # Subsequent sub-chunks prepend the header row again for model context.
-        hdr_lines, _ = _build_table_structure_lines(tbl, tbl_num, selected_values, 1, 1)
+        # Preserve the section/title row and the *actual* column-header row.
+        # FR.232 clause tables use row 1 for the standard name and row 2 for
+        # Requirements | Findings | Conclusion.  Repeating row 1 alone left
+        # later chunks without any column meaning and caused column drift.
+        header_row = 1
+        best_header_score = 0
+        for row_idx, tr in enumerate(rows[:8], 1):
+            texts = [_get_cell_text(tc) for tc in tr.findall(_wtag("tc"))]
+            score = sum(bool(_COLUMN_HEADER_HINT_RE.search(text)) for text in texts if text)
+            if len([text for text in texts if text]) >= 2 and score > best_header_score:
+                header_row = row_idx
+                best_header_score = score
+
+        context_row_indices = list(dict.fromkeys([1, header_row]))
+        hdr_lines: list[str] = []
+        for context_row_idx in context_row_indices:
+            row_lines, _ = _build_table_structure_lines(
+                tbl,
+                tbl_num,
+                selected_values,
+                context_row_idx,
+                context_row_idx,
+            )
+            if not hdr_lines:
+                hdr_lines.extend(row_lines[:-1])
+            else:
+                # Skip the duplicate TABLE label and trailing blank line.
+                hdr_lines.extend(row_lines[1:-1])
         chunk_start = 1
         while chunk_start <= total_rows:
             chunk_end = min(chunk_start + _ROW_CHUNK_SIZE - 1, total_rows)
@@ -471,7 +548,7 @@ def _plan_call_chunks(
             if chunk_start > 1 and c_empty > 0:
                 # Repeat header row so the model knows column layout in every sub-chunk
                 c_lines = (
-                    hdr_lines[:-1]
+                    hdr_lines
                     + [f"  ... (continuing — rows {chunk_start}–{chunk_end}) ..."]
                     + c_lines
                 )
@@ -705,6 +782,302 @@ def _auto_tick_conclusion_cells(
 # Cell filler
 # ---------------------------------------------------------------------------
 
+def _infer_body_column_roles(body) -> dict[int, dict[int, str]]:
+    """Infer explicit header roles directly from the Word XML.
+
+    This is a no-network fallback for callers that do not provide a semantic map.
+    Only unambiguous template headers are classified.
+    """
+    roles: dict[int, dict[int, str]] = {}
+    for tbl_num, tbl in enumerate(body.findall(_wtag("tbl")), 1):
+        table_roles: dict[int, str] = {}
+        for tr in tbl.findall(_wtag("tr"))[:8]:
+            cells = tr.findall(_wtag("tc"))
+            texts = [_get_cell_text(tc) for tc in cells]
+            # Data rows usually have only the pre-printed requirement cell
+            # populated; do not mistake words inside those questions for headers.
+            if len([text for text in texts if text]) < 2:
+                continue
+            for col_num, text in enumerate(texts, 1):
+                normalized = re.sub(r"\s+", " ", text).strip()
+                if _CONCLUSION_COL_RE.search(normalized):
+                    table_roles[col_num] = "conclusion"
+                elif _FINDINGS_COL_RE.search(normalized) or re.search(
+                    r"non[- ]?conformity statement|audit evidence", normalized, re.I
+                ):
+                    table_roles[col_num] = "findings"
+                elif _CLAUSE_COL_RE.search(normalized):
+                    table_roles.setdefault(col_num, "clause_ref")
+        if table_roles:
+            roles[tbl_num] = table_roles
+    return roles
+
+
+def _normalize_conclusion_content(content: str) -> str | None:
+    """Return the permitted compact conclusion token, or None for narrative."""
+    stripped = content.strip()
+    if stripped in _TICK_SYMBOLS or _CONFORMING_WORD_RE.fullmatch(stripped):
+        return "√"
+    if _OBS_WORD_RE.fullmatch(stripped):
+        return "OBS"
+    if _NC_WORD_RE.fullmatch(stripped):
+        return "NC"
+    return None
+
+
+def _split_compound_clause_content(content: str) -> list[tuple[str, str, str | None]]:
+    """Split a multi-clause narrative into ``(clause, finding, result)`` parts.
+
+    The assembly model occasionally returned one cell containing several blocks
+    such as ``8.7 — Conforming ...``, ``9.1 — Conforming ...`` and ``9.2 — ...``.
+    Those blocks belong in separate FR.232 rows.  Only explicit line-start clause
+    markers are accepted so document references mentioned inside prose are not
+    mistaken for new table rows.
+    """
+    matches = list(_CLAUSE_SECTION_MARKER_RE.finditer(content))
+    if len(matches) < 2:
+        return []
+
+    prefix = content[: matches[0].start()].strip()
+    sections: list[tuple[str, str, str | None]] = []
+    status_re = re.compile(
+        r"^\s*(conforming|compliant|passed|nc|non[- ]?conform(?:ity|ing)|observation|obs)"
+        r"\s*(?:\([^)]*\))?\s*[.\-–—:]*\s*",
+        re.I,
+    )
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(content)
+        clause_id = match.group(1).upper()
+        section_text = content[match.end():end].strip()
+        status_match = status_re.match(section_text)
+        conclusion = None
+        if status_match:
+            conclusion = _normalize_conclusion_content(status_match.group(1))
+            section_text = section_text[status_match.end():].strip()
+        if index == 0 and prefix:
+            section_text = f"{prefix}\n\n{section_text}".strip()
+        sections.append((clause_id, section_text, conclusion))
+    return sections
+
+
+def sanitize_cell_mapping(
+    body,
+    mapping: dict[str, str],
+    semantic_map: "ColumnSemanticMap | None" = None,
+) -> dict[str, str]:
+    """Validate and repair AI coordinates against the actual Word template.
+
+    The model supplies content; it does not own the layout.  This guard prevents
+    the two destructive failure modes seen in production:
+
+    * narrative overwriting a pre-printed requirement/clause cell; and
+    * narrative being inserted into the narrow conclusion/result column.
+
+    When the intended Findings/value cell is unambiguous, content is relocated.
+    Otherwise the unsafe assignment is skipped rather than damaging the form.
+    """
+    coord_re = re.compile(r"^T(\d+)_R(\d+)_C(\d+)$", re.I)
+    coord_index: dict[str, tuple[int, int, int, object, list]] = {}
+    inferred_roles = _infer_body_column_roles(body)
+
+    for tbl_num, tbl in enumerate(body.findall(_wtag("tbl")), 1):
+        for row_num, tr in enumerate(tbl.findall(_wtag("tr")), 1):
+            row_cells = tr.findall(_wtag("tc"))
+            for col_num, tc in enumerate(row_cells, 1):
+                coord = f"T{tbl_num}_R{row_num}_C{col_num}"
+                coord_index[coord] = (tbl_num, row_num, col_num, tc, row_cells)
+
+    def role_for(table_num: int, col_num: int) -> str:
+        if semantic_map is not None:
+            role = semantic_map.get_role(table_num, col_num)
+            if role != "other":
+                return role
+        return inferred_roles.get(table_num, {}).get(col_num, "other")
+
+    def role_column(table_num: int, role: str) -> int | None:
+        if semantic_map is not None:
+            semantic_candidates = {
+                col
+                for col, value in semantic_map.table_col_roles.get(table_num, {}).items()
+                if value == role
+            }
+            if semantic_candidates:
+                return min(semantic_candidates)
+        candidates = {
+            col for col, value in inferred_roles.get(table_num, {}).items() if value == role
+        }
+        return min(candidates) if candidates else None
+
+    def clause_row(table_num: int, clause_id: str) -> int | None:
+        clause_col = role_column(table_num, "clause_ref")
+        if clause_col is None:
+            return None
+        pattern = re.compile(
+            rf"(?<![0-9.]){re.escape(clause_id)}(?![0-9.])",
+            re.I,
+        )
+        for coord, (tbl, row, col, tc, _row_cells) in coord_index.items():
+            if tbl == table_num and col == clause_col and pattern.search(_get_cell_text(tc)):
+                return row
+        return None
+
+    # Expand explicit multi-clause blocks before validating individual cells.
+    # This fixes both the coordinate and the semantic row mapping in one pass.
+    input_items: list[tuple[str, str]] = []
+    for raw_coord, raw_content in mapping.items():
+        coord = raw_coord.upper().strip()
+        indexed = coord_index.get(coord)
+        sections = _split_compound_clause_content(str(raw_content))
+        if indexed is None or not sections:
+            input_items.append((raw_coord, raw_content))
+            continue
+        table_num, _row_num, _col_num, _tc, _row_cells = indexed
+        findings_col = role_column(table_num, "findings")
+        conclusion_col = role_column(table_num, "conclusion")
+        expanded = 0
+        expanded_items: list[tuple[str, str]] = []
+        for clause_id, finding, conclusion in sections:
+            destination_row = clause_row(table_num, clause_id)
+            if destination_row is None or findings_col is None:
+                continue
+            if finding:
+                expanded_items.append(
+                    (f"T{table_num}_R{destination_row}_C{findings_col}", finding)
+                )
+            if conclusion and conclusion_col is not None:
+                expanded_items.append(
+                    (f"T{table_num}_R{destination_row}_C{conclusion_col}", conclusion)
+                )
+            expanded += 1
+        if expanded == len(sections):
+            input_items.extend(expanded_items)
+            logger.warning(
+                "[LLM Mapper] Split compound mapping %s into %d clause rows.",
+                coord,
+                expanded,
+            )
+        else:
+            input_items.append((raw_coord, raw_content))
+
+    direct: dict[str, str] = {}
+    relocations: list[tuple[str, str, str]] = []
+
+    def queue_relocation(
+        source_coord: str,
+        content: str,
+        table_num: int,
+        row_num: int,
+        destination_role: str,
+        row_cells: list,
+    ) -> bool:
+        destination_col = role_column(table_num, destination_role)
+
+        # Two-column label/value rows have no Findings header, but their intended
+        # value cell is still structurally unambiguous.
+        if destination_col is None and len(row_cells) == 2:
+            empty_cols = [
+                idx for idx, cell in enumerate(row_cells, 1) if not _get_cell_text(cell)
+            ]
+            if len(empty_cols) == 1:
+                destination_col = empty_cols[0]
+
+        if destination_col is None or destination_col > len(row_cells):
+            return False
+        destination = f"T{table_num}_R{row_num}_C{destination_col}"
+        destination_cell = row_cells[destination_col - 1]
+        destination_text = _get_cell_text(destination_cell)
+        if destination_text and not (
+            _INSTRUCTION_CELL_RE.search(destination_text)
+            and not _AUDIT_CONTENT_RE.search(destination_text)
+        ):
+            return False
+        relocations.append((source_coord, destination, content))
+        return True
+
+    for raw_coord, raw_content in input_items:
+        coord = raw_coord.upper().strip()
+        match = coord_re.match(coord)
+        if not match or coord not in coord_index:
+            logger.warning("[LLM Mapper] Unknown coordinate %s — skipping.", raw_coord)
+            continue
+        table_num, row_num, col_num, tc, row_cells = coord_index[coord]
+        content = str(raw_content).strip()
+        if not content:
+            continue
+        role = role_for(table_num, col_num)
+        existing_text = _get_cell_text(tc)
+        replaceable_instruction = bool(
+            existing_text
+            and _INSTRUCTION_CELL_RE.search(existing_text)
+            and not _AUDIT_CONTENT_RE.search(existing_text)
+        )
+
+        # Pre-printed template content is immutable.  Repair an obvious wrong
+        # coordinate by moving the generated content to the row's Findings/value
+        # cell; otherwise discard it safely.
+        if existing_text and not replaceable_instruction:
+            if content in _TICK_SYMBOLS and _cell_has_checkbox(tc):
+                direct[coord] = content
+                continue
+            destination_role = "conclusion" if content in _TICK_SYMBOLS else "findings"
+            if not queue_relocation(
+                coord, content, table_num, row_num, destination_role, row_cells
+            ):
+                logger.warning(
+                    "[LLM Mapper] Refused to overwrite pre-printed cell %s (%r).",
+                    coord,
+                    existing_text[:80],
+                )
+            continue
+
+        if role == "conclusion":
+            conclusion = _normalize_conclusion_content(content)
+            if conclusion is not None:
+                direct[coord] = conclusion
+            elif not queue_relocation(
+                coord, content, table_num, row_num, "findings", row_cells
+            ):
+                logger.warning(
+                    "[LLM Mapper] Rejected narrative assigned to conclusion cell %s.", coord
+                )
+            continue
+
+        if role == "findings" and content in _TICK_SYMBOLS:
+            if not queue_relocation(
+                coord, content, table_num, row_num, "conclusion", row_cells
+            ):
+                logger.warning("[LLM Mapper] Rejected tick assigned to findings cell %s.", coord)
+            continue
+
+        is_narrative = len(content) >= 60 or len(content.split()) >= 10 or "\n" in content
+        if role in {"clause_ref", "label"} and is_narrative:
+            if not queue_relocation(
+                coord, content, table_num, row_num, "findings", row_cells
+            ):
+                logger.warning(
+                    "[LLM Mapper] Rejected narrative assigned to %s cell %s.", role, coord
+                )
+            continue
+
+        direct[coord] = content
+
+    repaired = dict(direct)
+    for source, destination, content in relocations:
+        if destination in repaired:
+            logger.warning(
+                "[LLM Mapper] Did not relocate %s to occupied cell %s.", source, destination
+            )
+            continue
+        repaired[destination] = content
+        logger.warning("[LLM Mapper] Relocated unsafe mapping %s → %s.", source, destination)
+
+    logger.info(
+        "[LLM Mapper] Mapping safety pass: %d input → %d safe assignments.",
+        len(mapping),
+        len(repaired),
+    )
+    return repaired
+
 def apply_cell_mapping(
     body,
     mapping: dict[str, str],
@@ -721,6 +1094,12 @@ def apply_cell_mapping(
     semantic_map is forwarded to _auto_tick_conclusion_cells for improved
     column-role detection (falls back to regex when None or empty).
     """
+    safe_mapping = sanitize_cell_mapping(body, mapping, semantic_map=semantic_map)
+    # Mutate the caller's mapping too so persisted diagnostics match what was
+    # actually written to the DOCX.
+    mapping.clear()
+    mapping.update(safe_mapping)
+
     # Post-process: auto-fill √ in Conclusion cells adjacent to filled Findings cells
     _auto_tick_conclusion_cells(body, mapping, semantic_map=semantic_map)
 
