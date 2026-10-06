@@ -699,17 +699,17 @@ export default function AdminUsersPage() {
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-lg border border-gray-100 bg-white">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-lg border border-gray-100 bg-white">
+        <table className="w-full min-w-[960px] table-fixed text-sm">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-medium text-gray-500">
-              <th className="px-4 py-3">User</th>
-              <th className="px-4 py-3">Username</th>
-              <th className="px-4 py-3">Email</th>
-              <th className="px-4 py-3">Role</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Last login</th>
-              <th className="px-4 py-3 text-right">Actions</th>
+              <th className="w-[18%] px-4 py-3">User</th>
+              <th className="w-[14%] px-4 py-3">Username</th>
+              <th className="w-[22%] px-4 py-3">Email</th>
+              <th className="w-[12%] px-4 py-3">Role</th>
+              <th className="w-[9%] px-4 py-3">Status</th>
+              <th className="w-[10%] px-4 py-3">Last login</th>
+              <th className="sticky right-0 z-10 w-[15%] bg-gray-50 px-4 py-3 text-right shadow-[-8px_0_12px_-12px_rgba(0,0,0,0.35)]">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -731,15 +731,15 @@ export default function AdminUsersPage() {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <UserAvatar name={u.full_name} />
-                      <span className="text-gray-800" style={{ fontWeight: 500 }}>{u.full_name}</span>
+                      <span className="truncate text-gray-800" style={{ fontWeight: 500 }} title={u.full_name}>{u.full_name}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-gray-500">{u.username ?? '—'}</td>
-                  <td className="px-4 py-3 text-gray-500" style={{ fontSize: 13 }}>{u.email}</td>
+                  <td className="truncate px-4 py-3 font-mono text-xs text-gray-500" title={u.username ?? undefined}>{u.username ?? '—'}</td>
+                  <td className="truncate px-4 py-3 text-gray-500" style={{ fontSize: 13 }} title={u.email}>{u.email}</td>
                   <td className="px-4 py-3"><RolePill role={u.role} /></td>
                   <td className="px-4 py-3"><StatusBadge active={u.is_active} /></td>
                   <td className="px-4 py-3 text-gray-500" style={{ fontSize: 13 }}>{formatDateTime(u.last_login)}</td>
-                  <td className="px-4 py-3">
+                  <td className="sticky right-0 bg-white px-4 py-3 shadow-[-8px_0_12px_-12px_rgba(0,0,0,0.35)]">
                     <div className="flex items-center justify-end gap-2">
                       <button
                         type="button" onClick={() => setEditTarget(u)}
