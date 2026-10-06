@@ -437,6 +437,8 @@ export interface AdminUserCreatePayload {
 }
 
 export interface AdminUserUpdatePayload {
+  email?:      string
+  username?:   string
   full_name?:  string
   role?:       UserRole
   is_active?:  boolean

@@ -265,6 +265,8 @@ function EditUserModal({
     if (user) {
       setForm({
         full_name:  user.full_name,
+        username:   user.username ?? '',
+        email:      user.email,
         role:       user.role,
         is_active:  user.is_active,
         auditor_id: user.auditor_id ?? null,
@@ -292,7 +294,22 @@ function EditUserModal({
     if (form.full_name !== undefined && !form.full_name.trim()) {
       setErr('Full name cannot be empty.'); return
     }
-    m.mutate({ ...form, full_name: form.full_name?.trim() })
+    if (form.email !== undefined && !form.email.trim()) {
+      setErr('Email cannot be empty.'); return
+    }
+    const role = form.role ?? user?.role
+    const username = form.username?.trim()
+    const payload: AdminUserUpdatePayload = {
+      ...form,
+      full_name: form.full_name?.trim(),
+      email: form.email?.trim(),
+      auditor_id: role === 'auditor' ? form.auditor_id ?? null : null,
+    }
+    // Legacy accounts can have no username. Do not make an unrelated edit
+    // depend on backfilling one, but validate and send any supplied value.
+    if (username) payload.username = username
+    else delete payload.username
+    m.mutate(payload)
   }
 
   return (
@@ -304,9 +321,22 @@ function EditUserModal({
             onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))} className={inputCls} />
         </div>
         <div>
+          <label className={lblCls}>Username</label>
+          <input type="text" value={form.username ?? ''}
+            onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))} className={inputCls} />
+        </div>
+        <div>
+          <label className={lblCls}>Email</label>
+          <input type="email" value={form.email ?? ''}
+            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} className={inputCls} />
+        </div>
+        <div>
           <label className={lblCls}>Role</label>
           <select value={form.role ?? 'planner'}
-            onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as UserRole }))} className={inputCls}>
+            onChange={(e) => {
+              const role = e.target.value as UserRole
+              setForm((f) => ({ ...f, role, auditor_id: role === 'auditor' ? f.auditor_id : null }))
+            }} className={inputCls}>
             {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>
         </div>

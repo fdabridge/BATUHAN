@@ -119,7 +119,7 @@ def create_user(
     return user
 
 
-_UPDATABLE = {"full_name", "role", "is_active", "auditor_id", "username"}
+_UPDATABLE = {"email", "full_name", "role", "is_active", "auditor_id", "username"}
 
 
 def update_user(db: Session, user_id: str, **fields) -> PlatformUser | None:
@@ -127,7 +127,9 @@ def update_user(db: Session, user_id: str, **fields) -> PlatformUser | None:
     if not user:
         return None
     for key, value in fields.items():
-        if key in _UPDATABLE and value is not None:
+        # auditor_id is intentionally nullable: admins must be able to unlink an
+        # account from an auditor record or clear it when changing the role.
+        if key in _UPDATABLE and (value is not None or key == "auditor_id"):
             setattr(user, key, value)
     user.updated_at = datetime.utcnow()
     db.commit()

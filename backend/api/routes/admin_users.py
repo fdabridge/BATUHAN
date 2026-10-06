@@ -92,12 +92,52 @@ def admin_update_user(
     db: Session = Depends(get_db),
     _admin: PlatformUser = Depends(require_admin),
 ):
-    if body.role and body.role not in VALID_ROLES:
-        raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of {sorted(VALID_ROLES)}")
-    user = update_user(db, user_id, **body.model_dump(exclude_none=True))
+    user = get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return user
+
+    updates = body.model_dump(exclude_unset=True)
+
+    for field in ("email", "full_name", "username", "role"):
+        if field in updates and updates[field] is not None:
+            updates[field] = updates[field].strip()
+
+    if "full_name" in updates and not updates["full_name"]:
+        raise HTTPException(status_code=400, detail="Full name cannot be empty.")
+    if "email" in updates and not updates["email"]:
+        raise HTTPException(status_code=400, detail="Email cannot be empty.")
+    if "username" in updates and not updates["username"]:
+        raise HTTPException(status_code=400, detail="Username cannot be empty.")
+
+    role = updates.get("role", user.role)
+    if role not in VALID_ROLES:
+        raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of {sorted(VALID_ROLES)}")
+
+    # Keep the active administrator from accidentally locking themselves out.
+    if user_id == _admin.id:
+        if updates.get("is_active") is False:
+            raise HTTPException(status_code=400, detail="Cannot deactivate your own account.")
+        if role != "admin":
+            raise HTTPException(status_code=400, detail="Cannot remove your own admin role.")
+
+    if "email" in updates:
+        existing = get_user_by_email(db, updates["email"])
+        if existing and existing.id != user_id:
+            raise HTTPException(status_code=409, detail="Email already exists.")
+    if "username" in updates:
+        existing = get_user_by_username(db, updates["username"])
+        if existing and existing.id != user_id:
+            raise HTTPException(status_code=409, detail="Username already exists.")
+
+    # Non-auditor accounts must not retain a stale auditor profile link.
+    if role != "auditor":
+        updates["auditor_id"] = None
+
+    try:
+        return update_user(db, user_id, **updates)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="A user with this email or username already exists.")
 
 
 @router.post("/users/{user_id}/reset-password")
