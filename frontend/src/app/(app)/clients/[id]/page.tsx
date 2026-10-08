@@ -2846,6 +2846,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
           currentUserRole={currentUser?.role ?? ''}
           auditType={data.audit_type ?? null}
           workflowVersion={data.workflow_version ?? 1}
+          isTransfer={data.is_transfer}
           onAdvanced={invalidate}
         />
       )}
@@ -2946,6 +2947,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
         auditSetId={id}
         stages={displayStages}
         auditType={data.audit_type ?? null}
+        standards={(data.standards ?? []) as string[]}
         workflowStatus={data.workflow_status ?? null}
         workflowVersion={data.workflow_version ?? 1}
         isTransfer={data.is_transfer}
@@ -2957,11 +2959,12 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
         auditSetId={id}
         workflowStatus={data.workflow_status ?? null}
         auditType={data.audit_type ?? null}
+        isTransfer={data.is_transfer}
       />
 
       {/* FR.218 Application Reviewer — Portal 51 (FSMS/ISMS only) */}
       {needsFr218Reviewer((data.standards ?? []) as string[]) &&
-       !(data.audit_type ?? '').startsWith('surveillance') && (
+       (!(data.audit_type ?? '').startsWith('surveillance') || data.is_transfer) && (
         <div className="mt-4 rounded-xl border bg-white p-4">
           <h3 className="mb-1 text-sm font-semibold text-gray-700">
             Application Reviewer (FR.218) — Required for FSMS / ISMS

@@ -32,7 +32,7 @@ from audit_set.db_models import (
 )
 from audit_set.pipeline_triggers import fire_phase_triggers
 from audit_set.report_signature_rules import audit_report_has_all_required_approvals
-from audit_set.workflow_policy import transition_matches_version
+from audit_set.workflow_policy import is_transfer_surveillance, transition_matches_version
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
 from auth.policy import resolve_realtime_action_datetime
@@ -124,18 +124,19 @@ def _stage_docs(
 
 def _assert_stage_entry_gate(db: Session, audit_set_id: str, stage: str) -> None:
     """
-    Portal 49b gate chain — hard server-side checks before stage1_in_progress
-    may start. Stage 2 planning docs (FR.224s, FR.223) are uploaded DURING
-    stage2_in_progress, not before it — see _assert_stage1_complete_gate().
+    Portal 49b gate chain — hard server-side checks before an entry audit may
+    start. Transfer surveillance uses the same controls against its one
+    ``surveillance`` stage; ordinary surveillance keeps its FR.234 flow.
 
-    stage1_in_progress requires:
+    Entry requires:
       • FR.222 (audit_programme) fully signed (CB_PLANNER + CB_CERT_MANAGER)
-      • ALL Stage 1 FR.224s (team_info) signed by their assigned auditors
-      • FR.223 (audit_plan, Stage 1) signed by ORG_REP
+      • ALL stage FR.224s (team_info) signed by their assigned auditors
+      • FR.223 (audit_plan) signed by ORG_REP
     """
-    if stage != "stage_1":
+    if stage not in {"stage_1", "surveillance"}:
         return
 
+    stage_label = "Stage 1" if stage == "stage_1" else "Surveillance"
     failures: list[str] = []
 
     programmes = db.query(AuditSetSharedDocument).filter_by(
@@ -147,20 +148,22 @@ def _assert_stage_entry_gate(db: Session, audit_set_id: str, stage: str) -> None
         failures.append("FR.222 Audit Programme is not fully signed (Planner + Cert Manager)")
 
     team_infos = _stage_docs(
-        db, audit_set_id, "team_info", "stage_1", include_null_stage=True,
+        db, audit_set_id, "team_info", stage, include_null_stage=True,
     )
     if not team_infos:
-        failures.append("No FR.224 team-info documents exist for stage_1")
+        failures.append(f"No FR.224 team-info documents exist for {stage_label}")
     elif any(_unsigned_required_count(db, t.id) for t in team_infos):
-        failures.append("Not all stage_1 FR.224s are signed by their assigned auditors")
+        failures.append(f"Not all {stage_label} FR.224s are signed by their assigned auditors")
 
     plans = _stage_docs(
-        db, audit_set_id, "audit_plan", "stage_1", include_null_stage=True,
+        db, audit_set_id, "audit_plan", stage, include_null_stage=True,
     )
     if not plans:
-        failures.append("FR.223 Audit Plan for stage_1 has not been uploaded")
+        failures.append(f"FR.223 Audit Plan for {stage_label} has not been uploaded")
     elif any(_unsigned_required_count(db, p.id) for p in plans):
-        failures.append("FR.223 Audit Plan (stage_1) is not signed by the organisation representative")
+        failures.append(
+            f"FR.223 Audit Plan ({stage_label}) is not signed by the organisation representative"
+        )
 
     if failures:
         raise HTTPException(409, "Gate not met: " + "; ".join(failures))
@@ -502,6 +505,8 @@ def update_workflow_status(
     # Stage 2.
     if to_status == "stage1_in_progress":
         _assert_stage_entry_gate(db, audit_set_id, "stage_1")
+    elif to_status == "audit_scheduled" and is_transfer_surveillance(audit_set):
+        _assert_stage_entry_gate(db, audit_set_id, "surveillance")
     elif to_status == "stage2_in_progress":
         _assert_stage1_complete_gate(db, audit_set_id)
         _assert_nc_stage_complete_gate(db, audit_set_id, "stage_1")

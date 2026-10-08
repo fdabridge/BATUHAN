@@ -248,6 +248,33 @@ def _build_recertification_front_docs(
     return specs
 
 
+def _build_transfer_surveillance_front_docs(
+    needs_base,
+    needs_mdqms,
+    needs_isms,
+    sub: str,
+    missing: list[str],
+) -> list[DocumentSpec]:
+    """Certification front-office forms required for a transferred client.
+
+    A transfer surveillance is still a single audit stage, so none of the
+    Stage 1 audit deliverables are included.  It does, however, require the
+    application and commercial controls used by initial certification.
+    """
+    specs: list[DocumentSpec] = []
+    seen: set[str] = set()
+
+    primary = "base" if needs_base else ("mdqms" if needs_mdqms else ("isms" if needs_isms else None))
+    if primary:
+        _add(specs, seen, "FR.217", primary, sub, FR217_MAP, "all", missing)
+        _add(specs, seen, "FR.218", primary, sub, FR218_MAP, "all", missing)
+        _add(specs, seen, "FR.220", primary, sub, {},        "all", missing)
+        _add(specs, seen, "FR.221", primary, sub, {},        "all", missing)
+        _add(specs, seen, "FR.222", primary, sub, FR222_MAP, "all", missing)
+
+    return specs
+
+
 
 def _build_stage_2(needs_base, needs_mdqms, needs_isms, sub: str, missing: list[str]) -> list[DocumentSpec]:
     specs: list[DocumentSpec] = []
@@ -285,6 +312,7 @@ def _build_surveillance(
     sub: str,
     missing: list[str],
     stage_context: str = "surveillance",
+    include_notification: bool = True,
 ) -> list[DocumentSpec]:
     specs: list[DocumentSpec] = []
     seen: set[str] = set()
@@ -314,7 +342,8 @@ def _build_surveillance(
     # Single-instance forms (primary group only).
     primary = "base" if needs_base else ("mdqms" if needs_mdqms else ("isms" if needs_isms else None))
     if primary:
-        _add(specs, seen, "FR.234", primary, sub, FR234_MAP, stage_context, missing)
+        if include_notification:
+            _add(specs, seen, "FR.234", primary, sub, FR234_MAP, stage_context, missing)
         _add(specs, seen, "FR.233", primary, sub, FR233_MAP, stage_context, missing)
 
     return specs
@@ -362,7 +391,25 @@ def resolve_document_set(audit_set) -> tuple[dict[str, list[DocumentSpec]], list
 
     if audit_type.startswith("surveillance"):
         sub = _get_stage_subfolder(audit_type, "surveillance", accreditation_body)
-        document_set["Surveillance"] = _build_surveillance(needs_base, needs_mdqms, needs_isms, sub, missing)
+        if getattr(audit_set, "is_transfer", False):
+            front_sub = _get_stage_subfolder(audit_type, "stage_1", accreditation_body)
+            document_set["Surveillance"] = (
+                _build_transfer_surveillance_front_docs(
+                    needs_base, needs_mdqms, needs_isms, front_sub, missing,
+                )
+                + _build_surveillance(
+                    needs_base,
+                    needs_mdqms,
+                    needs_isms,
+                    sub,
+                    missing,
+                    include_notification=False,
+                )
+            )
+        else:
+            document_set["Surveillance"] = _build_surveillance(
+                needs_base, needs_mdqms, needs_isms, sub, missing,
+            )
     elif audit_type == "recertification":
         front_sub = _get_stage_subfolder(audit_type, "stage_1", accreditation_body)
         sub = _get_stage_subfolder(audit_type, "recertification", accreditation_body)

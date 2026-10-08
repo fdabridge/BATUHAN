@@ -30,10 +30,12 @@ export function InternalApprovalsSection({
   auditSetId,
   workflowStatus,
   auditType,
+  isTransfer = false,
 }: {
   auditSetId: string
   workflowStatus: string | null
   auditType?: string | null
+  isTransfer?: boolean
 }) {
   const [slots, setSlots]   = useState<SigSlot[]>([])
   const [loading, setLoading] = useState(true)
@@ -52,8 +54,9 @@ export function InternalApprovalsSection({
 
   useEffect(() => { load() }, [load])
 
-  // Surveillance audits do not use FR.222 — hide section entirely.
-  if (auditType && auditType.startsWith('surveillance')) return null
+  // Ordinary surveillance does not use FR.222. Transfer surveillance follows
+  // the certification document flow and therefore keeps this approval panel.
+  if (auditType && auditType.startsWith('surveillance') && !isTransfer) return null
 
   const showSection = workflowStatus && workflowStatus !== 'pending_review'
   if (!showSection) return null

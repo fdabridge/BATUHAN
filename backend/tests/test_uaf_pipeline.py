@@ -122,6 +122,27 @@ def _recertification_audit_set() -> NS:
     return audit_set
 
 
+def _transfer_surveillance_audit_set(status: str = "fr218_complete") -> NS:
+    audit_set = _audit_set()
+    audit_set.audit_type = "surveillance_1"
+    audit_set.is_transfer = True
+    audit_set.workflow_version = 2
+    audit_set.workflow_status = status
+    audit_set.transfer_reviewer_id = "4"
+    audit_set.transfer_reviewer_name = "Terry Reviewer"
+    audit_set.stages = [
+        NS(
+            stage_type="surveillance", stage_order=1,
+            audit_date_start=date(2026, 7, 14), audit_date_end=date(2026, 7, 16),
+            audit_days=3.0, notification_date=date(2026, 5, 14),
+            lead_auditor_id="1", lead_auditor_name="John Smith",
+            auditors=[{"id": "2", "name": "Jane Auditor", "covered_scope": {}}],
+            technical_experts=[], observers=[],
+        )
+    ]
+    return audit_set
+
+
 # --------------------------------------------------------------------------- #
 # Helpers + shared fixtures
 # --------------------------------------------------------------------------- #
@@ -250,6 +271,71 @@ def test_recertification_zip_includes_front_documents():
     names = " ".join(_stage_files(entries, "Recertification"))
     for fr in ("FR.218", "FR.220", "FR.221", "FR.222"):
         assert fr in names, f"{fr} missing from Recertification"
+
+
+def test_transfer_surveillance_uses_certification_front_docs_without_stage1_or_fr234():
+    audit_set = _transfer_surveillance_audit_set()
+
+    document_set, missing = resolve_document_set(audit_set)
+
+    assert missing == []
+    assert set(document_set) == {"Surveillance"}
+    by_fr = {spec.fr_number: spec for spec in document_set["Surveillance"]}
+    assert {
+        "FR.250", "FR.217", "FR.218", "FR.220", "FR.221", "FR.222",
+        "FR.223", "FR.224", "FR.225", "FR.230", "FR.232", "FR.211", "FR.233",
+    } <= set(by_fr)
+    assert "FR.234" not in by_fr
+    assert "FR.231" not in by_fr
+    assert "FR.231-1" not in by_fr
+
+    for fr in ("FR.217", "FR.218", "FR.220", "FR.221", "FR.222"):
+        path_parts = {part.strip() for part in by_fr[fr].template_path.parts}
+        assert "Initial Certification" in path_parts
+        assert "Stage 1" in path_parts
+
+    for fr in ("FR.223", "FR.224", "FR.225", "FR.230", "FR.232", "FR.211", "FR.233"):
+        assert "/Surveillance/" in by_fr[fr].template_path.as_posix()
+
+
+def test_ordinary_surveillance_keeps_existing_fr234_notification_set():
+    audit_set = _transfer_surveillance_audit_set()
+    audit_set.is_transfer = False
+
+    document_set, missing = resolve_document_set(audit_set)
+    forms = {spec.fr_number for spec in document_set["Surveillance"]}
+
+    assert missing == []
+    assert "FR.234" in forms
+    assert "FR.217" not in forms
+    assert "FR.218" not in forms
+    assert "FR.220" not in forms
+    assert "FR.221" not in forms
+    assert "FR.222" not in forms
+    assert "FR.250" not in forms
+
+
+def test_transfer_surveillance_early_package_keeps_commercial_docs_locked():
+    audit_set = _transfer_surveillance_audit_set(status="fr218_in_progress")
+
+    document_set, missing = resolve_document_set(audit_set)
+    forms = {spec.fr_number for spec in document_set["Surveillance"]}
+
+    assert missing == []
+    assert {"FR.217", "FR.218", "FR.222"} <= forms
+    assert "FR.220" not in forms
+    assert "FR.221" not in forms
+    assert "FR.234" not in forms
+
+
+def test_transfer_surveillance_zip_renders_new_set_without_errors():
+    entries = _zip_entries(build_audit_set_zip(_transfer_surveillance_audit_set(), None))
+    names = " ".join(_stage_files(entries, "Surveillance"))
+
+    assert not any(name.endswith("RENDER_ERRORS.txt") for name in entries)
+    for fr in ("FR.250", "FR.217", "FR.218", "FR.220", "FR.221", "FR.222", "FR.223", "FR.232"):
+        assert fr in names, f"{fr} missing from transfer surveillance package"
+    assert "FR.234" not in names
 
 
 # --------------------------------------------------------------------------- #

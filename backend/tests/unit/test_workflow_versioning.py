@@ -7,6 +7,7 @@ from audit_set.resolver import _apply_workflow_document_gate
 from audit_set.workflow_policy import (
     FR218_BEFORE_COMMERCIAL_VERSION,
     commercial_documents_unlocked,
+    is_transfer_surveillance,
     quotation_source_status,
     status_at_least,
     transition_matches_version,
@@ -15,12 +16,12 @@ from audit_set.workflow_policy import (
 )
 
 
-def _application(version=None, status="in_planning", audit_type="initial"):
+def _application(version=None, status="in_planning", audit_type="initial", is_transfer=False):
     values = {
         "standards": ["QMS"],
         "audit_type": audit_type,
         "accreditation_body": "UAF",
-        "is_transfer": False,
+        "is_transfer": is_transfer,
         "workflow_status": status,
     }
     if version is not None:
@@ -68,6 +69,7 @@ def test_new_application_requires_fr218_branch_before_quotation():
     application = _application(version=FR218_BEFORE_COMMERCIAL_VERSION)
 
     assert uses_fr218_before_commercial(application) is True
+    assert is_transfer_surveillance(application) is False
     assert transition_matches_version(application, "in_planning", "quotation_sent") is False
     assert transition_matches_version(application, "in_planning", "fr218_in_progress") is True
     assert transition_matches_version(application, "fr218_complete", "quotation_sent") is True
@@ -116,3 +118,19 @@ def test_surveillance_path_is_not_changed_by_version_two(audit_type):
     )
 
     assert uses_fr218_before_commercial(application) is False
+
+
+@pytest.mark.parametrize("audit_type", ["surveillance", "surveillance_1", "surveillance_2"])
+def test_transfer_surveillance_uses_fr218_first_certification_branch(audit_type):
+    application = _application(
+        version=FR218_BEFORE_COMMERCIAL_VERSION,
+        audit_type=audit_type,
+        is_transfer=True,
+    )
+
+    assert uses_fr218_before_commercial(application) is True
+    assert is_transfer_surveillance(application) is True
+    assert commercial_documents_unlocked(application) is False
+    assert quotation_source_status(application) == "fr218_complete"
+    assert transition_matches_version(application, "in_planning", "quotation_sent") is False
+    assert transition_matches_version(application, "in_planning", "fr218_in_progress") is True

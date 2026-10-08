@@ -10,14 +10,19 @@ from __future__ import annotations
 import logging
 import os
 import secrets
+import tempfile
 from datetime import date, datetime
+from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
+
+import fitz
 
 from audit_set.db_models import (
     AuditDocumentSignature,
@@ -37,10 +42,16 @@ from config.settings import get_settings
 from storage.document_store import upload as store_upload, ensure_local, delete as store_delete, is_s3_ref, invalidate_cache, resolve_docx_key
 from email_service import send_client_status_update, send_document_released
 from audit_set.doc_converter import prepare_document
+from audit_set.certificate_generator import (
+    normalize_standards,
+    render_certificate_docx,
+    values_for_audit_set,
+)
 from audit_set.pdf_flattener import flatten_document, has_completed_visual_signatures
 from audit_set.workflow_policy import (
     LEGACY_STATUS_ORDER,
     commercial_documents_unlocked,
+    is_transfer_surveillance,
     status_at_least,
     uses_fr218_before_commercial,
     workflow_version,
@@ -118,6 +129,13 @@ DOC_SIG_SLOTS: dict[str, list[str]] = {
 STATUS_ORDER = LEGACY_STATUS_ORDER
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+class GenerateCertificateRequest(BaseModel):
+    issue_date: date | None = None
+    initial_date: date | None = None
+    revision: str = "0"
+    statement_of_applicability: str | None = None
 
 
 def _status_at_least(
@@ -276,6 +294,9 @@ def _finalize_certificate_issuance(
     audit_set: AuditSet,
     certificate_doc: AuditSetSharedDocument,
     triggered_by: str,
+    *,
+    issued_date_override: date | None = None,
+    expiry_date_override: date | None = None,
 ) -> None:
     """Complete certification when the final certificate file is issued."""
     from audit_set.workflow_router import (
@@ -287,11 +308,11 @@ def _finalize_certificate_issuance(
     _assert_nc_complete_gate(db, audit_set.id)
 
     issued_at = certificate_doc.released_at or datetime.utcnow()
-    issued_date = issued_at.date()
+    issued_date = issued_date_override or issued_at.date()
     certificate_doc.status = "uploaded"
 
     audit_set.cert_issued_date = issued_date
-    audit_set.cert_expiry_date = _add_certificate_years(issued_date)
+    audit_set.cert_expiry_date = expiry_date_override or _add_certificate_years(issued_date)
     audit_set.cert_status = audit_set.compute_cert_status()
 
     if audit_set.workflow_status != "certified":
@@ -305,6 +326,172 @@ def _finalize_certificate_issuance(
             triggered_at=issued_at,
             notes="Certificate document issued",
         ))
+
+
+def _certificate_standards(audit_set: AuditSet) -> list[str]:
+    return normalize_standards(audit_set.standards)
+
+
+def _build_certificate_pdf(
+    audit_set: AuditSet,
+    standards: list[str],
+    *,
+    initial_date: date,
+    issue_date: date,
+    revision: str,
+    statement_of_applicability: str,
+) -> tuple[bytes, date]:
+    """Render one certificate page per standard and merge them into one PDF."""
+    from audit_set.doc_converter import convert_docx_to_pdf
+
+    merged = fitz.open()
+    expiry_date: date | None = None
+    try:
+        with tempfile.TemporaryDirectory(prefix="certiva-certificate-") as tmp:
+            tmp_dir = Path(tmp)
+            for index, standard in enumerate(standards, start=1):
+                values = values_for_audit_set(
+                    audit_set,
+                    standard,
+                    initial_date=initial_date,
+                    issue_date=issue_date,
+                    revision=revision,
+                    statement_of_applicability=statement_of_applicability,
+                )
+                if standard == "FSMS" and not values.category:
+                    raise ValueError(
+                        "ISO 22000 category/sub-category is required before generating the certificate."
+                    )
+                expiry_date = values.expiry_date
+                docx_path = tmp_dir / f"{index:02d}_{standard}.docx"
+                docx_path.write_bytes(render_certificate_docx(standard, values))
+                pdf_path = convert_docx_to_pdf(str(docx_path))
+                with fitz.open(pdf_path) as page_pdf:
+                    if page_pdf.page_count != 1:
+                        raise RuntimeError(
+                            f"Certificate template {standard} rendered to {page_pdf.page_count} pages; expected one."
+                        )
+                    merged.insert_pdf(page_pdf)
+        if merged.page_count != len(standards):
+            raise RuntimeError("Generated certificate PDF has an unexpected page count.")
+        return merged.tobytes(garbage=4, deflate=True), expiry_date or issue_date
+    finally:
+        merged.close()
+
+
+@router.post("/{audit_set_id}/certificates/generate")
+def generate_certificates(
+    audit_set_id: str,
+    body: GenerateCertificateRequest,
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """Generate and issue a complete certificate PDF from approved templates."""
+    if current_user.role not in CB_ROLES:
+        raise HTTPException(403, "Not authorized")
+
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    if not audit_set:
+        raise HTTPException(404, "Audit set not found")
+    if db.query(AuditSetSharedDocument).filter_by(
+        audit_set_id=audit_set_id,
+        document_type="certificate",
+    ).first():
+        raise HTTPException(
+            409,
+            "A certificate has already been issued. Delete it before generating a replacement.",
+        )
+
+    from audit_set.workflow_router import _assert_fr233_signed_gate, _assert_nc_complete_gate
+    _assert_fr233_signed_gate(db, audit_set_id)
+    _assert_nc_complete_gate(db, audit_set_id)
+
+    if not (audit_set.company_name or "").strip():
+        raise HTTPException(400, "Company name is required before generating the certificate.")
+    if not (audit_set.company_address or "").strip():
+        raise HTTPException(400, "Company address is required before generating the certificate.")
+    if not ((audit_set.scope_en or "").strip() or (audit_set.scope_tr or "").strip()):
+        raise HTTPException(400, "Certification scope is required before generating the certificate.")
+
+    try:
+        standards = _certificate_standards(audit_set)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if not standards:
+        raise HTTPException(400, "At least one supported standard is required.")
+
+    soa = (body.statement_of_applicability or "").strip()
+    if "ISMS" in standards and not soa:
+        raise HTTPException(
+            400,
+            "Statement of Applicability reference is required for ISO 27001 certificates.",
+        )
+    revision = (body.revision or "0").strip()
+    if len(revision) > 30:
+        raise HTTPException(400, "Revision value is too long.")
+
+    released_at = resolve_realtime_action_datetime(auth_db, body.issue_date)
+    issue_date = released_at.date()
+    initial_date = body.initial_date or issue_date
+    if initial_date > issue_date:
+        raise HTTPException(400, "Initial date cannot be later than the issue date.")
+
+    try:
+        pdf_bytes, expiry_date = _build_certificate_pdf(
+            audit_set,
+            standards,
+            initial_date=initial_date,
+            issue_date=issue_date,
+            revision=revision,
+            statement_of_applicability=soa,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Certificate generation failed for audit_set_id=%s", audit_set_id)
+        raise HTTPException(500, "Failed to generate the certificate PDF.") from exc
+
+    safe_name = f"{secrets.token_hex(6)}_IFC_Certificates_{audit_set.plan_number}.pdf"
+    relative_path = f"shared_docs/{audit_set_id}/{safe_name}"
+    file_path = store_upload(relative_path, pdf_bytes)
+    try:
+        label = "Certificate" if len(standards) == 1 else "Certificates"
+        doc = AuditSetSharedDocument(
+            audit_set_id=audit_set_id,
+            label=f"{label} — {', '.join(standards)}",
+            document_type="certificate",
+            file_path=file_path,
+            direction="cb_to_client",
+            status="uploaded",
+            released_by=current_user.id,
+            released_at=released_at,
+        )
+        db.add(doc)
+        db.flush()
+        _finalize_certificate_issuance(
+            db,
+            audit_set,
+            doc,
+            triggered_by=current_user.id,
+            issued_date_override=issue_date,
+            expiry_date_override=expiry_date,
+        )
+        db.commit()
+        db.refresh(doc)
+    except Exception:
+        db.rollback()
+        try:
+            store_delete(file_path)
+        except Exception:
+            logger.warning("Could not remove failed certificate artifact %s", file_path)
+        raise
+
+    return {
+        **_doc_to_dict(doc, db),
+        "standards": standards,
+        "page_count": len(standards),
+    }
 
 
 # ── CB: release a document to the client ────────────────────────────────────
@@ -397,10 +584,18 @@ async def release_document(
                     "fully signed by both GM and client yet.",
                 )
 
+        if document_type == "surveillance_notification" and is_transfer_surveillance(audit_set):
+            raise HTTPException(
+                400,
+                "Transfer surveillance uses FR.217 and the certification document flow; "
+                "FR.234 must not be released for this audit.",
+            )
+
         # Portal 49b gates: FR.222 and FR.224 require the application review
         # (FR.218) to be complete before they can be uploaded.
         is_surveillance = (audit_set.audit_type or "").lower().startswith("surveillance")
-        if document_type in ("audit_programme", "team_info") and not is_surveillance:
+        short_surveillance_flow = is_surveillance and not audit_set.is_transfer
+        if document_type in ("audit_programme", "team_info") and not short_surveillance_flow:
             if not _status_at_least(
                 audit_set.workflow_status,
                 "fr218_complete",
@@ -729,7 +924,8 @@ def download_document(
             },
         )
 
-    return FileResponse(local_path, filename=os.path.basename(local_path), media_type=DOCX_MIME)
+    media_type = "application/pdf" if local_path.lower().endswith(".pdf") else DOCX_MIME
+    return FileResponse(local_path, filename=os.path.basename(local_path), media_type=media_type)
 
 
 # ── Client: FR.211 auditor assessment uploads (Phase 9.5 / 13.5) ────────────

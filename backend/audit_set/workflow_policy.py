@@ -3,7 +3,8 @@
 Version 1 is the historical workflow and must remain the default for every
 record created before the FR.218-first procedure was introduced. Version 2 is
 assigned explicitly to new portal applications and places FR.218 before the
-quotation and agreement stages.
+quotation and agreement stages. Ordinary surveillance retains its short
+FR.234 path; transfer surveillance follows the versioned certification path.
 """
 from __future__ import annotations
 
@@ -81,12 +82,25 @@ def workflow_version(audit_set) -> int:
         return LEGACY_WORKFLOW_VERSION
 
 
+def is_transfer_surveillance(audit_set) -> bool:
+    audit_type = str(getattr(audit_set, "audit_type", "") or "").lower()
+    return bool(
+        getattr(audit_set, "is_transfer", False)
+        and audit_type.startswith("surveillance")
+    )
+
+
 def uses_fr218_before_commercial(audit_set) -> bool:
-    """True only for version-2 non-surveillance portal applications."""
+    """True for version-2 certification flows that require FR.218 first.
+
+    Ordinary surveillance keeps its short FR.234 notification workflow.
+    Transfer surveillance is deliberately treated like a certification flow:
+    FR.218, quotation, and contract must be completed before the audit starts.
+    """
     audit_type = str(getattr(audit_set, "audit_type", "") or "").lower()
     return (
         workflow_version(audit_set) >= FR218_BEFORE_COMMERCIAL_VERSION
-        and not audit_type.startswith("surveillance")
+        and (not audit_type.startswith("surveillance") or is_transfer_surveillance(audit_set))
     )
 
 

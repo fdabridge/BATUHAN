@@ -11,6 +11,7 @@ interface WorkflowStatusBarProps {
   currentUserRole: string
   auditType:       string | null   // "initial" | "surveillance" | "recertification" | null
   workflowVersion: number
+  isTransfer?:     boolean
   onAdvanced:      () => void
 }
 
@@ -99,13 +100,42 @@ const SURVEILLANCE_STEPS = [
   { key: 'certified',         label: 'Continued'  },
 ]
 
+const TRANSFER_SURVEILLANCE_STEPS = [
+  { key: 'pending_review',    label: 'Pending'    },
+  { key: 'in_planning',       label: 'Planning'   },
+  { key: 'quotation_sent',    label: 'Quotation'  },
+  { key: 'agreement_signed',  label: 'Contract'   },
+  { key: 'fr218_in_progress', label: 'FR.218'     },
+  { key: 'fr218_complete',    label: 'FR.218 ✓'   },
+  { key: 'audit_scheduled',   label: 'Scheduled'  },
+  { key: 'audit_in_progress', label: 'In Progress'},
+  { key: 'under_review',      label: 'Review'     },
+  { key: 'certified',         label: 'Continued'  },
+]
+
+const TRANSFER_SURVEILLANCE_FR218_FIRST_STEPS = [
+  { key: 'pending_review',    label: 'Pending'    },
+  { key: 'in_planning',       label: 'Planning'   },
+  { key: 'fr218_in_progress', label: 'FR.218'     },
+  { key: 'fr218_complete',    label: 'FR.218 ✓'   },
+  { key: 'quotation_sent',    label: 'Quotation'  },
+  { key: 'agreement_signed',  label: 'Contract'   },
+  { key: 'audit_scheduled',   label: 'Scheduled'  },
+  { key: 'audit_in_progress', label: 'In Progress'},
+  { key: 'under_review',      label: 'Review'     },
+  { key: 'certified',         label: 'Continued'  },
+]
+
 function isSurveillanceAudit(auditType: string | null): boolean {
   return auditType != null && auditType.startsWith('surveillance')
 }
 
-function getSteps(auditType: string | null, fr218First: boolean) {
+function getSteps(auditType: string | null, fr218First: boolean, isTransfer: boolean) {
   if (auditType === 'initial') return fr218First ? INITIAL_FR218_FIRST_STEPS : INITIAL_STEPS
   if (auditType === 'recertification') return fr218First ? RECERTIFICATION_FR218_FIRST_STEPS : RECERTIFICATION_STEPS
+  if (isSurveillanceAudit(auditType) && isTransfer) {
+    return fr218First ? TRANSFER_SURVEILLANCE_FR218_FIRST_STEPS : TRANSFER_SURVEILLANCE_STEPS
+  }
   if (isSurveillanceAudit(auditType)) return SURVEILLANCE_STEPS
   return STANDARD_STEPS
 }
@@ -323,14 +353,76 @@ const SURVEILLANCE_PANELS: Record<string, ActionPanel> = {
   },
 }
 
-function getPanels(auditType: string | null, fr218First: boolean) {
+const TRANSFER_SURVEILLANCE_PANELS: Record<string, ActionPanel> = {
+  in_planning: {
+    heading: 'Transfer application ready for quotation',
+    body: 'FR.217 is included in the transfer audit package instead of FR.234. Generate and release FR.220, then collect the quotation signatures before releasing FR.221.',
+  },
+  quotation_sent: {
+    heading: 'Waiting for client signature',
+    body: 'The transfer quotation has been sent. The client must sign it through the portal before FR.221 can be released.',
+  },
+  agreement_signed: {
+    heading: 'Contract confirmed — application review pending',
+    body: 'The client has signed FR.221. Generate and release FR.218; the required reviewers must complete it before the transfer surveillance audit can be scheduled.',
+  },
+  fr218_in_progress: {
+    heading: 'FR.218 transfer application review in progress',
+    body: 'The Planning Officer, optional independent reviewer when required, and Certification Manager must sign FR.218 before audit preparation can continue.',
+  },
+  fr218_complete: {
+    heading: 'FR.218 complete — prepare the transfer audit',
+    body: 'Upload FR.222, the per-auditor surveillance FR.224 forms, and the surveillance FR.223. Scheduling is blocked until FR.222 is fully signed, every FR.224 is signed by its auditor, and FR.223 is signed by the organisation representative.',
+    cta: { label: 'Mark Transfer Audit Scheduled', nextStatus: 'audit_scheduled', allowedRoles: ['admin', 'planner', 'planner_us'] },
+  },
+  audit_scheduled: {
+    heading: 'Transfer surveillance audit is scheduled',
+    body: 'The document gates are complete and the audit dates are confirmed. Mark the audit as in progress when it begins.',
+    cta: { label: 'Mark as In Progress', nextStatus: 'audit_in_progress' },
+  },
+  audit_in_progress: {
+    heading: 'Transfer surveillance audit in progress',
+    body: 'The auditor uploads the applicable FR.232, FR.232-1, or FR.229 report, plus FR.225 and FR.230, through the auditor portal.',
+  },
+  under_review: {
+    heading: 'Under review — certification decision',
+    body: 'Audit documents are complete. Release FR.233 so the committee can complete the decision, then issue the certificate.',
+    cta: { label: 'Issue Certificate', nextStatus: 'certified', allowedRoles: ['admin', 'executive'] },
+  },
+  certified: {
+    heading: 'Transfer certification completed ✓',
+    body: 'The transfer surveillance audit is closed and the certificate has been issued.',
+  },
+}
+
+const TRANSFER_SURVEILLANCE_FR218_FIRST_PANELS: Record<string, ActionPanel> = {
+  ...TRANSFER_SURVEILLANCE_PANELS,
+  in_planning: {
+    heading: 'Transfer application approved — complete FR.218 next',
+    body: 'FR.217 is included in the audit package instead of FR.234. Generate and release FR.218; quotation and contract actions remain locked until it is fully signed.',
+  },
+  fr218_complete: {
+    heading: 'FR.218 complete — ready to send quotation',
+    body: 'The transfer application review is fully signed. Generate and release FR.220, collect its signatures, and then release FR.221.',
+  },
+  agreement_signed: {
+    heading: 'Contract confirmed — prepare the transfer audit',
+    body: 'Upload FR.222, the per-auditor surveillance FR.224 forms, and the surveillance FR.223. Scheduling is blocked until all three document gates are complete.',
+    cta: { label: 'Mark Transfer Audit Scheduled', nextStatus: 'audit_scheduled', allowedRoles: ['admin', 'planner', 'planner_us'] },
+  },
+}
+
+function getPanels(auditType: string | null, fr218First: boolean, isTransfer: boolean) {
   if (auditType === 'initial') return fr218First ? INITIAL_FR218_FIRST_PANELS : INITIAL_PANELS
   if (auditType === 'recertification') return fr218First ? RECERTIFICATION_FR218_FIRST_PANELS : RECERTIFICATION_PANELS
+  if (isSurveillanceAudit(auditType) && isTransfer) {
+    return fr218First ? TRANSFER_SURVEILLANCE_FR218_FIRST_PANELS : TRANSFER_SURVEILLANCE_PANELS
+  }
   if (isSurveillanceAudit(auditType)) return SURVEILLANCE_PANELS
   return STANDARD_PANELS
 }
 
-export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, auditType, workflowVersion, onAdvanced }: WorkflowStatusBarProps) {
+export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, auditType, workflowVersion, isTransfer = false, onAdvanced }: WorkflowStatusBarProps) {
   const isRealtimeMode = currentUserRole === 'planner_us'
   const { manualActionDatesEnabled } = useManualActionDates()
   const [errMsg, setErrMsg] = useState<string | null>(null)
@@ -376,9 +468,9 @@ export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, 
     }
   }
 
-  const fr218First = workflowVersion >= 2 && !isSurveillanceAudit(auditType)
-  const STEPS  = getSteps(auditType, fr218First)
-  const PANELS = getPanels(auditType, fr218First)
+  const fr218First = workflowVersion >= 2 && (!isSurveillanceAudit(auditType) || isTransfer)
+  const STEPS  = getSteps(auditType, fr218First, isTransfer)
+  const PANELS = getPanels(auditType, fr218First, isTransfer)
 
   if (currentStatus === 'pending_review') return null
 

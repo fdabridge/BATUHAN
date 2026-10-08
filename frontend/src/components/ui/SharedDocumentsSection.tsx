@@ -81,6 +81,7 @@ export function SharedDocumentsSection({
   auditSetId,
   stages = [],
   auditType = null,
+  standards = [],
   workflowStatus = null,
   workflowVersion = 1,
   isTransfer = false,
@@ -89,13 +90,15 @@ export function SharedDocumentsSection({
   auditSetId: string
   stages?: StageResponse[]
   auditType?: string | null
+  standards?: string[]
   workflowStatus?: string | null
   workflowVersion?: number
   isTransfer?: boolean
   onDocumentReleased?: () => void
 }) {
   const isSurveillance = (auditType ?? '').startsWith('surveillance')
-  const fr218First = workflowVersion >= 2 && !isSurveillance
+  const transferSurveillance = isSurveillance && isTransfer
+  const fr218First = workflowVersion >= 2 && (!isSurveillance || transferSurveillance)
   const commercialLocked = fr218First && !statusAtLeast(workflowStatus, 'fr218_complete')
   const agreementLocked = fr218First && !statusAtLeast(workflowStatus, 'quotation_sent')
 
@@ -104,7 +107,7 @@ export function SharedDocumentsSection({
     const transferTypes = isTransfer
       ? [{ value: 'transfer_review', label: 'Transfer Application Control (FR.250)' }]
       : []
-    if (isSurveillance) {
+    if (isSurveillance && !transferSurveillance) {
       return [
         ...transferTypes,
         { value: 'surveillance_notification', label: 'Surveillance Notification (FR.234)' },
@@ -113,7 +116,9 @@ export function SharedDocumentsSection({
         { value: 'certificate',               label: 'Certificate' },
       ]
     }
-    // Initial certification / recertification / unset
+    // Certification / recertification / transfer-surveillance flow.
+    // A transfer surveillance deliberately uses FR.217 + the commercial
+    // documents instead of the ordinary FR.234 notification path.
     if (fr218First) {
       return [
         ...transferTypes,
@@ -142,7 +147,7 @@ export function SharedDocumentsSection({
 
   function defaultDocumentType(): string {
     if (isTransfer) return 'transfer_review'
-    if (isSurveillance) return 'surveillance_notification'
+    if (isSurveillance && !transferSurveillance) return 'surveillance_notification'
     if (fr218First && commercialLocked) return 'fr218_review'
     if (fr218First && workflowStatus === 'quotation_sent') return 'agreement'
     return 'quotation'
@@ -151,6 +156,7 @@ export function SharedDocumentsSection({
   const [docs, setDocs]     = useState<SharedDoc[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [showCertificateForm, setShowCertificateForm] = useState(false)
   const [label, setLabel]     = useState('')
   const [docType, setDocType] = useState(() => defaultDocumentType())
   const [stageType, setStageType] = useState('')
@@ -158,7 +164,13 @@ export function SharedDocumentsSection({
   const [file, setFile]       = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError]     = useState('')
+  const [certificateError, setCertificateError] = useState('')
+  const [certificateSubmitting, setCertificateSubmitting] = useState(false)
   const [releaseDate, setReleaseDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [certificateIssueDate, setCertificateIssueDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [certificateInitialDate, setCertificateInitialDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [certificateRevision, setCertificateRevision] = useState('0')
+  const [statementOfApplicability, setStatementOfApplicability] = useState('')
   const { manualActionDatesEnabled } = useManualActionDates()
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -172,6 +184,7 @@ export function SharedDocumentsSection({
     || user?.role === 'planner'
     || user?.role === 'planner_us'
   )
+  const hasCertificate = docs.some((doc) => doc.document_type === 'certificate')
 
   async function deleteDoc(docId: string) {
     setDeleteError('')
@@ -263,6 +276,42 @@ export function SharedDocumentsSection({
     }
   }
 
+  async function generateCertificate() {
+    setCertificateError('')
+    if (!certificateInitialDate) {
+      setCertificateError('Initial certification date is required.'); return
+    }
+    if (manualActionDatesEnabled && !certificateIssueDate) {
+      setCertificateError('Issue date is required.'); return
+    }
+    const includesIsms = standards.some((standard) => {
+      const value = standard.toUpperCase()
+      return value === 'ISMS' || value.includes('27001')
+    })
+    if (includesIsms && !statementOfApplicability.trim()) {
+      setCertificateError('Statement of Applicability reference is required for ISO 27001.'); return
+    }
+
+    setCertificateSubmitting(true)
+    try {
+      await api.post(`/audit-sets/${auditSetId}/certificates/generate`, {
+        issue_date: manualActionDatesEnabled ? certificateIssueDate : null,
+        initial_date: certificateInitialDate,
+        revision: certificateRevision.trim() || '0',
+        statement_of_applicability: statementOfApplicability.trim() || null,
+      })
+      setShowCertificateForm(false)
+      await load()
+      onDocumentReleased?.()
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })
+        ?.response?.data?.detail
+      setCertificateError(detail || 'Failed to generate the certificate PDF.')
+    } finally {
+      setCertificateSubmitting(false)
+    }
+  }
+
   async function downloadDoc(docId: string, docLabel: string) {
     try {
       const r = await api.get(
@@ -287,18 +336,101 @@ export function SharedDocumentsSection({
 
   return (
     <div id="shared-documents" className="mt-8 scroll-mt-6">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-700">
           Shared Documents
         </h2>
-        <button
-          type="button"
-          onClick={() => setShowForm((s) => !s)}
-          className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#143828]"
-        >
-          {showForm ? 'Cancel' : '+ Release Document'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={hasCertificate}
+            onClick={() => {
+              setShowCertificateForm((value) => !value)
+              setShowForm(false)
+              setCertificateError('')
+            }}
+            className="rounded-lg border border-[#1A4731] px-3 py-1.5 text-xs font-medium text-[#1A4731] hover:bg-[#F0FAF4] disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400 disabled:hover:bg-transparent"
+          >
+            {hasCertificate
+              ? 'Certificate already issued'
+              : showCertificateForm ? 'Cancel' : 'Generate Certificate PDF'}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setShowForm((s) => !s); setShowCertificateForm(false) }}
+            className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#143828]"
+          >
+            {showForm ? 'Cancel' : '+ Release Document'}
+          </button>
+        </div>
       </div>
+
+      {showCertificateForm && (
+        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
+          <p className="text-sm font-medium text-gray-800">Generate final certificate</p>
+          <p className="mt-1 text-xs text-gray-500">
+            One approved certificate page will be generated for each selected standard and combined into one PDF.
+          </p>
+          <p className="mt-2 text-xs font-medium text-emerald-800">
+            Standards: {standards.length > 0 ? standards.join(', ') : 'None selected'}
+          </p>
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div>
+              <label className="block text-xs font-medium text-gray-500">Initial certification date</label>
+              <input
+                type="date"
+                value={certificateInitialDate}
+                onChange={(e) => setCertificateInitialDate(e.target.value)}
+                className="mt-1 w-full rounded-lg border bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A4731]/30"
+              />
+            </div>
+            {manualActionDatesEnabled ? (
+              <div>
+                <label className="block text-xs font-medium text-gray-500">Issue date</label>
+                <input
+                  type="date"
+                  value={certificateIssueDate}
+                  onChange={(e) => setCertificateIssueDate(e.target.value)}
+                  className="mt-1 w-full rounded-lg border bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A4731]/30"
+                />
+              </div>
+            ) : (
+              <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-500">
+                Issue date will use the current server date under the active date policy.
+              </div>
+            )}
+            <div>
+              <label className="block text-xs font-medium text-gray-500">Revision</label>
+              <input
+                value={certificateRevision}
+                onChange={(e) => setCertificateRevision(e.target.value)}
+                maxLength={30}
+                className="mt-1 w-full rounded-lg border bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A4731]/30"
+              />
+            </div>
+            {standards.some((standard) => standard.toUpperCase() === 'ISMS' || standard.includes('27001')) && (
+              <div>
+                <label className="block text-xs font-medium text-gray-500">Statement of Applicability / SoA</label>
+                <input
+                  value={statementOfApplicability}
+                  onChange={(e) => setStatementOfApplicability(e.target.value)}
+                  placeholder="e.g. 01.01.2026 / Rev.0"
+                  className="mt-1 w-full rounded-lg border bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A4731]/30"
+                />
+              </div>
+            )}
+          </div>
+          {certificateError && <p className="mt-2 text-xs text-red-600">{certificateError}</p>}
+          <button
+            type="button"
+            onClick={generateCertificate}
+            disabled={certificateSubmitting || standards.length === 0}
+            className="mt-3 rounded-lg bg-[#1A4731] px-4 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+          >
+            {certificateSubmitting ? 'Generating…' : 'Generate and issue PDF'}
+          </button>
+        </div>
+      )}
 
       {showForm && (
         <div className="mb-4 rounded-xl border bg-white p-4">
@@ -453,13 +585,15 @@ export function SharedDocumentsSection({
                       ? 'Pending release'
                       : 'Awaiting Signature'}
                   </span>
-                  <a
-                    href={`/viewer/shared_doc/${d.id}`}
-                    className="rounded-lg border border-[#1A4731] px-2.5 py-1 text-xs
-                      font-medium text-[#1A4731] hover:bg-[#F0FAF4]"
-                  >
-                    Open
-                  </a>
+                  {d.document_type !== 'certificate' && (
+                    <a
+                      href={`/viewer/shared_doc/${d.id}`}
+                      className="rounded-lg border border-[#1A4731] px-2.5 py-1 text-xs
+                        font-medium text-[#1A4731] hover:bg-[#F0FAF4]"
+                    >
+                      Open
+                    </a>
+                  )}
                   <button
                     type="button"
                     onClick={() => downloadDoc(d.id, d.label)}
