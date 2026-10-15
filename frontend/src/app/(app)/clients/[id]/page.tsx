@@ -2260,7 +2260,12 @@ function StageCard({
           </div>
           <select className={inputCls} value=""
             onChange={(e) => {
-              const found = dropdownList.find((a) => (a.id ?? a.name) === e.target.value)
+              // Observers are intentionally selected from the full auditor
+              // roster below. Do not resolve them through dropdownList: once
+              // dates/scope are set that list contains only qualified,
+              // available audit-team candidates and a visible observer could
+              // otherwise be impossible to select.
+              const found = auditors.find((a) => (a.id ?? a.name) === e.target.value)
               if (found && !edit.observers.find((x) => (x.id || x.name) === (found.id || found.name))) {
                 patch({ observers: [...edit.observers, { id: found.id ?? '', name: found.name }] })
               }
@@ -2297,7 +2302,11 @@ function StageCard({
           </div>
           <select className={inputCls} value=""
             onChange={(e) => {
-              const found = dropdownList.find((a) => (a.id ?? a.name) === e.target.value)
+              // Trainees do not contribute qualification coverage, so their
+              // selector uses the full roster. Resolving against the filtered
+              // qualified/available list made the displayed option a no-op
+              // for the very trainees who still need supervised experience.
+              const found = auditors.find((a) => (a.id ?? a.name) === e.target.value)
               if (found && !edit.trainees.find((x) => (x.id || x.name) === (found.id || found.name))) {
                 patch({ trainees: [...edit.trainees, { id: found.id ?? '', name: found.name }] })
               }
