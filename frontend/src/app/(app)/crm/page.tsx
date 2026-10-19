@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import api from '@/lib/api'
+import { GuidedActionCard } from '@/components/ui/GuidedActionCard'
 
 interface KPIs {
   active_certifications: number
@@ -63,10 +64,39 @@ export default function CRMDashboard() {
   if (error || !data) return <div className="p-8 text-sm text-red-500">{error || 'No data.'}</div>
 
   const { kpis, upcoming_renewals, pipeline } = data
+  const nextRenewal = upcoming_renewals[0]
+  const guidedAction = kpis.overdue_renewals > 0
+    ? {
+        eyebrow: 'Renewal queue',
+        title: `${kpis.overdue_renewals} overdue renewal${kpis.overdue_renewals === 1 ? '' : 's'} require attention`,
+        description: 'Review the overdue certification records first and coordinate the required surveillance or recertification follow-up.',
+        href: '/crm/clients',
+        actionLabel: 'Review overdue renewals',
+        tone: 'action' as const,
+      }
+    : nextRenewal
+      ? {
+          eyebrow: 'Next renewal milestone',
+          title: `${nextRenewal.company_name} · ${MILESTONE_LABELS[nextRenewal.milestone] ?? nextRenewal.milestone}`,
+          description: `Due ${fmtDate(nextRenewal.due_date)}. Open the client record for the complete certification history and contact details.`,
+          href: `/crm/clients/${nextRenewal.audit_set_id}`,
+          actionLabel: 'Open client record',
+          tone: nextRenewal.days_until < 30 ? 'waiting' as const : 'neutral' as const,
+        }
+      : {
+          eyebrow: 'Renewal queue',
+          title: 'No renewal follow-up is currently due',
+          description: 'Upcoming surveillance and recertification milestones will appear here automatically.',
+          href: '/crm/clients',
+          actionLabel: 'View client portfolio',
+          tone: 'success' as const,
+        }
 
   return (
     <div className="space-y-8">
       <h1 className="text-xl font-semibold text-gray-900">CRM Dashboard</h1>
+
+      <GuidedActionCard {...guidedAction} />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">

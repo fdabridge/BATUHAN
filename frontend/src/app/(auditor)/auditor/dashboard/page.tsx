@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
 import { PendingSignaturesWidget } from '@/components/ui/PendingSignaturesWidget'
+import { GuidedActionCard } from '@/components/ui/GuidedActionCard'
 
 const STANDARD_NAMES: Record<string, string> = {
   QMS:   'ISO 9001',
@@ -78,6 +79,48 @@ export default function AuditorDashboard() {
     return <div className="p-8 text-sm text-gray-400">Loading your assignments…</div>
   }
 
+  const committeeToSign = committeeReviews.find((review) => !review.signed && review.document_id)
+  const reportToSign = committeeReviews
+    .flatMap((review) => review.stage_reports)
+    .find((report) => report.ready && !report.signed)
+  const activeAssignment = assignments.find((assignment) =>
+    assignment.my_stages.some((stage) => stage.status !== 'complete')
+  ) ?? assignments[0]
+
+  const guidedAction = committeeToSign
+    ? {
+        eyebrow: 'Signature required',
+        title: `Complete the FR.233 review for ${committeeToSign.company_name}`,
+        description: 'The committee document is ready for your review and signature. Complete this before moving to another case.',
+        href: `/auditor/viewer/shared_doc/${committeeToSign.document_id}`,
+        actionLabel: 'Open FR.233',
+        tone: 'action' as const,
+      }
+    : reportToSign
+      ? {
+          eyebrow: 'Approval required',
+          title: `Review ${reportToSign.report_form}`,
+          description: 'The lead auditor has completed the report. Review it and add the required approval signature.',
+          href: `/auditor/viewer/audit_report/${reportToSign.id}`,
+          actionLabel: 'Open report',
+          tone: 'action' as const,
+        }
+      : activeAssignment
+        ? {
+            eyebrow: 'Next audit workspace',
+            title: activeAssignment.company_name,
+            description: 'Open the audit workspace to see the exact documents, uploads, declarations, and decisions currently assigned to you.',
+            href: `/auditor/audit/${activeAssignment.id}`,
+            actionLabel: 'Continue audit work',
+            tone: 'neutral' as const,
+          }
+        : {
+            eyebrow: 'Queue clear',
+            title: 'No audit action is waiting for you',
+            description: 'New audit assignments, report approvals, and committee signatures will appear here when they are ready.',
+            tone: 'success' as const,
+          }
+
   return (
     <div className="mx-auto max-w-4xl p-6">
       <div className="mb-6">
@@ -86,6 +129,10 @@ export default function AuditorDashboard() {
           {assignments.length} audit-team assignment{assignments.length !== 1 ? 's' : ''}
           {committeeReviews.length > 0 && ` · ${committeeReviews.length} committee review${committeeReviews.length !== 1 ? 's' : ''}`}
         </p>
+      </div>
+
+      <div className="mb-6">
+        <GuidedActionCard {...guidedAction} />
       </div>
 
       <div className="mb-8">

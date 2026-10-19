@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import api from '@/lib/api'
 import { MessageThread } from '@/components/ui/MessageThread'
 import { useManualActionDates } from '@/lib/useManualActionDates'
+import { GuidedActionCard } from '@/components/ui/GuidedActionCard'
 
 const STANDARD_NAMES: Record<string, string> = {
   QMS:   'ISO 9001:2015',
@@ -1504,6 +1505,39 @@ export default function AuditorAuditDetail() {
     return <div className="p-8 text-sm text-gray-400">Loading…</div>
   }
 
+  const isAppointedReviewer = !!myAuditorId && data.fr218_reviewer_id === myAuditorId
+  const currentAuditorAction = isAppointedReviewer
+    ? {
+        eyebrow: 'Signature assignment',
+        title: 'Review and sign the application review (FR.218)',
+        description: 'Open the case documents and complete your appointed reviewer signature after the Planning Officer has signed.',
+        tab: 'documents' as Tab,
+        actionLabel: 'Open documents',
+      }
+    : ['stage1_in_progress', 'stage2_in_progress', 'audit_in_progress'].includes(data.workflow_status ?? '')
+      ? {
+          eyebrow: 'Audit in progress',
+          title: 'Complete the controlled audit deliverables',
+          description: 'Start with the audit plan and meeting form. Use the dedicated NC and report sections for those controlled records.',
+          tab: 'upload' as Tab,
+          actionLabel: 'Open required uploads',
+        }
+      : ['stage1_complete', 'stage2_complete', 'under_review'].includes(data.workflow_status ?? '')
+        ? {
+            eyebrow: 'Reporting phase',
+            title: 'Complete or review the audit report',
+            description: 'Open the report workspace to see the report and signature action assigned to you.',
+            tab: 'reports' as Tab,
+            actionLabel: 'Open reports',
+          }
+        : {
+            eyebrow: 'Audit workspace',
+            title: 'Review the current case documents',
+            description: 'Your assigned forms and signature requests are collected in the document record.',
+            tab: 'documents' as Tab,
+            actionLabel: 'Open documents',
+          }
+
   return (
     <div className="mx-auto max-w-3xl p-6">
       {/* Header */}
@@ -1517,6 +1551,17 @@ export default function AuditorAuditDetail() {
             </span>
           ))}
         </div>
+      </div>
+
+      <div className="mb-6">
+        <GuidedActionCard
+          eyebrow={currentAuditorAction.eyebrow}
+          title={currentAuditorAction.title}
+          description={currentAuditorAction.description}
+          actionLabel={currentAuditorAction.actionLabel}
+          onAction={() => setTab(currentAuditorAction.tab)}
+          tone={isAppointedReviewer ? 'action' : 'neutral'}
+        />
       </div>
 
       {/* Tabs */}

@@ -4,6 +4,16 @@
 
 @layer base {
   :root {
+    --certiva-night: #060D08;
+    --certiva-dark-surface: #0D1710;
+    --certiva-dark-border: #1A2E1E;
+    --certiva-green: #1A4731;
+    --certiva-mid: #2D6A4F;
+    --certiva-leaf: #40916C;
+    --certiva-signal: #52C27A;
+    --certiva-pale: #D8F3DC;
+    --certiva-mist: #F0FAF4;
+    --certiva-ink: #111827;
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
     --card: 0 0% 100%;
@@ -53,6 +63,25 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-certiva), Manrope, Arial, Helvetica, sans-serif;
+  }
+}
+
+@layer components {
+  .certiva-button-primary {
+    border-radius: 999px;
+    background: var(--certiva-green);
+    color: white;
+    transition: background-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+  }
+
+  .certiva-button-primary:hover {
+    background: var(--certiva-mid);
+  }
+
+  .certiva-button-primary:focus-visible {
+    outline: 3px solid var(--certiva-signal);
+    outline-offset: 3px;
   }
 }

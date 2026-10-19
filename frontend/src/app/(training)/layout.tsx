@@ -1,10 +1,9 @@
 'use client'
 
 import { useEffect } from 'react'
-import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
-import { LogOut } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
+import { RolePortalShell } from '@/components/layout/RolePortalShell'
 
 const NAV = [
   { href: '/training/dashboard',  label: 'Training Dashboard' },
@@ -13,9 +12,8 @@ const NAV = [
 ]
 
 export default function TrainingLayout({ children }: { children: React.ReactNode }) {
-  const { user, isLoading, logout } = useAuth()
+  const { user, isLoading } = useAuth()
   const router = useRouter()
-  const pathname = usePathname()
 
   useEffect(() => {
     if (isLoading) return
@@ -31,46 +29,8 @@ export default function TrainingLayout({ children }: { children: React.ReactNode
   if (isLoading || !user || !['training_officer', 'admin'].includes(user.role)) return null
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
-      <aside className="flex w-56 shrink-0 flex-col border-r bg-white">
-        <div className="border-b p-5">
-          <p className="text-sm font-bold" style={{ color: '#1A4731' }}>IFC Global</p>
-          <p className="mt-0.5 truncate text-xs text-gray-400">{user.full_name}</p>
-          <span className="mt-1 inline-block rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-700">
-            Training Officer
-          </span>
-        </div>
-        <nav className="flex-1 space-y-1 p-4">
-          {NAV.map((item) => {
-            const active = pathname?.startsWith(item.href)
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={[
-                  'block rounded-lg px-3 py-2 text-sm transition-colors',
-                  active
-                    ? 'bg-[#F0FAF4] font-medium text-[#1A4731]'
-                    : 'text-gray-700 hover:bg-gray-100',
-                ].join(' ')}
-              >
-                {item.label}
-              </Link>
-            )
-          })}
-        </nav>
-        <div className="border-t p-4">
-          <button
-            type="button"
-            onClick={logout}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-[#1A4731]/30 hover:bg-[#F0FAF4] hover:text-[#1A4731]"
-          >
-            <LogOut size={15} />
-            Sign out
-          </button>
-        </div>
-      </aside>
-      <main className="flex-1 overflow-auto">{children}</main>
-    </div>
+    <RolePortalShell roleLabel="Training officer" nav={NAV}>
+      {children}
+    </RolePortalShell>
   )
 }

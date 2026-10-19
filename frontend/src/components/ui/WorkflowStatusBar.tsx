@@ -557,10 +557,15 @@ export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, 
   const ctaAllowed = !panel?.cta?.allowedRoles || panel.cta.allowedRoles.includes(currentUserRole)
 
   return (
-    <div className="space-y-3">
-      {/* Step strip */}
-      <div className="rounded-xl border bg-white p-4">
-        <div className="flex items-center">
+    <div className="flex flex-col gap-3">
+      {/* Progress is preserved for orientation, but the current action remains
+          the primary interface instead of making every phase look actionable. */}
+      <details className="order-2 rounded-xl border border-slate-200 bg-white">
+        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-slate-600 marker:hidden">
+          View completed and upcoming workflow phases
+        </summary>
+        <div className="overflow-x-auto border-t border-slate-100 p-4">
+          <div className="flex min-w-[760px] items-center">
           {STEPS.map((step, idx) => {
             const isDone    = currentIdx >= 0 && idx <  currentIdx
             const isCurrent = currentIdx >= 0 && idx === currentIdx
@@ -584,14 +589,17 @@ export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, 
               </div>
             )
           })}
+          </div>
         </div>
-      </div>
+      </details>
 
       {/* Action panel */}
       {panel && (
-        <div className="rounded-xl border bg-white p-5">
-          <h3 className="text-sm font-semibold text-gray-900">{panel.heading}</h3>
-          <p className="mt-1 text-sm text-gray-600">{panel.body}</p>
+        <div className="order-1 relative overflow-hidden rounded-2xl border border-certiva-green/20 bg-white p-5 pl-6 shadow-[0_12px_36px_rgba(6,13,8,0.04)]">
+          <div className="absolute inset-y-0 left-0 w-1 bg-certiva-green" />
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-certiva-mid">Current workflow action</p>
+          <h3 className="mt-1 text-lg font-semibold text-certiva-ink">{panel.heading}</h3>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">{panel.body}</p>
           {panel.cta && ctaAllowed && (
             <div>
               <button
@@ -601,8 +609,7 @@ export function WorkflowStatusBar({ auditSetId, currentStatus, currentUserRole, 
                   nextStatus: panel.cta!.nextStatus,
                   date: manualActionDatesEnabled ? effectiveDate : undefined,
                 })}
-                className="mt-3 rounded-lg px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
-                style={{ background: '#1A4731' }}
+                className="certiva-button-primary mt-3 px-4 py-2 text-sm font-semibold disabled:opacity-60"
               >
                 {isPending ? 'Saving…' : panel.cta.label}
               </button>

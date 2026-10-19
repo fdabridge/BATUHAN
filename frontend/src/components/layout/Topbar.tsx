@@ -53,11 +53,14 @@ export function Topbar() {
 
   return (
     <header
-      className="flex shrink-0 items-center justify-between border-b border-gray-200
-        bg-white px-6"
-      style={{ height: 52 }}
+      className="flex shrink-0 items-center justify-between border-b border-slate-200/80
+        bg-white/95 px-6 backdrop-blur"
+      style={{ height: 60 }}
     >
-      <h1 className="text-base font-semibold text-gray-900">{title}</h1>
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-certiva-mid">Workspace</p>
+        <h1 className="text-base font-semibold text-certiva-ink">{title}</h1>
+      </div>
 
       <div className="flex items-center gap-3">
         {/* Notification bell */}

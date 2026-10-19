@@ -18,11 +18,21 @@ const config: Config = {
       colors: {
         // ── Certiva brand ──────────────────────────────────────────────────
         certiva: {
+          night:     '#060D08',
+          dark:      '#0D1710',
+          'border-dark': '#1A2E1E',
+          green:     '#1A4731',
           primary:   '#1A4731',
+          mid:       '#2D6A4F',
           secondary: '#2D6A4F',
-          accent:    '#52B788',
-          surface:   '#F4FAF6',
-          text:      '#1C2B22',
+          leaf:      '#40916C',
+          signal:    '#52C27A',
+          accent:    '#52C27A',
+          pale:      '#D8F3DC',
+          mist:      '#F0FAF4',
+          surface:   '#F0FAF4',
+          ink:       '#111827',
+          text:      '#111827',
           alert:     '#E63946',
           warning:   '#F4A261',
         },
@@ -60,6 +70,9 @@ const config: Config = {
           DEFAULT:    'hsl(var(--popover))',
           foreground: 'hsl(var(--popover-foreground))',
         },
+      },
+      fontFamily: {
+        sans: ['var(--font-certiva)', 'Manrope', 'Arial', 'Helvetica', 'sans-serif'],
       },
       borderRadius: {
         lg: 'var(--radius)',

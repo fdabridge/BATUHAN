@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import api from '@/lib/api'
 import { CertivaAdSlot } from '@/components/ads/CertivaAdSlot'
+import { GuidedActionCard, type GuidedActionTone } from '@/components/ui/GuidedActionCard'
 
 const WORKFLOW_STEPS = [
   {
@@ -309,13 +310,11 @@ export default function ClientOverviewPage() {
   const empTotal     = employees.length
   const docsAllDone  = docs.length > 0 && pendingForClient === 0 && waitingOnCbCount === 0
 
-  const urgencyStyle: Record<string, { bg: string; border: string; title: string; body: string }> = {
-    high:    { bg: '#FFF7ED', border: '#FED7AA', title: '#9A3412', body: '#C2410C' },
-    medium:  { bg: '#FEFCE8', border: '#FDE68A', title: '#713F12', body: '#92400E' },
-    info:    { bg: '#EFF6FF', border: '#BFDBFE', title: '#1E3A8A', body: '#1D4ED8' },
-    success: { bg: '#F0FDF4', border: '#BBF7D0', title: '#14532D', body: '#15803D' },
-  }
-  const us = urgencyStyle[action.urgency]
+  const actionTone: GuidedActionTone = action.urgency === 'success'
+    ? 'success'
+    : action.urgency === 'info'
+      ? 'waiting'
+      : 'action'
 
   return (
     <div className="mx-auto max-w-3xl space-y-5 p-6">
@@ -329,27 +328,16 @@ export default function ClientOverviewPage() {
         </p>
       </div>
 
-      {/* Next Action Hero */}
-      <div
-        className="rounded-xl border p-5"
-        style={{ background: us.bg, borderColor: us.border }}
-      >
-        <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: us.body }}>
-          {action.urgency === 'high' ? '\u26A0 Action required' :
-           action.urgency === 'success' ? '\u2713 Complete' : 'Status'}
-        </p>
-        <p className="text-base font-semibold" style={{ color: us.title }}>{action.title}</p>
-        <p className="mt-1 text-sm" style={{ color: us.body }}>{action.body}</p>
-        {action.href && action.cta && (
-          <Link
-            href={action.href}
-            className="mt-3 inline-flex items-center rounded-lg px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-            style={{ background: '#1A4731' }}
-          >
-            {action.cta}
-          </Link>
-        )}
-      </div>
+      <GuidedActionCard
+        eyebrow={action.urgency === 'success' ? 'Certification complete' : action.href ? 'Your next action' : 'Current status'}
+        title={action.title}
+        description={action.body}
+        tone={actionTone}
+        href={action.href}
+        actionLabel={action.cta?.replace(/\s*\u2192$/, '')}
+        secondaryHref="/client/documents"
+        secondaryLabel="View document record"
+      />
 
       <CertivaAdSlot placement="client_overview" />
 

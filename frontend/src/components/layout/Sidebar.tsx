@@ -24,42 +24,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import api from '@/lib/api'
-
-// ── Logo mark ────────────────────────────────────────────────────────────────
-
-function CertivaIcon() {
-  return (
-    <div
-      className="flex h-8 w-8 items-center justify-center rounded-lg"
-      style={{ background: 'rgba(255,255,255,0.15)' }}
-    >
-      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-        {/* Document frame */}
-        <path
-          d="M4 2h9l3 3v13H4V2z"
-          stroke="white"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-        />
-        {/* Folded corner */}
-        <path
-          d="M13 2v3h3"
-          stroke="white"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-        />
-        {/* Checkmark */}
-        <path
-          d="M7 10.5l2 2 4-4"
-          stroke="white"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </div>
-  )
-}
+import { CertivaLogo } from '@/components/brand/CertivaLogo'
 
 // ── Nav item ─────────────────────────────────────────────────────────────────
 
@@ -98,7 +63,7 @@ function NavItem({ icon: Icon, label, href, active, badgeCount }: NavItemProps) 
 
       {/* Tooltip — appears to the right on hover */}
       <div
-        className="pointer-events-none absolute left-14 top-1/2 z-50 hidden -translate-y-1/2
+        className="pointer-events-none absolute left-[58px] top-1/2 z-50 hidden -translate-y-1/2
           items-center whitespace-nowrap rounded px-2 py-1 text-xs text-white
           group-hover/tip:flex"
         style={{ background: '#1C2B22' }}
@@ -186,12 +151,11 @@ export function Sidebar() {
 
   return (
     <aside
-      className="fixed left-0 top-0 z-40 flex h-screen w-14 flex-col items-center gap-1 py-4"
-      style={{ background: '#1A4731' }}
+      className="fixed left-0 top-0 z-40 flex h-screen w-[72px] flex-col items-center gap-1 border-r border-certiva-border-dark bg-certiva-night py-4"
     >
       {/* Logo */}
-      <div className="mb-4">
-        <CertivaIcon />
+      <div className="mb-4 px-[14px]">
+        <CertivaLogo variant="reversed" iconOnly className="h-11 w-11" />
       </div>
 
       {/* Primary nav — CRM role sees only CRM items */}

@@ -52,8 +52,7 @@ export default function AppLayout({
   return (
     <div className="flex h-screen">
       <Sidebar />
-      {/* ml-14 = 56px offset for the fixed sidebar */}
-      <div className="ml-14 flex flex-1 flex-col overflow-hidden">
+      <div className="ml-[72px] flex flex-1 flex-col overflow-hidden">
         <Topbar />
         <main className="flex-1 overflow-auto bg-certiva-surface p-6">
           {children}

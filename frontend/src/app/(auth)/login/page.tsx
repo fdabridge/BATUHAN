@@ -6,6 +6,7 @@ import { ArrowRight, Loader2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import api from '@/lib/api'
 import { useAuth } from '@/lib/auth'
+import { CertivaLogo } from '@/components/brand/CertivaLogo'
 
 // Backend: POST /auth/login  body: { email, password }  (JSON, not form data)
 // Response: { access_token, role, full_name, user_id }
@@ -24,40 +25,8 @@ function roleHome(role: string | undefined): string {
   if (role === 'auditor')    return '/auditor/dashboard'
   if (role === 'consultant') return '/consultant/clients'
   if (role === 'crm')        return '/crm'
+  if (role === 'training_officer') return '/training/dashboard'
   return '/dashboard'
-}
-
-// ── Logo mark (44 × 44, same SVG as Sidebar) ─────────────────────────────────
-
-function CertivaLogoMark() {
-  return (
-    <div
-      className="flex h-11 w-11 items-center justify-center rounded-xl"
-      style={{ background: '#1A4731' }}
-    >
-      <svg width="26" height="26" viewBox="0 0 20 20" fill="none">
-        <path
-          d="M4 2h9l3 3v13H4V2z"
-          stroke="white"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M13 2v3h3"
-          stroke="white"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M7 10.5l2 2 4-4"
-          stroke="white"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </div>
-  )
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -106,46 +75,28 @@ export default function LoginPage() {
   if (isLoading) return null
 
   return (
-    <div
-      className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10"
-      style={{
-        backgroundColor: '#102A20',
-        backgroundImage: `
-          linear-gradient(135deg, rgba(16,42,32,0.94), rgba(22,70,49,0.78) 48%, rgba(231,242,236,0.72)),
-          radial-gradient(circle at 16% 18%, rgba(197,226,211,0.35), transparent 28%),
-          radial-gradient(circle at 82% 24%, rgba(255,255,255,0.55), transparent 23%),
-          radial-gradient(circle at 62% 86%, rgba(209,167,87,0.22), transparent 30%)
-        `,
-      }}
-    >
-      <div className="absolute inset-0 opacity-[0.14]"
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-certiva-night px-4 py-10">
+      <div className="absolute inset-0 opacity-[0.06]"
         style={{
           backgroundImage:
-            'linear-gradient(rgba(255,255,255,.45) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.45) 1px, transparent 1px)',
-          backgroundSize: '44px 44px',
+            'linear-gradient(rgba(216,243,220,.45) 1px, transparent 1px), linear-gradient(90deg, rgba(216,243,220,.45) 1px, transparent 1px)',
+          backgroundSize: '64px 64px',
         }}
       />
       <div className="relative grid w-full max-w-5xl items-center gap-8 md:grid-cols-[1fr_400px]">
         <section className="hidden text-white md:block">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.24em] text-white/65">
-            Certiva Portal
+          <CertivaLogo variant="reversed" className="mb-10 h-11 w-auto" />
+          <p className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-certiva-signal">
+            Controlled certification operations
           </p>
-          <h1 className="max-w-xl text-5xl font-semibold leading-tight">
-            Certiva: The Certification Body Super-App.
+          <h1 className="max-w-xl text-5xl font-bold leading-[1.08]">
+            Certification work, connected from application to decision.
           </h1>
-          <p className="mt-5 max-w-lg text-base leading-7 text-white/72">
-            Run certification work from application to certificate maintenance: planning, document signing,
-            auditor coordination, training, CRM follow-up, Certiv.AI audit plans, report writing, and report review.
+          <p className="mt-5 max-w-lg text-base leading-7 text-white/65">
+            Each person sees the current handoff, the action assigned to them, and the records needed to complete it. Technical judgment and certification decisions remain with the certification body.
           </p>
-          <div className="mt-7 flex max-w-lg flex-wrap gap-2">
-            {['Audit planning', 'Certiv.AI reports', 'Training records', 'Client CRM'].map((item) => (
-              <span
-                key={item}
-                className="rounded-full border border-white/25 bg-white/10 px-3 py-1 text-xs font-medium text-white/82 backdrop-blur"
-              >
-                {item}
-              </span>
-            ))}
+          <div className="mt-8 max-w-lg border-l border-certiva-signal/60 pl-4 text-sm leading-6 text-certiva-pale">
+            One next action. Clear ownership. The complete case record remains available.
           </div>
         </section>
 
@@ -153,13 +104,7 @@ export default function LoginPage() {
 
         {/* 1 — Logo block */}
         <div className="mb-6 flex flex-col items-center gap-2">
-          <CertivaLogoMark />
-          <span
-            className="text-certiva-primary"
-            style={{ fontSize: 24, fontWeight: 400, letterSpacing: '-0.02em' }}
-          >
-            certiva
-          </span>
+          <CertivaLogo className="h-11 w-auto" />
         </div>
 
         {/* 2 — Heading */}
@@ -213,10 +158,8 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="mt-1 flex w-full items-center justify-center gap-2 rounded-lg
-              py-2.5 text-sm font-medium text-white transition-opacity
-              hover:opacity-90 disabled:opacity-60"
-            style={{ background: '#1A4731' }}
+            className="certiva-button-primary mt-1 flex w-full items-center justify-center gap-2
+              py-2.5 text-sm font-semibold disabled:opacity-60"
           >
             {submitting && <Loader2 size={15} className="animate-spin" />}
             Sign in

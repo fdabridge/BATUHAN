@@ -185,6 +185,9 @@ export function SharedDocumentsSection({
     || user?.role === 'planner_us'
   )
   const hasCertificate = docs.some((doc) => doc.document_type === 'certificate')
+  const certificateReady = docs.some((doc) =>
+    ['fr233', 'review_decision'].includes(doc.document_type) && doc.status === 'signed'
+  )
 
   async function deleteDoc(docId: string) {
     setDeleteError('')
@@ -337,30 +340,35 @@ export function SharedDocumentsSection({
   return (
     <div id="shared-documents" className="mt-8 scroll-mt-6">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-700">
-          Shared Documents
-        </h2>
+        <div>
+          <h2 className="text-sm font-semibold text-certiva-ink">Document record</h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Every released, uploaded, and signed file remains available here throughout the case.
+          </p>
+        </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            disabled={hasCertificate}
-            onClick={() => {
-              setShowCertificateForm((value) => !value)
-              setShowForm(false)
-              setCertificateError('')
-            }}
-            className="rounded-lg border border-[#1A4731] px-3 py-1.5 text-xs font-medium text-[#1A4731] hover:bg-[#F0FAF4] disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400 disabled:hover:bg-transparent"
-          >
-            {hasCertificate
-              ? 'Certificate already issued'
-              : showCertificateForm ? 'Cancel' : 'Generate Certificate PDF'}
-          </button>
+          {(certificateReady || hasCertificate) && (
+            <button
+              type="button"
+              disabled={hasCertificate}
+              onClick={() => {
+                setShowCertificateForm((value) => !value)
+                setShowForm(false)
+                setCertificateError('')
+              }}
+              className="rounded-full border border-certiva-green px-3 py-1.5 text-xs font-semibold text-certiva-green hover:bg-certiva-mist disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400 disabled:hover:bg-transparent"
+            >
+              {hasCertificate
+                ? 'Certificate issued'
+                : showCertificateForm ? 'Cancel' : 'Generate certificate PDF'}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => { setShowForm((s) => !s); setShowCertificateForm(false) }}
-            className="rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#143828]"
+            className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-certiva-green/40 hover:text-certiva-green"
           >
-            {showForm ? 'Cancel' : '+ Release Document'}
+            {showForm ? 'Close upload' : 'Advanced document upload'}
           </button>
         </div>
       </div>
@@ -434,6 +442,9 @@ export function SharedDocumentsSection({
 
       {showForm && (
         <div className="mb-4 rounded-xl border bg-white p-4">
+          <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
+            Use this control only for the document requested by the current workflow action above. Backend gates remain active as a final safety check.
+          </div>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div>
               <label className="block text-xs font-medium text-gray-500">Label</label>

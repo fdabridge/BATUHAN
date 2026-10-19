@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
 import api from '@/lib/api'
+import { GuidedActionCard } from '@/components/ui/GuidedActionCard'
 
 interface Summary {
   total_courses: number
@@ -87,6 +88,48 @@ export default function TrainingDashboardPage() {
     { key: 'inactive',  label: 'Inactive' },
   ]
 
+  const incompleteCourse = courses.find((course) => !course.is_ready)
+  const failedCourse = courses.find((course) => course.failed_count > 0)
+  const guidedAction = incompleteCourse
+    ? {
+        eyebrow: 'Course setup incomplete',
+        title: `Finish ${incompleteCourse.title}`,
+        description: incompleteCourse.missing_requirements.length > 0
+          ? `Complete ${incompleteCourse.missing_requirements.join(', ')} before assigning this training.`
+          : 'Complete the remaining course requirements before assigning this training.',
+        href: `/training/courses/${incompleteCourse.id}/edit`,
+        actionLabel: 'Continue course setup',
+        tone: 'action' as const,
+      }
+    : failedCourse
+      ? {
+          eyebrow: 'Follow-up required',
+          title: `${failedCourse.failed_count} failed attempt${failedCourse.failed_count === 1 ? '' : 's'} in ${failedCourse.title}`,
+          description: 'Open the assignment list to review the affected participants and reassign eligible failed attempts safely.',
+          href: `/training/courses/${failedCourse.id}/assignments`,
+          actionLabel: 'Review participants',
+          tone: 'action' as const,
+        }
+      : summary && summary.training_completed_exam_pending > 0
+        ? {
+            eyebrow: 'Exam queue',
+            title: `${summary.training_completed_exam_pending} participant${summary.training_completed_exam_pending === 1 ? '' : 's'} ready for an exam`,
+            description: 'Review participant progress and follow up on training that is complete but still awaiting an exam attempt.',
+            href: '/training/people',
+            actionLabel: 'Open people view',
+            tone: 'waiting' as const,
+          }
+        : {
+            eyebrow: 'Training workspace',
+            title: courses.length > 0 ? 'Training programme is up to date' : 'Create the first training',
+            description: courses.length > 0
+              ? 'No course setup or failed-exam follow-up is currently blocking the queue.'
+              : 'Build the course material and exam before assigning participants.',
+            href: courses.length > 0 ? '/training/people' : '/training/courses/new',
+            actionLabel: courses.length > 0 ? 'Review people' : 'Create training',
+            tone: courses.length > 0 ? 'success' as const : 'neutral' as const,
+          }
+
   return (
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
@@ -101,6 +144,12 @@ export default function TrainingDashboardPage() {
           + Create New Training
         </Link>
       </div>
+
+      {!loading && (
+        <div className="mb-6">
+          <GuidedActionCard {...guidedAction} />
+        </div>
+      )}
 
       {/* Summary cards */}
       {loading ? (

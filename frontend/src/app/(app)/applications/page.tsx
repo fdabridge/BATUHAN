@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
+import { GuidedActionCard } from '@/components/ui/GuidedActionCard'
 
 const STATUS_LABELS: Record<string, string> = {
   pending_review:    'Pending Review',
@@ -63,6 +64,27 @@ export default function ApplicationsPage() {
         <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
           {apps.length} pending
         </span>
+      </div>
+
+      <div className="mb-6">
+        {apps.length > 0 ? (
+          <GuidedActionCard
+            eyebrow="Start here"
+            title={`Review ${apps[apps.length - 1].company_name}`}
+            description="Open the oldest waiting application first. Once accepted, the client workspace will reveal only the next permitted workflow task."
+            href={`/clients/${apps[apps.length - 1].id}`}
+            actionLabel="Continue application review"
+            meta={`${apps.length} waiting`}
+            tone="action"
+          />
+        ) : (
+          <GuidedActionCard
+            eyebrow="Application queue"
+            title="No submitted application is waiting"
+            description="New client applications will appear here in submission order."
+            tone="success"
+          />
+        )}
       </div>
 
       {apps.length === 0 ? (

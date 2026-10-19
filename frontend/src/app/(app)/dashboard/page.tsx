@@ -6,6 +6,8 @@ import { useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { CertBadge } from '@/components/ui/CertBadge'
 import { PendingSignaturesWidget } from '@/components/ui/PendingSignaturesWidget'
+import { GuidedActionCard } from '@/components/ui/GuidedActionCard'
+import { useAuth } from '@/lib/auth'
 import type { DashboardStats, ClientSummary } from '@/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -192,13 +194,49 @@ function ClientTable() {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
+  const { user } = useAuth()
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
     queryKey: ['dashboard-stats'],
     queryFn: () => api.get<DashboardStats>('/dashboard/stats').then((r) => r.data),
   })
+  const canReviewApplications = !!user && ['admin', 'planner', 'officer', 'executive'].includes(user.role)
+  const { data: pendingApplications } = useQuery<{ id: string }[]>({
+    queryKey: ['guided-pending-applications'],
+    queryFn: () => api.get<{ id: string }[]>('/audit-sets/pending-applications').then((r) => r.data),
+    enabled: canReviewApplications,
+  })
+
+  const pendingCount = pendingApplications?.length ?? 0
+  const guidedAction = pendingCount > 0
+    ? {
+        eyebrow: 'Planner queue',
+        title: `${pendingCount} application${pendingCount === 1 ? '' : 's'} waiting for review`,
+        description: 'Start with the oldest submitted application. The case page will show the current workflow action and keep later actions unavailable until their gates are satisfied.',
+        href: '/applications',
+        actionLabel: 'Open application queue',
+        tone: 'action' as const,
+      }
+    : (stats?.approaching_expiry ?? 0) > 0
+      ? {
+          eyebrow: 'Renewal attention',
+          title: `${stats?.approaching_expiry ?? 0} certification${stats?.approaching_expiry === 1 ? '' : 's'} approaching renewal`,
+          description: 'Review the affected certification records and prepare the next surveillance or recertification activity.',
+          href: '/clients',
+          actionLabel: 'Review certification plans',
+          tone: 'waiting' as const,
+        }
+      : {
+          eyebrow: 'Operational queue',
+          title: 'No application review is waiting',
+          description: 'Pending signatures remain listed below. Open a certification plan when you need its complete workflow and document record.',
+          href: '/clients',
+          actionLabel: 'Open certification plans',
+          tone: 'success' as const,
+        }
 
   return (
     <div className="flex flex-col gap-6">
+      <GuidedActionCard {...guidedAction} />
       <StatCards stats={stats} isLoading={statsLoading} />
       <PendingSignaturesWidget />
       <ClientTable />

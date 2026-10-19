@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import api from '@/lib/api'
 import { useAuth } from '@/lib/auth'
+import { GuidedActionCard } from '@/components/ui/GuidedActionCard'
 
 interface ConsultantClient {
   id: string
@@ -60,9 +61,26 @@ export default function ConsultantClientsPage() {
   const filtered = clients.filter((c) =>
     c.company_name.toLowerCase().includes(search.toLowerCase())
   )
+  const clientNeedingAttention = clients.find((client) =>
+    !['Certified'].includes(client.simple_status)
+  )
 
   return (
     <div className="space-y-6">
+      {!loading && (
+        <GuidedActionCard
+          eyebrow={clientNeedingAttention ? 'Client progress' : 'Consultant workspace'}
+          title={clientNeedingAttention
+            ? `${clientNeedingAttention.company_name} · ${clientNeedingAttention.simple_status}`
+            : clients.length > 0 ? 'All referred clients are certified' : 'Share your referral code'}
+          description={clientNeedingAttention
+            ? 'The certification body owns the controlled workflow. Use this view to follow the client’s current position and coordinate with them when needed.'
+            : clients.length > 0
+              ? 'No referred client currently has an in-progress certification workflow.'
+              : 'A referred application will appear here after the client submits it with your code.'}
+          tone={clientNeedingAttention ? 'neutral' : 'success'}
+        />
+      )}
       <div className="rounded-xl border bg-white p-5">
         <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Your referral code</p>
         <p className="mt-1 text-2xl font-bold tracking-tight" style={{ color: '#1A4731' }}>
