@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth'
 import type { StageResponse } from '@/types'
 import { useManualActionDates } from '@/lib/useManualActionDates'
 import { isSurveillanceWorkflowAudit } from '@/lib/auditTypes'
+import { activePlannerDocumentTypes } from '@/lib/workflowWorkspace'
 
 interface SharedDoc {
   id: string
@@ -86,6 +87,7 @@ export function SharedDocumentsSection({
   workflowStatus = null,
   workflowVersion = 1,
   isTransfer = false,
+  mode = 'combined',
   onDocumentReleased,
 }: {
   auditSetId: string
@@ -95,6 +97,7 @@ export function SharedDocumentsSection({
   workflowStatus?: string | null
   workflowVersion?: number
   isTransfer?: boolean
+  mode?: 'workspace' | 'records' | 'combined'
   onDocumentReleased?: () => void
 }) {
   const isSurveillance = isSurveillanceWorkflowAudit(auditType)
@@ -102,9 +105,12 @@ export function SharedDocumentsSection({
   const fr218First = workflowVersion >= 2 && (!isSurveillance || transferSurveillance)
   const commercialLocked = fr218First && !statusAtLeast(workflowStatus, 'fr218_complete')
   const agreementLocked = fr218First && !statusAtLeast(workflowStatus, 'quotation_sent')
+  const [docs, setDocs] = useState<SharedDoc[]>([])
+  const [loading, setLoading] = useState(true)
 
-  // Document types available in the release form, filtered by audit type.
-  const DOC_TYPES = (() => {
+  // Complete catalogue. The active workspace applies a second, strict filter
+  // so future-phase uploads are not presented before their workflow step.
+  const ALL_DOC_TYPES = (() => {
     const transferTypes = isTransfer
       ? [{ value: 'transfer_review', label: 'Transfer Application Control (FR.250)' }]
       : []
@@ -146,17 +152,41 @@ export function SharedDocumentsSection({
     ]
   })()
 
+  const baseActiveTypeValues = activePlannerDocumentTypes({
+    workflowStatus,
+    auditType,
+    workflowVersion,
+    isTransfer,
+  })
+  const quotationSigned = docs.some((doc) => doc.document_type === 'quotation' && doc.status === 'signed')
+  const activeTypeValues = baseActiveTypeValues.filter((value) => (
+    workflowStatus !== 'quotation_sent' || value !== 'agreement' || quotationSigned
+  ))
+  const DOC_TYPES = ALL_DOC_TYPES.filter((type) => activeTypeValues.includes(type.value))
+
+  const currentRecordTypes = (() => {
+    if (workflowStatus === 'fr218_in_progress') return ['fr218_review']
+    if (workflowStatus === 'fr218_complete') return ['fr218_review', ...activeTypeValues]
+    if (workflowStatus === 'quotation_sent') return ['quotation', ...activeTypeValues]
+    if (workflowStatus === 'agreement_signed') return ['agreement', ...activeTypeValues]
+    if (workflowStatus === 'notification_sent') return ['surveillance_notification', ...activeTypeValues]
+    if (workflowStatus === 'committee_review') return ['fr233', 'review_decision']
+    if (workflowStatus === 'certified') return ['certificate']
+    return activeTypeValues
+  })()
+  const displayedDocs = mode === 'workspace'
+    ? docs.filter((doc) => currentRecordTypes.includes(doc.document_type))
+    : docs
+
   function defaultDocumentType(): string {
-    if (isTransfer) return 'transfer_review'
-    if (isSurveillance && !transferSurveillance) return 'surveillance_notification'
-    if (fr218First && commercialLocked) return 'fr218_review'
-    if (fr218First && workflowStatus === 'quotation_sent') return 'agreement'
-    return 'quotation'
+    return DOC_TYPES[0]?.value ?? ''
   }
 
-  const [docs, setDocs]     = useState<SharedDoc[]>([])
-  const [loading, setLoading] = useState(true)
-  const [showForm, setShowForm] = useState(false)
+  function defaultDocumentLabel(type: string): string {
+    return ALL_DOC_TYPES.find((item) => item.value === type)?.label.replace(/ — .+$/, '') ?? ''
+  }
+
+  const [showForm, setShowForm] = useState(mode === 'workspace' && DOC_TYPES.length > 0)
   const [showCertificateForm, setShowCertificateForm] = useState(false)
   const [label, setLabel]     = useState('')
   const [docType, setDocType] = useState(() => defaultDocumentType())
@@ -233,6 +263,18 @@ export function SharedDocumentsSection({
 
   useEffect(() => { load() }, [auditSetId])
 
+  useEffect(() => {
+    const nextType = defaultDocumentType()
+    setDocType(nextType)
+    setLabel(defaultDocumentLabel(nextType))
+    setStageType('')
+    setAuditorId('')
+    setShowForm(mode === 'workspace' && Boolean(nextType))
+    setShowCertificateForm(false)
+  // The primitive dependencies intentionally describe the current workflow phase.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workflowStatus, auditType, isTransfer, workflowVersion, mode, quotationSigned])
+
   async function release() {
     setError('')
     if (!label.trim()) { setError('Label is required.'); return }
@@ -258,8 +300,9 @@ export function SharedDocumentsSection({
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       const releasedFR233 = docType === 'review_decision'
-      setLabel(''); setFile(null)
-      setDocType(defaultDocumentType())
+      const nextType = defaultDocumentType()
+      setLabel(defaultDocumentLabel(nextType)); setFile(null)
+      setDocType(nextType)
       setStageType(''); setAuditorId('')
       setReleaseDate(new Date().toISOString().slice(0, 10))
       if (fileRef.current) fileRef.current.value = ''
@@ -345,13 +388,21 @@ export function SharedDocumentsSection({
     <div id="shared-documents" className="mt-8 scroll-mt-6">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-certiva-ink">Document record</h2>
+          <h2 className="text-sm font-semibold text-certiva-ink">
+            {mode === 'records' ? 'Document records' : 'Current document action'}
+          </h2>
           <p className="mt-0.5 text-xs text-slate-500">
-            Every released, uploaded, and signed file remains available here throughout the case.
+            {mode === 'records'
+              ? 'Every released, uploaded, and signed file remains available here throughout the case.'
+              : workflowStatus === 'quotation_sent' && !quotationSigned
+                ? 'The quotation is awaiting signatures. The contract upload will appear automatically after it is fully signed.'
+                : workflowStatus === 'fr218_in_progress'
+                  ? 'FR.218 is awaiting its required signatures. No later document is available yet.'
+                  : 'Only documents required by the current workflow phase can be uploaded here.'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {(certificateReady || hasCertificate) && (
+        {mode !== 'records' && <div className="flex items-center gap-2">
+          {['under_review', 'committee_review', 'certified'].includes(workflowStatus ?? '') && (certificateReady || hasCertificate) && (
             <button
               type="button"
               disabled={hasCertificate}
@@ -367,17 +418,17 @@ export function SharedDocumentsSection({
                 : showCertificateForm ? 'Cancel' : 'Issue certificate'}
             </button>
           )}
-          <button
+          {DOC_TYPES.length > 0 && <button
             type="button"
             onClick={() => { setShowForm((s) => !s); setShowCertificateForm(false) }}
             className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-certiva-green/40 hover:text-certiva-green"
           >
-            {showForm ? 'Close upload' : 'Advanced document upload'}
-          </button>
-        </div>
+            {showForm ? 'Close upload' : `Upload ${DOC_TYPES.length === 1 ? DOC_TYPES[0].label : 'required document'}`}
+          </button>}
+        </div>}
       </div>
 
-      {showCertificateForm && (
+      {mode !== 'records' && showCertificateForm && (
         <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
           <p className="text-sm font-medium text-gray-800">Generate final certificate</p>
           <p className="mt-1 text-xs text-gray-500">
@@ -444,10 +495,10 @@ export function SharedDocumentsSection({
         </div>
       )}
 
-      {showForm && (
+      {mode !== 'records' && showForm && DOC_TYPES.length > 0 && (
         <div className="mb-4 rounded-xl border bg-white p-4">
           <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
-            Use this control only for the document requested by the current workflow action above. Backend gates remain active as a final safety check.
+            This upload is limited to the document required by the current workflow phase. Backend gates remain active as a final safety check.
           </div>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div>
@@ -459,12 +510,13 @@ export function SharedDocumentsSection({
                 className="mt-1 w-full rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A4731]/30"
               />
             </div>
-            <div>
+            {DOC_TYPES.length > 1 && <div>
               <label className="block text-xs font-medium text-gray-500">Type</label>
               <select
                 value={docType}
                 onChange={(e) => {
                   setDocType(e.target.value)
+                  setLabel(defaultDocumentLabel(e.target.value))
                   setStageType('')
                   setAuditorId('')
                 }}
@@ -480,7 +532,7 @@ export function SharedDocumentsSection({
                   </option>
                 ))}
               </select>
-            </div>
+            </div>}
             {stageScoped && (
               <div>
                 <label className="block text-xs font-medium text-gray-500">Stage</label>
@@ -551,15 +603,15 @@ export function SharedDocumentsSection({
         </div>
       )}
 
-      <div className="rounded-xl border bg-white">
+      {(mode !== 'workspace' || displayedDocs.length > 0 || loading) && <div className="rounded-xl border bg-white">
         {loading ? (
           <p className="p-6 text-sm text-gray-400">Loading…</p>
-        ) : docs.length === 0 ? (
+        ) : displayedDocs.length === 0 ? (
           <p className="p-6 text-sm text-gray-400">No documents released yet.</p>
         ) : (
           <>
           <ul className="divide-y">
-            {docs.map((d) => (
+            {displayedDocs.map((d) => (
               <li key={d.id} className="flex items-center justify-between px-4 py-3">
                 <div>
                   <p className="text-sm font-medium text-gray-800">{d.label}</p>
@@ -658,7 +710,7 @@ export function SharedDocumentsSection({
             )}
           </>
         )}
-      </div>
+      </div>}
     </div>
   )
 }

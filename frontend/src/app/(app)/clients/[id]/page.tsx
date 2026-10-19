@@ -2766,6 +2766,37 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
 
   // Compute surveillance sequence number for labels
   let survCount = 0
+  const workflowStatus = data.workflow_status ?? ''
+  const surveillanceWorkflow = isSurveillanceWorkflowAudit(data.audit_type)
+  const transferSurveillance = surveillanceWorkflow && data.is_transfer
+  const fr218First = (data.workflow_version ?? 1) >= 2 && (!surveillanceWorkflow || transferSurveillance)
+  const planningWorkspaceStatuses = new Set([
+    'pending_review', 'agreement_signed', 'notification_sent',
+    'stage1_scheduled', 'stage1_complete', 'stage2_scheduled', 'audit_scheduled',
+  ])
+  const showPlanningWorkspace = planningWorkspaceStatuses.has(workflowStatus)
+    || (workflowStatus === 'in_planning' && surveillanceWorkflow && !transferSurveillance)
+    || (workflowStatus === 'fr218_complete' && !fr218First)
+  const documentWorkspaceStatuses = new Set([
+    'in_planning', 'fr218_in_progress', 'fr218_complete', 'quotation_sent',
+    'agreement_signed', 'notification_sent', 'stage1_scheduled', 'stage1_complete',
+    'stage2_scheduled', 'audit_scheduled', 'stage2_complete', 'under_review',
+    'committee_review', 'certified',
+  ])
+  const showDocumentWorkspace = documentWorkspaceStatuses.has(workflowStatus)
+  const auditPreparationStatuses = new Set([
+    'agreement_signed', 'notification_sent', 'stage1_scheduled',
+    'stage2_scheduled', 'audit_scheduled',
+  ])
+  const auditReportStatuses = new Set([
+    'stage1_in_progress', 'stage1_complete', 'stage2_in_progress',
+    'stage2_complete', 'audit_in_progress', 'under_review',
+  ])
+  const auditCloseoutStatuses = new Set([
+    'stage1_in_progress', 'stage1_complete', 'stage2_in_progress',
+    'stage2_complete', 'audit_in_progress', 'under_review',
+  ])
+  const decisionStatuses = new Set(['under_review', 'committee_review'])
 
   return (
     <div className="mx-auto max-w-[900px] space-y-5 py-4">
@@ -2783,14 +2814,6 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
           </span>
         </div>
         <div className="flex gap-2">
-          <button
-            type="button" disabled={downloading}
-            onClick={handleDownload}
-            className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-          >
-            {downloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-            Download audit package
-          </button>
           {canDelete && (
             <button
               type="button"
@@ -2838,10 +2861,6 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
         </div>
       )}
 
-      {/* Always query application evidence. Legacy rows may have a stale or
-          missing submitted_via_portal flag even though document metadata exists. */}
-      <CompanyDocumentsSection auditSetId={id} />
-
       {/* Workflow status tracker + status-specific action panel */}
       {data.workflow_status && data.workflow_status !== 'pending_review' && (
         <WorkflowStatusBar
@@ -2855,75 +2874,77 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
         />
       )}
 
-      <PlanOverview data={data} auditSetId={id} onInvalidate={invalidate} userRole={currentUser?.role ?? ''} />
-      <CertSection data={data} id={id} onInvalidate={invalidate} />
+      {/* Application intake and audit planning are shown only while they are the
+          planner's current job. Once passed, they remain under Case details. */}
+      {workflowStatus === 'pending_review' && <CompanyDocumentsSection auditSetId={id} />}
 
-      {/* Audit stages */}
-      {displayStages.length > 0 && (
-        <div className="rounded-lg border border-gray-100 bg-white p-5">
-          <p className="mb-4 text-sm font-medium text-gray-700">Audit stages</p>
-          <div className="space-y-3">
-            {displayStages.map((stage) => {
-              if (stage.stage_type === 'surveillance') survCount += 1
-              const stageLabel = stageDisplayLabel(stage.stage_type, survCount, data.audit_type)
-              return (
-                <StageCard
-                  key={stage.id}
-                  stage={stage}
-                  label={stageLabel}
-                  allStages={displayStages}
-                  auditSetId={id}
-                  onSuccess={invalidate}
-                  auditors={auditors}
-                  auditorsLoading={auditorsLoading}
-                  manDayResult={data.man_day_result}
-                  auditType={data.audit_type ?? null}
-                  eaCode={data.ea_code ?? null}
-                  accreditationBody={data.accreditation_body ?? null}
-                  standards={(data.standards ?? []) as string[]}
-                  requiredScope={data.required_scope ?? null}
-                />
-              )
-            })}
+      {showPlanningWorkspace && (
+        <section className="space-y-5 rounded-2xl border border-certiva-green/15 bg-certiva-mist/30 p-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-certiva-green">Current workspace</p>
+            <h2 className="mt-1 text-lg font-semibold text-certiva-ink">
+              {workflowStatus === 'pending_review' ? 'Review the application' : 'Prepare the audit'}
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Only the information and appointments needed for this phase are shown here.
+            </p>
           </div>
-          {/* Portal 64 — Certification Committee picker (planning phase) */}
-          <CommitteePlanningCard
-            auditSetId={id}
-            stages={displayStages}
-            standards={(data.standards ?? []) as string[]}
-            eaCode={data.ea_code ?? null}
-            initialCommittee={data.committee_members}
-            onSuccess={invalidate}
-          />
-          {data.is_transfer && (
-            <TransferReviewerPicker
-              auditSetId={id}
-              auditors={auditors}
-              stages={displayStages}
-              committeeMembers={data.committee_members}
-              fr218ReviewerId={data.fr218_reviewer_id}
-              currentReviewerId={data.transfer_reviewer_id}
-              currentReviewerName={data.transfer_reviewer_name}
-              onSaved={invalidate}
-            />
+
+          <PlanOverview data={data} auditSetId={id} onInvalidate={invalidate} userRole={currentUser?.role ?? ''} />
+
+          {displayStages.length > 0 && (
+            <div className="rounded-lg border border-gray-100 bg-white p-5">
+              <p className="mb-4 text-sm font-medium text-gray-700">Audit stages</p>
+              <div className="space-y-3">
+                {displayStages.map((stage) => {
+                  if (stage.stage_type === 'surveillance') survCount += 1
+                  const stageLabel = stageDisplayLabel(stage.stage_type, survCount, data.audit_type)
+                  return (
+                    <StageCard
+                      key={stage.id}
+                      stage={stage}
+                      label={stageLabel}
+                      allStages={displayStages}
+                      auditSetId={id}
+                      onSuccess={invalidate}
+                      auditors={auditors}
+                      auditorsLoading={auditorsLoading}
+                      manDayResult={data.man_day_result}
+                      auditType={data.audit_type ?? null}
+                      eaCode={data.ea_code ?? null}
+                      accreditationBody={data.accreditation_body ?? null}
+                      standards={(data.standards ?? []) as string[]}
+                      requiredScope={data.required_scope ?? null}
+                    />
+                  )
+                })}
+              </div>
+              <CommitteePlanningCard
+                auditSetId={id}
+                stages={displayStages}
+                standards={(data.standards ?? []) as string[]}
+                eaCode={data.ea_code ?? null}
+                initialCommittee={data.committee_members}
+                onSuccess={invalidate}
+              />
+              {data.is_transfer && (
+                <TransferReviewerPicker
+                  auditSetId={id}
+                  auditors={auditors}
+                  stages={displayStages}
+                  committeeMembers={data.committee_members}
+                  fr218ReviewerId={data.fr218_reviewer_id}
+                  currentReviewerId={data.transfer_reviewer_id}
+                  currentReviewerName={data.transfer_reviewer_name}
+                  onSaved={invalidate}
+                />
+              )}
+            </div>
           )}
-        </div>
+
+          <ManDaySection result={data.man_day_result} />
+        </section>
       )}
-
-      <ManDaySection result={data.man_day_result} />
-
-      {/* Client Messages — Prompt 06 (additive, bottom of page) */}
-      <div className="mt-8">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-700">
-          Client Messages
-        </h2>
-        <div className="overflow-hidden rounded-xl border bg-white" style={{ height: 400 }}>
-          <MessageThread
-            fetchUrl={`/audit-sets/${id}/messages`}
-            postUrl={`/audit-sets/${id}/messages`}
-          />
-        </div>
-      </div>
 
       {/* Certification complete callout — Prompt 20 */}
       {data.workflow_status === 'certified' && (
@@ -2946,28 +2967,54 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
         </div>
       )}
 
-      {/* Shared Documents — Prompt 07 (additive, bottom of page) */}
-      <SharedDocumentsSection
-        auditSetId={id}
-        stages={displayStages}
-        auditType={data.audit_type ?? null}
-        standards={(data.standards ?? []) as string[]}
-        workflowStatus={data.workflow_status ?? null}
-        workflowVersion={data.workflow_version ?? 1}
-        isTransfer={data.is_transfer}
-        onDocumentReleased={invalidate}
-      />
+      {showDocumentWorkspace && (
+        <section className="rounded-2xl border border-certiva-green/15 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-certiva-green">Current phase</p>
+              <h2 className="mt-1 text-lg font-semibold text-certiva-ink">Required documents</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Download the prepared set when needed, then upload only the document allowed at this point.
+              </p>
+            </div>
+            {workflowStatus !== 'certified' && (
+              <button
+                type="button"
+                disabled={downloading}
+                onClick={handleDownload}
+                className="inline-flex items-center gap-2 rounded-full border border-certiva-green px-4 py-2 text-sm font-semibold text-certiva-green hover:bg-certiva-mist disabled:opacity-50"
+              >
+                {downloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                Download current audit package
+              </button>
+            )}
+          </div>
+          <SharedDocumentsSection
+            auditSetId={id}
+            stages={displayStages}
+            auditType={data.audit_type ?? null}
+            standards={(data.standards ?? []) as string[]}
+            workflowStatus={data.workflow_status ?? null}
+            workflowVersion={data.workflow_version ?? 1}
+            isTransfer={data.is_transfer}
+            mode="workspace"
+            onDocumentReleased={invalidate}
+          />
+        </section>
+      )}
 
-      {/* Internal CB Approvals — Prompt 13 (FR.218 / FR.222) */}
-      <InternalApprovalsSection
-        auditSetId={id}
-        workflowStatus={data.workflow_status ?? null}
-        auditType={data.audit_type ?? null}
-        isTransfer={data.is_transfer}
-      />
+      {auditPreparationStatuses.has(workflowStatus) && (
+        <InternalApprovalsSection
+          auditSetId={id}
+          workflowStatus={data.workflow_status ?? null}
+          auditType={data.audit_type ?? null}
+          isTransfer={data.is_transfer}
+        />
+      )}
 
       {/* FR.218 Application Reviewer — Portal 51 (FSMS/ISMS only) */}
-      {needsFr218Reviewer((data.standards ?? []) as string[]) &&
+      {['in_planning', 'fr218_in_progress'].includes(workflowStatus) &&
+       needsFr218Reviewer((data.standards ?? []) as string[]) &&
        (!isSurveillanceWorkflowAudit(data.audit_type) || data.is_transfer) && (
         <div className="mt-4 rounded-xl border bg-white p-4">
           <h3 className="mb-1 text-sm font-semibold text-gray-700">
@@ -2988,42 +3035,52 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
 
       {/* Portal 64 — Certification Committee moved to planning phase (see CommitteePlanningCard inside Audit stages block) */}
 
-      {/* FR.233 Review & Decision — Portal 49a Part 3 */}
-      <FR233Panel
-        auditSetId={id}
-        workflowStatus={data.workflow_status ?? null}
-      />
+      {decisionStatuses.has(workflowStatus) && (
+        <FR233Panel
+          auditSetId={id}
+          workflowStatus={data.workflow_status ?? null}
+        />
+      )}
 
       {/* Portal 55 — Meeting Attendees section removed (replaced by FR.225
           employee-roster flow). FR.225 attendees are now managed by the client
           via their /client/employees roster and signed in the viewer. */}
 
       {/* Auditor Assessments — Prompt 16 (FR.211 client rates auditors post-audit) */}
-      <AssessmentManagementSection
-        auditSetId={id}
-        workflowStatus={data.workflow_status ?? null}
-      />
+      {auditCloseoutStatuses.has(workflowStatus) && (
+        <AssessmentManagementSection
+          auditSetId={id}
+          workflowStatus={data.workflow_status ?? null}
+        />
+      )}
 
       {/* NC Forms — Prompt 17 (FR.230 two-party signing: Lead Auditor → client) */}
-      <NCFormManagementSection
-        auditSetId={id}
-        workflowStatus={data.workflow_status ?? null}
-      />
+      {auditCloseoutStatuses.has(workflowStatus) && (
+        <NCFormManagementSection
+          auditSetId={id}
+          workflowStatus={data.workflow_status ?? null}
+        />
+      )}
 
       {/* Impartiality Declarations — Prompt 18 (FR.224 each audit team member self-signs) */}
-      <DeclarationManagementSection
-        auditSetId={id}
-        workflowStatus={data.workflow_status ?? null}
-      />
+      {auditPreparationStatuses.has(workflowStatus) && (
+        <DeclarationManagementSection
+          auditSetId={id}
+          workflowStatus={data.workflow_status ?? null}
+        />
+      )}
 
       {/* Audit Reports — Prompt 19 (FR.231/FR.229/FR.232 two-party signing) */}
-      <AuditReportSection
-        auditSetId={id}
-        workflowStatus={data.workflow_status ?? null}
-        userRole={currentUser?.role}
-      />
+      {auditReportStatuses.has(workflowStatus) && (
+        <AuditReportSection
+          auditSetId={id}
+          workflowStatus={data.workflow_status ?? null}
+          userRole={currentUser?.role}
+        />
+      )}
 
       {/* ── NC Management (Portal 103 / 118) ───────────────────────────────── */}
+      {canUseAuditFlowNC && auditCloseoutStatuses.has(workflowStatus) && (
       <div className="rounded-lg border bg-white p-6 space-y-4">
         <div>
           <h2 className="text-base font-semibold text-gray-900">Nonconformities (NC)</h2>
@@ -3303,6 +3360,56 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
           </div>
         )}
       </div>
+      )}
+
+      {/* Completed work is retained without competing with the current task. */}
+      <details className="group rounded-xl border border-slate-200 bg-white">
+        <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 text-sm font-semibold text-certiva-ink">
+          <span>Document records</span>
+          <ChevronDown size={16} className="transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="space-y-5 border-t border-slate-100 px-5 pb-5">
+          {workflowStatus !== 'pending_review' && <CompanyDocumentsSection auditSetId={id} />}
+          <SharedDocumentsSection
+            auditSetId={id}
+            stages={displayStages}
+            auditType={data.audit_type ?? null}
+            standards={(data.standards ?? []) as string[]}
+            workflowStatus={data.workflow_status ?? null}
+            workflowVersion={data.workflow_version ?? 1}
+            isTransfer={data.is_transfer}
+            mode="records"
+            onDocumentReleased={invalidate}
+          />
+        </div>
+      </details>
+
+      <details className="group rounded-xl border border-slate-200 bg-white">
+        <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 text-sm font-semibold text-certiva-ink">
+          <span>Case details</span>
+          <ChevronDown size={16} className="transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="space-y-5 border-t border-slate-100 p-5">
+          {!showPlanningWorkspace && (
+            <PlanOverview data={data} auditSetId={id} onInvalidate={invalidate} userRole={currentUser?.role ?? ''} />
+          )}
+          <CertSection data={data} id={id} onInvalidate={invalidate} />
+          {!showPlanningWorkspace && <ManDaySection result={data.man_day_result} />}
+        </div>
+      </details>
+
+      <details className="group rounded-xl border border-slate-200 bg-white">
+        <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 text-sm font-semibold text-certiva-ink">
+          <span>Client messages</span>
+          <ChevronDown size={16} className="transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="overflow-hidden border-t border-slate-100" style={{ height: 400 }}>
+          <MessageThread
+            fetchUrl={`/audit-sets/${id}/messages`}
+            postUrl={`/audit-sets/${id}/messages`}
+          />
+        </div>
+      </details>
     </div>
   )
 }

@@ -150,7 +150,7 @@ interface ActionPanel {
 const INITIAL_PANELS: Record<string, ActionPanel> = {
   in_planning: {
     heading: 'Ready to send quotation?',
-    body: "Download and generate the FR.220 quotation, then release it to the client using the Shared Documents section below. Once you release a Quotation document, the status advances automatically.",
+    body: 'Download the prepared set, then release FR.220 through the current document action. Later documents stay hidden until their gates are complete.',
   },
   quotation_sent: {
     heading: 'Waiting for client signature',
@@ -162,7 +162,7 @@ const INITIAL_PANELS: Record<string, ActionPanel> = {
   },
   fr218_in_progress: {
     heading: 'FR.218 application review in progress',
-    body: 'The Planning Officer, optional independent reviewer (FSMS/ISMS only), and Certification Manager must sign FR.218 before Stage 1 can be scheduled. Track signatures in the Internal Approvals section below.',
+    body: 'The Planning Officer, optional independent reviewer (FSMS/ISMS only), and Certification Manager must sign FR.218 before Stage 1 can be scheduled. Open FR.218 in the current document action to track and complete signatures.',
   },
   fr218_complete: {
     heading: 'FR.218 complete — ready for Stage 1',
@@ -196,7 +196,7 @@ const INITIAL_PANELS: Record<string, ActionPanel> = {
   },
   stage2_complete: {
     heading: 'Stage 2 complete — committee review next',
-    body: 'Stage 2 is done. Certification is NOT automatic: release FR.233 from Shared Documents to open the committee review.',
+    body: 'Stage 2 is done. Certification is not automatic: release FR.233 through the current document action to open committee review.',
     cta: { label: 'Open Committee Review', nextStatus: 'committee_review', allowedRoles: ['admin', 'planner', 'planner_us', 'certification_manager'] },
   },
   committee_review: {
@@ -218,7 +218,7 @@ const INITIAL_FR218_FIRST_PANELS: Record<string, ActionPanel> = {
   ...INITIAL_PANELS,
   in_planning: {
     heading: 'Application approved — complete FR.218 next',
-    body: 'Generate and release FR.218 from Shared Documents. Quotation and agreement actions remain locked until the application review is fully signed.',
+    body: 'Generate and release FR.218 through the current document action. Quotation and contract actions remain hidden until the application review is fully signed.',
   },
   fr218_complete: {
     heading: 'FR.218 complete — ready to send quotation',
@@ -234,7 +234,7 @@ const INITIAL_FR218_FIRST_PANELS: Record<string, ActionPanel> = {
 const STANDARD_PANELS: Record<string, ActionPanel> = {
   in_planning: {
     heading: 'Ready to send quotation?',
-    body: "Download and generate the FR.220 quotation, then release it to the client using the Shared Documents section below. Once you release a Quotation document, the status advances automatically.",
+    body: 'Download the prepared set, then release FR.220 through the current document action. Later documents stay hidden until their gates are complete.',
   },
   quotation_sent: {
     heading: 'Waiting for client signature',
@@ -268,7 +268,7 @@ const STANDARD_PANELS: Record<string, ActionPanel> = {
 const RECERTIFICATION_PANELS: Record<string, ActionPanel> = {
   in_planning: {
     heading: 'Ready to send recertification quotation?',
-    body: "Download and generate FR.220, then release it to the client using the Shared Documents section below. Once you release a Quotation document, the status advances automatically.",
+    body: 'Download the prepared set, then release FR.220 through the current document action. Later documents stay hidden until their gates are complete.',
   },
   quotation_sent: {
     heading: 'Waiting for client signature',
@@ -298,7 +298,7 @@ const RECERTIFICATION_PANELS: Record<string, ActionPanel> = {
   },
   under_review: {
     heading: 'Under review — renewed certification decision',
-    body: 'Audit documents are complete. Release FR.233 (Review & Decision Form) from Shared Documents so the committee can sign. Once the decision is issued, upload/issue the renewed certificate.',
+    body: 'Audit documents are complete. Release FR.233 through the current document action so the committee can sign. Once the decision is issued, issue the renewed certificate.',
     cta: { label: 'Issue Renewed Certificate', nextStatus: 'certified', allowedRoles: ['admin', 'executive'] },
   },
   certified: {
@@ -311,7 +311,7 @@ const RECERTIFICATION_FR218_FIRST_PANELS: Record<string, ActionPanel> = {
   ...RECERTIFICATION_PANELS,
   in_planning: {
     heading: 'Application approved — complete FR.218 next',
-    body: 'Generate and release FR.218. The recertification quotation and agreement remain locked until the review is fully signed.',
+    body: 'Generate and release FR.218 through the current document action. The recertification quotation and contract remain hidden until the review is fully signed.',
   },
   fr218_complete: {
     heading: 'FR.218 complete — ready to send quotation',
@@ -327,7 +327,7 @@ const RECERTIFICATION_FR218_FIRST_PANELS: Record<string, ActionPanel> = {
 const SURVEILLANCE_PANELS: Record<string, ActionPanel> = {
   in_planning: {
     heading: 'Prepare surveillance notification',
-    body: 'Download and generate FR.234 (Surveillance Notification Form), fill in audit dates and team, then release it to the client using the Shared Documents section below. Status advances automatically when you release it.',
+    body: 'Download the prepared set, complete FR.234 with the audit dates and team, then release it through the current document action. Status advances automatically when it is released.',
   },
   notification_sent: {
     heading: 'Client notified — confirm audit dates',
@@ -345,7 +345,7 @@ const SURVEILLANCE_PANELS: Record<string, ActionPanel> = {
   },
   under_review: {
     heading: 'Under review — committee decision',
-    body: 'Audit documents are complete. Release FR.233 (Review & Decision Form) from Shared Documents so the committee can sign. Once the decision is issued, mark certification as continued.',
+    body: 'Audit documents are complete. Release FR.233 through the current document action so the committee can sign. Once the decision is issued, mark certification as continued.',
     cta: { label: 'Issue Continuation Certificate', nextStatus: 'certified', allowedRoles: ['admin', 'executive'] },
   },
   certified: {
