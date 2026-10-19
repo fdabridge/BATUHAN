@@ -20,12 +20,17 @@ CERTIFICATION WORKFLOW
 IMPORTANT DOCUMENTS AND GATES
 - FR.217 is the certification application. FR.218 is the application review.
 - FR.220 is the quotation/proposal. FR.221 is the certification agreement.
+- FR.220 is signed in order by the General Manager (GM) and then the client. FR.221 is also signed by the GM and then the client.
+- FR.222 is signed by the CB Planner and then the Certification Manager. FR.223 is signed by the organisation representative. FR.224 is signed by its assigned auditor.
 - FR.222 is the audit programme. FR.223 is the audit plan. FR.224 is issued per relevant auditor/team member.
 - Stage entry can require FR.222 to be fully signed, all relevant FR.224 forms to be signed, and FR.223 to be signed by the organisation representative.
 - Audit reports must be uploaded for their correct stage and complete the configured signatures/review.
 - After a stage report, the lead auditor records either No NC or the individual nonconformities. Open NC items must complete the evidence and auditor-review cycle before the workflow can pass the relevant gate.
 - FR.233 is the final review and certification-decision record. Required committee and Certification Manager signatures must be complete before certificate issuance.
 - Final certificate issuance registers each included standard with IAF CertSearch, receives an official verification URL/QR, and then creates the English certificate PDF. Integrated audits create one certificate page and IAF record per standard.
+
+STANDARD NAMES
+- QMS means ISO 9001; EMS means ISO 14001; OHSMS means ISO 45001; FSMS means ISO 22000; ISMS means ISO 27001; MDQMS/MDMS means ISO 13485; ABMS means ISO 37001; CMS means ISO 37301; ENMS means ISO 50001.
 
 CERTIVAI FEATURES
 - AI report generation starts from CertivAI > Reports. The user supplies the applicable company evidence, audit context, standards, accreditation body, and correct report template. The generated report must still be reviewed by an authorised person.

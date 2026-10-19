@@ -1,0 +1,73 @@
+.avatar {
+  position: relative;
+  display: block;
+  flex: none;
+  aspect-ratio: 1;
+  background-image: url('/vera/vera-sprite-v1.webp');
+  background-repeat: no-repeat;
+  background-size: 400% 200%;
+  filter: drop-shadow(0 8px 12px rgb(6 13 8 / 18%));
+  transform-origin: 50% 82%;
+  will-change: transform, background-position;
+}
+
+.idle {
+  animation: vera-float 3.4s ease-in-out infinite;
+}
+
+.wave {
+  animation: vera-wave 420ms ease-in-out infinite alternate;
+}
+
+.listening {
+  animation: vera-listen 2.2s ease-in-out infinite;
+}
+
+.thinking {
+  animation: vera-think 1.3s ease-in-out infinite;
+}
+
+.speaking {
+  animation: vera-speak 520ms ease-in-out infinite alternate;
+}
+
+.success {
+  animation: vera-success 700ms cubic-bezier(.2, .85, .3, 1) both;
+}
+
+@keyframes vera-float {
+  0%, 100% { transform: translateY(0) rotate(-0.8deg); }
+  50% { transform: translateY(-4%) rotate(0.8deg); }
+}
+
+@keyframes vera-wave {
+  from { transform: translateY(-1%) rotate(-2deg) scale(1); }
+  to { transform: translateY(-5%) rotate(2deg) scale(1.025); }
+}
+
+@keyframes vera-listen {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  50% { transform: translateY(-2%) rotate(-1.5deg); }
+}
+
+@keyframes vera-think {
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  50% { transform: translateY(-3%) rotate(1deg); }
+}
+
+@keyframes vera-speak {
+  from { transform: translateY(0) scale(1); }
+  to { transform: translateY(-2%) scale(1.025); }
+}
+
+@keyframes vera-success {
+  0% { transform: translateY(8%) scale(.9); }
+  55% { transform: translateY(-7%) scale(1.07); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .avatar {
+    animation: none;
+  }
+}

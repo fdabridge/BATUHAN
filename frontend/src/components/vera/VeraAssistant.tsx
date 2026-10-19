@@ -5,7 +5,7 @@ import { MessageCircle, Send, X } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import api from '@/lib/api'
 import { useAuth } from '@/lib/auth'
-import { VeraMark } from './VeraMark'
+import { VeraAvatar, VeraMood } from './VeraAvatar'
 
 type Message = {
   role: 'user' | 'assistant'
@@ -57,6 +57,7 @@ export function VeraAssistant() {
   const [question, setQuestion] = useState('')
   const [asking, setAsking] = useState(false)
   const [contextLoading, setContextLoading] = useState(false)
+  const [avatarMood, setAvatarMood] = useState<VeraMood>('idle')
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const auditSetId = useMemo(() => auditSetIdFromPath(pathname), [pathname])
@@ -100,6 +101,14 @@ export function VeraAssistant() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [open])
 
+  useEffect(() => {
+    if (!open || !['wave', 'speaking', 'success'].includes(avatarMood)) return
+    const nextMood: VeraMood = avatarMood === 'speaking' ? 'success' : 'listening'
+    const delay = avatarMood === 'wave' ? 1800 : avatarMood === 'speaking' ? 1200 : 900
+    const timer = window.setTimeout(() => setAvatarMood(nextMood), delay)
+    return () => window.clearTimeout(timer)
+  }, [open, avatarMood])
+
   if (isLoading || !user || user.activation_required || pathname === '/login' || pathname === '/apply') {
     return null
   }
@@ -112,6 +121,7 @@ export function VeraAssistant() {
     setMessages([...previous, { role: 'user', content: clean }])
     setQuestion('')
     setAsking(true)
+    setAvatarMood('thinking')
     try {
       const response = await api.post<{
         answer: string
@@ -124,8 +134,10 @@ export function VeraAssistant() {
         history: previous.slice(-6),
       })
       setMessages((current) => [...current, { role: 'assistant', content: response.data.answer }])
+      setAvatarMood('speaking')
     } catch (error) {
       setMessages((current) => [...current, { role: 'assistant', content: errorDetail(error) }])
+      setAvatarMood('listening')
     } finally {
       setAsking(false)
       requestAnimationFrame(() => inputRef.current?.focus())
@@ -146,7 +158,7 @@ export function VeraAssistant() {
         >
           <header className="flex items-center justify-between bg-certiva-night px-4 py-3.5 text-white">
             <div className="flex min-w-0 items-center gap-3">
-              <VeraMark className="h-10 w-10 shrink-0" thinking={asking} />
+              <VeraAvatar className="h-16 w-16 shrink-0" mood={avatarMood} />
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <h2 className="text-sm font-bold">Vera</h2>
@@ -256,14 +268,17 @@ export function VeraAssistant() {
           type="button"
           onClick={() => {
             setOpen(true)
+            setAvatarMood('wave')
             requestAnimationFrame(() => inputRef.current?.focus())
           }}
           aria-label="Ask Vera"
-          className="fixed bottom-4 right-4 z-[79] flex items-center gap-2 rounded-full border border-white/10 bg-certiva-night py-2 pl-2 pr-4 text-white shadow-[0_12px_38px_rgba(6,13,8,0.28)] transition hover:-translate-y-0.5 hover:bg-certiva-dark focus-visible:outline focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-certiva-signal sm:bottom-5 sm:right-5"
+          className="group fixed bottom-3 right-3 z-[79] flex h-[102px] w-[102px] flex-col items-center justify-end rounded-[30px] text-white transition hover:-translate-y-1 focus-visible:outline focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-certiva-signal sm:bottom-4 sm:right-5"
         >
-          <VeraMark className="h-10 w-10" />
-          <span className="text-sm font-semibold">Ask Vera</span>
-          <MessageCircle size={15} className="text-certiva-signal" aria-hidden="true" />
+          <VeraAvatar className="absolute inset-x-[7px] top-0 h-[88px] w-[88px] transition group-hover:scale-105" mood="idle" />
+          <span className="relative z-10 flex items-center gap-1.5 rounded-full border border-white/10 bg-certiva-night px-3 py-1.5 text-xs font-semibold shadow-[0_8px_24px_rgba(6,13,8,0.3)]">
+            Ask Vera
+            <MessageCircle size={13} className="text-certiva-signal" aria-hidden="true" />
+          </span>
         </button>
       )}
     </>

@@ -16,6 +16,8 @@ from vera.knowledge import page_description
 from vera.service import (
     answer_with_vera,
     build_case_snapshot,
+    build_portal_snapshot,
+    direct_portal_answer,
     record_usage,
     resolve_case,
 )
@@ -93,6 +95,15 @@ def get_vera_context(
             "How can I see a person's exam history?",
             "When can a failed training be reassigned?",
         ]
+    elif current_user.role in {
+        "admin", "planner", "planner_us", "officer", "executive",
+        "gm", "certification_manager", "crm",
+    } and pathname in {"/", "/dashboard", "/applications", "/clients"}:
+        suggestions = [
+            "How many applications are waiting for review?",
+            "How many active ISO 9001 certificates do we have?",
+            "Who signs FR.220?",
+        ]
     return {
         "name": "Vera",
         "description": "Certiva's read-only workflow guide",
@@ -112,15 +123,29 @@ def ask_vera(
 ):
     """Answer one question using only authorised, read-only portal context."""
     settings = get_settings()
+    audit_set = resolve_case(payload.audit_set_id, current_user, audit_db)
+    snapshot = build_case_snapshot(audit_set, current_user, audit_db) if audit_set else None
+    portal_snapshot = build_portal_snapshot(
+        question=payload.question,
+        pathname=payload.pathname,
+        user=current_user,
+        db=audit_db,
+    )
     used = _questions_today(auth_db, current_user.id)
+    direct_answer = direct_portal_answer(payload.question, portal_snapshot)
+    if direct_answer:
+        return {
+            "answer": direct_answer,
+            "read_only": True,
+            "case_status": snapshot.get("status_title") if snapshot else None,
+            "remaining_today": max(settings.vera_daily_question_limit - used, 0),
+            "source": "live_database",
+        }
     if used >= settings.vera_daily_question_limit:
         raise HTTPException(
             429,
             "Vera's daily question limit has been reached for this account. Please try again later.",
         )
-
-    audit_set = resolve_case(payload.audit_set_id, current_user, audit_db)
-    snapshot = build_case_snapshot(audit_set, current_user, audit_db) if audit_set else None
     try:
         answer, usage, model = answer_with_vera(
             question=payload.question,
@@ -128,6 +153,7 @@ def ask_vera(
             user=current_user,
             pathname=payload.pathname,
             snapshot=snapshot,
+            portal_snapshot=portal_snapshot,
         )
     except HTTPException:
         raise

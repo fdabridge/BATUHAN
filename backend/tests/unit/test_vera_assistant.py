@@ -19,7 +19,13 @@ from audit_set.db_models import (
 )
 from auth.db_models import Base as AuthBase
 from vera.knowledge import page_description
-from vera.service import build_case_snapshot, resolve_case, system_instructions
+from vera.service import (
+    build_case_snapshot,
+    build_portal_snapshot,
+    direct_portal_answer,
+    resolve_case,
+    system_instructions,
+)
 
 
 @pytest.fixture()
@@ -169,6 +175,91 @@ def test_consultant_snapshot_does_not_bypass_document_visibility(db):
     assert snapshot["visible_documents"]["by_type"] == {}
 
 
+def test_internal_portal_snapshot_answers_dashboard_and_company_questions(db):
+    zanner = _case(
+        "case-zanner",
+        2025165,
+        company_name="Zanner Fahrzeugbau GmbH",
+        standards=["QMS"],
+        workflow_status="pending_review",
+        cert_status="active",
+    )
+    other = _case(
+        "case-other",
+        2025164,
+        company_name="Haug Biegetechnik GmbH & Co. KG",
+        standards=["QMS", "EMS"],
+        workflow_status="fr218_complete",
+        cert_status=None,
+    )
+    db.add_all([zanner, other])
+    db.commit()
+
+    snapshot = build_portal_snapshot(
+        question="Do we have a company named Zanner?",
+        pathname="/dashboard",
+        user=_user(role="planner"),
+        db=db,
+    )
+
+    assert snapshot["totals"]["certification_plans"] == 2
+    assert snapshot["totals"]["applications_waiting_for_review"] == 1
+    assert snapshot["plans_by_standard"] == {"ISO 14001": 1, "ISO 9001": 2}
+    assert snapshot["active_certificates_by_standard"] == {"ISO 9001": 1}
+    assert snapshot["company_search"]["matches"][0]["company"] == "Zanner Fahrzeugbau GmbH"
+
+
+def test_client_does_not_receive_internal_portal_totals(db):
+    db.add(_case("client-case", 1707))
+    db.commit()
+
+    snapshot = build_portal_snapshot(
+        question="How many applications are pending?",
+        pathname="/client/overview",
+        user=_user(role="client", audit_set_id="client-case"),
+        db=db,
+    )
+
+    assert snapshot is None
+
+
+def test_common_dashboard_questions_are_answered_from_live_data_without_ai(db):
+    zanner = _case(
+        "direct-zanner",
+        2025165,
+        company_name="Zanner Fahrzeugbau GmbH",
+        standards=["QMS"],
+        workflow_status="pending_review",
+        cert_status="active",
+    )
+    db.add(zanner)
+    db.commit()
+    planner = _user(role="planner")
+
+    company_snapshot = build_portal_snapshot(
+        question="Do you have a company named Zanner?",
+        pathname="/dashboard",
+        user=planner,
+        db=db,
+    )
+    assert "Zanner Fahrzeugbau GmbH" in direct_portal_answer(
+        "Do you have a company named Zanner?", company_snapshot,
+    )
+
+    assert direct_portal_answer(
+        "How many applications are pending to be reviewed?", company_snapshot,
+    ) == "There is 1 application currently waiting for review."
+    assert direct_portal_answer(
+        "How many of our certifications are ISO 9001?", company_snapshot,
+    ) == (
+        "There are 1 active ISO 9001 certificates. "
+        "ISO 9001 appears on 1 non-archived certification plans in total."
+    )
+    assert direct_portal_answer(
+        "Who signs the quotation?", company_snapshot,
+    ) == "FR.220 is signed first by the General Manager (GM), then by the client."
+
+
 def test_system_prompt_enforces_read_only_and_contains_only_authorised_snapshot():
     instructions = system_instructions(
         user=_user(role="client", full_name="Client Person"),
@@ -181,6 +272,16 @@ def test_system_prompt_enforces_read_only_and_contains_only_authorised_snapshot(
     assert "Allowed Ltd" in instructions
     assert "quotation_sent" in instructions
     assert "API keys" in instructions
+
+
+def test_product_knowledge_contains_exact_quotation_signers():
+    instructions = system_instructions(
+        user=_user(role="planner"),
+        pathname="/dashboard",
+        snapshot=None,
+    )
+
+    assert "General Manager (GM) and then the client" in instructions
 
 
 def test_page_guidance_routes_ai_report_questions():
