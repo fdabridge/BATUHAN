@@ -36,6 +36,7 @@ from audit_set.db_models import (
     VisualSignaturePlacement,
     get_db,
 )
+from audit_set.audit_types import is_surveillance_like_audit_type
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.dependencies import get_current_user
 from auth.policy import resolve_realtime_action_datetime
@@ -739,7 +740,7 @@ async def release_document(
 
         # Portal 49b gates: FR.222 and FR.224 require the application review
         # (FR.218) to be complete before they can be uploaded.
-        is_surveillance = (audit_set.audit_type or "").lower().startswith("surveillance")
+        is_surveillance = is_surveillance_like_audit_type(audit_set.audit_type)
         short_surveillance_flow = is_surveillance and not audit_set.is_transfer
         if document_type in ("audit_programme", "team_info") and not short_surveillance_flow:
             if not _status_at_least(

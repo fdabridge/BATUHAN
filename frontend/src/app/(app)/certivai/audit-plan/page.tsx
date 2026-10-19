@@ -26,7 +26,7 @@ const STANDARD_OPTIONS = [
   'ISO 50001:2018',
 ]
 
-const AUDIT_TYPES = ['Stage 1', 'Stage 2', 'Surveillance 1', 'Surveillance 2', 'Recertification']
+const AUDIT_TYPES = ['Stage 1', 'Stage 2', 'Surveillance 1', 'Surveillance 2', 'Scope Extension', 'Surveillance 1 + Scope Extension', 'Recertification']
 
 const emptyDay = (): DayWindow => ({
   date: '',

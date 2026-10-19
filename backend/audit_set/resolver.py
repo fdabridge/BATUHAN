@@ -26,6 +26,7 @@ from audit_set.workflow_policy import (
     commercial_documents_unlocked,
     uses_fr218_before_commercial,
 )
+from audit_set.audit_types import is_surveillance_like_audit_type
 BLANK_SET_PATH = Path(get_settings().blank_set_path)
 
 # Standard group → folder name (under BLANK_SET_PATH)
@@ -389,7 +390,7 @@ def resolve_document_set(audit_set) -> tuple[dict[str, list[DocumentSpec]], list
     document_set: dict[str, list[DocumentSpec]] = {}
     missing: list[str] = []
 
-    if audit_type.startswith("surveillance"):
+    if is_surveillance_like_audit_type(audit_type):
         sub = _get_stage_subfolder(audit_type, "surveillance", accreditation_body)
         if getattr(audit_set, "is_transfer", False):
             front_sub = _get_stage_subfolder(audit_type, "stage_1", accreditation_body)
@@ -430,7 +431,7 @@ def resolve_document_set(audit_set) -> tuple[dict[str, list[DocumentSpec]], list
         if spec:
             if audit_type == "recertification":
                 first_folder = "Recertification"
-            elif audit_type.startswith("surveillance"):
+            elif is_surveillance_like_audit_type(audit_type):
                 first_folder = "Surveillance"
             else:
                 first_folder = "Stage_1"

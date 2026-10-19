@@ -315,6 +315,26 @@ def test_ordinary_surveillance_keeps_existing_fr234_notification_set():
     assert "FR.250" not in forms
 
 
+@pytest.mark.parametrize("audit_type", ["scope_extension", "surveillance_1_scope_extension"])
+def test_scope_extension_uses_the_ordinary_surveillance_document_set(audit_type):
+    audit_set = _transfer_surveillance_audit_set()
+    audit_set.audit_type = audit_type
+    audit_set.is_transfer = False
+
+    document_set, missing = resolve_document_set(audit_set)
+    forms = {spec.fr_number for spec in document_set["Surveillance"]}
+
+    assert missing == []
+    assert "FR.234" in forms
+    assert "FR.223" in forms
+    assert "FR.232" in forms
+    assert "FR.233" in forms
+    assert "FR.217" not in forms
+    assert "FR.218" not in forms
+    assert "FR.220" not in forms
+    assert "FR.221" not in forms
+
+
 def test_transfer_surveillance_early_package_keeps_commercial_docs_locked():
     audit_set = _transfer_surveillance_audit_set(status="fr218_in_progress")
 

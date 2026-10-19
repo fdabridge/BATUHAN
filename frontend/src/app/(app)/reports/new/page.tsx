@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, BrainCircuit, Check, FileText, Layers3, Loader2, Upload, X, Zap } from 'lucide-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
+import { reportStageForAuditType } from '@/lib/auditTypes'
 import { normalizeISOStandardCodes } from '@/lib/isoStandards'
 import type { AuditSetResponse, JobCreateResponse } from '@/types'
 
@@ -246,11 +247,7 @@ export default function NewReportPage() {
   useEffect(() => {
     if (!client) return
     const clientStandards = normalizeISOStandardCodes(client.standards ?? [])
-    const mappedStage =
-      client.audit_type === 'surveillance_1' ? 'Surveillance 1'
-      : client.audit_type === 'surveillance_2' ? 'Surveillance 2'
-      : client.audit_type === 'recertification' ? 'Recertification'
-      : ''
+    const mappedStage = reportStageForAuditType(client.audit_type)
 
     setForm((f) => ({
       ...f,

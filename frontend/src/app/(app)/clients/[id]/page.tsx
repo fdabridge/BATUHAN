@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, ChevronDown, ChevronRight, Download, Loader2, Pencil, Check, Sparkles, Trash2 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
+import { auditTypeLabel, isSurveillanceWorkflowAudit } from '@/lib/auditTypes'
 import { useAuth } from '@/lib/auth'
 import { useManualActionDates } from '@/lib/useManualActionDates'
 import { CertBadge } from '@/components/ui/CertBadge'
@@ -40,15 +41,6 @@ function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—'
   const [y, m, d] = iso.split('-')
   return `${d}/${m}/${y}`
-}
-
-function auditTypeLabel(t: string): string {
-  if (t === 'initial')         return 'Initial certification'
-  if (t === 'surveillance')    return 'Surveillance'
-  if (t === 'surveillance_1')  return 'Surveillance 1'
-  if (t === 'surveillance_2')  return 'Surveillance 2'
-  if (t === 'recertification') return 'Recertification'
-  return t
 }
 
 // ── Standard code resolver ────────────────────────────────────────────────────
@@ -207,10 +199,13 @@ function displayStagesForAudit(auditType: string | null | undefined, stages: Sta
   }]
 }
 
-function stageDisplayLabel(stageType: string, surveillanceIndex: number): string {
+function stageDisplayLabel(stageType: string, surveillanceIndex: number, auditType?: string | null): string {
   if (stageType === 'stage_1') return 'Stage 1 — Documentation review'
   if (stageType === 'stage_2') return 'Stage 2 — On-site audit'
   if (stageType === 'recertification') return 'Recertification Audit'
+  if (stageType === 'surveillance' && auditType?.includes('scope_extension')) {
+    return auditTypeLabel(auditType)
+  }
   return `Surveillance ${surveillanceIndex}`
 }
 
@@ -232,7 +227,7 @@ function recommendedDays(
     if (stageType === 'stage_1') return manDayResult.final_ph1 ?? null
     if (stageType === 'stage_2') return manDayResult.final_ph2 ?? null
   }
-  if (t === 'surveillance' || t === 'surveillance_1' || t === 'surveillance_2') {
+  if (isSurveillanceWorkflowAudit(t)) {
     return manDayResult.final_surv1 ?? null
   }
   if (t === 'recertification') {
@@ -2870,7 +2865,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
           <div className="space-y-3">
             {displayStages.map((stage) => {
               if (stage.stage_type === 'surveillance') survCount += 1
-              const stageLabel = stageDisplayLabel(stage.stage_type, survCount)
+              const stageLabel = stageDisplayLabel(stage.stage_type, survCount, data.audit_type)
               return (
                 <StageCard
                   key={stage.id}
@@ -2973,7 +2968,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
 
       {/* FR.218 Application Reviewer — Portal 51 (FSMS/ISMS only) */}
       {needsFr218Reviewer((data.standards ?? []) as string[]) &&
-       (!(data.audit_type ?? '').startsWith('surveillance') || data.is_transfer) && (
+       (!isSurveillanceWorkflowAudit(data.audit_type) || data.is_transfer) && (
         <div className="mt-4 rounded-xl border bg-white p-4">
           <h3 className="mb-1 text-sm font-semibold text-gray-700">
             Application Reviewer (FR.218) — Required for FSMS / ISMS

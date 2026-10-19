@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Check, Loader2, Plus } from 'lucide-react'
 import { useMutation } from '@tanstack/react-query'
 import api from '@/lib/api'
+import { auditTypeLabel } from '@/lib/auditTypes'
 import type { AuditSetResponse } from '@/types'
 
 // ── Local types ───────────────────────────────────────────────────────────────
@@ -211,11 +212,13 @@ function Step1({
 
       <div>
         <label className={lblCls}>Audit type <span className="text-red-400">*</span></label>
-        <div className="flex gap-5">
+        <div className="flex flex-wrap gap-5">
           {[
             { value: 'initial',         label: 'Initial certification' },
             { value: 'surveillance_1',  label: 'Surveillance 1'        },
             { value: 'surveillance_2',  label: 'Surveillance 2'        },
+            { value: 'scope_extension', label: 'Scope Extension'       },
+            { value: 'surveillance_1_scope_extension', label: 'Surveillance 1 + Scope Extension' },
             { value: 'recertification', label: 'Recertification'       },
             { value: 'special',         label: 'Special Audit'         },
           ].map(({ value, label }) => (
@@ -685,7 +688,7 @@ function Step3({ s1, s2, error }: { s1: Step1Data; s2: Step2Data; error: string 
     ...(s1.client_reference ? [['Client ref / Agreement No', s1.client_reference] as [string, string]] : []),
     ['Address',      s1.company_address],
     ['Standards',    s1.standards.join(', ')],
-    ['Audit type',   s1.audit_type ? s1.audit_type.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase()) : '—'],
+    ['Audit type',   s1.audit_type ? auditTypeLabel(s1.audit_type) : '—'],
     ['Transfer',     s1.is_transfer ? 'Yes' : 'No'],
     ['Accreditation', s1.accreditation_body],
     ['Personnel',    `${s2.full_time} FT, ${s2.part_time} PT, ${s2.subcontractors} contractor, ${s2.seasonal} seasonal`],

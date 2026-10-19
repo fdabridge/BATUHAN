@@ -26,6 +26,7 @@ from audit_set.db_models import (
     get_db as get_audit_db,
 )
 from audit_set.workflow_policy import FR218_BEFORE_COMMERCIAL_VERSION
+from audit_set.audit_types import SCOPE_EXTENSION, SURVEILLANCE_1_SCOPE_EXTENSION
 from audit_set.service import _create_auto_stages
 from auth.db_models import PlatformUser, get_db as get_auth_db
 from auth.policy import CLIENT_EMAIL_VERIFICATION, policy_enabled
@@ -37,7 +38,14 @@ router = APIRouter(prefix="/apply", tags=["application"])
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 ALLOWED_STANDARDS = {"QMS", "EMS", "OHSMS", "FSMS", "ISMS", "MDQMS", "ABMS", "ENMS"}
-ALLOWED_AUDIT_TYPES = {"initial", "surveillance_1", "surveillance_2", "recertification"}
+ALLOWED_AUDIT_TYPES = {
+    "initial",
+    "surveillance_1",
+    "surveillance_2",
+    SCOPE_EXTENSION,
+    SURVEILLANCE_1_SCOPE_EXTENSION,
+    "recertification",
+}
 ALLOWED_COMPANY_DOCUMENT_EXTENSIONS = {
     ".pdf",
     ".doc",
@@ -86,7 +94,7 @@ class ClientApplicationSchema(BaseModel):
 
     # ── Certification request ─────────────────────────────────────────────
     standards: list[str]              # subset of ALLOWED_STANDARDS
-    audit_type: str                   # "initial" | "surveillance_1" | "surveillance_2" | "recertification"
+    audit_type: str                   # includes scope_extension and surveillance_1_scope_extension
     is_transfer: bool = False
 
     # ── Scope ─────────────────────────────────────────────────────────────

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import api from '@/lib/api'
+import { isSurveillanceWorkflowAudit } from '@/lib/auditTypes'
 import { CertivaAdSlot } from '@/components/ads/CertivaAdSlot'
 import { GuidedActionCard, type GuidedActionTone } from '@/components/ui/GuidedActionCard'
 
@@ -282,7 +283,7 @@ export default function ClientOverviewPage() {
 
   const usesFr218First = (
     data.workflow_version >= 2
-    && !(data.audit_type ?? '').startsWith('surveillance')
+    && !isSurveillanceWorkflowAudit(data.audit_type)
   )
   const workflowSteps = usesFr218First ? WORKFLOW_STEPS_FR218_FIRST : WORKFLOW_STEPS
   const currentIdx = workflowSteps.findIndex(

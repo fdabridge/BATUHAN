@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { useManualActionDates } from '@/lib/useManualActionDates'
+import { isSurveillanceWorkflowAudit } from '@/lib/auditTypes'
 
 interface WorkflowStatusBarProps {
   auditSetId:      string
@@ -127,7 +128,7 @@ const TRANSFER_SURVEILLANCE_FR218_FIRST_STEPS = [
 ]
 
 function isSurveillanceAudit(auditType: string | null): boolean {
-  return auditType != null && auditType.startsWith('surveillance')
+  return isSurveillanceWorkflowAudit(auditType)
 }
 
 function getSteps(auditType: string | null, fr218First: boolean, isTransfer: boolean) {
@@ -353,6 +354,32 @@ const SURVEILLANCE_PANELS: Record<string, ActionPanel> = {
   },
 }
 
+const SCOPE_EXTENSION_PANELS: Record<string, ActionPanel> = {
+  ...SURVEILLANCE_PANELS,
+  in_planning: {
+    heading: 'Prepare scope-extension notification',
+    body: 'Use the Surveillance 1 document flow: prepare and release FR.234, including the scope-extension audit dates and team. Status advances automatically when it is released.',
+  },
+  notification_sent: {
+    heading: 'Client notified — prepare the scope-extension audit',
+    body: 'FR.234 has been released. Upload FR.224 (Team Information) and FR.223 (Audit Plan) for the scope-extension stage, then mark the audit as scheduled.',
+    cta: { label: 'Mark Scope Extension Scheduled', nextStatus: 'audit_scheduled', allowedRoles: ['admin', 'planner', 'planner_us'] },
+  },
+  audit_scheduled: {
+    heading: 'Scope-extension audit is scheduled',
+    body: 'Audit dates are confirmed. Mark it as in progress when the audit begins.',
+    cta: { label: 'Begin Scope-Extension Audit', nextStatus: 'audit_in_progress' },
+  },
+  audit_in_progress: {
+    heading: 'Scope-extension audit in progress',
+    body: 'The auditor completes the Surveillance 1 report, meeting form, NC decision, and related records for the extended scope.',
+  },
+  certified: {
+    heading: 'Scope extension completed ✓',
+    body: 'The scope-extension audit is closed and the certification record can reflect the approved extended scope.',
+  },
+}
+
 const TRANSFER_SURVEILLANCE_PANELS: Record<string, ActionPanel> = {
   in_planning: {
     heading: 'Transfer application ready for quotation',
@@ -418,6 +445,7 @@ function getPanels(auditType: string | null, fr218First: boolean, isTransfer: bo
   if (isSurveillanceAudit(auditType) && isTransfer) {
     return fr218First ? TRANSFER_SURVEILLANCE_FR218_FIRST_PANELS : TRANSFER_SURVEILLANCE_PANELS
   }
+  if (auditType?.includes('scope_extension')) return SCOPE_EXTENSION_PANELS
   if (isSurveillanceAudit(auditType)) return SURVEILLANCE_PANELS
   return STANDARD_PANELS
 }

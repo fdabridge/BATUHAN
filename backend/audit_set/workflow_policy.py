@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import Optional
 
+from audit_set.audit_types import is_surveillance_like_audit_type
+
 
 LEGACY_WORKFLOW_VERSION = 1
 FR218_BEFORE_COMMERCIAL_VERSION = 2
@@ -86,7 +88,7 @@ def is_transfer_surveillance(audit_set) -> bool:
     audit_type = str(getattr(audit_set, "audit_type", "") or "").lower()
     return bool(
         getattr(audit_set, "is_transfer", False)
-        and audit_type.startswith("surveillance")
+        and is_surveillance_like_audit_type(audit_type)
     )
 
 
@@ -100,7 +102,7 @@ def uses_fr218_before_commercial(audit_set) -> bool:
     audit_type = str(getattr(audit_set, "audit_type", "") or "").lower()
     return (
         workflow_version(audit_set) >= FR218_BEFORE_COMMERCIAL_VERSION
-        and (not audit_type.startswith("surveillance") or is_transfer_surveillance(audit_set))
+        and (not is_surveillance_like_audit_type(audit_type) or is_transfer_surveillance(audit_set))
     )
 
 

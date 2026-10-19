@@ -479,11 +479,13 @@ export default function ApplyPage() {
           {/* ── 4. Audit Type ─────────────────────────────────────────── */}
           <div className={formSectionCls}>
             <h2 className={sectionHdCls}>Audit Type *</h2>
-            <div className="grid gap-3 md:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {[
                 { v: 'initial',          l: 'Initial Certification' },
                 { v: 'surveillance_1',   l: 'Surveillance 1' },
                 { v: 'surveillance_2',   l: 'Surveillance 2' },
+                { v: 'scope_extension',  l: 'Scope Extension' },
+                { v: 'surveillance_1_scope_extension', l: 'Surveillance 1 + Scope Extension' },
                 { v: 'recertification',  l: 'Recertification' },
               ].map(opt => (
                 <label key={opt.v} className={`p-3 rounded-lg border text-center cursor-pointer text-sm transition-colors ${

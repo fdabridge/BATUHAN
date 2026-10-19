@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from audit_set.db_models import AuditSet, AuditSetSharedDocument, AuditSetStage, AuditSetStatusEvent
+from audit_set.audit_types import is_surveillance_like_audit_type
 from audit_set.scope_fields import ea_code_from_required_scope
 from audit_set.schemas import (
     AuditSetCertUpdateSchema,
@@ -1008,7 +1009,7 @@ def _create_auto_stages(db: Session, audit_set: AuditSet, result: dict | None) -
             ("stage_1", 1, result.get("final_ph1") if result else None),
             ("stage_2", 2, result.get("final_ph2") if result else None),
         ]
-    elif audit_type.startswith("surveillance"):  # surveillance_1, surveillance_2, surveillance
+    elif is_surveillance_like_audit_type(audit_type):
         stage_defs = [
             ("surveillance", 1, result.get("final_surv1") if result else None),
         ]
@@ -1193,7 +1194,7 @@ def quick_calculate(db: Session, audit_set_id: str, data: QuickCalcSchema) -> Au
     stage_day_map: dict[str, float | None] = {}
     if audit_type == "initial":
         stage_day_map = {"stage_1": result.get("final_ph1"), "stage_2": result.get("final_ph2")}
-    elif audit_type.startswith("surveillance"):  # surveillance_1, surveillance_2, surveillance
+    elif is_surveillance_like_audit_type(audit_type):
         stage_day_map = {"surveillance": result.get("final_surv1")}
     elif audit_type == "recertification":
         stage_day_map = {"recertification": result.get("final_recert")}

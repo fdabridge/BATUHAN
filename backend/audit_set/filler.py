@@ -23,6 +23,7 @@ from datetime import date, timedelta
 from docxtpl import DocxTemplate
 
 from audit_set.committee_slots import committee_member_name, planned_committee_chair
+from audit_set.audit_types import is_surveillance_like_audit_type
 from audit_set.report_signature_rules import audit_set_has_stage1_extra_review
 from audit_set.scope_fields import effective_ea_code
 from auditors.qualification_scope import (
@@ -45,6 +46,8 @@ AUDIT_TYPE_DISPLAY = {
     "surveillance": "Surveillance",
     "surveillance_1": "Surveillance",
     "surveillance_2": "Surveillance",
+    "scope_extension": "Scope Extension",
+    "surveillance_1_scope_extension": "Surveillance 1 + Scope Extension",
     "recertification": "Recertification",
     "special": "Special Audit",
 }
@@ -302,7 +305,7 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
     standards_full = [STANDARD_NAMES[c] for c in standards_codes if c in STANDARD_NAMES]
 
     is_initial = audit_type == "initial"
-    is_surveillance = audit_type.startswith("surveillance")
+    is_surveillance = is_surveillance_like_audit_type(audit_type)
     is_recertification = audit_type == "recertification"
     is_special = audit_type == "special"
 

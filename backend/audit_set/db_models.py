@@ -181,7 +181,7 @@ class AuditSet(Base):
 
     # ── Audit config ──────────────────────────────────────────────────────────
     standards          = Column(JSON)    # ["QMS", "EMS", "OHSMS"]
-    audit_type         = Column(String)  # "initial"|"surveillance"|"recertification"
+    audit_type         = Column(String)  # initial/surveillance/scope_extension/recertification variants
     is_transfer        = Column(Boolean, default=False, nullable=False, server_default="0")
     cycle_number       = Column(Integer, default=1)
     accreditation_body = Column(String)  # "UAF"|"TURKAK"

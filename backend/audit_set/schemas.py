@@ -121,7 +121,7 @@ class AuditSetCreateSchema(BaseModel):
     website: str = ""
     representative: str = ""
     standards: list[str]           # e.g. ["QMS", "EMS", "OHSMS"]
-    audit_type: str                # "initial" | "surveillance_1" | "surveillance_2" | "recertification"
+    audit_type: str                # includes standalone/combined scope-extension values
     is_transfer: bool = False
     cycle_number: int = 1
     accreditation_body: str = "UAF"

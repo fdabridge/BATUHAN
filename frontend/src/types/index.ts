@@ -18,7 +18,7 @@ export interface ClientSummary {
   company_name: string
   company_address: string
   standards: string[]         // e.g. ["QMS", "EMS"]
-  audit_type: string          // "initial" | "surveillance_1" | "surveillance_2" | "recertification"
+  audit_type: string          // includes standalone/combined scope-extension values
   status: string              // audit set workflow status
   cert_issued_date: string | null   // ISO date "YYYY-MM-DD"
   cert_expiry_date: string | null   // ISO date "YYYY-MM-DD"

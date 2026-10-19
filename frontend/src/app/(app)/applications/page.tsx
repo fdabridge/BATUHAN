@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
+import { auditTypeLabel } from '@/lib/auditTypes'
 import { GuidedActionCard } from '@/components/ui/GuidedActionCard'
 
 const STATUS_LABELS: Record<string, string> = {
@@ -111,7 +112,7 @@ export default function ApplicationsPage() {
                 <div className="mt-2 flex items-center gap-2 text-xs text-gray-400">
                   <span>{(app.standards || []).join(', ') || '—'}</span>
                   <span>·</span>
-                  <span>{app.audit_type?.replace('_', ' ') ?? '—'}</span>
+                  <span>{auditTypeLabel(app.audit_type) || '—'}</span>
                   {app.email && (
                     <>
                       <span>·</span>

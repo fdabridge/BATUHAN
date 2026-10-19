@@ -68,7 +68,11 @@ def audit_type_label(value: str | None) -> str:
     if normalized in {"initial", "initial_certification", "certification"}:
         return "Initial Certification"
     if "surveillance" in normalized:
+        if "scope_extension" in normalized:
+            return "Surveillance 1 + Scope Extension"
         return "Surveillance"
+    if normalized == "scope_extension":
+        return "Scope Extension"
     if "recert" in normalized:
         return "Recertification"
     if "transfer" in normalized:

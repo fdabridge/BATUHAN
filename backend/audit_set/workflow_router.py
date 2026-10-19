@@ -31,6 +31,7 @@ from audit_set.db_models import (
     get_db as get_audit_db,
 )
 from audit_set.pipeline_triggers import fire_phase_triggers
+from audit_set.audit_types import is_surveillance_like_audit_type
 from audit_set.report_signature_rules import audit_report_has_all_required_approvals
 from audit_set.workflow_policy import is_transfer_surveillance, transition_matches_version
 from auth.db_models import PlatformUser, get_db as get_auth_db
@@ -266,7 +267,7 @@ def _fr233_nc_gate_stage(db: Session, audit_set_id: str) -> str:
     audit_type = (audit_set.audit_type or "").lower() if audit_set else ""
     if audit_type == "recertification":
         return "recertification"
-    if audit_type.startswith("surveillance"):
+    if is_surveillance_like_audit_type(audit_type):
         return "surveillance"
     return "stage_2"
 

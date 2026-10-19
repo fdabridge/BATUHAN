@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import api from '@/lib/api'
+import { isSurveillanceWorkflowAudit } from '@/lib/auditTypes'
 
 interface SigSlot {
   id: string
@@ -56,7 +57,7 @@ export function InternalApprovalsSection({
 
   // Ordinary surveillance does not use FR.222. Transfer surveillance follows
   // the certification document flow and therefore keeps this approval panel.
-  if (auditType && auditType.startsWith('surveillance') && !isTransfer) return null
+  if (isSurveillanceWorkflowAudit(auditType) && !isTransfer) return null
 
   const showSection = workflowStatus && workflowStatus !== 'pending_review'
   if (!showSection) return null

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import api from '@/lib/api'
+import { auditTypeLabel, isSurveillanceWorkflowAudit } from '@/lib/auditTypes'
 import { MessageThread } from '@/components/ui/MessageThread'
 import { useManualActionDates } from '@/lib/useManualActionDates'
 import { GuidedActionCard } from '@/components/ui/GuidedActionCard'
@@ -98,7 +99,7 @@ type Tab = 'overview' | 'documents' | 'messages' | 'upload' | 'nc_forms' | 'decl
 type UploadStageType = 'stage_1' | 'stage_2' | 'surveillance'
 
 function isSurveillanceAudit(auditType: string | null | undefined) {
-  return (auditType ?? '').toLowerCase().startsWith('surveillance')
+  return isSurveillanceWorkflowAudit(auditType)
 }
 
 function uploadStageLabel(stageType: UploadStageType) {
@@ -1600,7 +1601,7 @@ export default function AuditorAuditDetail() {
             <div>
               <p className="mb-1 text-xs uppercase tracking-wide text-gray-400">Accreditation</p>
               <p className="font-medium">{data.accreditation_body || '—'}</p>
-              <p className="text-gray-500">{data.audit_type?.replace('_', ' ')}</p>
+              <p className="text-gray-500">{auditTypeLabel(data.audit_type)}</p>
             </div>
           </div>
 

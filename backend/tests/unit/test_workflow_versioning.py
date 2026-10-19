@@ -110,7 +110,7 @@ def test_agreement_trigger_does_not_move_new_application_back_to_fr218():
     assert application.workflow_status == "agreement_signed"
 
 
-@pytest.mark.parametrize("audit_type", ["surveillance", "surveillance_1", "surveillance_2"])
+@pytest.mark.parametrize("audit_type", ["surveillance", "surveillance_1", "surveillance_2", "scope_extension", "surveillance_1_scope_extension"])
 def test_surveillance_path_is_not_changed_by_version_two(audit_type):
     application = _application(
         version=FR218_BEFORE_COMMERCIAL_VERSION,
@@ -120,7 +120,7 @@ def test_surveillance_path_is_not_changed_by_version_two(audit_type):
     assert uses_fr218_before_commercial(application) is False
 
 
-@pytest.mark.parametrize("audit_type", ["surveillance", "surveillance_1", "surveillance_2"])
+@pytest.mark.parametrize("audit_type", ["surveillance", "surveillance_1", "surveillance_2", "scope_extension", "surveillance_1_scope_extension"])
 def test_transfer_surveillance_uses_fr218_first_certification_branch(audit_type):
     application = _application(
         version=FR218_BEFORE_COMMERCIAL_VERSION,

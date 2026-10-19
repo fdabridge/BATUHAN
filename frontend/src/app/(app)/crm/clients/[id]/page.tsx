@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import api from '@/lib/api'
+import { auditTypeLabel } from '@/lib/auditTypes'
 
 interface CRMClient {
   id: string
@@ -106,7 +107,7 @@ export default function CRMClientDetail() {
           <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-3">Certification</h2>
           <div className="space-y-2 text-sm">
             <div><span className="text-gray-500">Standards: </span><span className="text-gray-800">{(client.standards || []).join(', ') || '—'}</span></div>
-            <div><span className="text-gray-500">Type: </span><span className="text-gray-800 capitalize">{client.audit_type}</span></div>
+            <div><span className="text-gray-500">Type: </span><span className="text-gray-800">{auditTypeLabel(client.audit_type)}</span></div>
             <div><span className="text-gray-500">Accreditation: </span><span className="text-gray-800">{client.accreditation_body || '—'}</span></div>
             <div><span className="text-gray-500">Cert Fee: </span><span className="text-gray-800">{fmtFee(client.certification_fee, client.currency)}</span></div>
             <div><span className="text-gray-500">Surv Fee: </span><span className="text-gray-800">{fmtFee(client.surveillance_fee, client.currency)}</span></div>

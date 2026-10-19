@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { Search, Trash2, Loader2 } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
+import { auditTypeLabel } from '@/lib/auditTypes'
 import { useAuth } from '@/lib/auth'
 import { CertBadge } from '@/components/ui/CertBadge'
 import type { ClientSummary } from '@/types'
@@ -42,15 +43,6 @@ function formatDate(iso: string | null): string {
   if (!iso) return '—'
   const [y, m, d] = iso.split('-')
   return `${d}/${m}/${y}`
-}
-
-function auditTypeLabel(t: string): string {
-  if (t === 'initial')         return 'Initial'
-  if (t === 'surveillance')    return 'Surveillance'
-  if (t === 'surveillance_1')  return 'Surveillance 1'
-  if (t === 'surveillance_2')  return 'Surveillance 2'
-  if (t === 'recertification') return 'Recertification'
-  return t
 }
 
 function Standards({ list }: { list: string[] }) {

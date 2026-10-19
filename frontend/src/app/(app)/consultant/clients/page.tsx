@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import api from '@/lib/api'
+import { auditTypeLabel } from '@/lib/auditTypes'
 import { useAuth } from '@/lib/auth'
 import { GuidedActionCard } from '@/components/ui/GuidedActionCard'
 
@@ -132,7 +133,7 @@ export default function ConsultantClientsPage() {
                     {c.city && <span className="ml-1 text-xs text-gray-400">· {c.city}</span>}
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500">{(c.standards || []).join(', ')}</td>
-                  <td className="px-4 py-3 capitalize text-gray-500">{c.audit_type}</td>
+                  <td className="px-4 py-3 text-gray-500">{auditTypeLabel(c.audit_type)}</td>
                   <td className="px-4 py-3">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[c.simple_status] ?? 'bg-gray-100 text-gray-600'}`}>
                       {c.simple_status}

@@ -5,6 +5,7 @@ import api from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import type { StageResponse } from '@/types'
 import { useManualActionDates } from '@/lib/useManualActionDates'
+import { isSurveillanceWorkflowAudit } from '@/lib/auditTypes'
 
 interface SharedDoc {
   id: string
@@ -96,7 +97,7 @@ export function SharedDocumentsSection({
   isTransfer?: boolean
   onDocumentReleased?: () => void
 }) {
-  const isSurveillance = (auditType ?? '').startsWith('surveillance')
+  const isSurveillance = isSurveillanceWorkflowAudit(auditType)
   const transferSurveillance = isSurveillance && isTransfer
   const fr218First = workflowVersion >= 2 && (!isSurveillance || transferSurveillance)
   const commercialLocked = fr218First && !statusAtLeast(workflowStatus, 'fr218_complete')

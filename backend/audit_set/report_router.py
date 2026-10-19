@@ -30,6 +30,7 @@ from audit_set.db_models import (
     AuditSetStage, AuditSetStatusEvent, DocumentSignatureField,
     VisualSignaturePlacement, get_db,
 )
+from audit_set.audit_types import is_surveillance_like_audit_type
 from audit_set.committee_slots import (
     committee_member_auditor_id,
     committee_member_name,
@@ -151,7 +152,7 @@ def _maybe_advance_single_stage_report_review(
     audit_type = (audit_set.audit_type or "").lower()
     stage_type = (report.stage_type or "").lower()
     if not (
-        audit_type.startswith("surveillance")
+        is_surveillance_like_audit_type(audit_type)
         or audit_type == "recertification"
         or stage_type in {"surveillance", "recertification"}
     ):

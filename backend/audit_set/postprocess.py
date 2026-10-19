@@ -100,6 +100,8 @@ _AUDIT_TYPE_KEYWORD = {
     "surveillance":    "Initial",
     "surveillance_1":  "Initial",
     "surveillance_2":  "Initial",
+    "scope_extension": "Initial",
+    "surveillance_1_scope_extension": "Initial",
     "recertification": "Recertification",
     "special":         "Initial",
 }
