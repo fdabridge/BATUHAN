@@ -43,6 +43,7 @@ from audit_set.employee_router import router as employee_router
 from health_router import router as health_full_router
 from audit_set.consultant_router import router as consultant_router
 from trainings.router import router as trainings_router
+from vera.router import router as vera_router
 try:
     from audit_set.crm_router import router as crm_router
     _crm_router_ok = True
@@ -129,6 +130,8 @@ if _crm_router_ok:
 app.include_router(consultant_router)
 # Trainings module — training_officer + general user endpoints.
 app.include_router(trainings_router)
+# Vera — authenticated, read-only, role-aware workflow assistant.
+app.include_router(vera_router)
 
 
 # --- Startup: create DB tables + first-admin bootstrap ---

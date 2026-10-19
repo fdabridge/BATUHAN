@@ -92,6 +92,24 @@ class PlatformUser(Base):
     updated_at    = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
+class VeraUsageEvent(Base):
+    """Minimal, content-free usage record for Vera cost controls.
+
+    Questions and answers are intentionally not stored.  The row is only used
+    to enforce a per-user daily cap and to observe model/token consumption.
+    """
+
+    __tablename__ = "vera_usage_events"
+
+    id                  = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id             = Column(String, nullable=False, index=True)
+    model               = Column(String, nullable=False)
+    input_tokens        = Column(Integer, default=0, nullable=False)
+    cached_input_tokens = Column(Integer, default=0, nullable=False)
+    output_tokens       = Column(Integer, default=0, nullable=False)
+    created_at          = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+
 class UserSignature(Base):
     __tablename__ = "user_signatures"
 

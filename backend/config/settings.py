@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     ai_max_tokens: int = 8192
     ai_temperature: float = 0.2  # Low temperature for factual audit writing
     ai_reasoning_effort: str = "medium"
+    # Vera — authenticated, read-only portal assistant.  Vera deliberately
+    # uses the inexpensive fast model and keeps responses short.
+    vera_model: str = "gpt-6-luna"
+    vera_max_output_tokens: int = 650
+    vera_daily_question_limit: int = 100
 
     # -----------------------------------------------------------------------
     # Application
