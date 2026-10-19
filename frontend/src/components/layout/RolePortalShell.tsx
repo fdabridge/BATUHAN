@@ -39,9 +39,20 @@ export function RolePortalShell({ roleLabel, nav, children }: RolePortalShellPro
       <aside className="border-b border-certiva-border-dark bg-certiva-night text-white lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-64 lg:flex-col lg:border-b-0 lg:border-r">
         <div className="flex items-center justify-between px-5 py-4 lg:block lg:px-6 lg:py-6">
           <CertivaLogo variant="reversed" className="h-9 w-auto" />
-          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-certiva-pale lg:mt-5 lg:inline-flex">
-            {roleLabel}
-          </span>
+          <div className="flex items-center gap-2 lg:block">
+            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-certiva-pale lg:mt-5 lg:inline-flex">
+              {roleLabel}
+            </span>
+            <button
+              type="button"
+              onClick={logout}
+              aria-label="Sign out"
+              title="Sign out"
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 text-white/70 transition-colors hover:bg-white/[0.06] hover:text-white lg:hidden"
+            >
+              <LogOut size={16} aria-hidden="true" />
+            </button>
+          </div>
         </div>
 
         <nav className="flex gap-1 overflow-x-auto px-3 pb-3 lg:flex-1 lg:flex-col lg:overflow-visible lg:px-4 lg:pb-4">
