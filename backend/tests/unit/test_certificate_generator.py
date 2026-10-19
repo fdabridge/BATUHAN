@@ -8,14 +8,17 @@ from types import SimpleNamespace
 import pytest
 
 from audit_set.certificate_generator import (
+    APPROVAL_SIGNATURE_PATH,
     CertificateValues,
     STANDARD_SPECS,
     TEMPLATE_DIR,
+    approval_signature_png_bytes,
     certificate_number,
     default_expiry_date,
     default_validity_date,
     normalize_standard,
     normalize_standards,
+    qr_matrix,
     render_certificate_docx,
     values_for_audit_set,
 )
@@ -54,6 +57,25 @@ def test_integrated_standard_mapping_preserves_order_and_removes_duplicates():
         "ISO/IEC 27001:2022",
         "ISO 22000:2018",
     ]) == ["QMS", "FSMS", "ISMS"]
+
+
+def test_qr_matrix_is_square_and_depends_on_the_iaf_verification_url():
+    first = qr_matrix("https://www.iafcertsearch.org/certification/record-one")
+    second = qr_matrix("https://www.iafcertsearch.org/certification/record-two")
+
+    assert first
+    assert len(first) == len(first[0])
+    assert all(len(row) == len(first) for row in first)
+    assert all(isinstance(cell, bool) for row in first for cell in row)
+    assert first != second
+
+
+def test_fixed_approval_signature_asset_is_a_real_png():
+    signature = approval_signature_png_bytes()
+
+    assert APPROVAL_SIGNATURE_PATH.name == "approval_signature.png"
+    assert signature.startswith(b"\x89PNG\r\n\x1a\n")
+    assert len(signature) > 10_000
 
 
 @pytest.mark.parametrize("standard", sorted(STANDARD_SPECS))

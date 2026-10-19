@@ -28,6 +28,7 @@ from audit_set.db_models import (
     AuditDocumentSignature,
     AuditSet,
     AuditSetFR233Record,
+    IAFCertSearchRecord,
     AuditSetSharedDocument,
     AuditSetStage,
     AuditSetStatusEvent,
@@ -43,9 +44,16 @@ from storage.document_store import upload as store_upload, ensure_local, delete 
 from email_service import send_client_status_update, send_document_released
 from audit_set.doc_converter import prepare_document
 from audit_set.certificate_generator import (
+    approval_signature_png_bytes,
     normalize_standards,
+    qr_matrix,
     render_certificate_docx,
     values_for_audit_set,
+)
+from audit_set.iaf_certsearch import (
+    IAFCertSearchError,
+    build_certification_payload,
+    register_certification,
 )
 from audit_set.pdf_flattener import flatten_document, has_completed_visual_signatures
 from audit_set.workflow_policy import (
@@ -332,6 +340,64 @@ def _certificate_standards(audit_set: AuditSet) -> list[str]:
     return normalize_standards(audit_set.standards)
 
 
+def _draw_certificate_qr(page: fitz.Page, verification_url: str) -> None:
+    """Draw a vector IAF QR below the accreditation marks."""
+    modules = qr_matrix(verification_url)
+    if not modules:
+        return
+    quiet_zone = 4
+    total = len(modules) + (quiet_zone * 2)
+    size = min(page.rect.width, page.rect.height) * 0.085
+    x0 = page.rect.width * 0.68
+    accreditation_bottoms: list[float] = []
+    for image in page.get_images(full=True):
+        for rect in page.get_image_rects(image[0]):
+            if (
+                rect.x0 > page.rect.width * 0.55
+                and rect.y0 > page.rect.height * 0.55
+                and rect.y1 < page.rect.height * 0.86
+                and rect.width > page.rect.width * 0.08
+            ):
+                accreditation_bottoms.append(rect.y1)
+    preferred_y = (max(accreditation_bottoms) + 4) if accreditation_bottoms else page.rect.height * 0.80
+    y0 = min(preferred_y, page.rect.height * 0.90 - size)
+    cell = size / total
+    background = fitz.Rect(x0, y0, x0 + size, y0 + size)
+    page.draw_rect(background, color=None, fill=(1, 1, 1), overlay=True)
+    for row_index, row in enumerate(modules):
+        for column_index, enabled in enumerate(row):
+            if not enabled:
+                continue
+            left = x0 + (column_index + quiet_zone) * cell
+            top = y0 + (row_index + quiet_zone) * cell
+            page.draw_rect(
+                fitz.Rect(left, top, left + cell, top + cell),
+                color=None,
+                fill=(0, 0, 0),
+                overlay=True,
+            )
+
+
+def _decorate_certificate_page(
+    page: fitz.Page,
+    *,
+    verification_url: str,
+) -> None:
+    _draw_certificate_qr(page, verification_url)
+    signature_rect = fitz.Rect(
+        page.rect.width * 0.47,
+        page.rect.height * 0.835,
+        page.rect.width * 0.58,
+        page.rect.height * 0.89,
+    )
+    page.insert_image(
+        signature_rect,
+        stream=approval_signature_png_bytes(),
+        keep_proportion=True,
+        overlay=True,
+    )
+
+
 def _build_certificate_pdf(
     audit_set: AuditSet,
     standards: list[str],
@@ -340,6 +406,7 @@ def _build_certificate_pdf(
     issue_date: date,
     revision: str,
     statement_of_applicability: str,
+    verification_urls: dict[str, str],
 ) -> tuple[bytes, date]:
     """Render one certificate page per standard and merge them into one PDF."""
     from audit_set.doc_converter import convert_docx_to_pdf
@@ -371,6 +438,10 @@ def _build_certificate_pdf(
                         raise RuntimeError(
                             f"Certificate template {standard} rendered to {page_pdf.page_count} pages; expected one."
                         )
+                    _decorate_certificate_page(
+                        page_pdf[0],
+                        verification_url=verification_urls[standard],
+                    )
                     merged.insert_pdf(page_pdf)
         if merged.page_count != len(standards):
             raise RuntimeError("Generated certificate PDF has an unexpected page count.")
@@ -437,6 +508,73 @@ def generate_certificates(
     if initial_date > issue_date:
         raise HTTPException(400, "Initial date cannot be later than the issue date.")
 
+    settings = get_settings()
+    if not settings.iaf_certsearch_api_key.strip():
+        raise HTTPException(
+            503,
+            "IAF CertSearch API key is not configured. Add the CB API key before issuing certificates.",
+        )
+
+    verification_urls: dict[str, str] = {}
+    for standard in standards:
+        values = values_for_audit_set(
+            audit_set,
+            standard,
+            initial_date=initial_date,
+            issue_date=issue_date,
+            revision=revision,
+            statement_of_applicability=soa,
+        )
+        if standard == "FSMS" and not values.category:
+            raise HTTPException(
+                400,
+                "ISO 22000 category/sub-category is required before generating the certificate.",
+            )
+        try:
+            payload = build_certification_payload(audit_set, standard, values)
+        except IAFCertSearchError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+        existing = db.query(IAFCertSearchRecord).filter_by(
+            audit_set_id=audit_set_id,
+            standard=standard,
+        ).first()
+        if existing:
+            if existing.certificate_number != values.certificate_number or existing.registration_payload != payload:
+                raise HTTPException(
+                    409,
+                    f"{standard} was already registered in IAF CertSearch with different certificate data. "
+                    "Do not issue a replacement until the IAF record is reconciled.",
+                )
+            verification_urls[standard] = existing.verification_url
+            continue
+
+        try:
+            registration = register_certification(
+                api_key=settings.iaf_certsearch_api_key,
+                api_base_url=settings.iaf_certsearch_api_base_url,
+                public_base_url=settings.iaf_certsearch_public_base_url,
+                timeout_seconds=settings.iaf_certsearch_timeout_seconds,
+                payload=payload,
+            )
+        except IAFCertSearchError as exc:
+            raise HTTPException(502, str(exc)) from exc
+
+        record = IAFCertSearchRecord(
+            audit_set_id=audit_set_id,
+            standard=standard,
+            certificate_number=values.certificate_number,
+            company_certifications_id=registration.company_certifications_id,
+            verification_url=registration.verification_url,
+            registration_payload=payload,
+            registered_by=current_user.id,
+        )
+        db.add(record)
+        # Persist each accepted IAF registration immediately. If a later
+        # standard or PDF conversion fails, retry safely reuses this record.
+        db.commit()
+        verification_urls[standard] = registration.verification_url
+
     try:
         pdf_bytes, expiry_date = _build_certificate_pdf(
             audit_set,
@@ -445,6 +583,7 @@ def generate_certificates(
             issue_date=issue_date,
             revision=revision,
             statement_of_applicability=soa,
+            verification_urls=verification_urls,
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
@@ -491,6 +630,13 @@ def generate_certificates(
         **_doc_to_dict(doc, db),
         "standards": standards,
         "page_count": len(standards),
+        "iaf_certsearch": [
+            {
+                "standard": standard,
+                "verification_url": verification_urls[standard],
+            }
+            for standard in standards
+        ],
     }
 
 

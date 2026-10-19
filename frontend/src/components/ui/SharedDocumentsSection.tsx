@@ -294,6 +294,9 @@ export function SharedDocumentsSection({
     if (includesIsms && !statementOfApplicability.trim()) {
       setCertificateError('Statement of Applicability reference is required for ISO 27001.'); return
     }
+    if (!window.confirm(
+      'This will register one active certificate per standard in IAF CertSearch, place each official verification QR on the English certificate, and issue the final PDF. Continue?',
+    )) return
 
     setCertificateSubmitting(true)
     try {
@@ -360,7 +363,7 @@ export function SharedDocumentsSection({
             >
               {hasCertificate
                 ? 'Certificate issued'
-                : showCertificateForm ? 'Cancel' : 'Generate certificate PDF'}
+                : showCertificateForm ? 'Cancel' : 'Issue certificate'}
             </button>
           )}
           <button
@@ -377,7 +380,7 @@ export function SharedDocumentsSection({
         <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
           <p className="text-sm font-medium text-gray-800">Generate final certificate</p>
           <p className="mt-1 text-xs text-gray-500">
-            One approved certificate page will be generated for each selected standard and combined into one PDF.
+            Each selected standard will be registered in IAF CertSearch first. One English certificate page with its official IAF verification QR will then be generated and combined into the final PDF.
           </p>
           <p className="mt-2 text-xs font-medium text-emerald-800">
             Standards: {standards.length > 0 ? standards.join(', ') : 'None selected'}
@@ -435,7 +438,7 @@ export function SharedDocumentsSection({
             disabled={certificateSubmitting || standards.length === 0}
             className="mt-3 rounded-lg bg-[#1A4731] px-4 py-1.5 text-sm font-medium text-white disabled:opacity-40"
           >
-            {certificateSubmitting ? 'Generating…' : 'Generate and issue PDF'}
+            {certificateSubmitting ? 'Registering with IAF and generating…' : 'Register with IAF and issue PDF'}
           </button>
         </div>
       )}

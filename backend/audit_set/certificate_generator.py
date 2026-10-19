@@ -13,6 +13,7 @@ from xml.etree import ElementTree as ET
 W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 W = {"w": W_NS}
 TEMPLATE_DIR = Path(__file__).with_name("certificate_templates")
+APPROVAL_SIGNATURE_PATH = TEMPLATE_DIR / "approval_signature.png"
 
 STANDARD_SPECS = {
     "QMS": ("ISO 9001:2015", "Q"),
@@ -98,6 +99,22 @@ def certificate_number(standard: str, initial_date: date, plan_number: int) -> s
     return f"IFC-{prefix}-{initial_date.month}-{initial_date.strftime('%y')}-{plan_number}"
 
 
+def qr_matrix(value: str) -> list[list[bool]]:
+    """Return a standards-compliant QR module matrix without raster dependencies."""
+    from reportlab.graphics.barcode.qr import QrCodeWidget
+
+    widget = QrCodeWidget(value)
+    widget.qr.make()
+    return [list(row) for row in widget.qr.modules]
+
+
+def approval_signature_png_bytes() -> bytes:
+    """Return the fixed IFC certificate approval signature template."""
+    if not APPROVAL_SIGNATURE_PATH.exists():
+        raise FileNotFoundError("Certificate approval signature template is missing")
+    return APPROVAL_SIGNATURE_PATH.read_bytes()
+
+
 def _fsms_category(required_scope: dict | None) -> str:
     for key, value in (required_scope or {}).items():
         try:
@@ -163,11 +180,24 @@ def render_certificate_docx(standard: str, values: CertificateValues) -> bytes:
     output = io.BytesIO()
     with zipfile.ZipFile(template) as source_zip, zipfile.ZipFile(output, "w") as output_zip:
         document_xml = ET.fromstring(source_zip.read("word/document.xml"))
+        parent_map = {child: parent for parent in document_xml.iter() for child in parent}
         found: set[str] = set()
         for node in document_xml.findall(".//w:t", W):
-            if (node.text or "") in replacements:
-                found.add(node.text or "")
-                node.text = replacements[node.text or ""]
+            token = node.text or ""
+            if token in replacements:
+                found.add(token)
+                node.text = replacements[token]
+                if token == "[[CERTIFICATE_NO]]":
+                    # The source certificate keeps the identifier on one line.
+                    # Remove the template's inherited left indent from both the
+                    # DrawingML and VML fallback copies of this value cell.
+                    ancestor = parent_map.get(node)
+                    while ancestor is not None and ancestor.tag != f"{{{W_NS}}}p":
+                        ancestor = parent_map.get(ancestor)
+                    if ancestor is not None:
+                        indent = ancestor.find("w:pPr/w:ind", W)
+                        if indent is not None:
+                            indent.set(f"{{{W_NS}}}left", "0")
 
         required = {
             "[[COMPANY]]", "[[ADDRESS]]", "[[STANDARD]]", "[[SCOPE]]",

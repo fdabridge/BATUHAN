@@ -19,7 +19,7 @@ from datetime import date, datetime
 
 from sqlalchemy import (
     Boolean, Column, Date, DateTime, Float,
-    ForeignKey, Integer, String, Text, JSON,
+    ForeignKey, Integer, String, Text, JSON, UniqueConstraint,
     create_engine,
 )
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
@@ -434,6 +434,32 @@ class AuditSetSharedDocument(Base):
     otp_hash       = Column(String, nullable=True)    # bcrypt hash of OTP
     otp_expires_at = Column(DateTime, nullable=True)
     created_at     = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class IAFCertSearchRecord(Base):
+    """Durable link between a Certiva certificate page and IAF CertSearch.
+
+    A record is committed immediately after IAF accepts the registration so a
+    failed PDF conversion can be retried without creating a second IAF record.
+    Integrated audits therefore have one row (and one QR) per standard.
+    """
+
+    __tablename__ = "iaf_certsearch_records"
+    __table_args__ = (
+        UniqueConstraint("audit_set_id", "standard", name="uq_iaf_certsearch_audit_standard"),
+    )
+
+    id                       = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    audit_set_id             = Column(String, ForeignKey("audit_sets.id", ondelete="CASCADE"), nullable=False)
+    standard                 = Column(String, nullable=False)
+    certificate_number       = Column(String, nullable=False)
+    company_certifications_id = Column(String, nullable=False)
+    verification_url         = Column(String, nullable=False)
+    registration_payload     = Column(JSON, nullable=True)
+    registered_by            = Column(String, nullable=True)
+    registered_at            = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at               = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at               = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 # ---------------------------------------------------------------------------

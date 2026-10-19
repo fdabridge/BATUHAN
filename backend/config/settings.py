@@ -112,6 +112,13 @@ class Settings(BaseSettings):
     cb_accreditation_bodies: str = "UAF,TURKAK"
     cb_supported_standards: str = "QMS,EMS,OHSMS,FSMS,ISMS,MDQMS,ABMS,ENMS"
 
+    # IAF CertSearch v2. The key is issued inside the CB's IAF CertSearch
+    # Import Management > API Integration screen and must stay server-side.
+    iaf_certsearch_api_key: str = ""
+    iaf_certsearch_api_base_url: str = "https://api.iafcertsearch.org/api/client/v2/cb"
+    iaf_certsearch_public_base_url: str = "https://www.iafcertsearch.org"
+    iaf_certsearch_timeout_seconds: float = 30.0
+
     @property
     def accreditation_bodies_list(self) -> list[str]:
         return [x.strip() for x in self.cb_accreditation_bodies.split(",") if x.strip()]
