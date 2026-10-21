@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { ArrowLeft, CalendarPlus, Download, FileUp, Loader2, Plus, Sparkles, Trash2, Wand2 } from 'lucide-react'
 import api from '@/lib/api'
 import { apiErrorMessage } from '@/lib/apiError'
+import { retryTransientApiRequest } from '@/lib/apiRetry'
 
 type DayWindow = {
   date: string
@@ -58,6 +59,7 @@ export default function CertivAIAuditPlanPage() {
   const [address, setAddress] = useState('')
   const [days, setDays] = useState<DayWindow[]>([emptyDay()])
   const [loading, setLoading] = useState(false)
+  const [generationStatus, setGenerationStatus] = useState('Generating FR.223 map')
   const [error, setError] = useState('')
   const [successName, setSuccessName] = useState('')
 
@@ -95,23 +97,34 @@ export default function CertivAIAuditPlanPage() {
       return
     }
 
-    const form = new FormData()
-    form.append('template', template)
-    form.append('standards', JSON.stringify(standards))
-    form.append('audit_type', auditType)
-    form.append('ea_code', eaCode)
-    form.append('category', category)
-    form.append('scope', scope)
-    form.append('org_name', orgName)
-    form.append('address', address)
-    form.append('day_windows', JSON.stringify(days))
+    const buildForm = () => {
+      const form = new FormData()
+      form.append('template', template)
+      form.append('standards', JSON.stringify(standards))
+      form.append('audit_type', auditType)
+      form.append('ea_code', eaCode)
+      form.append('category', category)
+      form.append('scope', scope)
+      form.append('org_name', orgName)
+      form.append('address', address)
+      form.append('day_windows', JSON.stringify(days))
+      return form
+    }
 
     setLoading(true)
+    setGenerationStatus('Generating FR.223 map')
     try {
-      const response = await api.post('/audit-plan/generate', form, {
-        responseType: 'blob',
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      const response = await retryTransientApiRequest(
+        () => api.post('/audit-plan/generate', buildForm(), {
+          responseType: 'blob',
+          headers: { 'Content-Type': 'multipart/form-data' },
+        }),
+        {
+          retries: 2,
+          delayMs: 1500,
+          onRetry: () => setGenerationStatus('Connection interrupted. Reconnecting…'),
+        },
+      )
       const blob = new Blob([response.data], {
         type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       })
@@ -371,7 +384,7 @@ export default function CertivAIAuditPlanPage() {
               className="flex w-full items-center justify-center gap-3 rounded bg-emerald-500 px-5 py-4 text-base font-semibold text-white shadow-xl shadow-emerald-950/40 transition hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-70"
             >
               {loading ? <Loader2 size={20} className="animate-spin" /> : <Download size={20} />}
-              {loading ? 'Generating FR.223 map' : 'Generate filled audit plan'}
+              {loading ? generationStatus : 'Generate filled audit plan'}
             </button>
           </section>
         </div>
