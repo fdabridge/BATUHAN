@@ -183,6 +183,13 @@ export function Sidebar() {
       )}
 
       {/* Divider */}
+      {user && ['admin', 'planner', 'planner_us'].includes(user.role) && (
+        <a href="/certificate-tracker" target="_blank" rel="noopener noreferrer"
+          aria-label="IFC tracker (opens in a new window)" title="IFC tracker — separate register"
+          className="flex h-10 w-10 items-center justify-center rounded-lg text-white/70 hover:bg-white/10 hover:text-white">
+          <ShieldCheck size={20}/>
+        </a>
+      )}
       <div className="my-2 w-8 border-t border-white/15" />
 
       {/* Secondary nav (Users hidden for non-admins) */}
