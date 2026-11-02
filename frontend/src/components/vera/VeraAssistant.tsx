@@ -109,7 +109,7 @@ export function VeraAssistant() {
     return () => window.clearTimeout(timer)
   }, [open, avatarMood])
 
-  if (isLoading || !user || user.activation_required || pathname === '/login' || pathname === '/apply') {
+  if (isLoading || !user || user.activation_required || pathname.startsWith('/certificate-tracker') || pathname === '/login' || pathname === '/apply') {
     return null
   }
 
