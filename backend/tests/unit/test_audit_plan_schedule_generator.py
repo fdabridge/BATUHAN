@@ -9,6 +9,7 @@ from audit_plan.schedule_generator import (
     _SCHEDULE_TOOL_NAME,
     _extract_schedule_payload,
     _integrated_mode,
+    _required_clause_ids,
     _repair_days_from_windows,
     _validate_schedule,
     DaySchedule,
@@ -172,6 +173,23 @@ def test_generate_schedule_retries_a_structurally_valid_but_incomplete_plan():
 
     assert messages.create.call_count == 2
     assert len(days) == 1
+    retry_prompt = messages.create.call_args_list[1].kwargs["messages"][0]["content"]
+    assert "CORRECTION REQUIRED" in retry_prompt
+    assert "omitted required clause(s)" in retry_prompt
+    assert "REQUIRED NORMALIZED CLAUSE IDS CHECKLIST" in retry_prompt
+    assert "Generate the entire schedule again" in retry_prompt
+
+
+def test_required_clause_checklist_excludes_not_applicable_clauses_in_source_order():
+    ctx = _context()
+    ctx.not_applicable = "Clause 8.3 and clause 8.4 are not applicable"
+
+    required = _required_clause_ids(ctx)
+
+    assert required[:4] == ["4.1", "4.2", "4.3", "4.4"]
+    assert "8.3" not in required
+    assert "8.4" not in required
+    assert "10.3" in required
 
 
 def test_generate_schedule_reports_output_limit_instead_of_json_decoder_error():

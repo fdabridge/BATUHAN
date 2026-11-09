@@ -516,18 +516,44 @@ def _validate_schedule(days: list[DaySchedule], ctx: AuditPlanContext) -> None:
             + "."
         )
 
-    required_clause_ids: set[str] = set()
-    for standard in ctx.standards:
-        required_clause_ids.update(
-            _extract_clause_ids(CLAUSE_MAP.get(standard, {}).get(ctx.audit_type, ""))
-        )
-    missing_clause_ids = sorted(required_clause_ids - excluded - scheduled_clause_ids)
+    required_clause_ids = set(_required_clause_ids(ctx))
+    missing_clause_ids = sorted(required_clause_ids - scheduled_clause_ids)
     if missing_clause_ids:
         raise ValueError(
             "The generated schedule omitted required clause(s): "
             + ", ".join(missing_clause_ids)
             + "."
         )
+
+
+def _required_clause_ids(ctx: AuditPlanContext) -> list[str]:
+    """Return the authoritative, de-duplicated FR.222 clause checklist."""
+    required: list[str] = []
+    seen: set[str] = set()
+    excluded = set(_extract_clause_ids(ctx.not_applicable))
+    for standard in ctx.standards:
+        for clause_id in _extract_clause_ids(
+            CLAUSE_MAP.get(standard, {}).get(ctx.audit_type, "")
+        ):
+            if clause_id in excluded or clause_id in seen:
+                continue
+            seen.add(clause_id)
+            required.append(clause_id)
+    return required
+
+
+def _correction_message(base_message: str, validation_error: str) -> str:
+    """Give a failed generation a targeted correction instead of a blind retry."""
+    return f"""{base_message}
+
+CORRECTION REQUIRED — THE PREVIOUS COMPLETE SCHEDULE FAILED VALIDATION:
+{validation_error}
+
+Generate the entire schedule again, not a patch or explanation. Correct the validation
+failure while preserving every authoritative day window, lunch break, meeting, standard,
+auditor-track and not-applicable-clause rule above. Before submitting, compare the Clauses
+field across all rows against the REQUIRED NORMALIZED CLAUSE IDS CHECKLIST and confirm that
+every required clause appears at least once and no excluded clause appears."""
 
 
 def _integrated_mode(standards: list[str], total_days: int) -> str:
@@ -608,6 +634,7 @@ def generate_schedule(ctx: AuditPlanContext) -> list[DaySchedule]:
         if excluded_clause_ids
         else "None"
     )
+    required_clause_summary = ", ".join(_required_clause_ids(ctx)) or "None"
 
     # Build auditor tracks and whole-team string
     track_summary, whole_team_str, strategy_note = _build_auditor_tracks(ctx)
@@ -667,6 +694,8 @@ DAY WINDOWS — AUTHORITATIVE:
 
 CLAUSES TO AUDIT (from FR.222 — do not change):
 {clause_summary}
+REQUIRED NORMALIZED CLAUSE IDS CHECKLIST (every item must appear):
+{required_clause_summary}
 
 INSTRUCTIONS:
 - Create exactly {total_days} day(s). If explicit day windows are listed above, create exactly one day
@@ -701,6 +730,7 @@ INSTRUCTIONS:
     days: list[DaySchedule] = []
     last_error = "AI returned no schedule."
     last_stop_reason = "unknown"
+    attempt_message = user_message
     for attempt in range(1, _MAX_ATTEMPTS + 1):
         try:
             response = client.messages.create(
@@ -708,7 +738,7 @@ INSTRUCTIONS:
                 # Multi-standard, multi-day schedules can legitimately exceed 8k tokens.
                 max_tokens=16000,
                 system=_SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": user_message}],
+                messages=[{"role": "user", "content": attempt_message}],
                 tools=[_SCHEDULE_TOOL],
                 tool_choice={"type": "tool", "name": _SCHEDULE_TOOL_NAME},
             )
@@ -749,7 +779,8 @@ INSTRUCTIONS:
                     f"AI could not produce a complete audit schedule after {_MAX_ATTEMPTS} attempts. "
                     f"{reason} Please try again."
                 ) from exc
-            logger.info("[AuditPlan] Retrying AI call...")
+            attempt_message = _correction_message(user_message, last_error)
+            logger.info("[AuditPlan] Retrying AI call with targeted validation feedback...")
 
     logger.info(f"[AuditPlan] Schedule generated: {len(days)} day(s), "
                 f"{sum(len(d.slots) for d in days)} total slots.")
