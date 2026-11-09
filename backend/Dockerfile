@@ -42,6 +42,8 @@ ENV PYTHONPATH=/app
 # layer is cached unless requirements.txt changes.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+# Catch Redis transport dependency mismatches at build time, before workers crash.
+RUN python -c "from types import SimpleNamespace; from kombu.transport.redis import Channel; Channel._get_client(SimpleNamespace(global_keyprefix=''))"
 
 # -----------------------------------------------------------------------
 # Application source

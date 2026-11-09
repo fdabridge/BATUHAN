@@ -40,7 +40,8 @@ Pillow==10.4.0                 # Image handling
 # Background Jobs
 # -----------------------------------------------------------------------
 celery==5.4.0
-redis==5.1.0
+kombu==5.7.0                  # Pin the worker transport tested with Redis below
+redis==6.4.0                  # Kombu Redis transport requires redis-py >=6.1
 
 # -----------------------------------------------------------------------
 # Database
