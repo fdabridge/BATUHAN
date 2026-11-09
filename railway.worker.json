@@ -3,7 +3,13 @@
   "build": {
     "builder": "DOCKERFILE",
     "dockerfilePath": "backend/Dockerfile",
-    "dockerContext": "backend"
+    "dockerContext": "backend",
+    "watchPatterns": [
+      "/backend/**",
+      "!/backend/standalone_tracker/**",
+      "!/backend/tests/**",
+      "/railway.worker.json"
+    ]
   },
   "deploy": {
     "startCommand": "celery -A jobs.tasks worker --loglevel=info --concurrency=2",
