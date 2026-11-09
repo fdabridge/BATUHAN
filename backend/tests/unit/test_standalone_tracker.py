@@ -105,3 +105,39 @@ def test_reject_duplicate_import_and_cross_kind_overwrite(setup):
     assert client.post('/standalone-tracker/import', json=data).status_code == 422
     row = client.post('/standalone-tracker', json=cert()).json()['record']
     assert client.post('/standalone-tracker', json=dict(row, kind='invoice', total=100, ref='INV')).status_code == 409
+
+
+def registry_evidence(status='Active'):
+    return dict(status=status, checkedAt='2026-11-09', issued='2026-01-02', expiry='2027-01-01', url='https://member.iafcertsearch.org/certifications/live/example', iafCertificate='IFC-Q-1')
+
+
+def test_registry_checks_preserve_business_data_and_record_negative_search(setup):
+    client, _, _, _ = setup
+    client.post('/standalone-tracker/import', json=snapshot())
+    row = client.get('/standalone-tracker').json()['records'][0]
+    check = dict(id=row['id'], revision=row['revision'], iaf=registry_evidence())
+    assert client.post('/standalone-tracker/registry-checks', json={'checks':[check]}).json() == {'updated':1}
+    saved = client.get('/standalone-tracker').json()['records'][0]
+    for key in ('annual','expiry','invoiceRef','payment','fee','company','certificate'):
+        assert saved[key] == row[key]
+    assert saved['iaf']['status'] == 'Active'
+    check.update(revision=saved['revision'], iaf=registry_evidence('Not found'))
+    assert client.post('/standalone-tracker/registry-checks', json={'checks':[check]}).status_code == 200
+    saved = client.get('/standalone-tracker').json()['records'][0]
+    assert saved['iaf'] is None and saved['iafCheck']['status'] == 'Not found'
+
+
+def test_registry_checks_reject_stale_batch_and_other_fields(setup):
+    client, _, _, _ = setup
+    for rid in ('c1','c2'):
+        client.post('/standalone-tracker', json=cert(rid))
+    checks=[dict(id=rid,revision=1,iaf=registry_evidence()) for rid in ('c1','c2')]
+    checks[1]['revision']=0
+    assert client.post('/standalone-tracker/registry-checks',json={'checks':checks}).status_code == 409
+    assert all(not r.get('iaf') for r in client.get('/standalone-tracker').json()['records'])
+    checks[1]['revision']=1
+    checks[0]['payment']='Paid'
+    assert client.post('/standalone-tracker/registry-checks',json={'checks':checks}).status_code == 422
+    checks[0].pop('payment')
+    checks[0]['iaf']['url']='https://unrelated.test/certificate'
+    assert client.post('/standalone-tracker/registry-checks',json={'checks':checks}).status_code == 422

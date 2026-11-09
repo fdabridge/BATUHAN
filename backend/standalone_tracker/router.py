@@ -2,6 +2,7 @@
 import json
 import math
 import os
+from urllib.parse import urlparse
 from datetime import date, datetime, timezone
 from typing import Any
 
@@ -129,6 +130,8 @@ async def save_record(request: Request, user=Depends(staff), db: Session = Depen
     if any(old.get(k) != r.get(k) for k in ("company", "certificate", "standard", "country")):
         r.pop("iaf", None)
         r.pop("uaf", None)
+        r.pop("iafCheck", None)
+        r.pop("uafCheck", None)
     r.update(revision=expected + 1, updatedAt=now(), updatedBy=user.email)
     r["archived"] = bool(r.get("archived", False))
     try:
@@ -189,3 +192,63 @@ async def import_snapshot(request: Request, user=Depends(require_admin), db: Ses
         db.rollback()
         raise HTTPException(409, "An import or edit completed concurrently; refresh the tracker")
     return {"imported": len(validated)}
+
+
+@router.post("/registry-checks")
+async def save_registry_checks(request: Request, user=Depends(require_admin), db: Session = Depends(get_db)):
+    """Apply reviewed registry evidence without importing or replacing business records."""
+    data = await limited_json(request, 5_000_000)
+    if not isinstance(data, dict) or set(data) != {"checks"} or not isinstance(data["checks"], list):
+        raise HTTPException(422, "Choose a registry checks file")
+    checks = data["checks"]
+    if not 1 <= len(checks) <= 20000:
+        raise HTTPException(422, "Registry checks must contain 1–20,000 records")
+    seen, prepared = set(), []
+    for check in checks:
+        if not isinstance(check, dict) or set(check) - {"id", "revision", "iaf", "uaf"} or not ({"iaf", "uaf"} & set(check)):
+            raise HTTPException(422, "Only IAF and UAF evidence can be updated here")
+        rid, revision = check.get("id"), check.get("revision")
+        if not isinstance(rid, str) or rid in seen or type(revision) is not int:
+            raise HTTPException(422, "Each check needs a unique record and revision")
+        seen.add(rid)
+        row = db.get(TrackerRecord, rid)
+        if not row or row.kind != "certificate" or row.revision != revision:
+            raise HTTPException(409, "A certificate changed. Export a fresh sweep before applying these checks.")
+        record = json.loads(row.payload)
+        for key in ("iaf", "uaf"):
+            if key not in check:
+                continue
+            evidence = check[key]
+            if not isinstance(evidence, dict):
+                raise HTTPException(422, "Registry evidence must include its check date and source")
+            host = urlparse(str(evidence.get("url", "")))
+            allowed = {"member.iafcertsearch.org", "www.iafcertsearch.org"} if key == "iaf" else {"dashboard.uafaccreditation.org"}
+            if host.scheme != "https" or host.hostname not in allowed or evidence.get("status") not in {"Active", "Expired", "Withdrawn", "Suspended", "Not found"}:
+                raise HTTPException(422, "Invalid registry source or status")
+            for field in ("checkedAt", "issued", "expiry"):
+                value = evidence.get(field)
+                if field == "checkedAt" or value:
+                    try:
+                        date.fromisoformat(value)
+                    except (ValueError, TypeError):
+                        raise HTTPException(422, "Invalid registry evidence date")
+            # Store negative searches separately; they must not produce a registration tag.
+            if evidence["status"] == "Not found":
+                record[key] = None
+                record[key + "Check"] = evidence
+            else:
+                record[key] = evidence
+                record.pop(key + "Check", None)
+        record.update(revision=revision + 1, updatedAt=now(), updatedBy=user.email)
+        prepared.append((row.id, revision, row.payload, record))
+    try:
+        for rid, revision, before, record in prepared:
+            changed = db.execute(update(TrackerRecord).where(TrackerRecord.id == rid, TrackerRecord.revision == revision).values(payload=encode(record), revision=revision + 1)).rowcount
+            if changed != 1:
+                raise HTTPException(409, "A certificate changed. Refresh before applying registry checks.")
+            db.add(TrackerHistory(record_id=rid, actor=user.email, saved_at=record["updatedAt"], action="Registry checked", before_payload=before, after_payload=encode(record)))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return {"updated": len(prepared)}
