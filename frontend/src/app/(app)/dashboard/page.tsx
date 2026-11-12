@@ -2,11 +2,13 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { CalendarDays } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { CertBadge } from '@/components/ui/CertBadge'
 import { PendingSignaturesWidget } from '@/components/ui/PendingSignaturesWidget'
 import { GuidedActionCard } from '@/components/ui/GuidedActionCard'
+import { PlannerAuditCalendar } from '@/components/ui/PlannerAuditCalendar'
 import { useAuth } from '@/lib/auth'
 import type { DashboardStats, ClientSummary } from '@/types'
 
@@ -195,6 +197,8 @@ function ClientTable() {
 
 export default function DashboardPage() {
   const { user } = useAuth()
+  const [calendarOpen, setCalendarOpen] = useState(true)
+  const calendarUser = user && ['admin', 'planner', 'planner_us'].includes(user.role) ? user : null
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
     queryKey: ['dashboard-stats'],
     queryFn: () => api.get<DashboardStats>('/dashboard/stats').then((r) => r.data),
@@ -236,7 +240,17 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <GuidedActionCard {...guidedAction} />
+      <div className={`grid items-start gap-4 ${calendarUser && calendarOpen ? 'xl:grid-cols-[minmax(0,36rem)_minmax(0,1fr)]' : ''}`}>
+        {calendarUser && (calendarOpen ? (
+          <PlannerAuditCalendar key={calendarUser.id} userId={calendarUser.id} onClose={() => setCalendarOpen(false)} />
+        ) : (
+          <button type="button" autoFocus onClick={() => setCalendarOpen(true)}
+            className="inline-flex w-fit items-center gap-2 rounded-lg border border-emerald-950/10 bg-white px-3 py-2 text-sm font-semibold text-certiva-primary hover:bg-certiva-mist">
+            <CalendarDays size={16} aria-hidden="true" /> Open audit calendar
+          </button>
+        ))}
+        <GuidedActionCard {...guidedAction} />
+      </div>
       <StatCards stats={stats} isLoading={statsLoading} />
       <PendingSignaturesWidget />
       <ClientTable />

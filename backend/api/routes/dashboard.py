@@ -2,14 +2,22 @@
 BATUHAN — Dashboard API Routes
 GET   /dashboard/stats                    → aggregate stats cards
 GET   /dashboard/clients                  → paginated client list with cert info
+GET   /dashboard/audit-calendar           → saved audit bookings for one month
 PATCH /dashboard/clients/{id}/cert-dates  → update certificate issued/expiry dates
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from calendar import monthrange
+from datetime import date
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from audit_set.db_models import AuditSet, get_db
+from audit_set.planner_calendar import (
+    PlannerCalendarBooking,
+    list_planner_calendar_bookings,
+)
 from audit_set.schemas import (
     AuditSetCertUpdateSchema,
     ClientSummarySchema,
@@ -84,6 +92,22 @@ def dashboard_stats(
     """Return aggregate counts: total plans, active certs, approaching expiry, expired,
     open pipeline jobs, pending review jobs."""
     return get_dashboard_stats(db)
+
+
+@router.get("/audit-calendar", response_model=list[PlannerCalendarBooking])
+def dashboard_audit_calendar(
+    month: str = Query(pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$"),
+    db: Session = Depends(get_db),
+    _: PlatformUser = Depends(require_planner),
+):
+    """Return a read-only month view of scheduled audit stages for planners."""
+
+    year, month_number = map(int, month.split("-"))
+    if year < 1:
+        raise HTTPException(status_code=422, detail="Select a valid calendar year.")
+    first_day = date(year, month_number, 1)
+    last_day = first_day.replace(day=monthrange(year, month_number)[1])
+    return list_planner_calendar_bookings(db, first_day, last_day)
 
 
 @router.get("/clients", response_model=list[ClientSummarySchema])
