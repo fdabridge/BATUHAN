@@ -7,6 +7,8 @@ has been removed. Auditors upload completed audit deliverables back to CB
 (direction='client_to_cb').
 """
 from __future__ import annotations
+
+import hashlib
 import logging
 import os
 import secrets
@@ -398,6 +400,37 @@ def _decorate_certificate_page(
         overlay=True,
     )
 
+    # Word normally renders this label from the final flow paragraph. Keep a
+    # deterministic fallback beside the fixed approval-signature asset in case
+    # a future controlled template omits that decorative paragraph.
+    if "approval" not in page.get_text("text").casefold():
+        page.insert_textbox(
+            fitz.Rect(
+                page.rect.width * 0.38,
+                page.rect.height * 0.89,
+                page.rect.width * 0.67,
+                page.rect.height * 0.92,
+            ),
+            "Approval",
+            fontsize=11,
+            fontname="helv",
+            color=(0.0, 0.28, 0.51),
+            align=fitz.TEXT_ALIGN_CENTER,
+            overlay=True,
+        )
+
+
+def _certificate_page_layout_is_safe(page: fitz.Page) -> bool:
+    """Check that the lower certificate block stays clear of the signature.
+
+    Merely fitting on one PDF page is insufficient: a wrapped scope can push
+    the date table down into the fixed approval-signature area. The templates
+    share the same ``Initial Date`` anchor, whose top must remain in the upper
+    three quarters of the page to preserve the intended spacing.
+    """
+    anchors = page.search_for("Initial Date")
+    return not anchors or min(rect.y0 for rect in anchors) <= page.rect.height * 0.75
+
 
 def _build_certificate_pdf(
     audit_set: AuditSet,
@@ -432,18 +465,67 @@ def _build_certificate_pdf(
                     )
                 expiry_date = values.expiry_date
                 docx_path = tmp_dir / f"{index:02d}_{standard}.docx"
-                docx_path.write_bytes(render_certificate_docx(standard, values))
-                pdf_path = convert_docx_to_pdf(str(docx_path))
-                with fitz.open(pdf_path) as page_pdf:
-                    if page_pdf.page_count != 1:
-                        raise RuntimeError(
-                            f"Certificate template {standard} rendered to {page_pdf.page_count} pages; expected one."
+                rendered_page: fitz.Document | None = None
+                last_page_count = 0
+                try:
+                    # Preserve the original template first. If LibreOffice
+                    # reflows it, remove only the deliberately empty scope
+                    # spacers until the same design fits on one page.
+                    layout_attempts = [
+                        (spacers, None) for spacers in range(0, 7)
+                    ] + [
+                        (6, font_size) for font_size in (20, 18, 16)
+                    ]
+                    tried_layouts: set[str] = set()
+                    for spacers_to_remove, scope_font_size in layout_attempts:
+                        rendered_docx = render_certificate_docx(
+                            standard,
+                            values,
+                            scope_spacers_to_remove=spacers_to_remove,
+                            scope_font_size_half_points=scope_font_size,
+                        )
+                        layout_digest = hashlib.sha256(rendered_docx).hexdigest()
+                        if layout_digest in tried_layouts:
+                            continue
+                        tried_layouts.add(layout_digest)
+                        docx_path.write_bytes(rendered_docx)
+                        expected_pdf_path = docx_path.with_suffix(".pdf")
+                        expected_pdf_path.unlink(missing_ok=True)
+                        pdf_path = convert_docx_to_pdf(str(docx_path))
+                        candidate = fitz.open(pdf_path)
+                        last_page_count = candidate.page_count
+                        if (
+                            candidate.page_count == 1
+                            and _certificate_page_layout_is_safe(candidate[0])
+                        ):
+                            rendered_page = candidate
+                            if spacers_to_remove or scope_font_size is not None:
+                                logger.info(
+                                    "Certificate layout fitted after removing %s scope spacer(s) "
+                                    "and using scope font size %s half-points for "
+                                    "audit_set_id=%s standard=%s",
+                                    spacers_to_remove,
+                                    scope_font_size or "template-default",
+                                    audit_set.id,
+                                    standard,
+                                )
+                            break
+                        candidate.close()
+
+                    if rendered_page is None:
+                        raise ValueError(
+                            f"The {standard} certificate content does not fit on one page "
+                            f"(rendered as {last_page_count} pages). Shorten the certificate "
+                            "scope or address before issuing it."
                         )
                     _decorate_certificate_page(
-                        page_pdf[0],
+                        rendered_page[0],
                         verification_url=verification_urls[standard],
                     )
-                    merged.insert_pdf(page_pdf)
+                    merged.insert_pdf(rendered_page)
+                finally:
+                    if rendered_page is not None:
+                        rendered_page.close()
         if merged.page_count != len(standards):
             raise RuntimeError("Generated certificate PDF has an unexpected page count.")
         return merged.tobytes(garbage=4, deflate=True), expiry_date or issue_date

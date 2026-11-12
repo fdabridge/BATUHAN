@@ -23,6 +23,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # LibreOffice headless — DOCX → PDF conversion (Prompt 23)
     libreoffice-writer \
     libreoffice-calc \
+    # Metric-compatible replacements for the Calibri/Cambria fonts used by
+    # the controlled certificate templates. Without these, LibreOffice can
+    # reflow a one-page certificate onto a second page in Linux.
+    fonts-crosextra-carlito \
+    fonts-crosextra-caladea \
     fonts-liberation \
     fonts-noto-core \
     && rm -rf /var/lib/apt/lists/*

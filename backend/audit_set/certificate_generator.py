@@ -155,11 +155,24 @@ def values_for_audit_set(
     )
 
 
-def render_certificate_docx(standard: str, values: CertificateValues) -> bytes:
+def render_certificate_docx(
+    standard: str,
+    values: CertificateValues,
+    *,
+    scope_spacers_to_remove: int = 0,
+    scope_font_size_half_points: int | None = None,
+) -> bytes:
     canonical = normalize_standard(standard)
     template = TEMPLATE_DIR / f"{canonical}.docx"
     if not template.exists():
         raise FileNotFoundError(f"Certificate template is missing for {canonical}")
+    if scope_spacers_to_remove < 0:
+        raise ValueError("scope_spacers_to_remove cannot be negative")
+    if (
+        scope_font_size_half_points is not None
+        and not 16 <= scope_font_size_half_points <= 22
+    ):
+        raise ValueError("scope_font_size_half_points must be between 16 and 22")
 
     standard_text = STANDARD_SPECS[canonical][0]
     replacements = {
@@ -182,11 +195,23 @@ def render_certificate_docx(standard: str, values: CertificateValues) -> bytes:
         document_xml = ET.fromstring(source_zip.read("word/document.xml"))
         parent_map = {child: parent for parent in document_xml.iter() for child in parent}
         found: set[str] = set()
+        scope_paragraph = None
+        category_paragraph = None
         for node in document_xml.findall(".//w:t", W):
             token = node.text or ""
             if token in replacements:
                 found.add(token)
                 node.text = replacements[token]
+                if token == "[[SCOPE]]":
+                    ancestor = parent_map.get(node)
+                    while ancestor is not None and ancestor.tag != f"{{{W_NS}}}p":
+                        ancestor = parent_map.get(ancestor)
+                    scope_paragraph = ancestor
+                if token == "[[CATEGORY]]":
+                    ancestor = parent_map.get(node)
+                    while ancestor is not None and ancestor.tag != f"{{{W_NS}}}p":
+                        ancestor = parent_map.get(ancestor)
+                    category_paragraph = ancestor
                 if token == "[[CERTIFICATE_NO]]":
                     # The source certificate keeps the identifier on one line.
                     # Remove the template's inherited left indent from both the
@@ -207,6 +232,56 @@ def render_certificate_docx(standard: str, values: CertificateValues) -> bytes:
         missing = required - found
         if missing:
             raise ValueError(f"Certificate template {canonical} is missing mapped tokens: {sorted(missing)}")
+
+        if scope_font_size_half_points is not None and scope_paragraph is not None:
+            for run in scope_paragraph.findall(".//w:r", W):
+                run_properties = run.find("w:rPr", W)
+                if run_properties is None:
+                    run_properties = ET.Element(f"{{{W_NS}}}rPr")
+                    run.insert(0, run_properties)
+                for property_name in ("sz", "szCs"):
+                    size = run_properties.find(f"w:{property_name}", W)
+                    if size is None:
+                        size = ET.SubElement(run_properties, f"{{{W_NS}}}{property_name}")
+                    size.set(f"{{{W_NS}}}val", str(scope_font_size_half_points))
+
+        # The source certificates use six empty flow paragraphs between the
+        # scope and the fixed lower information block. When a scope wraps to
+        # additional lines, those unused spacers can be removed one at a time
+        # without changing fonts, sizes, logos or mapped content. This gives
+        # the Linux PDF renderer a deterministic way to keep the controlled
+        # certificate design on one page.
+        spacer_anchor = (
+            category_paragraph
+            if category_paragraph is not None
+            else scope_paragraph
+        )
+        if scope_spacers_to_remove and spacer_anchor is not None:
+            body = parent_map.get(spacer_anchor)
+            if body is not None:
+                siblings = list(body)
+                scope_index = siblings.index(spacer_anchor)
+                removed = 0
+                for paragraph in siblings[scope_index + 1:]:
+                    if removed >= scope_spacers_to_remove:
+                        break
+                    if paragraph.tag != f"{{{W_NS}}}p":
+                        break
+                    text = "".join(
+                        (item.text or "") for item in paragraph.findall(".//w:t", W)
+                    ).strip()
+                    has_positioned_content = any(
+                        paragraph.find(f".//{tag}") is not None
+                        for tag in (
+                            f"{{{W_NS}}}drawing",
+                            f"{{{W_NS}}}pict",
+                            "{http://schemas.openxmlformats.org/markup-compatibility/2006}AlternateContent",
+                        )
+                    )
+                    if text or has_positioned_content:
+                        break
+                    body.remove(paragraph)
+                    removed += 1
 
         updated_xml = ET.tostring(document_xml, encoding="utf-8", xml_declaration=True)
         for info in source_zip.infolist():

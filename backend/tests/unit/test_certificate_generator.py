@@ -4,6 +4,7 @@ import zipfile
 from datetime import date
 from io import BytesIO
 from types import SimpleNamespace
+from xml.etree import ElementTree as ET
 
 import pytest
 
@@ -12,6 +13,8 @@ from audit_set.certificate_generator import (
     CertificateValues,
     STANDARD_SPECS,
     TEMPLATE_DIR,
+    W,
+    W_NS,
     approval_signature_png_bytes,
     certificate_number,
     default_expiry_date,
@@ -137,3 +140,83 @@ def test_audit_set_values_use_scope_and_food_categories():
     assert values.scope == "Production of ready-to-eat food"
     assert values.category == "CI, CIII"
     assert values.certificate_number == "IFC-F-10-26-1801"
+
+
+def test_food_certificate_compaction_removes_spacers_after_category():
+    values = CertificateValues(
+        company_name="Food Company",
+        company_address="Food Street",
+        scope="Production of ready-to-eat food",
+        initial_date=date(2026, 10, 1),
+        issue_date=date(2026, 10, 6),
+        revision="1",
+        validity_date=date(2027, 10, 5),
+        expiry_date=date(2029, 9, 30),
+        certificate_number="IFC-F-10-26-1801",
+        category="CI, CIII",
+    )
+
+    default = render_certificate_docx("FSMS", values)
+    compact = render_certificate_docx("FSMS", values, scope_spacers_to_remove=2)
+
+    def paragraph_texts(data: bytes) -> list[str]:
+        with zipfile.ZipFile(BytesIO(data)) as package:
+            root = ET.fromstring(package.read("word/document.xml"))
+        body = root.find("w:body", W)
+        assert body is not None
+        return [
+            "".join((node.text or "") for node in paragraph.findall(".//w:t", W)).strip()
+            for paragraph in body.findall("w:p", W)
+        ]
+
+    default_texts = paragraph_texts(default)
+    compact_texts = paragraph_texts(compact)
+    default_category_index = default_texts.index("Category/Sub-Category: CI, CIII")
+    compact_category_index = compact_texts.index("Category/Sub-Category: CI, CIII")
+
+    def following_blank_count(texts: list[str], start: int) -> int:
+        count = 0
+        for text in texts[start + 1:]:
+            if text:
+                break
+            count += 1
+        return count
+
+    default_blanks = following_blank_count(default_texts, default_category_index)
+    compact_blanks = following_blank_count(compact_texts, compact_category_index)
+    assert default_blanks >= 2
+    assert compact_blanks == default_blanks - 2
+
+
+def test_scope_font_can_be_reduced_without_changing_other_mapped_content():
+    values = CertificateValues(
+        company_name="Example Company",
+        company_address="Example Address",
+        scope="A long but controlled certification scope",
+        initial_date=date(2026, 10, 1),
+        issue_date=date(2026, 10, 6),
+        revision="1",
+        validity_date=date(2027, 10, 5),
+        expiry_date=date(2029, 9, 30),
+        certificate_number="IFC-Q-10-26-1801",
+    )
+
+    rendered = render_certificate_docx(
+        "QMS",
+        values,
+        scope_font_size_half_points=18,
+    )
+
+    with zipfile.ZipFile(BytesIO(rendered)) as package:
+        root = ET.fromstring(package.read("word/document.xml"))
+    scope_node = next(
+        node for node in root.findall(".//w:t", W)
+        if node.text == values.scope
+    )
+    parent_map = {child: parent for parent in root.iter() for child in parent}
+    run = parent_map[scope_node]
+    assert run.find("w:rPr/w:sz", W).get(f"{{{W_NS}}}val") == "18"
+    assert run.find("w:rPr/w:szCs", W).get(f"{{{W_NS}}}val") == "18"
+    xml = ET.tostring(root, encoding="unicode")
+    assert values.company_name in xml
+    assert values.certificate_number in xml
