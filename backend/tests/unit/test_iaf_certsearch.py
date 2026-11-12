@@ -98,6 +98,31 @@ def test_payload_uses_official_country_and_multiple_ea_sector_values():
     ]
 
 
+def test_payload_normalizes_ascii_turkiye_for_entity_main_and_additional_sites():
+    payload = build_certification_payload(
+        _audit_set(
+            country="Turkiye",
+            sites=[
+                {"address": "Plant 2, Ankara", "process": "Assembly"},
+                {
+                    "address": "Plant 3, Istanbul",
+                    "process": "Distribution",
+                    "country": "TURKIYE",
+                },
+            ],
+        ),
+        "QMS",
+        _certificate_values(),
+    )
+
+    assert payload["certified_entity"]["business_registered_country"] == "Türkiye"
+    assert payload["certification"]["main_site_country"] == "Türkiye"
+    assert [site["country"] for site in payload["certification"]["cert_sites"]] == [
+        "Türkiye",
+        "Türkiye",
+    ]
+
+
 def test_payload_requires_country_before_external_registration():
     with pytest.raises(IAFCertSearchError, match="country is required"):
         build_certification_payload(_audit_set(country=""), "QMS", _certificate_values())
@@ -107,6 +132,32 @@ def test_isms_uses_the_iaf_iso_iec_standard_name():
     payload = build_certification_payload(_audit_set(), "ISMS", _certificate_values())
     scheme = payload["certification"]["schemes"][0]
     assert scheme["standard_list"] == [{"standards_name": "ISO/IEC 27001:2022"}]
+
+
+@pytest.mark.parametrize(
+    ("standard", "expected_scheme", "expected_standard"),
+    [
+        ("QMS", "Quality Management Systems", "ISO 9001:2015"),
+        ("EMS", "Environmental Management Systems", "ISO 14001:2015"),
+        ("OHSMS", "Occupational Health and Safety Management Systems", "ISO 45001:2018"),
+        ("FSMS", "Food Safety Management Systems", "ISO 22000:2018"),
+        ("ISMS", "Information Security Management Systems", "ISO/IEC 27001:2022"),
+        ("ENMS", "Energy Management Systems", "ISO 50001:2018"),
+        ("MDQMS", "Medical Devices - Quality Management Systems", "ISO 13485:2016"),
+        ("ABMS", "Anti-Bribery Management Systems", "ISO 37001:2016"),
+    ],
+)
+def test_every_supported_certificate_uses_its_iaf_scheme_and_standard(
+    standard: str,
+    expected_scheme: str,
+    expected_standard: str,
+):
+    payload = build_certification_payload(_audit_set(), standard, _certificate_values())
+
+    assert payload["certification"]["schemes"] == [{
+        "scheme_name": expected_scheme,
+        "standard_list": [{"standards_name": expected_standard}],
+    }]
 
 
 def test_registration_uses_returned_iaf_id_as_certificate_verification_url(monkeypatch):
@@ -197,6 +248,20 @@ def test_v1_payload_uses_the_v1_country_dataset_names():
         "United States of America (the)"
     )
     assert payload["certified_entity_country"] == "United States"
+
+
+def test_v1_payload_uses_legacy_turkey_name_for_ascii_turkiye_input():
+    canonical = build_certification_payload(
+        _audit_set(country="Turkiye"),
+        "QMS",
+        _certificate_values(),
+    )
+
+    payload = _v1_payload(canonical)
+
+    assert canonical["certified_entity"]["business_registered_country"] == "Türkiye"
+    assert payload["certified_entity_country"] == "Turkey"
+    assert payload["sites"][0]["country"] == "Turkey"
 
 
 def test_registration_retries_v1_only_after_explicit_version_mismatch(monkeypatch):

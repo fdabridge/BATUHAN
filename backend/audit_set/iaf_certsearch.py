@@ -51,6 +51,7 @@ _V2_COUNTRY_ALIASES = {
     "tr": "Türkiye",
     "tur": "Türkiye",
     "turkey": "Türkiye",
+    "turkiye": "Türkiye",
     "türkiye": "Türkiye",
     "us": "United States of America (the)",
     "usa": "United States of America (the)",
@@ -67,6 +68,9 @@ _V2_COUNTRY_ALIASES = {
 }
 
 _V1_COUNTRY_ALIASES = {
+    "tr": "Turkey",
+    "tur": "Turkey",
+    "turkiye": "Turkey",
     "türkiye": "Turkey",
     "turkey": "Turkey",
     "united states of america (the)": "United States",
@@ -112,7 +116,12 @@ def _entity_id(audit_set: Any) -> str:
     return f"CERTIVA-{str(audit_set.id).replace('-', '').upper()}"
 
 
-def _additional_sites(audit_set: Any, entity_id: str, scope: str) -> list[dict[str, str]]:
+def _additional_sites(
+    audit_set: Any,
+    entity_id: str,
+    scope: str,
+    default_country: str,
+) -> list[dict[str, str]]:
     result: list[dict[str, str]] = []
     for site in getattr(audit_set, "sites", None) or []:
         if not isinstance(site, dict):
@@ -120,6 +129,7 @@ def _additional_sites(audit_set: Any, entity_id: str, scope: str) -> list[dict[s
         full_address = str(site.get("address") or "").strip()
         if not full_address:
             continue
+        country = _country_v2(site.get("country") or default_country)
         result.append({
             "certified_entity_unique_id": entity_id,
             "site_type": "Additional Site",
@@ -127,7 +137,7 @@ def _additional_sites(audit_set: Any, entity_id: str, scope: str) -> list[dict[s
             "city": "",
             "state": "",
             "zip_code": "",
-            "country": str(getattr(audit_set, "country", "") or "").strip(),
+            "country": country,
             "full_address": full_address,
             "scope_description": str(site.get("process") or scope).strip(),
         })
@@ -208,7 +218,7 @@ def build_certification_payload(
                 "scheme_name": IAF_SCHEME_NAMES[canonical],
                 "standard_list": [{"standards_name": IAF_STANDARD_NAMES[canonical]}],
             }],
-            "cert_sites": _additional_sites(audit_set, entity_id, scope),
+            "cert_sites": _additional_sites(audit_set, entity_id, scope, country),
             "sectors": _sectors(audit_set),
         },
     }
