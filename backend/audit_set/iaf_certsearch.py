@@ -41,6 +41,25 @@ IAF_SCHEME_NAMES = {
     "ABMS": "Anti-Bribery Management Systems",
 }
 
+# IAF validates the scheme and standard as an accreditation-specific pair.
+# These values mirror the UAF rows shown in this CB account's Standards and
+# Schemes register.  They intentionally preserve the register's exact spelling
+# because a generic IAF dataset label can still be rejected for this CB.
+UAF_SCHEME_NAMES = {
+    "QMS": "Quality Management System",
+    "EMS": "Environment Management System",
+    "OHSMS": "Occupational and Health Management System",
+    "FSMS": "Food & Safety Management System",
+    "ISMS": "Information Security Management System",
+    "ENMS": "Energy Management System",
+    "MDQMS": "Medial devices quality managemen system",
+    "ABMS": "Anti Bribery Management Systems",
+}
+
+IAF_SCHEME_NAMES_BY_ACCREDITATION = {
+    "UAF": UAF_SCHEME_NAMES,
+}
+
 IAF_ACCREDITATION_BODIES = {
     "UAF": ("United Accreditation Foundation Inc.", "UAF"),
     "TURKAK": ("Turkish Accreditation Agency", "TURKAK"),
@@ -179,6 +198,10 @@ def build_certification_payload(
         raise IAFCertSearchError(
             f"IAF CertSearch mapping is not configured for accreditation body '{accreditation or 'unknown'}'."
         ) from exc
+    scheme_name = IAF_SCHEME_NAMES_BY_ACCREDITATION.get(
+        accreditation,
+        IAF_SCHEME_NAMES,
+    )[canonical]
 
     entity_id = _entity_id(audit_set)
     city = str(getattr(audit_set, "city", "") or "").strip()
@@ -215,7 +238,7 @@ def build_certification_payload(
             "accreditation_body_acronym_name": accreditation_acronym,
             "confidential_certified_entity": "No",
             "schemes": [{
-                "scheme_name": IAF_SCHEME_NAMES[canonical],
+                "scheme_name": scheme_name,
                 "standard_list": [{"standards_name": IAF_STANDARD_NAMES[canonical]}],
             }],
             "cert_sites": _additional_sites(audit_set, entity_id, scope, country),

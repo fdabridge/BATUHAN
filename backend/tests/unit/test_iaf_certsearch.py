@@ -65,7 +65,7 @@ def test_payload_matches_iaf_v2_contract_and_keeps_personal_data_out():
     assert certification["certification_expiry_date"] == "20290101"
     assert certification["accreditation_body_name"] == "United Accreditation Foundation Inc."
     assert certification["schemes"] == [{
-        "scheme_name": "Quality Management Systems",
+        "scheme_name": "Quality Management System",
         "standard_list": [{"standards_name": "ISO 9001:2015"}],
     }]
     assert certification["cert_sites"][0]["full_address"] == "Plant 2, Essen, Germany"
@@ -137,14 +137,14 @@ def test_isms_uses_the_iaf_iso_iec_standard_name():
 @pytest.mark.parametrize(
     ("standard", "expected_scheme", "expected_standard"),
     [
-        ("QMS", "Quality Management Systems", "ISO 9001:2015"),
-        ("EMS", "Environmental Management Systems", "ISO 14001:2015"),
-        ("OHSMS", "Occupational Health and Safety Management Systems", "ISO 45001:2018"),
-        ("FSMS", "Food Safety Management Systems", "ISO 22000:2018"),
-        ("ISMS", "Information Security Management Systems", "ISO/IEC 27001:2022"),
-        ("ENMS", "Energy Management Systems", "ISO 50001:2018"),
-        ("MDQMS", "Medical Devices - Quality Management Systems", "ISO 13485:2016"),
-        ("ABMS", "Anti-Bribery Management Systems", "ISO 37001:2016"),
+        ("QMS", "Quality Management System", "ISO 9001:2015"),
+        ("EMS", "Environment Management System", "ISO 14001:2015"),
+        ("OHSMS", "Occupational and Health Management System", "ISO 45001:2018"),
+        ("FSMS", "Food & Safety Management System", "ISO 22000:2018"),
+        ("ISMS", "Information Security Management System", "ISO/IEC 27001:2022"),
+        ("ENMS", "Energy Management System", "ISO 50001:2018"),
+        ("MDQMS", "Medial devices quality managemen system", "ISO 13485:2016"),
+        ("ABMS", "Anti Bribery Management Systems", "ISO 37001:2016"),
     ],
 )
 def test_every_supported_certificate_uses_its_iaf_scheme_and_standard(
@@ -397,6 +397,6 @@ def test_wrong_mapping_error_lists_only_safe_mapping_candidates(monkeypatch):
     message = str(caught.value)
     assert "country=Germany" in message
     assert "accreditation=UAF" in message
-    assert "scheme=Quality Management Systems" in message
+    assert "scheme=Quality Management System" in message
     assert "standard=ISO 9001:2015" in message
     assert "must-not-appear" not in message
