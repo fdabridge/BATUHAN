@@ -12,8 +12,10 @@ from assembly.column_semantics import (
 )
 from assembly.llm_mapper import (
     ReportAssemblyIntegrityError,
+    _call_ai_mapping,
     _tbl_belongs_to_standard,
     apply_cell_mapping,
+    get_cell_mapping,
     prune_unselected_standard_tables,
     sanitize_cell_mapping,
     strip_template_instruction_paragraphs,
@@ -22,6 +24,93 @@ from assembly.llm_mapper import (
 )
 from assembly.llm_mapper import _plan_call_chunks
 from schemas.models import ISOStandard
+
+
+def test_structured_assembly_mapping_uses_forced_tool_contract(monkeypatch):
+    from ai.openai_client import ToolUseBlock
+
+    captured = {}
+
+    class FakeMessages:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(
+                content=[
+                    ToolUseBlock(
+                        name="submit_cell_mapping",
+                        input={
+                            "cells": [
+                                {
+                                    "coordinate": "T4_R2_C2",
+                                    "content": "Veridian Built Environment Ltd.",
+                                }
+                            ]
+                        },
+                    )
+                ],
+                stop_reason="end_turn",
+                request_id="req_test",
+            )
+
+    class FakeClient:
+        def __init__(self, **_kwargs):
+            self.messages = FakeMessages()
+
+    monkeypatch.setattr("ai.openai_client.OpenAIClient", FakeClient)
+
+    mapping, raw = _call_ai_mapping("map this", model="test-model")
+
+    assert mapping == {"T4_R2_C2": "Veridian Built Environment Ltd."}
+    assert '"coordinate": "T4_R2_C2"' in raw
+    assert captured["tool_choice"] == {
+        "type": "tool",
+        "name": "submit_cell_mapping",
+    }
+    assert captured["tools"][0]["name"] == "submit_cell_mapping"
+
+
+def test_mapping_retries_with_fast_structured_model_after_empty_response(monkeypatch):
+    calls = []
+
+    monkeypatch.setattr(
+        "assembly.llm_mapper._plan_call_chunks",
+        lambda *_args, **_kwargs: [
+            {
+                "label": "T4",
+                "structure_text": "TABLE 4\nT4_R2_C2: [EMPTY]",
+                "empty_count": 1,
+                "standard": None,
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        "assembly.llm_mapper._format_report_sections",
+        lambda _report: "GENERATED REPORT CONTENT",
+    )
+    monkeypatch.setattr(
+        "assembly.llm_mapper._build_prompt",
+        lambda *_args, **_kwargs: "mapping prompt",
+    )
+
+    def fake_structured(_prompt, *, model=None):
+        calls.append(model)
+        if len(calls) == 1:
+            raise ValueError("returned no text output")
+        return {"T4_R2_C2": "Recovered"}, '{"cells": []}'
+
+    monkeypatch.setattr("assembly.llm_mapper._call_ai_mapping", fake_structured)
+
+    mapping = get_cell_mapping(
+        template_path="unused.docx",
+        validated_report=SimpleNamespace(sections=[]),
+        selected_standards=[ISOStandard.QMS],
+    )
+
+    assert mapping == {"T4_R2_C2": "Recovered"}
+    assert calls == [
+        __import__("assembly.llm_mapper", fromlist=["settings"]).settings.ai_model,
+        __import__("assembly.llm_mapper", fromlist=["settings"]).settings.ai_fast_model,
+    ]
 
 
 def _clause_table_document() -> tuple[Document, ColumnSemanticMap]:
@@ -354,6 +443,26 @@ def test_mdqms_table_is_not_misclassified_as_qms():
     table.cell(1, 2).text = "Conclusion"
 
     assert _tbl_belongs_to_standard(table._tbl) == "MDQMS"
+
+
+@pytest.mark.parametrize(
+    "standards_value",
+    [
+        "QMS + EMS + OHSMS",
+        "ISO 9001:2015 + ISO 14001:2015 + ISO 45001:2018",
+    ],
+)
+def test_metadata_standards_value_does_not_make_table_a_clause_table(standards_value):
+    doc = Document()
+    table = doc.add_table(rows=4, cols=2)
+    table.cell(0, 0).text = "Report No"
+    table.cell(0, 1).text = "2026-0042"
+    table.cell(1, 0).text = "Standard(s)"
+    table.cell(1, 1).text = standards_value
+    table.cell(2, 0).text = "Evaluated"
+    table.cell(3, 0).text = "Evaluator"
+
+    assert _tbl_belongs_to_standard(table._tbl) is None
 
 
 def test_integrity_check_rejects_selected_clause_table_with_no_findings():

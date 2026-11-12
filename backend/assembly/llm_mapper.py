@@ -15,6 +15,7 @@ parse_cell_mapping(response) -> dict       (exposed for testing)
 """
 
 from __future__ import annotations
+import json
 import logging
 import re
 from copy import deepcopy
@@ -365,8 +366,32 @@ _STANDARD_NUMBER_CODES: tuple[tuple[str, str], ...] = (
 
 
 def _tbl_belongs_to_standard(tbl_elem) -> str | None:
-    """Return the standard value this table belongs to, or None if neutral."""
-    all_text = " ".join(t.text or "" for t in tbl_elem.iter(_wtag("t")))
+    """Return the standard this *content table* belongs to, or None if neutral.
+
+    A metadata table can contain ``QMS + EMS + OHSMS`` in its Standards value
+    without becoming a QMS clause table.  Whole-table keyword matching used to
+    misclassify those tables and make intentional evaluator blanks fatal.
+    """
+    cell_texts = [
+        re.sub(r"\s+", " ", _get_cell_text(tc)).strip()
+        for tc in tbl_elem.iter(_wtag("tc"))
+    ]
+    all_text = " ".join(cell_texts)
+    has_findings_schema = (
+        any(re.search(r"\b(?:requirements?|controls?|clauses?)\b", text, re.I) for text in cell_texts)
+        and any(re.search(r"\bfindings?\b", text, re.I) for text in cell_texts)
+        and any(re.search(r"\b(?:conclusion|result)\b", text, re.I) for text in cell_texts)
+    )
+    is_enms_performance_table = bool(
+        re.search(
+            r"evaluation\s+on\s+demonstration\s+of\s+energy\s+performance\s+improvement",
+            all_text,
+            re.I,
+        )
+    )
+    if not has_findings_schema and not is_enms_performance_table:
+        return None
+
     # ISO numbers are authoritative.  In particular, ISO 13485 templates often
     # say "MD-QMS" and would otherwise be misclassified as the shorter QMS token.
     for number, standard in _STANDARD_NUMBER_CODES:
@@ -837,8 +862,36 @@ def _build_prompt(
 # AI API call
 # ---------------------------------------------------------------------------
 
-def _call_ai(prompt: str) -> str:
-    """Send a prompt to the configured OpenAI model and return text."""
+_CELL_MAPPING_TOOL = {
+    "name": "submit_cell_mapping",
+    "description": (
+        "Return the completed Word-template cell assignments. Use only coordinates "
+        "present in the supplied template structure."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "cells": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "coordinate": {"type": "string"},
+                        "content": {"type": "string"},
+                    },
+                    "required": ["coordinate", "content"],
+                    "additionalProperties": False,
+                },
+            }
+        },
+        "required": ["cells"],
+        "additionalProperties": False,
+    },
+}
+
+
+def _call_ai(prompt: str, *, model: str | None = None) -> str:
+    """Legacy plain-text mapping call retained as a compatibility fallback."""
     from ai.openai_client import OpenAIClient, require_text
     client = OpenAIClient(
         api_key=settings.openai_api_key,
@@ -847,7 +900,7 @@ def _call_ai(prompt: str) -> str:
         reasoning_effort="low",
     )
     message = client.messages.create(
-        model=settings.ai_model,
+        model=model or settings.ai_model,
         max_tokens=settings.ai_max_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -881,6 +934,54 @@ def parse_cell_mapping(response: str) -> dict[str, str]:
             mapping[coord] = content
     logger.info("[LLM Mapper] Parsed %d cell assignments from AI.", len(mapping))
     return mapping
+
+
+def _call_ai_mapping(
+    prompt: str,
+    *,
+    model: str | None = None,
+) -> tuple[dict[str, str], str]:
+    """Request a forced structured mapping instead of optional free-form text."""
+    from ai.openai_client import OpenAIClient, ToolUseBlock, require_text
+
+    client = OpenAIClient(
+        api_key=settings.openai_api_key,
+        reasoning_effort="low",
+    )
+    structured_prompt = (
+        prompt
+        + "\n\nSTRUCTURED RESPONSE OVERRIDE: Call submit_cell_mapping once. Put each "
+        "assignment in the cells array as coordinate + content. The tool schema "
+        "replaces the legacy textual CELL / CONTENT / END_CELL response format."
+    )
+    message = client.messages.create(
+        model=model or settings.ai_model,
+        max_tokens=settings.ai_max_tokens,
+        messages=[{"role": "user", "content": structured_prompt}],
+        tools=[_CELL_MAPPING_TOOL],
+        tool_choice={"type": "tool", "name": "submit_cell_mapping"},
+    )
+
+    for block in message.content:
+        if not isinstance(block, ToolUseBlock) or block.name != "submit_cell_mapping":
+            continue
+        raw_cells = block.input.get("cells", []) if isinstance(block.input, dict) else []
+        mapping: dict[str, str] = {}
+        for item in raw_cells if isinstance(raw_cells, list) else []:
+            if not isinstance(item, dict):
+                continue
+            coordinate = str(item.get("coordinate", "")).strip().upper()
+            content = str(item.get("content", "")).strip()
+            if re.fullmatch(r"T\d+_R\d+_C\d+", coordinate) and content:
+                mapping[coordinate] = content
+        # Empty is valid for neutral tables whose only blanks are intentionally
+        # unfilled evaluator/signature fields.
+        return mapping, json.dumps(block.input, ensure_ascii=False, indent=2)
+
+    # A compatible model may still return historical CELL blocks despite the
+    # forced tool. Accept them before classifying the response as empty.
+    raw_text = require_text(message, context="Audit-report structured assembly mapping")
+    return parse_cell_mapping(raw_text), raw_text
 
 
 # ---------------------------------------------------------------------------
@@ -1414,26 +1515,55 @@ def get_cell_mapping(
         raw_response = ""
         chunk_mapping: dict[str, str] = {}
         last_error: Exception | None = None
-        for attempt in range(1, 3):
+        received_valid_empty_mapping = False
+        # Use genuinely different recovery paths. Repeating the same free-text
+        # request cannot repair a completed response that contains no text.
+        attempts = (
+            (settings.ai_model, "structured"),
+            (settings.ai_fast_model, "structured"),
+            (settings.ai_fast_model, "text"),
+        )
+        for attempt, (attempt_model, response_mode) in enumerate(attempts, 1):
             try:
                 retry_prompt = prompt
-                if attempt == 2:
+                if attempt > 1 and response_mode == "structured":
+                    retry_prompt += (
+                        "\n\nRETRY NOTICE: The previous response was unusable. Call "
+                        "submit_cell_mapping with valid coordinates from this table."
+                    )
+                elif attempt > 1:
                     retry_prompt += (
                         "\n\nRETRY NOTICE: The previous response was unusable. Return only "
                         "the required CELL / CONTENT / END_CELL blocks, using coordinates "
                         "from this table and respecting its target standard."
                     )
-                raw_response = _call_ai(retry_prompt)
-                chunk_mapping = parse_cell_mapping(raw_response)
+                if response_mode == "structured":
+                    chunk_mapping, raw_response = _call_ai_mapping(
+                        retry_prompt,
+                        model=attempt_model,
+                    )
+                    received_valid_empty_mapping = not chunk_mapping and bool(raw_response)
+                else:
+                    raw_response = _call_ai(retry_prompt, model=attempt_model)
+                    chunk_mapping = parse_cell_mapping(raw_response)
                 if chunk_mapping:
+                    break
+                if received_valid_empty_mapping and chunk.get("standard") is None:
+                    logger.info(
+                        "[LLM Mapper] Neutral chunk %s intentionally produced no mappings.",
+                        chunk["label"],
+                    )
                     break
                 last_error = ValueError("AI returned no parseable cell mappings")
             except Exception as exc:
                 last_error = exc
                 logger.warning(
-                    "[LLM Mapper] Chunk %s attempt %d/2 failed: %s",
+                    "[LLM Mapper] Chunk %s attempt %d/%d (%s, %s) failed: %s",
                     chunk["label"],
                     attempt,
+                    len(attempts),
+                    attempt_model,
+                    response_mode,
                     exc,
                 )
 
@@ -1445,9 +1575,12 @@ def get_cell_mapping(
                 raw_response or f"Assembly mapping failed: {last_error}",
             )
 
+        if not chunk_mapping and received_valid_empty_mapping and chunk.get("standard") is None:
+            continue
         if not chunk_mapping:
             raise ValueError(
-                f"Assembly mapping failed for {chunk['label']} after 2 attempts: {last_error}"
+                f"Assembly mapping failed for {chunk['label']} after "
+                f"{len(attempts)} independent attempts: {last_error}"
             )
         logger.info("[LLM Mapper] Chunk %d → %d mappings.", idx, len(chunk_mapping))
         all_mappings.update(chunk_mapping)
