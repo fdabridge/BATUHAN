@@ -9,6 +9,7 @@ import pytest
 from audit_set.certificate_generator import CertificateValues
 from audit_set.iaf_certsearch import (
     IAFCertSearchError,
+    _v1_payload,
     build_certification_payload,
     register_certification,
 )
@@ -139,3 +140,99 @@ def test_registration_failure_exposes_validation_detail_but_not_api_key(monkeypa
 
     assert "Invalid Accreditation" in str(caught.value)
     assert "do-not-leak-this-key" not in str(caught.value)
+
+
+def test_v1_payload_flattens_the_v2_entity_and_certification_contract():
+    canonical = build_certification_payload(_audit_set(), "QMS", _certificate_values())
+
+    payload = _v1_payload(canonical)
+
+    assert "certified_entity" not in payload
+    assert "certification" not in payload
+    assert payload["certificate_number"] == "IFC-Q-1-26-1801"
+    assert payload["certified_entity_name"] == "Example Manufacturing Limited"
+    assert payload["certified_entity_street_address"] == (
+        "12 Certification Avenue, Dortmund, Germany"
+    )
+    assert payload["certified_entity_country"] == "Germany"
+    assert payload["schemes"][0]["standard_list"] == [
+        {"standards_name": "ISO 9001:2015"}
+    ]
+    assert payload["sites"][0]["street"] == "Plant 2, Essen, Germany"
+
+
+def test_registration_retries_v1_only_after_explicit_version_mismatch(monkeypatch):
+    requests: list[tuple[str, dict]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        request_payload = __import__("json").loads(request.content)
+        requests.append((str(request.url), request_payload))
+        if "/v2/" in str(request.url):
+            return httpx.Response(
+                401,
+                json={
+                    "errors": {
+                        "code": "invalid_api_version",
+                        "message": "The api being accessed does not match the version settings.",
+                    }
+                },
+            )
+        return httpx.Response(
+            200,
+            json={"data": True, "company_certifications_id": "iaf-v1-record"},
+        )
+
+    transport = httpx.MockTransport(handler)
+    real_client = httpx.Client
+    monkeypatch.setattr(
+        "audit_set.iaf_certsearch.httpx.Client",
+        lambda **kwargs: real_client(transport=transport, **kwargs),
+    )
+    canonical = build_certification_payload(_audit_set(), "QMS", _certificate_values())
+
+    result = register_certification(
+        api_key="v1-configured-key",
+        api_base_url="https://api.iafcertsearch.org/api/client/v2/cb",
+        public_base_url="https://www.iafcertsearch.org",
+        timeout_seconds=5,
+        payload=canonical,
+    )
+
+    assert [url for url, _ in requests] == [
+        "https://api.iafcertsearch.org/api/client/v2/cb/upload-cert",
+        "https://api.iafcertsearch.org/api/client/v1/cb/upload-cert",
+    ]
+    assert "certified_entity" in requests[0][1]
+    assert "certified_entity" not in requests[1][1]
+    assert requests[1][1]["certificate_number"] == "IFC-Q-1-26-1801"
+    assert result.company_certifications_id == "iaf-v1-record"
+
+
+def test_registration_does_not_retry_an_unrelated_unauthorized_response(monkeypatch):
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(
+            401,
+            json={"errors": {"message": "Invalid Session token has been used."}},
+        )
+
+    transport = httpx.MockTransport(handler)
+    real_client = httpx.Client
+    monkeypatch.setattr(
+        "audit_set.iaf_certsearch.httpx.Client",
+        lambda **kwargs: real_client(transport=transport, **kwargs),
+    )
+
+    with pytest.raises(IAFCertSearchError, match="Invalid Session token"):
+        register_certification(
+            api_key="invalid-key",
+            api_base_url="https://api.iafcertsearch.org/api/client/v2/cb",
+            public_base_url="https://www.iafcertsearch.org",
+            timeout_seconds=5,
+            payload={},
+        )
+
+    assert calls == 1

@@ -117,8 +117,9 @@ class Settings(BaseSettings):
     cb_accreditation_bodies: str = "UAF,TURKAK"
     cb_supported_standards: str = "QMS,EMS,OHSMS,FSMS,ISMS,MDQMS,ABMS,ENMS"
 
-    # IAF CertSearch v2. The key is issued inside the CB's IAF CertSearch
-    # Import Management > API Integration screen and must stay server-side.
+    # IAF CertSearch CB API. The key is issued inside Import Management > API
+    # Integration and must stay server-side. Accounts can assign a key to v1
+    # or v2; the integration safely negotiates only on an explicit mismatch.
     iaf_certsearch_api_key: str = ""
     iaf_certsearch_api_base_url: str = "https://api.iafcertsearch.org/api/client/v2/cb"
     iaf_certsearch_public_base_url: str = "https://www.iafcertsearch.org"

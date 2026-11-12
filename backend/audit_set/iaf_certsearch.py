@@ -1,8 +1,14 @@
-"""IAF CertSearch v2 registration used before final certificate issuance."""
+"""IAF CertSearch registration used before final certificate issuance.
+
+The IAF account controls whether a CB API key is assigned to v1 or v2.  Certiva
+keeps one canonical v2-shaped payload internally and only translates it when
+CertSearch explicitly reports that the key belongs to the other API version.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+import re
 from typing import Any
 
 import httpx
@@ -49,6 +55,9 @@ class IAFCertSearchError(RuntimeError):
 class IAFCertSearchRegistration:
     company_certifications_id: str
     verification_url: str
+
+
+_VERSION_PATH = re.compile(r"/api/client/v(?P<version>[12])/cb/?$", re.IGNORECASE)
 
 
 def _date(value: date) -> str:
@@ -157,6 +166,97 @@ def build_certification_payload(
     }
 
 
+def _v1_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Translate the canonical v2 CB payload to the official v1 contract."""
+
+    entity = payload.get("certified_entity") or {}
+    certification = payload.get("certification") or {}
+    sites = []
+    for site in certification.get("cert_sites") or []:
+        if not isinstance(site, dict):
+            continue
+        sites.append({
+            "street": site.get("street") or site.get("full_address") or "",
+            "city": site.get("city") or "",
+            "state": site.get("state") or "",
+            "country": site.get("country") or "",
+            "postcode": site.get("zip_code") or "",
+            "scope_description": site.get("scope_description") or site.get("scope") or "",
+        })
+
+    return {
+        "certificate_identity_number": certification.get("certificate_identity_number") or "",
+        "certificate_number": certification.get("certificate_number") or "",
+        "certification_status": certification.get("certification_status") or "",
+        "certificate_accreditation_status": certification.get("certificate_accreditation_status") or "",
+        "certification_type": certification.get("certification_type") or "",
+        "certification_scope": certification.get("certification_scope") or "",
+        "certification_original_issue_date": certification.get("certification_original_issue_date") or "",
+        "certification_issue_date": certification.get("certification_issue_date") or "",
+        "certification_expiry_date": certification.get("certification_expiry_date") or "",
+        "certified_entity_name": entity.get("certified_entity_name") or "",
+        "certified_entity_english_name": entity.get("certified_entity_english_name") or "",
+        "certified_entity_trading_name": entity.get("certified_entity_trading_name") or "",
+        "certified_entity_unique_id": entity.get("certified_entity_unique_id") or "",
+        "certified_entity_street_address": entity.get("business_registered_street")
+        or entity.get("business_registered_full_address") or "",
+        "certified_entity_street_city": entity.get("business_registered_city") or "",
+        "certified_entity_state": entity.get("business_registered_state") or "",
+        "certified_entity_post_code": entity.get("business_registered_zip_code") or "",
+        "certified_entity_country": entity.get("business_registered_country") or "",
+        "certified_entity_website": entity.get("certified_entity_website") or "",
+        "accreditation_body_name": certification.get("accreditation_body_name") or "",
+        "accreditation_body_acronym_name": certification.get("accreditation_body_acronym_name") or "",
+        "schemes": certification.get("schemes") or [],
+        "sites": sites,
+    }
+
+
+def _error_detail(response: httpx.Response) -> str:
+    try:
+        error_body = response.json()
+    except ValueError:
+        return ""
+    if not isinstance(error_body, dict):
+        return ""
+    errors = error_body.get("errors")
+    if not isinstance(errors, dict):
+        return ""
+    message = errors.get("message")
+    if message:
+        return str(message)
+    return str(errors.get("code") or "")
+
+
+def _alternate_version_request(
+    api_base_url: str,
+    payload: dict[str, Any],
+) -> tuple[str, dict[str, Any]] | None:
+    match = _VERSION_PATH.search(api_base_url.rstrip("/"))
+    if not match:
+        return None
+    current = match.group("version")
+    alternate = "1" if current == "2" else "2"
+    alternate_url = _VERSION_PATH.sub(
+        f"/api/client/v{alternate}/cb",
+        api_base_url.rstrip("/"),
+    )
+    return alternate_url, _v1_payload(payload) if alternate == "1" else payload
+
+
+def _certification_id(response: httpx.Response) -> str:
+    try:
+        body = response.json()
+        data = body.get("data") if isinstance(body, dict) else None
+        raw_id = data.get("company_certifications_id") if isinstance(data, dict) else None
+        if not raw_id and isinstance(body, dict):
+            # The v1 response returns the ID beside a boolean `data` field.
+            raw_id = body.get("company_certifications_id")
+        return str(raw_id or "").strip()
+    except (TypeError, ValueError, AttributeError):
+        return ""
+
+
 def register_certification(
     *,
     api_key: str,
@@ -171,46 +271,51 @@ def register_certification(
             "IAF CertSearch API key is not configured. Add the CB API key before issuing certificates."
         )
 
-    endpoint = f"{api_base_url.rstrip('/')}/upload-cert"
+    request_base_url = api_base_url.rstrip("/")
+    request_payload = payload
     try:
         with httpx.Client(timeout=timeout_seconds) as client:
             response = client.post(
-                endpoint,
+                f"{request_base_url}/upload-cert",
                 headers={
                     "Content-Type": "application/json",
                     "x-http-authorization": api_key,
                 },
-                json=payload,
+                json=request_payload,
             )
+
+            detail = _error_detail(response)
+            version_mismatch = (
+                response.status_code == 401
+                and "does not match the version settings" in detail.casefold()
+            )
+            alternate = _alternate_version_request(request_base_url, payload)
+            if version_mismatch and alternate:
+                request_base_url, request_payload = alternate
+                response = client.post(
+                    f"{request_base_url}/upload-cert",
+                    headers={
+                        "Content-Type": "application/json",
+                        "x-http-authorization": api_key,
+                    },
+                    json=request_payload,
+                )
     except httpx.RequestError as exc:
         raise IAFCertSearchError(
             "IAF CertSearch could not be reached. No certificate PDF was issued; please retry."
         ) from exc
 
     if response.status_code >= 400:
-        detail = ""
-        try:
-            error_body = response.json()
-            errors = error_body.get("errors") if isinstance(error_body, dict) else None
-            if isinstance(errors, dict):
-                message = errors.get("message")
-                detail = str(message) if message else str(errors.get("code") or "")
-        except ValueError:
-            detail = ""
+        detail = _error_detail(response)
         suffix = f": {detail}" if detail else ""
         raise IAFCertSearchError(
             f"IAF CertSearch rejected the certificate registration (HTTP {response.status_code}){suffix}."
         )
 
-    try:
-        certification_id = str(response.json()["data"]["company_certifications_id"]).strip()
-    except (KeyError, TypeError, ValueError) as exc:
-        raise IAFCertSearchError(
-            "IAF CertSearch accepted the request but did not return a certification ID. No PDF was issued."
-        ) from exc
+    certification_id = _certification_id(response)
     if not certification_id:
         raise IAFCertSearchError(
-            "IAF CertSearch returned an empty certification ID. No PDF was issued."
+            "IAF CertSearch accepted the request but did not return a certification ID. No PDF was issued."
         )
 
     return IAFCertSearchRegistration(
