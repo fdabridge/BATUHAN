@@ -5,7 +5,7 @@ conclusion, clause_ref, label, other) via a single AI call.
 The result is reused across all assembly chunks to guide auto-tick logic.
 """
 
-from ai.openai_client import OpenAIClient
+from ai.openai_client import OpenAIClient, require_text
 from dataclasses import dataclass
 import json, logging, re
 
@@ -172,7 +172,7 @@ Include every table and every column you can identify. When unsure, use "other".
             temperature=0.0,
             messages=[{"role": "user", "content": prompt}]
         )
-        raw = response.content[0].text.strip()
+        raw = require_text(response, context="Template column classification")
 
         # Strip markdown code fences if present
         raw = re.sub(r'^```json\s*', '', raw)

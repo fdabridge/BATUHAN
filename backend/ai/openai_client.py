@@ -40,6 +40,34 @@ class AIMessage:
     usage: Any = None
 
 
+class EmptyAIResponseError(ValueError):
+    """The provider completed a text request without returning usable text."""
+
+
+def require_text(message: AIMessage, *, context: str = "AI request") -> str:
+    """Return all text blocks or raise a diagnostic, retryable error.
+
+    Callers previously used ``message.content[0].text`` directly.  When a
+    reasoning response exhausted its output budget before emitting text, that
+    produced the opaque ``list index out of range`` seen by users.
+    """
+    parts: list[str] = []
+    for block in getattr(message, "content", []) or []:
+        value = block.get("text", "") if isinstance(block, dict) else getattr(block, "text", "")
+        value = str(value or "").strip()
+        if value:
+            parts.append(value)
+    text = "\n".join(parts).strip()
+    if text:
+        return text
+    details = [f"stop_reason={message.stop_reason or 'unknown'}"]
+    if message.request_id:
+        details.append(f"request_id={message.request_id}")
+    raise EmptyAIResponseError(
+        f"{context} returned no text output ({', '.join(details)})."
+    )
+
+
 def _normalise_content(content: Any) -> str:
     if isinstance(content, str):
         return content
@@ -100,6 +128,25 @@ def _item_value(item: Any, key: str, default: Any = None) -> Any:
     if isinstance(item, dict):
         return item.get(key, default)
     return getattr(item, key, default)
+
+
+def _extract_response_text(response: Any) -> str:
+    """Read text from both the SDK convenience property and raw output items."""
+    output_text = str(getattr(response, "output_text", "") or "").strip()
+    if output_text:
+        return output_text
+
+    parts: list[str] = []
+    for item in getattr(response, "output", None) or []:
+        if _item_value(item, "type") != "message":
+            continue
+        for block in _item_value(item, "content", []) or []:
+            if _item_value(block, "type") not in {"output_text", "text"}:
+                continue
+            value = str(_item_value(block, "text", "") or "").strip()
+            if value:
+                parts.append(value)
+    return "\n".join(parts).strip()
 
 
 class _Messages:
@@ -176,7 +223,7 @@ class _Messages:
                 )
             )
 
-        output_text = str(getattr(response, "output_text", "") or "")
+        output_text = _extract_response_text(response)
         if output_text:
             content.append(TextBlock(text=output_text))
 

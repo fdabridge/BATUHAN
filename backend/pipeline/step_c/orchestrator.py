@@ -55,7 +55,7 @@ def _build_prompt(template: str, ctx: dict[str, str]) -> str:
 
 
 def _call_ai(prompt: str) -> str:
-    from ai.openai_client import OpenAIClient
+    from ai.openai_client import OpenAIClient, require_text
     client = OpenAIClient(
         api_key=settings.openai_api_key,
         reasoning_effort=settings.ai_reasoning_effort,
@@ -65,7 +65,7 @@ def _call_ai(prompt: str) -> str:
         max_tokens=settings.ai_max_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
-    return message.content[0].text
+    return require_text(message, context="Audit-report validation")
 
 
 def run_step_c(

@@ -2,7 +2,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from ai.openai_client import OpenAIClient, TextBlock, ToolUseBlock
+from ai.openai_client import (
+    EmptyAIResponseError,
+    OpenAIClient,
+    TextBlock,
+    ToolUseBlock,
+    require_text,
+)
 
 
 class _Responses:
@@ -122,6 +128,47 @@ def test_output_limit_maps_to_existing_retry_contract():
     )
 
     assert message.stop_reason == "max_tokens"
+
+
+def test_nested_response_message_text_is_recovered_when_convenience_field_is_empty():
+    adapter, _ = _client(
+        SimpleNamespace(
+            output=[
+                SimpleNamespace(
+                    type="message",
+                    content=[SimpleNamespace(type="output_text", text="recovered mapping")],
+                )
+            ],
+            output_text="",
+            status="completed",
+            incomplete_details=None,
+            model="gpt-6-sol",
+            usage=None,
+            _request_id="req_nested",
+        )
+    )
+
+    message = adapter.messages.create(
+        model="gpt-6-sol",
+        max_tokens=100,
+        messages=[{"role": "user", "content": "Generate."}],
+    )
+
+    assert require_text(message, context="test") == "recovered mapping"
+
+
+def test_require_text_replaces_list_index_error_with_retryable_diagnostic():
+    message = SimpleNamespace(
+        content=[],
+        stop_reason="max_tokens",
+        request_id="req_empty",
+    )
+
+    with pytest.raises(
+        EmptyAIResponseError,
+        match=r"no text output .*stop_reason=max_tokens.*request_id=req_empty",
+    ):
+        require_text(message, context="Audit-report assembly mapping")
 
 
 def test_missing_key_fails_before_sdk_or_network_use():

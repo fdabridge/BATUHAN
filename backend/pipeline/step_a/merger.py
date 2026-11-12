@@ -9,7 +9,7 @@ import json
 import logging
 import re
 
-from ai.openai_client import OpenAIClient
+from ai.openai_client import OpenAIClient, require_text
 from schemas.models import ExtractedEvidence, EvidenceItem
 
 logger = logging.getLogger(__name__)
@@ -99,7 +99,7 @@ Rules:
             temperature=temperature,
             messages=[{"role": "user", "content": prompt}],
         )
-        raw = response.content[0].text.strip()
+        raw = require_text(response, context="Integrated-audit evidence merge")
         raw = re.sub(r'^```json\s*', '', raw)
         raw = re.sub(r'^```\s*', '', raw)
         raw = re.sub(r'\s*```$', '', raw)

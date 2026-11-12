@@ -99,7 +99,8 @@ For each clause, respond in this exact JSON format only. No prose, no explanatio
                 temperature=temperature,
                 messages=[{"role": "user", "content": prompt}],
             )
-            raw = response.content[0].text.strip()
+            from ai.openai_client import require_text
+            raw = require_text(response, context=f"Scope analysis for {standard_code}")
             parsed = json.loads(raw)
             decisions_raw = parsed.get("decisions", [])
         except Exception as e:

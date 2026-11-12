@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 import logging
 
-from ai.openai_client import OpenAIClient
+from ai.openai_client import OpenAIClient, require_text
 from schemas.models import ScopeAnalysisResult, normalize_iso_standard
 
 logger = logging.getLogger(__name__)
@@ -273,7 +273,10 @@ Rules:
         temperature=temperature,
         messages=[{"role": "user", "content": prompt}]
     )
-    raw = response.content[0].text.strip()
+    raw = require_text(
+        response,
+        context=f"Coverage repair for {standard_code} clause {clause_id}",
+    )
 
     from assembly.llm_mapper import parse_cell_mapping
     return parse_cell_mapping(raw)

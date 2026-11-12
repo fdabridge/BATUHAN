@@ -839,17 +839,19 @@ def _build_prompt(
 
 def _call_ai(prompt: str) -> str:
     """Send a prompt to the configured OpenAI model and return text."""
-    from ai.openai_client import OpenAIClient
+    from ai.openai_client import OpenAIClient, require_text
     client = OpenAIClient(
         api_key=settings.openai_api_key,
-        reasoning_effort=settings.ai_reasoning_effort,
+        # Cell placement is a constrained extraction task.  Low reasoning leaves
+        # substantially more of the response budget for the actual CELL blocks.
+        reasoning_effort="low",
     )
     message = client.messages.create(
         model=settings.ai_model,
         max_tokens=settings.ai_max_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
-    return message.content[0].text
+    return require_text(message, context="Audit-report assembly mapping")
 
 
 # ---------------------------------------------------------------------------
