@@ -63,7 +63,7 @@ def test_payload_matches_iaf_v2_contract_and_keeps_personal_data_out():
     assert certification["certification_original_issue_date"] == "20260102"
     assert certification["certification_issue_date"] == "20261019"
     assert certification["certification_expiry_date"] == "20290101"
-    assert certification["accreditation_body_name"] == "UNITED ACCREDITATION FOUNDATION INC"
+    assert certification["accreditation_body_name"] == "United Accreditation Foundation Inc."
     assert certification["schemes"] == [{
         "scheme_name": "Quality Management Systems",
         "standard_list": [{"standards_name": "ISO 9001:2015"}],
@@ -73,6 +73,29 @@ def test_payload_matches_iaf_v2_contract_and_keeps_personal_data_out():
         "sector_name": "Machinery and equipment",
         "sector_code": "18",
     }]
+
+
+def test_payload_uses_official_country_and_multiple_ea_sector_values():
+    payload = build_certification_payload(
+        _audit_set(
+            country="USA",
+            ea_code="EA 3, EA 29",
+            ea_category="Free-text value must not be submitted as an IAF mapping",
+        ),
+        "QMS",
+        _certificate_values(),
+    )
+
+    assert payload["certified_entity"]["business_registered_country"] == (
+        "United States of America (the)"
+    )
+    assert payload["certification"]["main_site_country"] == (
+        "United States of America (the)"
+    )
+    assert payload["certification"]["sectors"] == [
+        {"sector_name": "Food products, beverages and tobacco", "sector_code": "03"},
+        {"sector_name": "Wholesale and retail trade", "sector_code": "29"},
+    ]
 
 
 def test_payload_requires_country_before_external_registration():
@@ -161,6 +184,21 @@ def test_v1_payload_flattens_the_v2_entity_and_certification_contract():
     assert payload["sites"][0]["street"] == "Plant 2, Essen, Germany"
 
 
+def test_v1_payload_uses_the_v1_country_dataset_names():
+    canonical = build_certification_payload(
+        _audit_set(country="United States"),
+        "QMS",
+        _certificate_values(),
+    )
+
+    payload = _v1_payload(canonical)
+
+    assert canonical["certified_entity"]["business_registered_country"] == (
+        "United States of America (the)"
+    )
+    assert payload["certified_entity_country"] == "United States"
+
+
 def test_registration_retries_v1_only_after_explicit_version_mismatch(monkeypatch):
     requests: list[tuple[str, dict]] = []
 
@@ -208,6 +246,38 @@ def test_registration_retries_v1_only_after_explicit_version_mismatch(monkeypatc
     assert result.company_certifications_id == "iaf-v1-record"
 
 
+def test_configured_v1_endpoint_receives_the_flat_v1_contract(monkeypatch):
+    received: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        received.update(__import__("json").loads(request.content))
+        return httpx.Response(
+            200,
+            json={"data": True, "company_certifications_id": "configured-v1-record"},
+        )
+
+    transport = httpx.MockTransport(handler)
+    real_client = httpx.Client
+    monkeypatch.setattr(
+        "audit_set.iaf_certsearch.httpx.Client",
+        lambda **kwargs: real_client(transport=transport, **kwargs),
+    )
+    canonical = build_certification_payload(_audit_set(), "QMS", _certificate_values())
+
+    result = register_certification(
+        api_key="v1-key",
+        api_base_url="https://api.iafcertsearch.org/api/client/v1/cb",
+        public_base_url="https://www.iafcertsearch.org",
+        timeout_seconds=5,
+        payload=canonical,
+    )
+
+    assert "certified_entity" not in received
+    assert "certification" not in received
+    assert received["certificate_number"] == "IFC-Q-1-26-1801"
+    assert result.company_certifications_id == "configured-v1-record"
+
+
 def test_registration_does_not_retry_an_unrelated_unauthorized_response(monkeypatch):
     calls = 0
 
@@ -236,3 +306,32 @@ def test_registration_does_not_retry_an_unrelated_unauthorized_response(monkeypa
         )
 
     assert calls == 1
+
+
+def test_wrong_mapping_error_lists_only_safe_mapping_candidates(monkeypatch):
+    transport = httpx.MockTransport(lambda request: httpx.Response(
+        400,
+        json={"errors": {"message": "Wrong mapping."}},
+    ))
+    real_client = httpx.Client
+    monkeypatch.setattr(
+        "audit_set.iaf_certsearch.httpx.Client",
+        lambda **kwargs: real_client(transport=transport, **kwargs),
+    )
+    canonical = build_certification_payload(_audit_set(), "QMS", _certificate_values())
+
+    with pytest.raises(IAFCertSearchError) as caught:
+        register_certification(
+            api_key="must-not-appear",
+            api_base_url="https://api.iafcertsearch.org/api/client/v1/cb",
+            public_base_url="https://www.iafcertsearch.org",
+            timeout_seconds=5,
+            payload=canonical,
+        )
+
+    message = str(caught.value)
+    assert "country=Germany" in message
+    assert "accreditation=UAF" in message
+    assert "scheme=Quality Management Systems" in message
+    assert "standard=ISO 9001:2015" in message
+    assert "must-not-appear" not in message

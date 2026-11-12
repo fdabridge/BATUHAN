@@ -14,6 +14,7 @@ from typing import Any
 import httpx
 
 from audit_set.certificate_generator import CertificateValues, normalize_standard
+from calculator.advanced import EA_CODE_NAMES
 
 
 IAF_STANDARD_NAMES = {
@@ -41,9 +42,40 @@ IAF_SCHEME_NAMES = {
 }
 
 IAF_ACCREDITATION_BODIES = {
-    "UAF": ("UNITED ACCREDITATION FOUNDATION INC", "UAF"),
-    "TURKAK": ("TURKISH ACCREDITATION AGENCY", "TURKAK"),
-    "TÜRKAK": ("TURKISH ACCREDITATION AGENCY", "TURKAK"),
+    "UAF": ("United Accreditation Foundation Inc.", "UAF"),
+    "TURKAK": ("Turkish Accreditation Agency", "TURKAK"),
+    "TÜRKAK": ("Turkish Accreditation Agency", "TURKAK"),
+}
+
+_V2_COUNTRY_ALIASES = {
+    "tr": "Türkiye",
+    "tur": "Türkiye",
+    "turkey": "Türkiye",
+    "türkiye": "Türkiye",
+    "us": "United States of America (the)",
+    "usa": "United States of America (the)",
+    "united states": "United States of America (the)",
+    "united states of america": "United States of America (the)",
+    "united states of america (the)": "United States of America (the)",
+    "gb": "United Kingdom of Great Britain and Northern Ireland (the)",
+    "gbr": "United Kingdom of Great Britain and Northern Ireland (the)",
+    "uk": "United Kingdom of Great Britain and Northern Ireland (the)",
+    "united kingdom": "United Kingdom of Great Britain and Northern Ireland (the)",
+    "united kingdom of great britain and northern ireland (the)": "United Kingdom of Great Britain and Northern Ireland (the)",
+    "netherlands": "Netherlands (Kingdom of the)",
+    "netherlands (kingdom of the)": "Netherlands (Kingdom of the)",
+}
+
+_V1_COUNTRY_ALIASES = {
+    "türkiye": "Turkey",
+    "turkey": "Turkey",
+    "united states of america (the)": "United States",
+    "united states of america": "United States",
+    "united states": "United States",
+    "united kingdom of great britain and northern ireland (the)": "United Kingdom",
+    "united kingdom": "United Kingdom",
+    "netherlands (kingdom of the)": "Netherlands",
+    "netherlands": "Netherlands",
 }
 
 
@@ -62,6 +94,16 @@ _VERSION_PATH = re.compile(r"/api/client/v(?P<version>[12])/cb/?$", re.IGNORECAS
 
 def _date(value: date) -> str:
     return value.strftime("%Y%m%d")
+
+
+def _country_v2(value: Any) -> str:
+    country = str(value or "").strip()
+    return _V2_COUNTRY_ALIASES.get(country.casefold(), country)
+
+
+def _country_v1(value: Any) -> str:
+    country = str(value or "").strip()
+    return _V1_COUNTRY_ALIASES.get(country.casefold(), country)
 
 
 def _entity_id(audit_set: Any) -> str:
@@ -93,13 +135,19 @@ def _additional_sites(audit_set: Any, entity_id: str, scope: str) -> list[dict[s
 
 
 def _sectors(audit_set: Any) -> list[dict[str, str]]:
-    code = str(getattr(audit_set, "ea_code", "") or "").strip()
-    name = str(getattr(audit_set, "ea_category", "") or "").strip()
-    if not code or not name:
-        return []
-    if code.upper().startswith("EA "):
-        code = code[3:].strip()
-    return [{"sector_name": name, "sector_code": code}]
+    raw_codes = str(getattr(audit_set, "ea_code", "") or "")
+    codes: list[int] = []
+    for match in re.finditer(r"(?:\bEA\s*)?(\d{1,4})\b", raw_codes, re.IGNORECASE):
+        code = int(match.group(1))
+        if code in EA_CODE_NAMES and code not in codes:
+            codes.append(code)
+    return [
+        {
+            "sector_name": EA_CODE_NAMES[code],
+            "sector_code": f"{code:02d}",
+        }
+        for code in codes
+    ]
 
 
 def build_certification_payload(
@@ -109,7 +157,7 @@ def build_certification_payload(
 ) -> dict[str, Any]:
     """Map a reviewed Certiva audit set to the official IAF v2 contract."""
     canonical = normalize_standard(standard)
-    country = str(getattr(audit_set, "country", "") or "").strip()
+    country = _country_v2(getattr(audit_set, "country", ""))
     if not country:
         raise IAFCertSearchError(
             "Company country is required before registration with IAF CertSearch."
@@ -179,7 +227,7 @@ def _v1_payload(payload: dict[str, Any]) -> dict[str, Any]:
             "street": site.get("street") or site.get("full_address") or "",
             "city": site.get("city") or "",
             "state": site.get("state") or "",
-            "country": site.get("country") or "",
+            "country": _country_v1(site.get("country")),
             "postcode": site.get("zip_code") or "",
             "scope_description": site.get("scope_description") or site.get("scope") or "",
         })
@@ -203,7 +251,7 @@ def _v1_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "certified_entity_street_city": entity.get("business_registered_city") or "",
         "certified_entity_state": entity.get("business_registered_state") or "",
         "certified_entity_post_code": entity.get("business_registered_zip_code") or "",
-        "certified_entity_country": entity.get("business_registered_country") or "",
+        "certified_entity_country": _country_v1(entity.get("business_registered_country")),
         "certified_entity_website": entity.get("certified_entity_website") or "",
         "accreditation_body_name": certification.get("accreditation_body_name") or "",
         "accreditation_body_acronym_name": certification.get("accreditation_body_acronym_name") or "",
@@ -244,6 +292,11 @@ def _alternate_version_request(
     return alternate_url, _v1_payload(payload) if alternate == "1" else payload
 
 
+def _payload_for_base_url(api_base_url: str, payload: dict[str, Any]) -> dict[str, Any]:
+    match = _VERSION_PATH.search(api_base_url.rstrip("/"))
+    return _v1_payload(payload) if match and match.group("version") == "1" else payload
+
+
 def _certification_id(response: httpx.Response) -> str:
     try:
         body = response.json()
@@ -255,6 +308,53 @@ def _certification_id(response: httpx.Response) -> str:
         return str(raw_id or "").strip()
     except (TypeError, ValueError, AttributeError):
         return ""
+
+
+def _mapping_context(payload: dict[str, Any]) -> str:
+    """Return non-sensitive mapped values to make IAF's generic error useful."""
+
+    entity = payload.get("certified_entity") or {}
+    certification = payload.get("certification") or {}
+    if not entity and not certification:
+        entity = {
+            "business_registered_country": payload.get("certified_entity_country"),
+        }
+        certification = {
+            "certification_type": payload.get("certification_type"),
+            "certification_status": payload.get("certification_status"),
+            "accreditation_body_acronym_name": payload.get("accreditation_body_acronym_name"),
+            "schemes": payload.get("schemes") or [],
+            # v1 does not accept certification sectors on this endpoint.
+            "sectors": [],
+        }
+    schemes = certification.get("schemes") or []
+    scheme_names: list[str] = []
+    standard_names: list[str] = []
+    for scheme in schemes:
+        if not isinstance(scheme, dict):
+            continue
+        if scheme.get("scheme_name"):
+            scheme_names.append(str(scheme["scheme_name"]))
+        for standard in scheme.get("standard_list") or []:
+            if isinstance(standard, dict) and standard.get("standards_name"):
+                standard_names.append(str(standard["standards_name"]))
+    sectors = certification.get("sectors") or []
+    sector_values = [
+        f"{sector.get('sector_code')}/{sector.get('sector_name')}"
+        for sector in sectors
+        if isinstance(sector, dict)
+    ]
+    fields = [
+        f"country={entity.get('business_registered_country') or 'blank'}",
+        f"certification type={certification.get('certification_type') or 'blank'}",
+        f"status={certification.get('certification_status') or 'blank'}",
+        f"accreditation={certification.get('accreditation_body_acronym_name') or 'blank'}",
+        f"scheme={', '.join(scheme_names) or 'blank'}",
+        f"standard={', '.join(standard_names) or 'blank'}",
+    ]
+    if sector_values:
+        fields.append(f"sectors={', '.join(sector_values)}")
+    return "; ".join(fields)
 
 
 def register_certification(
@@ -272,7 +372,7 @@ def register_certification(
         )
 
     request_base_url = api_base_url.rstrip("/")
-    request_payload = payload
+    request_payload = _payload_for_base_url(request_base_url, payload)
     try:
         with httpx.Client(timeout=timeout_seconds) as client:
             response = client.post(
@@ -307,6 +407,12 @@ def register_certification(
 
     if response.status_code >= 400:
         detail = _error_detail(response)
+        if detail.strip().rstrip(".").casefold() == "wrong mapping":
+            detail = (
+                "IAF account mapping rejected one of these values: "
+                f"{_mapping_context(request_payload)}. Check Import Settings > Global Mapping "
+                "and the UAF accreditation assignment"
+            )
         suffix = f": {detail}" if detail else ""
         raise IAFCertSearchError(
             f"IAF CertSearch rejected the certificate registration (HTTP {response.status_code}){suffix}."
