@@ -1,14 +1,19 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, BrainCircuit, Check, FileText, Layers3, Loader2, Upload, X, Zap } from 'lucide-react'
+import { Check, FileText, Layers3, Loader2, ScanLine, Upload, X, Zap } from 'lucide-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
+import { apiErrorMessage } from '@/lib/apiError'
 import { reportStageForAuditType } from '@/lib/auditTypes'
 import { normalizeISOStandardCodes } from '@/lib/isoStandards'
 import type { AuditSetResponse, JobCreateResponse } from '@/types'
+import {
+  CertivAIStepBar,
+  CertivAIToolHeader,
+  CertivAIToolShell,
+} from '@/components/certivai/CertivAIWorkspace'
 
 const STANDARDS = [
   { value: 'QMS', label: 'ISO 9001', tone: 'Quality' },
@@ -67,27 +72,6 @@ interface FormState {
   company_name: string
   scope_tr: string
   scope_en: string
-}
-
-function formatApiError(err: unknown, fallback: string): string {
-  const detail = (err as { response?: { data?: { detail?: unknown } }; message?: string })?.response?.data?.detail
-  if (typeof detail === 'string') return detail
-  if (Array.isArray(detail)) {
-    const messages = detail.map((item) => {
-      if (typeof item === 'string') return item
-      if (item && typeof item === 'object') {
-        const record = item as { loc?: unknown[]; msg?: unknown }
-        const loc = Array.isArray(record.loc) ? record.loc.join('.') : ''
-        const msg = typeof record.msg === 'string' ? record.msg : JSON.stringify(item)
-        return loc ? `${loc}: ${msg}` : msg
-      }
-      return String(item)
-    }).filter(Boolean)
-    if (messages.length) return messages.join('; ')
-  }
-  if (detail && typeof detail === 'object') return JSON.stringify(detail)
-  const message = (err as { message?: string })?.message
-  return message || fallback
 }
 
 function FileZone({
@@ -308,8 +292,8 @@ export default function NewReportPage() {
       if (clientId) qs.set('client_id', clientId)
       router.push(`/reports/${data.job_id}?${qs.toString()}`)
     },
-    onError: (err: unknown) => {
-      setServerError(formatApiError(err, 'Failed to submit job.'))
+    onError: async (err: unknown) => {
+      setServerError(await apiErrorMessage(err, 'Failed to submit the report job.', 'report-generation service'))
     },
   })
 
@@ -320,38 +304,20 @@ export default function NewReportPage() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-52px)] bg-[#07130E] px-5 py-6 text-slate-950">
-      <div className="mx-auto max-w-[1180px]">
-        <Link href="/certivai/reports" className="mb-5 inline-flex items-center gap-2 text-sm text-emerald-200 hover:text-white">
-          <ArrowLeft size={16} />
-          Report Generation
-        </Link>
+    <CertivAIToolShell>
+      <CertivAIToolHeader
+        eyebrow="Draft from verified evidence"
+        title="Generate audit report"
+        description="Set the exact audit context, provide the controlled report template, and upload the evidence that may be used in the draft."
+        icon={<ScanLine size={22} />}
+        aside={<div className="min-w-48 text-xs text-white/60"><p className="font-semibold text-white">{selectedLabel}</p><p className="mt-1">{form.stage || 'Select audit type'}</p></div>}
+      />
+      <CertivAIStepBar
+        steps={['Set report context', 'Upload evidence & template', 'Generate & monitor']}
+        current={isPending ? 2 : docs.length && template.length ? 1 : 0}
+      />
 
-        <section className="overflow-hidden rounded-lg border border-white/10 bg-white">
-          <div className="bg-[radial-gradient(circle_at_20%_10%,rgba(34,211,238,0.22),transparent_28%),linear-gradient(135deg,#081D15,#0B1720)] px-6 py-7 text-white">
-            <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
-              <div>
-                <div className="mb-4 inline-flex items-center gap-2 rounded border border-cyan-200/25 bg-white/10 px-3 py-1 text-xs font-semibold text-cyan-100">
-                  <BrainCircuit size={14} />
-                  Certiv.AI report engine
-                </div>
-                <h1 className="text-3xl font-semibold">Generate an audit report with full audit context</h1>
-                <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">
-                  Select integrated standards, the exact cycle, accreditation body, evidence, and the target template before the job starts.
-                </p>
-              </div>
-              <div className="grid min-w-[280px] grid-cols-2 gap-2 rounded-lg border border-white/10 bg-white/10 p-3">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase text-slate-400">Selected</p>
-                  <p className="mt-1 text-sm font-semibold text-white">{selectedLabel}</p>
-                </div>
-                <div>
-                  <p className="text-[11px] font-semibold uppercase text-slate-400">Cycle</p>
-                  <p className="mt-1 text-sm font-semibold text-white">{form.stage || 'Not selected'}</p>
-                </div>
-              </div>
-            </div>
-          </div>
+      <section className="mt-5 overflow-hidden rounded-2xl border border-emerald-950/10 bg-white shadow-sm">
 
           <form onSubmit={onSubmit} className="space-y-6 p-6">
             {client && (
@@ -495,8 +461,7 @@ export default function NewReportPage() {
               </button>
             </div>
           </form>
-        </section>
-      </div>
-    </div>
+      </section>
+    </CertivAIToolShell>
   )
 }

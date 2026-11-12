@@ -88,6 +88,10 @@ import meetings.tasks  # noqa: E402, F401
 # Register report-review tasks for workers started with `celery -A jobs.tasks`.
 import jobs.review_task  # noqa: E402, F401
 
+# Register queued audit-plan generation so browser connections do not need to
+# remain open during AI scheduling and DOCX assembly.
+import jobs.audit_plan_task  # noqa: E402, F401
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers

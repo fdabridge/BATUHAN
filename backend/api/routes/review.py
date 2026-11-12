@@ -126,6 +126,8 @@ async def submit_review(
 
     # Read and encode file
     report_bytes = await report.read()
+    if not report_bytes:
+        raise HTTPException(status_code=422, detail="The uploaded report is empty.")
     report_b64 = base64.b64encode(report_bytes).decode("ascii")
 
     # Generate review job ID

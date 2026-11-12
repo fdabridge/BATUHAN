@@ -216,7 +216,7 @@ export default function ReportStatusPage({ params }: { params: { id: string } })
   }
 
   if (isLoading) return (
-    <div className="flex items-center justify-center py-24">
+    <div className="flex min-h-[calc(100vh-52px)] items-center justify-center bg-certiva-mist py-24">
       <Loader2 size={24} className="animate-spin text-certiva-primary" />
     </div>
   )
@@ -227,20 +227,22 @@ export default function ReportStatusPage({ params }: { params: { id: string } })
   const tryAgainHref = clientId ? `/reports/new?client_id=${clientId}` : '/reports/new'
 
   return (
-    <div className="mx-auto max-w-[900px] space-y-5 py-4">
+    <div className="min-h-[calc(100vh-52px)] bg-certiva-mist px-5 py-6">
+      <div className="mx-auto max-w-[900px] space-y-5">
       <Link href="/reports" className="flex items-center gap-1 text-certiva-primary hover:opacity-70" style={{ fontSize: 13 }}>
         <ArrowLeft size={13} /> Reports
       </Link>
 
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between rounded-2xl bg-certiva-night px-6 py-5 text-white shadow-sm">
         <div>
-          <h1 className="text-gray-800" style={{ fontSize: 22, fontWeight: 500 }}>AI report</h1>
-          <p className="mt-1 font-mono text-xs text-gray-500">{data.job_id}</p>
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-certiva-signal">Certiv.AI report generation</p>
+          <h1 className="mt-1 text-2xl font-semibold">Report job</h1>
+          <p className="mt-1 font-mono text-xs text-white/45">{data.job_id}</p>
         </div>
       </div>
 
       {/* Pipeline */}
-      <div className="rounded-lg border border-gray-100 bg-white p-6">
+      <div className="rounded-2xl border border-emerald-950/10 bg-white p-6 shadow-sm">
         <PipelineTrack state={data.state} failedAt={failedAtRef.current} />
         <p className="mt-5 text-center text-gray-600" style={{ fontSize: 14 }}>
           {STATUS_TEXT[data.state]}
@@ -284,6 +286,7 @@ export default function ReportStatusPage({ params }: { params: { id: string } })
           </Link>
         </div>
       )}
+      </div>
     </div>
   )
 }

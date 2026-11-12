@@ -68,6 +68,11 @@ def run_review_job(
         # ------------------------------------------------------------------
         update_review_state(ReviewJobState.PREPROCESSING)
         report_text = _extract_report_text(report_path)
+        if not report_text.strip():
+            raise ValueError(
+                "No readable text could be extracted from the report. "
+                "Upload a searchable PDF or DOCX file and try again."
+            )
         save_text_artifact(review_job_id, "review_report_text.txt", report_text)
         logger.info(
             "Review [%s]: extracted %d chars from report", review_job_id, len(report_text)

@@ -17,6 +17,7 @@ from audit_plan.schedule_generator import (
     generate_schedule,
 )
 from audit_plan.clause_map import CLAUSE_MAP, normalize_standard
+from audit_plan.service import audit_plan_filename, context_from_dict, context_to_dict
 from audit_plan.template_reader import AuditPlanContext, DayWindow, _normalise_standards
 
 
@@ -190,6 +191,28 @@ def test_required_clause_checklist_excludes_not_applicable_clauses_in_source_ord
     assert "8.3" not in required
     assert "8.4" not in required
     assert "10.3" in required
+
+
+def test_audit_plan_context_round_trips_through_background_job_payload():
+    ctx = _context()
+
+    restored = context_from_dict(context_to_dict(ctx))
+
+    assert restored == ctx
+    assert isinstance(restored.day_windows[0], DayWindow)
+
+
+def test_audit_plan_filename_removes_unsafe_header_characters():
+    ctx = _context()
+    ctx.org_name = 'Example / Foods\nLtd.'
+    ctx.audit_dates = '17.08.2026\r\n18.08.2026'
+
+    filename = audit_plan_filename(ctx)
+
+    assert filename.endswith('.docx')
+    assert '/' not in filename
+    assert '\n' not in filename
+    assert '\r' not in filename
 
 
 def test_generate_schedule_reports_output_limit_instead_of_json_decoder_error():

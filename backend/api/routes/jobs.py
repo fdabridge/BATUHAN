@@ -35,6 +35,11 @@ ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".png", ".jpg", ".jpeg", 
 async def _encode_file(upload: UploadFile) -> dict:
     """Read an UploadFile and return {filename, content_b64} — JSON-serialisable."""
     content = await upload.read()
+    if not content:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Uploaded file is empty: {upload.filename or 'upload'}",
+        )
     return {
         "filename": upload.filename or "upload",
         "content_b64": base64.b64encode(content).decode("ascii"),
@@ -111,6 +116,12 @@ async def create_job(
 
     standard_values = [s.value for s in parsed_standards]
 
+    if not company_documents:
+        raise HTTPException(
+            status_code=422,
+            detail="Upload at least one evidence document.",
+        )
+
     # --- Validate and encode company documents ---
     company_files: list[dict] = []
     for f in company_documents:
@@ -181,7 +192,19 @@ async def create_job(
             f"language={language.value}."
         )
     except Exception as e:
-        logger.warning(f"Could not queue job {job_id} via Celery: {e}.")
+        logger.error("Could not queue report job %s via Celery: %s", job_id, e, exc_info=True)
+        failed = JobStatus(
+            job_id=job_id,
+            state=JobState.FAILED,
+            error_message="Could not queue the report-generation job. Please try again.",
+            started_at=status.started_at,
+            completed_at=datetime.utcnow(),
+        )
+        save_text_artifact(job_id, "status.json", failed.model_dump_json(indent=2))
+        raise HTTPException(
+            status_code=503,
+            detail="Could not queue the report-generation job. Please try again.",
+        )
 
     return {
         "job_id": job_id,

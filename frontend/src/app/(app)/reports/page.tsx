@@ -105,20 +105,21 @@ export default function ReportsPage() {
   const jobs = data ?? []
 
   return (
-    <div className="mx-auto max-w-[1200px] space-y-5 py-4">
+    <div className="min-h-[calc(100vh-52px)] bg-certiva-mist px-5 py-6">
+      <div className="mx-auto max-w-[1200px] space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-gray-800" style={{ fontSize: 22, fontWeight: 500 }}>AI Reports</h1>
+      <div className="flex items-end justify-between rounded-2xl bg-certiva-night px-6 py-5 text-white shadow-sm">
+        <div><p className="text-[11px] font-bold uppercase tracking-[0.16em] text-certiva-signal">Certiv.AI report generation</p><h1 className="mt-1 text-2xl font-semibold">Report jobs</h1><p className="mt-1 text-sm text-white/55">Monitor work, understand failures, and download completed reports.</p></div>
         <Link
           href="/reports/new"
-          className="flex items-center gap-1 rounded-lg bg-certiva-primary px-3 py-2 text-sm font-medium text-white hover:opacity-90"
+          className="flex items-center gap-1 rounded-xl bg-certiva-signal px-3 py-2 text-sm font-semibold text-certiva-night hover:bg-certiva-pale"
         >
           <Plus size={14} /> New report
         </Link>
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-lg border border-gray-100 bg-white">
+      <div className="overflow-hidden rounded-2xl border border-emerald-950/10 bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-medium text-gray-500">
@@ -166,6 +167,7 @@ export default function ReportsPage() {
             ))}
           </tbody>
         </table>
+      </div>
       </div>
     </div>
   )
