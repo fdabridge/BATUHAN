@@ -33,6 +33,10 @@ settings = get_settings()
 _WNS  = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 _W14NS = "http://schemas.microsoft.com/office/word/2010/wordml"
 
+
+class ReportAssemblyIntegrityError(ValueError):
+    """The generated document is structurally unsafe to deliver."""
+
 # Regex matching template editorial-instruction text that must never appear in output.
 # Catches food-safety boilerplate, generic placeholders, and reviewer/approver name stubs.
 # IMPORTANT: Keep patterns specific — do NOT use broad patterns like bare "DELETE" or
@@ -47,6 +51,12 @@ _INSTRUCTION_CELL_RE = re.compile(
     r"|\[Insert[^\]]+\]"
     r"|\[ADD[^\]]+\]"
     r"|\[YOUR[^\]]+\]",
+    re.IGNORECASE,
+)
+
+_INSTRUCTION_PARAGRAPH_RE = re.compile(
+    r"PLEASE\s+FILL\s+IN\s+THE\s+RELEVANT\s+TABLE\s+BELOW\s+FOR\s+EACH\s+STANDARD"
+    r"|DELETE\s+THE\s+TABLE\s+AND\s+THIS\s+TEXT\s+FOR\s+STANDARDS\s+THAT\s+HAVE\s+NOT\s+BEEN\s+AUDITED",
     re.IGNORECASE,
 )
 
@@ -89,7 +99,8 @@ _CONFORMING_WORD_RE = re.compile(r"^(?:conforming|compliant|passed|pass|yes|ok)$
 _OBS_WORD_RE = re.compile(r"\b(?:obs|observation)\b", re.I)
 _NC_WORD_RE = re.compile(r"\b(?:nc|non[- ]?conform(?:ity|ing))\b", re.I)
 _CLAUSE_SECTION_MARKER_RE = re.compile(
-    r"(?im)^\s*((?:[4-9]|10)\.\d+(?:\.\d+)?|A\.\d+\.\d+)\s*[—–:-]\s*"
+    r"(?im)^\s*(?:(?:QMS|EMS|OHSMS|FSMS|MDQMS|ISMS|ABMS|ENMS)\s+)?"
+    r"((?:[4-9]|10)\.\d+(?:\.\d+)?|A\.\d+\.\d+)\s*[—–:-]\s*"
 )
 
 _COLUMN_HEADER_HINT_RE = re.compile(
@@ -300,6 +311,21 @@ def strip_template_instruction_cells(body) -> int:
     return cleared
 
 
+def strip_template_instruction_paragraphs(body) -> int:
+    """Remove template-editor directions that sit outside table cells."""
+    cleared = 0
+    for paragraph in list(body.findall(_wtag("p"))):
+        text = "".join(t.text or "" for t in paragraph.iter(_wtag("t"))).strip()
+        if text and _INSTRUCTION_PARAGRAPH_RE.search(text):
+            body.remove(paragraph)
+            cleared += 1
+    logger.info(
+        "[LLM Mapper] strip_template_instruction_paragraphs: %d paragraphs removed.",
+        cleared,
+    )
+    return cleared
+
+
 # ---------------------------------------------------------------------------
 # Standard-identification constants
 # ---------------------------------------------------------------------------
@@ -326,15 +352,130 @@ _STANDARD_FULL_NAMES: dict[str, str] = {
     "ENMS":  "ISO 50001 Energy Management System",
 }
 
+_STANDARD_NUMBER_CODES: tuple[tuple[str, str], ...] = (
+    ("13485", "MDQMS"),
+    ("9001", "QMS"),
+    ("14001", "EMS"),
+    ("45001", "OHSMS"),
+    ("22000", "FSMS"),
+    ("27001", "ISMS"),
+    ("37001", "ABMS"),
+    ("50001", "ENMS"),
+)
+
 
 def _tbl_belongs_to_standard(tbl_elem) -> str | None:
     """Return the standard value this table belongs to, or None if neutral."""
     all_text = " ".join(t.text or "" for t in tbl_elem.iter(_wtag("t")))
+    # ISO numbers are authoritative.  In particular, ISO 13485 templates often
+    # say "MD-QMS" and would otherwise be misclassified as the shorter QMS token.
+    for number, standard in _STANDARD_NUMBER_CODES:
+        if number in all_text:
+            return standard
     for std_value, patterns in _STANDARD_PATTERNS.items():
         for pattern in patterns:
             if pattern.search(all_text):
                 return std_value
     return None
+
+
+def prune_unselected_standard_tables(body, selected_standards: list[ISOStandard]) -> int:
+    """Delete whole clause/requirement tables for standards outside the audit scope.
+
+    FR.232 deliberately ships as a multi-standard master form.  A completed report
+    must contain only the tables for the selected standards; writing an ``N/A`` into
+    every unused 30–100 row table produces enormous and misleading reports.
+
+    This runs after coordinate mappings have been applied, so removing a table cannot
+    change the coordinates used during assembly.
+    """
+    selected_values = {standard.value for standard in selected_standards}
+    removed = 0
+    for table in list(body.findall(_wtag("tbl"))):
+        owner = _tbl_belongs_to_standard(table)
+        if owner is not None and owner not in selected_values:
+            body.remove(table)
+            removed += 1
+    logger.info(
+        "[LLM Mapper] Removed %d non-selected standard table(s); selected=%s.",
+        removed,
+        sorted(selected_values),
+    )
+    return removed
+
+
+def validate_selected_standard_tables(body, selected_standards: list[ISOStandard]) -> None:
+    """Fail closed when standard tables are missing, empty, or contaminated."""
+    selected_values = {standard.value for standard in selected_standards}
+    owned_tables: list[tuple[str, object]] = []
+    for table in body.findall(_wtag("tbl")):
+        owner = _tbl_belongs_to_standard(table)
+        if owner is not None:
+            owned_tables.append((owner, table))
+    remaining = {owner for owner, _table in owned_tables}
+    unexpected = remaining - selected_values
+    if unexpected:
+        raise ReportAssemblyIntegrityError(
+            "Assembled report still contains non-selected standard table(s): "
+            + ", ".join(sorted(unexpected))
+        )
+
+    clause_table_owners: set[str] = set()
+    for owner, table in owned_tables:
+        rows = table.findall(_wtag("tr"))
+        findings_col: int | None = None
+        header_row: int | None = None
+        for row_num, row in enumerate(rows[:8], 1):
+            texts = [_get_cell_text(cell) for cell in row.findall(_wtag("tc"))]
+            for col_num, text in enumerate(texts, 1):
+                if _FINDINGS_COL_RE.search(text):
+                    findings_col = col_num
+                    header_row = row_num
+                    break
+            if findings_col is not None:
+                break
+        if findings_col is None or header_row is None:
+            # Standard-specific summary tables (for example the compact EnMS
+            # performance table) are not clause tables and need no finding column.
+            continue
+        clause_table_owners.add(owner)
+        populated = 0
+        for row in rows[header_row:]:
+            cells = row.findall(_wtag("tc"))
+            if findings_col > len(cells):
+                continue
+            finding = _get_cell_text(cells[findings_col - 1])
+            if not finding:
+                continue
+            mentioned = _mentioned_standard_codes(finding)
+            if mentioned and owner not in mentioned:
+                raise ReportAssemblyIntegrityError(
+                    f"Cross-standard finding detected in {owner} table: "
+                    + ", ".join(sorted(mentioned))
+                )
+            populated += 1
+        if populated == 0:
+            raise ReportAssemblyIntegrityError(
+                f"Selected {owner} clause table contains no mapped findings."
+            )
+
+    missing = selected_values - clause_table_owners
+    if missing:
+        raise ReportAssemblyIntegrityError(
+            "Selected standard clause table(s) are missing from the assembled report: "
+            + ", ".join(sorted(missing))
+        )
+
+
+def _mentioned_standard_codes(content: str) -> set[str]:
+    """Return standards explicitly named in generated cell content."""
+    mentioned: set[str] = set()
+    for standard, patterns in _STANDARD_PATTERNS.items():
+        if any(pattern.search(content) for pattern in patterns):
+            mentioned.add(standard)
+    if "MDQMS" in mentioned:
+        mentioned.discard("QMS")
+    return mentioned
 
 
 # ---------------------------------------------------------------------------
@@ -365,9 +506,15 @@ def _build_table_structure_lines(
     if row_end is not None:
         label += f" (rows {row_start}–{row_end})"
     if is_other:
-        label += f" [NON-SELECTED STANDARD — {_STANDARD_FULL_NAMES.get(belongs_to, belongs_to)}]"
+        label += (
+            f" [NON-SELECTED STANDARD — {_STANDARD_FULL_NAMES.get(belongs_to, belongs_to)}]"
+            f" [STANDARD_CODE={belongs_to}]"
+        )
     elif belongs_to:
-        label += f" [SELECTED STANDARD — {_STANDARD_FULL_NAMES.get(belongs_to, belongs_to)}]"
+        label += (
+            f" [SELECTED STANDARD — {_STANDARD_FULL_NAMES.get(belongs_to, belongs_to)}]"
+            f" [STANDARD_CODE={belongs_to}]"
+        )
     lines = [label]
 
     rows = tbl.findall(_wtag("tr"))
@@ -426,6 +573,9 @@ def template_to_structure_text(template_path: str, selected_standards: list[ISOS
     tbl_num = 0
     for tbl in body.findall(_wtag("tbl")):
         tbl_num += 1
+        owner = _tbl_belongs_to_standard(tbl)
+        if owner is not None and owner not in selected_values:
+            continue
         tbl_lines, _ = _build_table_structure_lines(tbl, tbl_num, selected_values)
         lines.extend(tbl_lines)
     return "\n".join(lines)
@@ -479,6 +629,7 @@ def _plan_call_chunks(
                 "label": label,
                 "structure_text": _STRUCT_HEADER + "\n".join(buf_lines),
                 "empty_count": buf_empty,
+                "standard": None,
             })
         buf_lines.clear()
         buf_empty = 0
@@ -486,7 +637,26 @@ def _plan_call_chunks(
     tbl_num = 0
     for tbl in body.findall(_wtag("tbl")):
         tbl_num += 1
+        owner = _tbl_belongs_to_standard(tbl)
+        if owner is not None and owner not in selected_values:
+            # The master FR.232 form contains every scheme.  Out-of-scope tables
+            # are neither sent to the model nor counted as missing coverage.
+            continue
         all_lines, total_empty = _build_table_structure_lines(tbl, tbl_num, selected_values)
+
+        # Keep every standard-owned table in its own call.  Sharing a chunk across
+        # QMS/EMS/OHSMS made it too easy for the model to reuse a QMS clause finding
+        # in a different management-system table.
+        if owner is not None:
+            _flush_buffer()
+            if total_empty <= _LARGE_TABLE_THRESHOLD:
+                chunks.append({
+                    "label": f"T{tbl_num}",
+                    "structure_text": _STRUCT_HEADER + "\n".join(all_lines),
+                    "empty_count": total_empty,
+                    "standard": owner,
+                })
+                continue
 
         if total_empty <= _LARGE_TABLE_THRESHOLD:
             buf_lines.extend(all_lines)
@@ -505,6 +675,7 @@ def _plan_call_chunks(
                 "label": f"T{tbl_num}",
                 "structure_text": _STRUCT_HEADER + "\n".join(all_lines),
                 "empty_count": total_empty,
+                "standard": owner,
             })
             continue
 
@@ -557,6 +728,7 @@ def _plan_call_chunks(
                     "label": f"T{tbl_num}_rows{chunk_start}-{chunk_end}",
                     "structure_text": _STRUCT_HEADER + "\n".join(c_lines),
                     "empty_count": c_empty,
+                    "standard": owner,
                 })
             chunk_start = chunk_end + 1
 
@@ -599,6 +771,7 @@ def _build_prompt(
     selected_standards: list[ISOStandard],
     org_info: dict | None = None,
     language=None,
+    target_standard: str | None = None,
 ) -> str:
     from pipeline.step_b.context_builder import get_language_instruction
 
@@ -633,6 +806,20 @@ def _build_prompt(
         org_block = "(No explicit organisation details submitted — infer from report content.)"
 
     lang_instruction = get_language_instruction(language) if language else ""
+    if target_standard:
+        target_instruction = (
+            f"This call is only for {target_standard} — "
+            f"{_STANDARD_FULL_NAMES.get(target_standard, target_standard)}. "
+            "Use only evidence explicitly belonging to this standard or clearly "
+            "applicable to its management system. Never copy a finding labelled for "
+            "another standard into this table. If the supplied report has no support "
+            "for a clause, leave that finding cell empty."
+        )
+    else:
+        target_instruction = (
+            "This call covers neutral report fields only; do not populate any "
+            "standard-specific clause table."
+        )
 
     return (
         template
@@ -640,6 +827,7 @@ def _build_prompt(
         .replace("{non_applicable_standards}", "\n".join(non_applicable_lines))
         .replace("{org_info}", org_block)
         .replace("{language_instruction}", lang_instruction)
+        .replace("{target_standard_instruction}", target_instruction)
         .replace("{template_structure}", template_structure)
         .replace("{report_content}", report_content)
     )
@@ -841,7 +1029,8 @@ def _split_compound_clause_content(content: str) -> list[tuple[str, str, str | N
     prefix = content[: matches[0].start()].strip()
     sections: list[tuple[str, str, str | None]] = []
     status_re = re.compile(
-        r"^\s*(conforming|compliant|passed|nc|non[- ]?conform(?:ity|ing)|observation|obs)"
+        r"^\s*(?:[√✓✔☑]\s*)?"
+        r"(conforming|compliant|passed|nc|non[- ]?conform(?:ity|ing)|observation|obs)"
         r"\s*(?:\([^)]*\))?\s*[.\-–—:]*\s*",
         re.I,
     )
@@ -879,8 +1068,12 @@ def sanitize_cell_mapping(
     coord_re = re.compile(r"^T(\d+)_R(\d+)_C(\d+)$", re.I)
     coord_index: dict[str, tuple[int, int, int, object, list]] = {}
     inferred_roles = _infer_body_column_roles(body)
+    table_standards: dict[int, str] = {}
 
     for tbl_num, tbl in enumerate(body.findall(_wtag("tbl")), 1):
+        owner = _tbl_belongs_to_standard(tbl)
+        if owner is not None:
+            table_standards[tbl_num] = owner
         for row_num, tr in enumerate(tbl.findall(_wtag("tr")), 1):
             row_cells = tr.findall(_wtag("tc"))
             for col_num, tc in enumerate(row_cells, 1):
@@ -927,6 +1120,23 @@ def sanitize_cell_mapping(
     for raw_coord, raw_content in mapping.items():
         coord = raw_coord.upper().strip()
         indexed = coord_index.get(coord)
+        if indexed is not None:
+            indexed_table = indexed[0]
+            indexed_owner = table_standards.get(indexed_table)
+            indexed_mentions = _mentioned_standard_codes(str(raw_content))
+            if (
+                indexed_owner
+                and indexed_mentions
+                and indexed_owner not in indexed_mentions
+            ):
+                logger.warning(
+                    "[LLM Mapper] Rejected cross-standard block at %s before clause splitting: "
+                    "table=%s, content=%s.",
+                    coord,
+                    indexed_owner,
+                    sorted(indexed_mentions),
+                )
+                continue
         sections = _split_compound_clause_content(str(raw_content))
         if indexed is None or not sections:
             input_items.append((raw_coord, raw_content))
@@ -1003,6 +1213,16 @@ def sanitize_cell_mapping(
         table_num, row_num, col_num, tc, row_cells = coord_index[coord]
         content = str(raw_content).strip()
         if not content:
+            continue
+        owner = table_standards.get(table_num)
+        mentioned_standards = _mentioned_standard_codes(content)
+        if owner and mentioned_standards and owner not in mentioned_standards:
+            logger.warning(
+                "[LLM Mapper] Rejected cross-standard content at %s: table=%s, content=%s.",
+                coord,
+                owner,
+                sorted(mentioned_standards),
+            )
             continue
         role = role_for(table_num, col_num)
         existing_text = _get_cell_text(tc)
@@ -1179,6 +1399,7 @@ def get_cell_mapping(
             selected_standards,
             org_info=org_info,
             language=language,
+            target_standard=chunk.get("standard"),
         )
         if job_id:
             from storage.file_store import save_text_artifact
@@ -1188,17 +1409,44 @@ def get_cell_mapping(
                 chunk["structure_text"],
             )
 
-        raw_response = _call_ai(prompt)
+        raw_response = ""
+        chunk_mapping: dict[str, str] = {}
+        last_error: Exception | None = None
+        for attempt in range(1, 3):
+            try:
+                retry_prompt = prompt
+                if attempt == 2:
+                    retry_prompt += (
+                        "\n\nRETRY NOTICE: The previous response was unusable. Return only "
+                        "the required CELL / CONTENT / END_CELL blocks, using coordinates "
+                        "from this table and respecting its target standard."
+                    )
+                raw_response = _call_ai(retry_prompt)
+                chunk_mapping = parse_cell_mapping(raw_response)
+                if chunk_mapping:
+                    break
+                last_error = ValueError("AI returned no parseable cell mappings")
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "[LLM Mapper] Chunk %s attempt %d/2 failed: %s",
+                    chunk["label"],
+                    attempt,
+                    exc,
+                )
 
         if job_id:
             from storage.file_store import save_text_artifact
             save_text_artifact(
                 job_id,
                 f"assembly_cell_mapping_raw_chunk{idx}.txt",
-                raw_response,
+                raw_response or f"Assembly mapping failed: {last_error}",
             )
 
-        chunk_mapping = parse_cell_mapping(raw_response)
+        if not chunk_mapping:
+            raise ValueError(
+                f"Assembly mapping failed for {chunk['label']} after 2 attempts: {last_error}"
+            )
         logger.info("[LLM Mapper] Chunk %d → %d mappings.", idx, len(chunk_mapping))
         all_mappings.update(chunk_mapping)
 

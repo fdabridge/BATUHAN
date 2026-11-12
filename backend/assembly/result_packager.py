@@ -55,6 +55,9 @@ def _assemble_with_llm_mapper(
         apply_cell_mapping,
         sanitize_cell_mapping,
         strip_template_instruction_cells,
+        strip_template_instruction_paragraphs,
+        prune_unselected_standard_tables,
+        validate_selected_standard_tables,
         template_to_structure_text,
     )
     from assembly.column_semantics import build_column_semantic_map
@@ -156,10 +159,19 @@ def _assemble_with_llm_mapper(
             json.dumps(mapping, indent=2, ensure_ascii=False),
         )
     cleared = strip_template_instruction_cells(body)
+    removed_instructions = strip_template_instruction_paragraphs(body)
+    removed_tables = prune_unselected_standard_tables(body, selected_standards)
+    validate_selected_standard_tables(body, selected_standards)
 
     logger.info(
-        "[Packager] LLM-mapper assembly done | %d cells filled | %d instruction cells cleared | job=%s",
-        filled, cleared, job_id,
+        "[Packager] LLM-mapper assembly done | %d cells filled | "
+        "%d instruction cells cleared | %d instruction paragraphs removed | "
+        "%d non-selected standard tables removed | job=%s",
+        filled,
+        cleared,
+        removed_instructions,
+        removed_tables,
+        job_id,
     )
 
     out = Path(output_path)
@@ -267,6 +279,18 @@ def package_results(
                     scope_analysis=scope_analysis,
                 )
             except Exception as llm_err:
+                from assembly.llm_mapper import ReportAssemblyIntegrityError
+                complex_report = any(
+                    form in Path(template_path).name.upper()
+                    for form in ("FR.229", "FR.231", "FR.232")
+                )
+                if isinstance(llm_err, ReportAssemblyIntegrityError) or complex_report:
+                    logger.error(
+                        "[Packager] Refusing to deliver an invalid complex audit report: %s | job=%s",
+                        llm_err,
+                        job_id,
+                    )
+                    raise
                 logger.warning(
                     "[Packager] LLM mapper failed (%s), falling back to heuristic | job=%s",
                     llm_err, job_id,

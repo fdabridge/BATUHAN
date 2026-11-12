@@ -12,6 +12,9 @@ and the generated report content.  Your job is to decide exactly which cell gets
 SELECTED STANDARD FOR THIS AUDIT:
 {selected_standard}
 
+CURRENT CALL BOUNDARY:
+{target_standard_instruction}
+
 STANDARDS NOT SELECTED (write "Not applicable" messages for their tables):
 {non_applicable_standards}
 
@@ -49,9 +52,8 @@ A. SELECTED STANDARD TABLES
      NEVER write words like "Conforming", "Compliant", or "Passed" — use only √, NC, OBS.
 
 B. NON-SELECTED STANDARD TABLES
-   - For the FIRST empty content cell in each such table, write exactly:
-     Not applicable — [Full standard name] was not included in the scope of this audit.
-   - Leave all other cells in those tables untouched.
+   - Non-selected standard tables are removed before delivery and normally are not
+     included in this call. If one is ever shown, do not output any CELL block for it.
 
 C. DO NOT TOUCH:
    - Cells that are headings, labels, or column/row header text (bold, ALL CAPS, short labels).
