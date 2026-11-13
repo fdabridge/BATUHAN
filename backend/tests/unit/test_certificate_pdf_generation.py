@@ -29,7 +29,8 @@ def _write_source_pdf(path: Path, page_texts: list[list[str]]) -> str:
         for lines in page_texts:
             page = document.new_page(width=595, height=842)
             for line_number, line in enumerate(lines):
-                page.insert_text((60, 70 + line_number * 18), line, fontsize=10)
+                y = 570 if line == "Initial Date" else 70 + line_number * 18
+                page.insert_text((60, y), line, fontsize=10)
         document.save(path)
     finally:
         document.close()
@@ -45,7 +46,7 @@ def _generate(
     monkeypatch.setattr(
         "audit_set.documents_router.render_certificate_docx",
         lambda standard, values, scope_spacers_to_remove=0,
-        scope_font_size_half_points=None: (
+        scope_font_size_half_points=None, verification_url=None: (
             f"spacers={scope_spacers_to_remove};font={scope_font_size_half_points}".encode()
         ),
     )

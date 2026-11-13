@@ -220,3 +220,74 @@ def test_scope_font_can_be_reduced_without_changing_other_mapped_content():
     xml = ET.tostring(root, encoding="unicode")
     assert values.company_name in xml
     assert values.certificate_number in xml
+
+
+def test_word_certificate_contains_the_same_qr_and_approval_signature_as_pdf():
+    values = CertificateValues(
+        company_name="Example Company",
+        company_address="Example Address",
+        scope="A controlled certification scope",
+        initial_date=date(2026, 10, 1),
+        issue_date=date(2026, 10, 6),
+        revision="1",
+        validity_date=date(2027, 10, 5),
+        expiry_date=date(2029, 9, 30),
+        certificate_number="IFC-Q-10-26-1801",
+    )
+
+    rendered = render_certificate_docx(
+        "QMS",
+        values,
+        scope_spacers_to_remove=5,
+        verification_url="https://www.iafcertsearch.org/certification/example-record",
+    )
+
+    with zipfile.ZipFile(BytesIO(rendered)) as package:
+        names = set(package.namelist())
+        relationships = package.read("word/_rels/document.xml.rels").decode("utf-8")
+        document_xml = package.read("word/document.xml").decode("utf-8")
+        qr_png = package.read("word/media/certiva_iaf_qr.png")
+        signature_png = package.read("word/media/certiva_approval_signature.png")
+
+    assert "word/media/certiva_iaf_qr.png" in names
+    assert "word/media/certiva_approval_signature.png" in names
+    assert "media/certiva_iaf_qr.png" in relationships
+    assert "media/certiva_approval_signature.png" in relationships
+    assert "<Relationships xmlns=" in relationships
+    assert "ns0:Relationships" not in relationships
+    assert "IAF CertSearch Verification QR" in document_xml
+    assert "IFC Approval Signature" in document_xml
+    assert qr_png.startswith(b"\x89PNG\r\n\x1a\n")
+    assert signature_png == approval_signature_png_bytes()
+
+
+def test_mdqms_certificate_number_keeps_its_positioning_indent():
+    values = CertificateValues(
+        company_name="Example Medical Devices Limited",
+        company_address="Example Address",
+        scope="Design and manufacture of medical devices",
+        initial_date=date(2026, 10, 1),
+        issue_date=date(2026, 10, 6),
+        revision="1",
+        validity_date=date(2027, 10, 5),
+        expiry_date=date(2029, 9, 30),
+        certificate_number="IFC-M-10-26-1801",
+    )
+
+    rendered = render_certificate_docx("MDQMS", values)
+    with zipfile.ZipFile(BytesIO(rendered)) as package:
+        root = ET.fromstring(package.read("word/document.xml"))
+
+    number_node = next(
+        node
+        for node in root.findall(".//w:t", W)
+        if (node.text or "") == values.certificate_number
+    )
+    parent_map = {child: parent for parent in root.iter() for child in parent}
+    paragraph = parent_map[number_node]
+    while paragraph.tag != f"{{{W_NS}}}p":
+        paragraph = parent_map[paragraph]
+    indent = paragraph.find("w:pPr/w:ind", W)
+
+    assert indent is not None
+    assert int(indent.get(f"{{{W_NS}}}left", "0")) > 0

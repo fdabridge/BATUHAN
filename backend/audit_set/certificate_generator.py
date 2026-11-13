@@ -9,9 +9,13 @@ from datetime import date, timedelta
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+from PIL import Image, ImageDraw
+
 
 W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 W = {"w": W_NS}
+REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+IMAGE_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
 TEMPLATE_DIR = Path(__file__).with_name("certificate_templates")
 APPROVAL_SIGNATURE_PATH = TEMPLATE_DIR / "approval_signature.png"
 
@@ -24,6 +28,47 @@ STANDARD_SPECS = {
     "ENMS": ("ISO 50001:2018", "E"),
     "MDQMS": ("ISO 13485:2016", "M"),
     "ABMS": ("ISO 37001:2016", "A"),
+}
+
+# Page coordinates measured from the approved IFC/UAF certificate set.  The
+# controlled templates do not share one lower-page geometry (FSMS, ISMS,
+# MDQMS, ABMS and ENMS place their accreditation block at different heights),
+# so a single percentage-based overlay cannot remain aligned across standards.
+CERTIFICATE_ASSET_LAYOUTS = {
+    "QMS": {
+        "qr": (413.2, 640.0, 46.4, 45.8),
+        "signature": (276.4, 686.9, 57.8, 45.7),
+    },
+    "EMS": {
+        "qr": (399.8, 640.0, 68.5, 71.6),
+        "signature": (275.4, 687.9, 57.8, 45.8),
+    },
+    # The supplied OHSMS reference predates the IAF QR.  It uses the same IFC
+    # portrait grid as QMS at the lower accreditation/approval block.
+    "OHSMS": {
+        "qr": (413.2, 676.0, 46.4, 45.8),
+        "signature": (276.4, 722.3, 57.8, 45.7),
+    },
+    "FSMS": {
+        "qr": (433.1, 656.0, 70.9, 73.3),
+        "signature": (279.1, 719.5, 57.8, 45.7),
+    },
+    "ISMS": {
+        "qr": (427.6, 706.0, 75.3, 77.9),
+        "signature": (293.3, 760.5, 57.8, 45.7),
+    },
+    "ENMS": {
+        "qr": (430.0, 657.0, 68.7, 76.2),
+        "signature": (288.5, 703.7, 57.8, 45.7),
+    },
+    "MDQMS": {
+        "qr": (418.1, 668.0, 73.3, 66.7),
+        "signature": (281.7, 692.0, 71.8, 56.8),
+    },
+    "ABMS": {
+        "qr": (427.0, 674.0, 60.7, 59.8),
+        "signature": (285.5, 726.3, 58.6, 45.7),
+    },
 }
 
 _ALIASES = {
@@ -115,6 +160,110 @@ def approval_signature_png_bytes() -> bytes:
     return APPROVAL_SIGNATURE_PATH.read_bytes()
 
 
+def qr_png_bytes(value: str, *, module_pixels: int = 8) -> bytes:
+    """Render the IAF verification QR as a sharp, Word-safe PNG."""
+    modules = qr_matrix(value)
+    quiet_zone = 4
+    side = (len(modules) + quiet_zone * 2) * module_pixels
+    image = Image.new("RGB", (side, side), "white")
+    draw = ImageDraw.Draw(image)
+    for row_index, row in enumerate(modules):
+        for column_index, enabled in enumerate(row):
+            if not enabled:
+                continue
+            left = (column_index + quiet_zone) * module_pixels
+            top = (row_index + quiet_zone) * module_pixels
+            draw.rectangle(
+                (left, top, left + module_pixels - 1, top + module_pixels - 1),
+                fill="black",
+            )
+    output = io.BytesIO()
+    image.save(output, format="PNG", optimize=True)
+    return output.getvalue()
+
+
+def _next_relationship_id(relationships: ET.Element) -> str:
+    used = {
+        item.get("Id", "")
+        for item in relationships.findall(f"{{{REL_NS}}}Relationship")
+    }
+    index = 1
+    while f"rId{index}" in used:
+        index += 1
+    return f"rId{index}"
+
+
+def _append_anchored_picture(
+    paragraph: ET.Element,
+    *,
+    relationship_id: str,
+    document_property_id: int,
+    name: str,
+    x_points: float,
+    y_points: float,
+    width_points: float,
+    height_points: float,
+    relative_height: int,
+) -> None:
+    """Append a page-anchored image without disturbing template flow layout."""
+    emu_per_point = 12700
+    values = {
+        "rid": relationship_id,
+        "doc_id": str(document_property_id),
+        "name": name,
+        "x": str(round(x_points * emu_per_point)),
+        "y": str(round(y_points * emu_per_point)),
+        "cx": str(round(width_points * emu_per_point)),
+        "cy": str(round(height_points * emu_per_point)),
+        "height": str(relative_height),
+    }
+    run = ET.fromstring(
+        f"""
+        <w:r xmlns:w="{W_NS}"
+             xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+             xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+             xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"
+             xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+          <w:rPr><w:noProof/></w:rPr>
+          <w:drawing>
+            <wp:anchor distT="0" distB="0" distL="0" distR="0"
+                       simplePos="0" relativeHeight="{values['height']}"
+                       behindDoc="0" locked="1" layoutInCell="1" allowOverlap="1">
+              <wp:simplePos x="0" y="0"/>
+              <wp:positionH relativeFrom="page"><wp:posOffset>{values['x']}</wp:posOffset></wp:positionH>
+              <wp:positionV relativeFrom="page"><wp:posOffset>{values['y']}</wp:posOffset></wp:positionV>
+              <wp:extent cx="{values['cx']}" cy="{values['cy']}"/>
+              <wp:effectExtent l="0" t="0" r="0" b="0"/>
+              <wp:wrapNone/>
+              <wp:docPr id="{values['doc_id']}" name="{values['name']}"/>
+              <wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>
+              <a:graphic>
+                <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                  <pic:pic>
+                    <pic:nvPicPr>
+                      <pic:cNvPr id="{values['doc_id']}" name="{values['name']}"/>
+                      <pic:cNvPicPr><a:picLocks noChangeAspect="1"/></pic:cNvPicPr>
+                    </pic:nvPicPr>
+                    <pic:blipFill>
+                      <a:blip r:embed="{values['rid']}"/>
+                      <a:stretch><a:fillRect/></a:stretch>
+                    </pic:blipFill>
+                    <pic:spPr>
+                      <a:xfrm><a:off x="0" y="0"/><a:ext cx="{values['cx']}" cy="{values['cy']}"/></a:xfrm>
+                      <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+                      <a:noFill/>
+                    </pic:spPr>
+                  </pic:pic>
+                </a:graphicData>
+              </a:graphic>
+            </wp:anchor>
+          </w:drawing>
+        </w:r>
+        """
+    )
+    paragraph.append(run)
+
+
 def _fsms_category(required_scope: dict | None) -> str:
     for key, value in (required_scope or {}).items():
         try:
@@ -161,6 +310,7 @@ def render_certificate_docx(
     *,
     scope_spacers_to_remove: int = 0,
     scope_font_size_half_points: int | None = None,
+    verification_url: str | None = None,
 ) -> bytes:
     canonical = normalize_standard(standard)
     template = TEMPLATE_DIR / f"{canonical}.docx"
@@ -193,6 +343,9 @@ def render_certificate_docx(
     output = io.BytesIO()
     with zipfile.ZipFile(template) as source_zip, zipfile.ZipFile(output, "w") as output_zip:
         document_xml = ET.fromstring(source_zip.read("word/document.xml"))
+        relationships_path = "word/_rels/document.xml.rels"
+        relationships_original = source_zip.read(relationships_path)
+        relationships_xml = ET.fromstring(relationships_original)
         parent_map = {child: parent for parent in document_xml.iter() for child in parent}
         found: set[str] = set()
         scope_paragraph = None
@@ -220,9 +373,22 @@ def render_certificate_docx(
                     while ancestor is not None and ancestor.tag != f"{{{W_NS}}}p":
                         ancestor = parent_map.get(ancestor)
                     if ancestor is not None:
-                        indent = ancestor.find("w:pPr/w:ind", W)
-                        if indent is not None:
-                            indent.set(f"{{{W_NS}}}left", "0")
+                        # Textbox-based templates keep the number inside a
+                        # table cell, where inherited cell indentation can
+                        # wrap the identifier.  ENMS and MDQMS intentionally
+                        # position the value with a top-level paragraph; its
+                        # indent is the horizontal coordinate and must remain.
+                        container = parent_map.get(ancestor)
+                        inside_table_cell = False
+                        while container is not None:
+                            if container.tag == f"{{{W_NS}}}tc":
+                                inside_table_cell = True
+                                break
+                            container = parent_map.get(container)
+                        if inside_table_cell:
+                            indent = ancestor.find("w:pPr/w:ind", W)
+                            if indent is not None:
+                                indent.set(f"{{{W_NS}}}left", "0")
 
         required = {
             "[[COMPANY]]", "[[ADDRESS]]", "[[STANDARD]]", "[[SCOPE]]",
@@ -283,8 +449,108 @@ def render_certificate_docx(
                     body.remove(paragraph)
                     removed += 1
 
+        added_parts: dict[str, bytes] = {}
+        if verification_url:
+            approval_paragraph = next(
+                (
+                    parent_map.get(node)
+                    for node in document_xml.findall(".//w:t", W)
+                    if (node.text or "").strip().casefold() == "approval"
+                ),
+                None,
+            )
+            while (
+                approval_paragraph is not None
+                and approval_paragraph.tag != f"{{{W_NS}}}p"
+            ):
+                approval_paragraph = parent_map.get(approval_paragraph)
+            if approval_paragraph is None:
+                raise ValueError(f"Certificate template {canonical} is missing the Approval anchor")
+
+            doc_property_ids = [
+                int(node.get("id", "0"))
+                for node in document_xml.iter()
+                if node.tag.endswith("}docPr") and node.get("id", "").isdigit()
+            ]
+            next_doc_property_id = max(doc_property_ids, default=0) + 1
+
+            qr_relationship_id = _next_relationship_id(relationships_xml)
+            ET.SubElement(
+                relationships_xml,
+                f"{{{REL_NS}}}Relationship",
+                {
+                    "Id": qr_relationship_id,
+                    "Type": IMAGE_REL_TYPE,
+                    "Target": "media/certiva_iaf_qr.png",
+                },
+            )
+            signature_relationship_id = _next_relationship_id(relationships_xml)
+            ET.SubElement(
+                relationships_xml,
+                f"{{{REL_NS}}}Relationship",
+                {
+                    "Id": signature_relationship_id,
+                    "Type": IMAGE_REL_TYPE,
+                    "Target": "media/certiva_approval_signature.png",
+                },
+            )
+
+            # Page-relative anchors make Word and PDF conversion share the same
+            # visual placement instead of painting a second layout onto the PDF.
+            layout = CERTIFICATE_ASSET_LAYOUTS[canonical]
+            qr_x, qr_y, qr_width, qr_height = layout["qr"]
+            sig_x, sig_y, sig_width, sig_height = layout["signature"]
+            _append_anchored_picture(
+                approval_paragraph,
+                relationship_id=qr_relationship_id,
+                document_property_id=next_doc_property_id,
+                name="IAF CertSearch Verification QR",
+                x_points=qr_x,
+                y_points=qr_y,
+                width_points=qr_width,
+                height_points=qr_height,
+                relative_height=251660292,
+            )
+            _append_anchored_picture(
+                approval_paragraph,
+                relationship_id=signature_relationship_id,
+                document_property_id=next_doc_property_id + 1,
+                name="IFC Approval Signature",
+                x_points=sig_x,
+                y_points=sig_y,
+                width_points=sig_width,
+                height_points=sig_height,
+                relative_height=251660293,
+            )
+            added_parts = {
+                "word/media/certiva_iaf_qr.png": qr_png_bytes(verification_url),
+                "word/media/certiva_approval_signature.png": approval_signature_png_bytes(),
+            }
+
         updated_xml = ET.tostring(document_xml, encoding="utf-8", xml_declaration=True)
+        # LibreOffice (used by the production PDF converter) rejects OPC
+        # relationship parts whose package namespace is emitted with an
+        # arbitrary prefix (for example ``ns0:Relationships``).  Preserve the
+        # package's canonical default namespace when adding the Word-only QR
+        # and approval-signature relationships.
+        ET.register_namespace("", REL_NS)
+        updated_relationships = (
+            ET.tostring(
+                relationships_xml,
+                encoding="utf-8",
+                xml_declaration=True,
+            )
+            if verification_url
+            else relationships_original
+        )
         for info in source_zip.infolist():
-            content = updated_xml if info.filename == "word/document.xml" else source_zip.read(info)
+            if info.filename == "word/document.xml":
+                content = updated_xml
+            elif info.filename == relationships_path:
+                content = updated_relationships
+            else:
+                content = source_zip.read(info)
             output_zip.writestr(info, content)
+        for filename, content in added_parts.items():
+            output_zip.writestr(filename, content)
     return output.getvalue()

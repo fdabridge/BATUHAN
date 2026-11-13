@@ -21,6 +21,7 @@ interface SharedDoc {
   signed_by: string | null
   cb_sig_status: 'pending' | 'signed' | null
   cb_sig_id: string | null
+  word_standards?: string[]
 }
 
 const FR218_FIRST_STATUS_ORDER = [
@@ -215,6 +216,15 @@ export function SharedDocumentsSection({
     || user?.role === 'planner'
     || user?.role === 'planner_us'
   )
+  const canDownloadCertificateWord = [
+    'admin',
+    'planner',
+    'planner_us',
+    'officer',
+    'executive',
+    'gm',
+    'certification_manager',
+  ].includes(user?.role ?? '')
   const hasCertificate = docs.some((doc) => doc.document_type === 'certificate')
   const certificateReady = docs.some((doc) =>
     ['fr233', 'review_decision'].includes(doc.document_type) && doc.status === 'signed'
@@ -339,7 +349,7 @@ export function SharedDocumentsSection({
       setCertificateError('Statement of Applicability reference is required for ISO 27001.'); return
     }
     if (!window.confirm(
-      'This will register one active certificate per standard in IAF CertSearch, place each official verification QR on the English certificate, and issue the final PDF. Continue?',
+      'This will register one active certificate per standard in IAF CertSearch, place each official verification QR on the English certificate, and issue matching PDF and Word files. Continue?',
     )) return
 
     setCertificateSubmitting(true)
@@ -381,6 +391,26 @@ export function SharedDocumentsSection({
       window.URL.revokeObjectURL(url)
     } catch {
       alert('Could not download document.')
+    }
+  }
+
+  async function downloadCertificateWord(docId: string, docLabel: string, standard: string) {
+    try {
+      const r = await api.get(
+        `/audit-sets/${auditSetId}/documents/${docId}/download-word/${encodeURIComponent(standard)}`,
+        { responseType: 'blob' },
+      )
+      const url = window.URL.createObjectURL(r.data as Blob)
+      const a = document.createElement('a')
+      a.href = url
+      const base = docLabel.replace(/\.(pdf|docx)$/i, '')
+      a.download = `${base}_${standard}.docx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+    } catch {
+      alert('Could not download the Word certificate.')
     }
   }
 
@@ -432,7 +462,7 @@ export function SharedDocumentsSection({
         <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
           <p className="text-sm font-medium text-gray-800">Generate final certificate</p>
           <p className="mt-1 text-xs text-gray-500">
-            Each selected standard will be registered in IAF CertSearch first. One English certificate page with its official IAF verification QR will then be generated and combined into the final PDF.
+            Each selected standard will be registered in IAF CertSearch first. The official IFC template will then generate matching English PDF and editable Word certificates with the same verification QR and approval signature.
           </p>
           <p className="mt-2 text-xs font-medium text-emerald-800">
             Standards: {standards.length > 0 ? standards.join(', ') : 'None selected'}
@@ -490,7 +520,7 @@ export function SharedDocumentsSection({
             disabled={certificateSubmitting || standards.length === 0}
             className="mt-3 rounded-lg bg-[#1A4731] px-4 py-1.5 text-sm font-medium text-white disabled:opacity-40"
           >
-            {certificateSubmitting ? 'Registering with IAF and generating…' : 'Register with IAF and issue PDF'}
+            {certificateSubmitting ? 'Registering with IAF and generating…' : 'Register with IAF and issue certificate'}
           </button>
         </div>
       )}
@@ -624,7 +654,7 @@ export function SharedDocumentsSection({
                     {d.signed_at && ` · Signed ${fmtDate(d.signed_at)}`}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
                   {d.cb_sig_status && (
                     <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
                       d.cb_sig_status === 'signed'
@@ -666,8 +696,20 @@ export function SharedDocumentsSection({
                     onClick={() => downloadDoc(d.id, d.label)}
                     className="rounded-lg border border-gray-300 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50"
                   >
-                    Download
+                    {d.document_type === 'certificate' ? 'Download PDF' : 'Download'}
                   </button>
+                  {canDownloadCertificateWord && d.document_type === 'certificate' && (d.word_standards ?? []).map((standard) => (
+                    <button
+                      key={`${d.id}-${standard}`}
+                      type="button"
+                      onClick={() => downloadCertificateWord(d.id, d.label, standard)}
+                      className="rounded-lg border border-certiva-green px-2.5 py-1 text-xs font-medium text-certiva-green hover:bg-certiva-mist"
+                    >
+                      {(d.word_standards?.length ?? 0) > 1
+                        ? `Word · ${standard}`
+                        : 'Download Word'}
+                    </button>
+                  ))}
                   {canDelete && (
                     deletingId === d.id ? (
                       <span className="flex items-center gap-1">

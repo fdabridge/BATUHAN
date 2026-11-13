@@ -47,9 +47,8 @@ from storage.document_store import upload as store_upload, ensure_local, delete 
 from email_service import send_client_status_update, send_document_released
 from audit_set.doc_converter import prepare_document
 from audit_set.certificate_generator import (
-    approval_signature_png_bytes,
+    normalize_standard,
     normalize_standards,
-    qr_matrix,
     render_certificate_docx,
     values_for_audit_set,
 )
@@ -196,6 +195,7 @@ def _doc_to_dict(d: AuditSetSharedDocument, db: Session | None = None) -> dict:
         # Certificates are issued files, not documents awaiting an electronic
         # signature in the shared-document viewer.
         result["status"] = "uploaded"
+        result["word_standards"] = sorted((d.word_file_paths or {}).keys())
 
     if db is not None:
         if d.document_type in {"fr233", "review_decision"}:
@@ -343,96 +343,33 @@ def _certificate_standards(audit_set: AuditSet) -> list[str]:
     return normalize_standards(audit_set.standards)
 
 
-def _draw_certificate_qr(page: fitz.Page, verification_url: str) -> None:
-    """Draw a vector IAF QR below the accreditation marks."""
-    modules = qr_matrix(verification_url)
-    if not modules:
-        return
-    quiet_zone = 4
-    total = len(modules) + (quiet_zone * 2)
-    size = min(page.rect.width, page.rect.height) * 0.085
-    x0 = page.rect.width * 0.68
-    accreditation_bottoms: list[float] = []
-    for image in page.get_images(full=True):
-        for rect in page.get_image_rects(image[0]):
-            if (
-                rect.x0 > page.rect.width * 0.55
-                and rect.y0 > page.rect.height * 0.55
-                and rect.y1 < page.rect.height * 0.86
-                and rect.width > page.rect.width * 0.08
-            ):
-                accreditation_bottoms.append(rect.y1)
-    preferred_y = (max(accreditation_bottoms) + 4) if accreditation_bottoms else page.rect.height * 0.80
-    y0 = min(preferred_y, page.rect.height * 0.90 - size)
-    cell = size / total
-    background = fitz.Rect(x0, y0, x0 + size, y0 + size)
-    page.draw_rect(background, color=None, fill=(1, 1, 1), overlay=True)
-    for row_index, row in enumerate(modules):
-        for column_index, enabled in enumerate(row):
-            if not enabled:
-                continue
-            left = x0 + (column_index + quiet_zone) * cell
-            top = y0 + (row_index + quiet_zone) * cell
-            page.draw_rect(
-                fitz.Rect(left, top, left + cell, top + cell),
-                color=None,
-                fill=(0, 0, 0),
-                overlay=True,
-            )
+_CERTIFICATE_INITIAL_DATE_TARGETS = {
+    # Absolute A4 coordinates measured from the approved IFC certificate set.
+    # The controlled standard-specific templates intentionally use different
+    # vertical grids; treating all of them as QMS caused shifted or rejected
+    # FSMS/ISMS/ENMS/MDQMS/ABMS certificates.
+    "QMS": 562.6,
+    "EMS": 562.6,
+    "OHSMS": 598.0,
+    "FSMS": 579.6,
+    "ISMS": 618.1,
+    "ENMS": 580.3,
+    "MDQMS": 588.8,
+    "ABMS": 597.7,
+}
 
 
-def _decorate_certificate_page(
-    page: fitz.Page,
-    *,
-    verification_url: str,
-) -> None:
-    _draw_certificate_qr(page, verification_url)
-    signature_rect = fitz.Rect(
-        page.rect.width * 0.47,
-        page.rect.height * 0.835,
-        page.rect.width * 0.58,
-        page.rect.height * 0.89,
-    )
-    page.insert_image(
-        signature_rect,
-        stream=approval_signature_png_bytes(),
-        keep_proportion=True,
-        overlay=True,
-    )
-
-    # Word normally renders this label from the final flow paragraph. Keep a
-    # deterministic fallback beside the fixed approval-signature asset in case
-    # a future controlled template omits that decorative paragraph.
-    if "approval" not in page.get_text("text").casefold():
-        page.insert_textbox(
-            fitz.Rect(
-                page.rect.width * 0.38,
-                page.rect.height * 0.89,
-                page.rect.width * 0.67,
-                page.rect.height * 0.92,
-            ),
-            "Approval",
-            fontsize=11,
-            fontname="helv",
-            color=(0.0, 0.28, 0.51),
-            align=fitz.TEXT_ALIGN_CENTER,
-            overlay=True,
-        )
-
-
-def _certificate_page_layout_is_safe(page: fitz.Page) -> bool:
-    """Check that the lower certificate block stays clear of the signature.
-
-    Merely fitting on one PDF page is insufficient: a wrapped scope can push
-    the date table down into the fixed approval-signature area. The templates
-    share the same ``Initial Date`` anchor, whose top must remain in the upper
-    three quarters of the page to preserve the intended spacing.
-    """
+def _certificate_page_layout_is_safe(page: fitz.Page, standard: str) -> bool:
+    """Keep each standard's lower block on its approved IFC template grid."""
     anchors = page.search_for("Initial Date")
-    return not anchors or min(rect.y0 for rect in anchors) <= page.rect.height * 0.75
+    if not anchors:
+        return False
+    initial_date_y = min(rect.y0 for rect in anchors)
+    target = _CERTIFICATE_INITIAL_DATE_TARGETS[normalize_standard(standard)]
+    return abs(initial_date_y - target) <= 8.0
 
 
-def _build_certificate_pdf(
+def _build_certificate_artifacts(
     audit_set: AuditSet,
     standards: list[str],
     *,
@@ -441,11 +378,12 @@ def _build_certificate_pdf(
     revision: str,
     statement_of_applicability: str,
     verification_urls: dict[str, str],
-) -> tuple[bytes, date]:
-    """Render one certificate page per standard and merge them into one PDF."""
+) -> tuple[bytes, dict[str, bytes], date]:
+    """Render matching PDF and editable Word certificates from one source."""
     from audit_set.doc_converter import convert_docx_to_pdf
 
     merged = fitz.open()
+    word_documents: dict[str, bytes] = {}
     expiry_date: date | None = None
     try:
         with tempfile.TemporaryDirectory(prefix="certiva-certificate-") as tmp:
@@ -472,9 +410,9 @@ def _build_certificate_pdf(
                     # reflows it, remove only the deliberately empty scope
                     # spacers until the same design fits on one page.
                     layout_attempts = [
-                        (spacers, None) for spacers in range(0, 7)
+                        (spacers, None) for spacers in range(0, 8)
                     ] + [
-                        (6, font_size) for font_size in (20, 18, 16)
+                        (7, font_size) for font_size in (20, 18, 16)
                     ]
                     tried_layouts: set[str] = set()
                     for spacers_to_remove, scope_font_size in layout_attempts:
@@ -483,6 +421,7 @@ def _build_certificate_pdf(
                             values,
                             scope_spacers_to_remove=spacers_to_remove,
                             scope_font_size_half_points=scope_font_size,
+                            verification_url=verification_urls[standard],
                         )
                         layout_digest = hashlib.sha256(rendered_docx).hexdigest()
                         if layout_digest in tried_layouts:
@@ -496,9 +435,10 @@ def _build_certificate_pdf(
                         last_page_count = candidate.page_count
                         if (
                             candidate.page_count == 1
-                            and _certificate_page_layout_is_safe(candidate[0])
+                            and _certificate_page_layout_is_safe(candidate[0], standard)
                         ):
                             rendered_page = candidate
+                            word_documents[standard] = rendered_docx
                             if spacers_to_remove or scope_font_size is not None:
                                 logger.info(
                                     "Certificate layout fitted after removing %s scope spacer(s) "
@@ -518,19 +458,42 @@ def _build_certificate_pdf(
                             f"(rendered as {last_page_count} pages). Shorten the certificate "
                             "scope or address before issuing it."
                         )
-                    _decorate_certificate_page(
-                        rendered_page[0],
-                        verification_url=verification_urls[standard],
-                    )
                     merged.insert_pdf(rendered_page)
                 finally:
                     if rendered_page is not None:
                         rendered_page.close()
         if merged.page_count != len(standards):
             raise RuntimeError("Generated certificate PDF has an unexpected page count.")
-        return merged.tobytes(garbage=4, deflate=True), expiry_date or issue_date
+        return (
+            merged.tobytes(garbage=4, deflate=True),
+            word_documents,
+            expiry_date or issue_date,
+        )
     finally:
         merged.close()
+
+
+def _build_certificate_pdf(
+    audit_set: AuditSet,
+    standards: list[str],
+    *,
+    initial_date: date,
+    issue_date: date,
+    revision: str,
+    statement_of_applicability: str,
+    verification_urls: dict[str, str],
+) -> tuple[bytes, date]:
+    """Backward-compatible PDF-only wrapper used by existing integrations."""
+    pdf_bytes, _word_documents, expiry_date = _build_certificate_artifacts(
+        audit_set,
+        standards,
+        initial_date=initial_date,
+        issue_date=issue_date,
+        revision=revision,
+        statement_of_applicability=statement_of_applicability,
+        verification_urls=verification_urls,
+    )
+    return pdf_bytes, expiry_date
 
 
 @router.post("/{audit_set_id}/certificates/generate")
@@ -659,7 +622,7 @@ def generate_certificates(
         verification_urls[standard] = registration.verification_url
 
     try:
-        pdf_bytes, expiry_date = _build_certificate_pdf(
+        pdf_bytes, word_documents, expiry_date = _build_certificate_artifacts(
             audit_set,
             standards,
             initial_date=initial_date,
@@ -676,14 +639,27 @@ def generate_certificates(
 
     safe_name = f"{secrets.token_hex(6)}_IFC_Certificates_{audit_set.plan_number}.pdf"
     relative_path = f"shared_docs/{audit_set_id}/{safe_name}"
-    file_path = store_upload(relative_path, pdf_bytes)
+    file_path = store_upload(relative_path, pdf_bytes, content_type="application/pdf")
+    word_file_paths: dict[str, str] = {}
     try:
+        for standard, word_bytes in word_documents.items():
+            word_name = (
+                f"{secrets.token_hex(6)}_IFC_Certificate_"
+                f"{audit_set.plan_number}_{standard}.docx"
+            )
+            word_relative_path = f"shared_docs/{audit_set_id}/{word_name}"
+            word_file_paths[standard] = store_upload(
+                word_relative_path,
+                word_bytes,
+                content_type=DOCX_MIME,
+            )
         label = "Certificate" if len(standards) == 1 else "Certificates"
         doc = AuditSetSharedDocument(
             audit_set_id=audit_set_id,
             label=f"{label} — {', '.join(standards)}",
             document_type="certificate",
             file_path=file_path,
+            word_file_paths=word_file_paths,
             direction="cb_to_client",
             status="uploaded",
             released_by=current_user.id,
@@ -703,10 +679,11 @@ def generate_certificates(
         db.refresh(doc)
     except Exception:
         db.rollback()
-        try:
-            store_delete(file_path)
-        except Exception:
-            logger.warning("Could not remove failed certificate artifact %s", file_path)
+        for stored_path in [file_path, *word_file_paths.values()]:
+            try:
+                store_delete(stored_path)
+            except Exception:
+                logger.warning("Could not remove failed certificate artifact %s", stored_path)
         raise
 
     return {
@@ -1157,6 +1134,52 @@ def download_document(
     return FileResponse(local_path, filename=os.path.basename(local_path), media_type=media_type)
 
 
+@router.get("/{audit_set_id}/documents/{doc_id}/download-word/{standard}")
+def download_certificate_word(
+    audit_set_id: str,
+    doc_id: str,
+    standard: str,
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_user),
+):
+    """Download the exact editable DOCX used to produce a certificate page."""
+    # The PDF is the issued client-facing certificate.  Keep the editable
+    # Word source inside the certification-body roles so an external user
+    # cannot mistake a modified DOCX for the authoritative issued document.
+    if current_user.role not in CB_ROLES:
+        raise HTTPException(403, "Editable certificate sources are restricted to CB users")
+    doc = db.query(AuditSetSharedDocument).filter_by(
+        id=doc_id,
+        audit_set_id=audit_set_id,
+        document_type="certificate",
+    ).first()
+    if not doc:
+        raise HTTPException(404, "Certificate document not found")
+    visible_ids = {d.id for d in _visible_docs_for_user(audit_set_id, current_user, db)}
+    if doc.id not in visible_ids:
+        raise HTTPException(403, "Not authorized")
+
+    try:
+        canonical_standard = normalize_standard(standard)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    word_path = (doc.word_file_paths or {}).get(canonical_standard)
+    if not word_path:
+        raise HTTPException(
+            404,
+            "The editable Word certificate is not available for this historical issuance.",
+        )
+    try:
+        local_path = ensure_local(word_path)
+    except FileNotFoundError:
+        raise HTTPException(404, "Word certificate file not found on server")
+
+    audit_set = db.query(AuditSet).filter_by(id=audit_set_id).first()
+    plan_number = audit_set.plan_number if audit_set else "certificate"
+    filename = f"IFC_Certificate_{plan_number}_{canonical_standard}.docx"
+    return FileResponse(local_path, filename=filename, media_type=DOCX_MIME)
+
+
 # ── Client: FR.211 auditor assessment uploads (Phase 9.5 / 13.5) ────────────
 
 @router.post("/{audit_set_id}/documents/assessments/upload")
@@ -1503,6 +1526,11 @@ def delete_document(
             store_delete(doc.file_path)
         except Exception as exc:
             logger.warning("Could not delete file %s: %s", doc.file_path, exc)
+    for word_path in (doc.word_file_paths or {}).values():
+        try:
+            store_delete(word_path)
+        except Exception as exc:
+            logger.warning("Could not delete Word certificate %s: %s", word_path, exc)
 
     # Delete the document row
     db.delete(doc)

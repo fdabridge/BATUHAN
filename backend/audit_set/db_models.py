@@ -111,6 +111,9 @@ def create_tables():
     # Portal 49b — per-stage / per-auditor document tagging (FR.224, FR.211)
     _safe_add_column("audit_set_shared_documents", "stage_type VARCHAR")
     _safe_add_column("audit_set_shared_documents", "assigned_auditor_id VARCHAR")
+    # Certificate issuance keeps the editable, QR-complete Word source beside
+    # the final PDF. Integrated audits store one DOCX path per standard.
+    _safe_add_column("audit_set_shared_documents", "word_file_paths JSON")
     # Portal 50b — impartiality declaration PDF generation
     _safe_add_column("audit_set_impartiality_declarations", "file_path VARCHAR")
     _safe_add_column("audit_set_impartiality_declarations", "file_name VARCHAR")
@@ -424,6 +427,7 @@ class AuditSetSharedDocument(Base):
     # Portal 49b — per-stage / per-auditor tagging (FR.224 team_info, FR.211 assessment)
     stage_type          = Column(String, nullable=True)   # "stage_1" | "stage_2" | "surveillance"
     assigned_auditor_id = Column(String, nullable=True)   # soft FK → auditors.auditors.id
+    word_file_paths = Column(JSON, nullable=True)  # certificate standard -> DOCX storage ref
     status         = Column(String, nullable=False, default="released")
     # status: "released" | "signed" | "uploaded"
     released_by    = Column(String, nullable=True)    # user id
