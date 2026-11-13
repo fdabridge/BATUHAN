@@ -105,7 +105,7 @@ export function FR233Panel({
             </p>
             {canManage && (
               <a
-                href="#shared-documents"
+                href="#shared-documents-workspace"
                 className="mt-3 inline-flex rounded-lg bg-[#1A4731] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#143b27]"
               >
                 Go to Shared Documents

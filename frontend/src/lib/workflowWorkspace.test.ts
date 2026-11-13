@@ -49,3 +49,9 @@ test('FR.218 signature phase does not offer a duplicate upload', () => {
     workflowStatus: 'fr218_in_progress', auditType: 'initial', workflowVersion: 2, isTransfer: false,
   }), [])
 })
+
+test('committee review can recover when FR.233 has not been released', () => {
+  assert.deepEqual(activePlannerDocumentTypes({
+    workflowStatus: 'committee_review', auditType: 'initial', workflowVersion: 2, isTransfer: false,
+  }), ['review_decision'])
+})

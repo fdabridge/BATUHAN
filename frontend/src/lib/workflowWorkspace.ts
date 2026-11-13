@@ -46,6 +46,11 @@ export function activePlannerDocumentTypes({
   if (['stage1_scheduled', 'stage1_complete', 'stage2_scheduled', 'audit_scheduled'].includes(workflowStatus)) {
     return ['team_info']
   }
-  if (['stage2_complete', 'under_review'].includes(workflowStatus)) return ['review_decision']
+  // Historical and manually corrected cases can already be in committee_review
+  // while the FR.233 record is still missing. Keep the release action available
+  // so those cases can recover instead of landing in an empty workspace.
+  if (['stage2_complete', 'under_review', 'committee_review'].includes(workflowStatus)) {
+    return ['review_decision']
+  }
   return []
 }

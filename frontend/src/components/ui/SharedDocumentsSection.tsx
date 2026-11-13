@@ -160,9 +160,19 @@ export function SharedDocumentsSection({
     isTransfer,
   })
   const quotationSigned = docs.some((doc) => doc.document_type === 'quotation' && doc.status === 'signed')
-  const activeTypeValues = baseActiveTypeValues.filter((value) => (
-    workflowStatus !== 'quotation_sent' || value !== 'agreement' || quotationSigned
-  ))
+  const fr233Released = docs.some((doc) =>
+    ['fr233', 'review_decision'].includes(doc.document_type),
+  )
+  const activeTypeValues = baseActiveTypeValues.filter((value) => {
+    if (workflowStatus === 'quotation_sent' && value === 'agreement' && !quotationSigned) {
+      return false
+    }
+    // committee_review is also a recovery state for historical records that
+    // reached the phase without a persisted FR.233. Do not offer a duplicate
+    // upload once either canonical document type is already present.
+    if (value === 'review_decision' && fr233Released) return false
+    return true
+  })
   const DOC_TYPES = ALL_DOC_TYPES.filter((type) => activeTypeValues.includes(type.value))
 
   const currentRecordTypes = (() => {
@@ -283,7 +293,7 @@ export function SharedDocumentsSection({
     setShowCertificateForm(false)
   // The primitive dependencies intentionally describe the current workflow phase.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workflowStatus, auditType, isTransfer, workflowVersion, mode, quotationSigned])
+  }, [workflowStatus, auditType, isTransfer, workflowVersion, mode, quotationSigned, fr233Released])
 
   async function release() {
     setError('')
@@ -414,8 +424,14 @@ export function SharedDocumentsSection({
     }
   }
 
+  const sectionId = mode === 'workspace'
+    ? 'shared-documents-workspace'
+    : mode === 'records'
+      ? 'shared-documents-records'
+      : 'shared-documents'
+
   return (
-    <div id="shared-documents" className="mt-8 scroll-mt-6">
+    <div id={sectionId} className="mt-8 scroll-mt-6">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-certiva-ink">
