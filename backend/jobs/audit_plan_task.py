@@ -9,7 +9,12 @@ import logging
 
 from audit_plan.service import context_from_dict, generate_audit_plan_document
 from jobs.tasks import celery_app
-from storage.file_store import save_binary_artifact, save_text_artifact
+from storage.file_store import (
+    claim_job_execution,
+    read_text_artifact,
+    save_binary_artifact,
+    save_text_artifact,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +55,20 @@ def generate_audit_plan_job(
     context_payload: dict,
 ) -> dict:
     """Generate the schedule away from the browser request and persist the DOCX."""
+    try:
+        existing = json.loads(read_text_artifact(job_id, "audit_plan_status.json"))
+        if existing.get("state") in {"COMPLETE", "FAILED"}:
+            return existing
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+
+    if not claim_job_execution(job_id):
+        logger.info("Skipping duplicate audit plan delivery for job %s", job_id)
+        try:
+            return json.loads(read_text_artifact(job_id, "audit_plan_status.json"))
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {"audit_plan_job_id": job_id, "state": "QUEUED"}
+
     try:
         _status(job_id, "GENERATING")
         template_bytes = base64.b64decode(template_b64)

@@ -337,10 +337,17 @@ async def create_audit_plan_job(
     org_name: str | None = Form(None),
     address: str | None = Form(None),
     day_windows: str | None = Form(None),
-    _: PlatformUser = Depends(require_any),
+    request_id: str | None = Form(None),
+    current_user: PlatformUser = Depends(require_any),
 ):
     """Queue audit-plan generation and return immediately with a stable job id."""
-    from storage.file_store import generate_job_id, save_text_artifact
+    from storage.file_store import (
+        generate_job_id,
+        idempotent_job_id,
+        read_text_artifact,
+        save_text_artifact,
+        save_text_artifact_if_absent,
+    )
 
     content = await _read_template_upload(template)
     ctx = await _prepare_context(
@@ -354,14 +361,39 @@ async def create_audit_plan_job(
         address=address,
         day_windows=day_windows,
     )
-    job_id = generate_job_id()
+    clean_request_id = _clean(request_id)
+    if clean_request_id and (
+        len(clean_request_id) > 128
+        or not re.fullmatch(r"[A-Za-z0-9._:-]+", clean_request_id)
+    ):
+        raise HTTPException(status_code=422, detail="Invalid audit-plan request id.")
+
+    job_id = (
+        idempotent_job_id("audit-plan", current_user.id, clean_request_id)
+        if clean_request_id
+        else generate_job_id()
+    )
     status = {
         "audit_plan_job_id": job_id,
         "state": "QUEUED",
         "error_message": None,
         "filename": None,
     }
-    save_text_artifact(job_id, "audit_plan_status.json", json.dumps(status))
+    status_json = json.dumps(status)
+    if clean_request_id:
+        created = save_text_artifact_if_absent(
+            job_id,
+            "audit_plan_status.json",
+            status_json,
+        )
+        if not created:
+            # The browser is safely retrying a request whose response was lost.
+            # Return the existing job rather than creating or billing another.
+            status = json.loads(read_text_artifact(job_id, "audit_plan_status.json"))
+            if status.get("state") not in {"QUEUED"}:
+                return status
+    else:
+        save_text_artifact(job_id, "audit_plan_status.json", status_json)
 
     try:
         from jobs.audit_plan_task import generate_audit_plan_job
@@ -373,12 +405,12 @@ async def create_audit_plan_job(
         )
     except Exception as exc:
         logger.error("Could not queue audit plan job %s: %s", job_id, exc, exc_info=True)
-        status.update({
-            "state": "FAILED",
-            "error_message": "Could not queue the audit-plan job. Please try again.",
-        })
-        save_text_artifact(job_id, "audit_plan_status.json", json.dumps(status))
-        raise HTTPException(status_code=503, detail=status["error_message"])
+        # Keep the idempotent request QUEUED. A browser retry with the same
+        # request id will attempt dispatch again without creating a second job.
+        raise HTTPException(
+            status_code=503,
+            detail="The audit-plan queue is temporarily unavailable. Retrying is safe.",
+        )
 
     return status
 

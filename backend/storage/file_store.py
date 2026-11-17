@@ -34,6 +34,18 @@ def generate_job_id() -> str:
     return str(uuid.uuid4())
 
 
+def idempotent_job_id(namespace: str, principal: str, request_id: str) -> str:
+    """Return a stable, opaque job id for one user-submitted request.
+
+    The same browser retry resolves to the same job without exposing the user
+    id or request id in Redis keys or API responses.
+    """
+    return str(uuid.uuid5(
+        uuid.NAMESPACE_URL,
+        f"certiva:{namespace}:{principal}:{request_id}",
+    ))
+
+
 def validate_extension(filename: str) -> bool:
     return Path(filename).suffix.lower() in ALLOWED_EXTENSIONS
 
@@ -85,6 +97,27 @@ def save_text_artifact(job_id: str, filename: str, content: str) -> str:
     r.expire(key, _JOB_TTL)
     _touch_exists(r, job_id)
     return f"redis:{job_id}/{filename}"
+
+
+def save_text_artifact_if_absent(job_id: str, filename: str, content: str) -> bool:
+    """Atomically create a text artifact once.
+
+    Returns True only for the request that created the artifact. This is used
+    as the idempotency claim for retryable job-submission endpoints.
+    """
+    r = _redis()
+    key = _text_key(job_id, filename)
+    created = r.set(key, content.encode("utf-8"), nx=True, ex=_JOB_TTL)
+    if created:
+        _touch_exists(r, job_id)
+    return bool(created)
+
+
+def claim_job_execution(job_id: str, *, ttl_seconds: int = 60 * 60) -> bool:
+    """Claim execution of a queued job so duplicate deliveries are harmless."""
+    r = _redis()
+    key = f"batuhan:job:{job_id}:execution-lock"
+    return bool(r.set(key, "1", nx=True, ex=ttl_seconds))
 
 
 def save_binary_artifact(job_id: str, filename: str, content: bytes) -> str:

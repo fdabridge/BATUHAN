@@ -4,6 +4,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { CalendarPlus, Check, Download, Loader2, Plus, Trash2, Wand2 } from 'lucide-react'
 import api from '@/lib/api'
 import { apiErrorMessage } from '@/lib/apiError'
+import { isTransientApiFailure, retryTransientApiRequest } from '@/lib/apiRetry'
+import {
+  auditPlanSubmissionFingerprint,
+  resolveAuditPlanRequest,
+} from '@/lib/auditPlanSubmission'
 import {
   CertivAIFileDrop,
   CertivAINotice,
@@ -42,6 +47,8 @@ const AUDIT_TYPES = [
 const inputClass = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-certiva-leaf focus:ring-2 focus:ring-certiva-leaf/15'
 const labelClass = 'mb-1.5 block text-xs font-semibold text-slate-600'
 const LAST_AUDIT_PLAN_JOB_KEY = 'certivai_last_audit_plan_job'
+const PENDING_AUDIT_PLAN_REQUEST_KEY = 'certivai_pending_audit_plan_request'
+const AUDIT_PLAN_API_BASE = '/api'
 
 const emptyDay = (): DayWindow => ({
   date: '', start_time: '09:00', end_time: '17:00',
@@ -72,6 +79,7 @@ export default function CertivAIAuditPlanPage() {
   const [days, setDays] = useState<DayWindow[]>([emptyDay()])
   const [job, setJob] = useState<AuditPlanJob | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [retryAttempt, setRetryAttempt] = useState(0)
   const [error, setError] = useState('')
   const [successName, setSuccessName] = useState('')
   const downloadedJob = useRef<string | null>(null)
@@ -95,10 +103,19 @@ export default function CertivAIAuditPlanPage() {
   useEffect(() => {
     if (!job || ['COMPLETE', 'FAILED'].includes(job.state)) return
     let cancelled = false
+    let timer: number | null = null
     const poll = async () => {
       try {
-        const response = await api.get<AuditPlanJob>(`/audit-plan/jobs/${job.audit_plan_job_id}`)
-        if (!cancelled) setJob(response.data)
+        const response = await retryTransientApiRequest(() => (
+          api.get<AuditPlanJob>(`/audit-plan/jobs/${job.audit_plan_job_id}`, {
+            baseURL: AUDIT_PLAN_API_BASE,
+            timeout: 10_000,
+          })
+        ), { retries: 1, delayMs: 750 })
+        if (!cancelled) {
+          setJob(response.data)
+          setError('')
+        }
       } catch (pollError: unknown) {
         if (cancelled) return
         const status = (pollError as { response?: { status?: number } })?.response?.status
@@ -109,13 +126,14 @@ export default function CertivAIAuditPlanPage() {
           return
         }
         setError(await apiErrorMessage(pollError, 'Could not read audit-plan progress.', 'audit-plan service'))
+      } finally {
+        if (!cancelled) timer = window.setTimeout(poll, 2500)
       }
     }
     void poll()
-    const timer = window.setInterval(poll, 2500)
     return () => {
       cancelled = true
-      window.clearInterval(timer)
+      if (timer !== null) window.clearTimeout(timer)
     }
   }, [job?.audit_plan_job_id, job?.state])
 
@@ -129,7 +147,13 @@ export default function CertivAIAuditPlanPage() {
     downloadedJob.current = job.audit_plan_job_id
     const download = async () => {
       try {
-        const response = await api.get(`/audit-plan/jobs/${job.audit_plan_job_id}/download`, { responseType: 'blob' })
+        const response = await retryTransientApiRequest(() => (
+          api.get(`/audit-plan/jobs/${job.audit_plan_job_id}/download`, {
+            baseURL: AUDIT_PLAN_API_BASE,
+            responseType: 'blob',
+            timeout: 20_000,
+          })
+        ), { retries: 2, delayMs: 1_000 })
         const href = URL.createObjectURL(response.data as Blob)
         const filename = job.filename || 'AuditPlan_CertivAI.docx'
         const link = document.createElement('a')
@@ -159,6 +183,28 @@ export default function CertivAIAuditPlanPage() {
     const invalidIndex = dayErrors.findIndex(Boolean)
     if (invalidIndex >= 0) return setError(`Day ${invalidIndex + 1}: ${dayErrors[invalidIndex]}`)
 
+    const fingerprint = auditPlanSubmissionFingerprint(JSON.stringify({
+      template: {
+        name: template.name,
+        size: template.size,
+        lastModified: template.lastModified,
+      },
+      standards,
+      auditType,
+      eaCode,
+      category,
+      scope,
+      orgName,
+      address,
+      days,
+    }))
+    const pendingRequest = resolveAuditPlanRequest(
+      window.sessionStorage.getItem(PENDING_AUDIT_PLAN_REQUEST_KEY),
+      fingerprint,
+      () => window.crypto.randomUUID(),
+    )
+    window.sessionStorage.setItem(PENDING_AUDIT_PLAN_REQUEST_KEY, pendingRequest.storageValue)
+
     const form = new FormData()
     form.append('template', template)
     form.append('standards', JSON.stringify(standards))
@@ -169,23 +215,47 @@ export default function CertivAIAuditPlanPage() {
     form.append('org_name', orgName)
     form.append('address', address)
     form.append('day_windows', JSON.stringify(days))
+    form.append('request_id', pendingRequest.requestId)
 
     setSubmitting(true)
+    setRetryAttempt(0)
     try {
-      const response = await api.post<AuditPlanJob>('/audit-plan/jobs', form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      const response = await retryTransientApiRequest(() => (
+        api.post<AuditPlanJob>('/audit-plan/jobs', form, {
+          baseURL: AUDIT_PLAN_API_BASE,
+          headers: { 'Content-Type': 'multipart/form-data' },
+          timeout: 20_000,
+        })
+      ), {
+        retries: 4,
+        delayMs: 1_000,
+        onRetry: (_retryError, attempt) => setRetryAttempt(attempt),
       })
+      window.sessionStorage.removeItem(PENDING_AUDIT_PLAN_REQUEST_KEY)
       window.sessionStorage.setItem(LAST_AUDIT_PLAN_JOB_KEY, response.data.audit_plan_job_id)
       setJob(response.data)
     } catch (submitError: unknown) {
-      setError(await apiErrorMessage(submitError, 'Could not start audit-plan generation.', 'audit-plan service'))
+      if (!isTransientApiFailure(submitError)) {
+        window.sessionStorage.removeItem(PENDING_AUDIT_PLAN_REQUEST_KEY)
+      }
+      const message = await apiErrorMessage(
+        submitError,
+        'Could not start audit-plan generation.',
+        'audit-plan service',
+      )
+      setError(isTransientApiFailure(submitError)
+        ? `${message} Certiva retried safely without creating duplicate jobs. Press Generate again to resume the same request.`
+        : message)
     } finally {
       setSubmitting(false)
+      setRetryAttempt(0)
     }
   }
 
   const statusText = submitting
-    ? 'Uploading and validating the FR.223 template…'
+    ? retryAttempt > 0
+      ? `Connection interrupted. Reconnecting safely (${retryAttempt}/4)…`
+      : 'Uploading and validating the FR.223 template…'
     : job?.state === 'QUEUED'
       ? 'Queued safely. The job no longer depends on one long browser request.'
       : job?.state === 'GENERATING'
