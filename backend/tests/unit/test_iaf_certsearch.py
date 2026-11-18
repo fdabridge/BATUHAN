@@ -75,6 +75,28 @@ def test_payload_matches_iaf_v2_contract_and_keeps_personal_data_out():
     }]
 
 
+def test_payload_does_not_repeat_main_address_as_an_additional_site():
+    values = _certificate_values()
+    payload = build_certification_payload(
+        _audit_set(
+            sites=[
+                {
+                    "address": "12 CERTIFICATION AVENUE — DORTMUND, GERMANY",
+                    "process": "Main facility",
+                },
+                {"address": "Plant 2, Essen, Germany", "process": "Assembly"},
+            ],
+        ),
+        "QMS",
+        values,
+    )
+
+    assert [
+        site["full_address"]
+        for site in payload["certification"]["cert_sites"]
+    ] == ["Plant 2, Essen, Germany"]
+
+
 def test_payload_uses_official_country_and_multiple_ea_sector_values():
     payload = build_certification_payload(
         _audit_set(

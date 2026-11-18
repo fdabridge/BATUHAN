@@ -1,6 +1,7 @@
 """FR.223 layout compatibility across English and Turkish blank sets."""
 
 from io import BytesIO
+from types import SimpleNamespace
 
 from docx import Document
 
@@ -49,6 +50,29 @@ def _turkish_layout_bytes() -> bytes:
     return buffer.getvalue()
 
 
+def _site_filler_layout_bytes() -> bytes:
+    doc = Document()
+    doc.add_table(rows=1, cols=1)
+
+    sites = doc.add_table(rows=4, cols=4)
+    for index, text in enumerate(["Site/s", "Address", "Process/Activity", "Employees"]):
+        sites.cell(0, index).text = text
+    for row in range(1, 4):
+        sites.cell(row, 0).text = str(row)
+        sites.cell(row, 1).text = "Old pre-filled address"
+        sites.cell(row, 2).text = "Old process"
+        sites.cell(row, 3).text = "99"
+
+    schedule = doc.add_table(rows=2, cols=5)
+    for index, text in enumerate(["Hour", "Standard", "Clause", "Activity", "Audit Team"]):
+        schedule.cell(0, index).text = text
+    schedule.cell(1, 0).text = "placeholder"
+
+    buffer = BytesIO()
+    doc.save(buffer)
+    return buffer.getvalue()
+
+
 def test_reader_finds_separate_turkish_team_table_and_canonicalizes_roles():
     ctx = read_template(_turkish_layout_bytes())
     assert [(entry.role, entry.name) for entry in ctx.auditors] == [
@@ -81,3 +105,35 @@ def test_filler_locates_turkish_schedule_by_headers_instead_of_fixed_index():
     filled = Document(BytesIO(output))
     assert "1. Day (28.08.2026)" in filled.tables[4].cell(1, 0).text
     assert filled.tables[2].cell(0, 0).text == "Aşama 1 denetimi sahada mı?"
+
+
+def test_filler_excludes_primary_address_and_clears_stale_site_rows():
+    source = _site_filler_layout_bytes()
+    ctx = SimpleNamespace(
+        address="1 Main Street, Istanbul",
+        sites=[
+            SimpleNamespace(address="1 MAIN STREET — ISTANBUL", process="Main production", employees="20"),
+            SimpleNamespace(address="2 Warehouse Road, Gebze", process="Storage", employees="5"),
+        ],
+    )
+
+    output = fill_schedule(source, [], ctx)
+    filled = Document(BytesIO(output))
+    sites = filled.tables[1]
+
+    assert sites.cell(1, 1).text == "2 Warehouse Road, Gebze"
+    assert sites.cell(1, 2).text == "Storage"
+    assert sites.cell(1, 3).text == "5"
+    assert sites.cell(2, 1).text == ""
+    assert sites.cell(3, 1).text == ""
+
+
+def test_filler_leaves_site_section_empty_without_additional_sites():
+    source = _site_filler_layout_bytes()
+    ctx = SimpleNamespace(address="1 Main Street, Istanbul", sites=[])
+
+    output = fill_schedule(source, [], ctx)
+    filled = Document(BytesIO(output))
+    sites = filled.tables[1]
+
+    assert [sites.cell(row, 1).text for row in range(1, 4)] == ["", "", ""]

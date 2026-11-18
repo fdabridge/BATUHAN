@@ -23,6 +23,7 @@ from docx import Document
 from docx.oxml.ns import qn
 
 from .schedule_generator import DaySchedule, Slot
+from site_addresses import is_primary_address
 
 if TYPE_CHECKING:
     from .template_reader import AuditPlanContext
@@ -153,8 +154,8 @@ def _write_cell(cell, text: str) -> None:
 
 def _fill_sites(doc: Document, ctx: "AuditPlanContext") -> None:
     """
-    Populate the three site data rows in Table 1 from ctx.
-    If no additional sites are defined, fills row 1 with the HQ address/scope/employees.
+    Populate the three additional-site rows in Table 1 from ctx.
+    The principal facility belongs only in the document's main address field.
     Table 1 layout (fixed):
       R0 — header (Site/s | Address | Process/Activity | Number of Employees)
       R1-R3 — site data rows (we write to unique cells [1], [2], [3] of each)
@@ -167,16 +168,20 @@ def _fill_sites(doc: Document, ctx: "AuditPlanContext") -> None:
     if len(tbl.rows) < 4:
         return  # Template doesn't have the expected structure
 
-    # Build site records: use ctx.sites if available, otherwise HQ as site 1
-    records = []
-    if ctx.sites:
-        for s in ctx.sites:
-            records.append((s.address, s.process, s.employees))
-    else:
-        records.append((ctx.address, ctx.scope[:80] if ctx.scope else "", ctx.num_employees))
+    records = [
+        (site.address, site.process, site.employees)
+        for site in ctx.sites
+        if not is_primary_address(site.address, ctx.address)
+    ]
 
-    # Fill rows 1, 2, 3 (up to available records)
+    # Clear old/pre-filled values first, then write genuine additional sites.
     site_row_indices = [1, 2, 3]
+    for row_index in site_row_indices:
+        row = tbl.rows[row_index]
+        cells = _unique_row_cells(row)
+        for cell in cells[1:4]:
+            _write_cell(cell, "")
+
     for i, rec in enumerate(records):
         if i >= len(site_row_indices):
             break

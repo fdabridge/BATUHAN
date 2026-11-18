@@ -15,6 +15,7 @@ import httpx
 
 from audit_set.certificate_generator import CertificateValues, normalize_standard
 from calculator.advanced import EA_CODE_NAMES
+from site_addresses import is_primary_address
 
 
 IAF_STANDARD_NAMES = {
@@ -140,13 +141,14 @@ def _additional_sites(
     entity_id: str,
     scope: str,
     default_country: str,
+    main_address: str,
 ) -> list[dict[str, str]]:
     result: list[dict[str, str]] = []
     for site in getattr(audit_set, "sites", None) or []:
         if not isinstance(site, dict):
             continue
         full_address = str(site.get("address") or "").strip()
-        if not full_address:
+        if not full_address or is_primary_address(full_address, main_address):
             continue
         country = _country_v2(site.get("country") or default_country)
         result.append({
@@ -241,7 +243,7 @@ def build_certification_payload(
                 "scheme_name": scheme_name,
                 "standard_list": [{"standards_name": IAF_STANDARD_NAMES[canonical]}],
             }],
-            "cert_sites": _additional_sites(audit_set, entity_id, scope, country),
+            "cert_sites": _additional_sites(audit_set, entity_id, scope, country, address),
             "sectors": _sectors(audit_set),
         },
     }

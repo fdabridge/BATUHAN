@@ -30,6 +30,7 @@ from auditors.qualification_scope import (
     normalize_scope_code,
     normalize_scope_type,
 )
+from site_addresses import is_primary_address
 
 # --------------------------------------------------------------------------- #
 # Constants
@@ -280,16 +281,17 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
     """
     man_day = audit_set.man_day_result or {}
     personnel = audit_set.personnel or {}
-    sites_raw = audit_set.sites or []
-    if not sites_raw:
-        # Fallback: synthesise one site from the top-level address so templates
-        # that access sites[0] don't crash when no sites were configured.
-        sites_raw = [{
-            "address": audit_set.company_address or "",
-            "process": audit_set.scope_en or "",
-            "employee_count": audit_set.effective_employees or 0,
-        }]
+    configured_sites = audit_set.sites or []
+    # The document-facing `sites` collection means additional sites only.
+    # Legacy cases sometimes stored the principal facility as sites[0]; filter
+    # it because the main address already has dedicated fields in every form.
+    sites_raw = [
+        site
+        for site in configured_sites
+        if not is_primary_address(site.get("address"), audit_set.company_address)
+    ]
     sites = [_normalize_site(s) for s in sites_raw]
+    calculation_sites = [_normalize_site(s) for s in configured_sites]
     integration_level = audit_set.integration_level or {}
     required_scope = getattr(audit_set, "required_scope", None) or {}
     application_data = {
@@ -380,9 +382,11 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
         + personnel.get("unskilled", 0)
     )
 
-    enms_energy_tj = sum(s.get("energy_tj", 0) for s in sites)
-    enms_energy_types = max((s.get("energy_types", 0) for s in sites), default=0)
-    enms_seu_count = sum(s.get("seu_count", 0) for s in sites)
+    # Energy values still consider every configured facility. Filtering the
+    # main address is strictly a document-layout concern.
+    enms_energy_tj = sum(s.get("energy_tj", 0) for s in calculation_sites)
+    enms_energy_types = max((s.get("energy_types", 0) for s in calculation_sites), default=0)
+    enms_seu_count = sum(s.get("seu_count", 0) for s in calculation_sites)
 
     true_count = sum(1 for v in integration_level.values() if v)
     integration_pct = round(true_count / 8 * 100) if integration_level else 0
@@ -546,12 +550,12 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
         "repetitive_employees": personnel.get("repetitive_employees", 0),
         # Sites
         "sites": sites,
-        "site_addresses": "\n".join(s.get("address", "") for s in sites) or (audit_set.company_address or ""),
+        "site_addresses": "\n".join(s.get("address", "") for s in sites),
         # Portal 78 — per-site template variables (site_1_* … site_5_*)
-        "additional_sites_count": len(sites_raw) if (audit_set.sites or []) else 0,
+        "additional_sites_count": len(sites),
         **{
             k: v
-            for i, s in enumerate((audit_set.sites or [])[:5], start=1)
+            for i, s in enumerate(sites[:5], start=1)
             for k, v in {
                 f"site_{i}_name":      s.get("name", f"Site {i}"),
                 f"site_{i}_address":   s.get("address", ""),
@@ -561,7 +565,7 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
         },
         **{k: "" for k in (
             f"site_{i}_{field}"
-            for i in range(len(audit_set.sites or []) + 1, 6)
+            for i in range(len(sites) + 1, 6)
             for field in ("name", "address", "employees", "process")
         )},
         "additional_sites_summary": (
@@ -572,7 +576,7 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
                     (f"{s['employee_count']} emp." if s.get("employee_count") else None),
                     s.get("process") or None,
                 ]))
-                for i, s in enumerate(audit_set.sites or [], start=1)
+                for i, s in enumerate(sites, start=1)
             ) or "None"
         ),
         "enms_energy_tj": enms_energy_tj,

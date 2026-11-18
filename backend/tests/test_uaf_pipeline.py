@@ -466,6 +466,31 @@ def test_cycle_date_math():
     assert ctx["recert_estimated_date"] == "13/07/2029"
 
 
+def test_document_context_keeps_only_genuine_additional_sites():
+    ctx = build_base_context(_audit_set(), _stage_2())
+
+    assert ctx["company_address"] == "123 Industrial Blvd, Istanbul, Turkey"
+    assert ctx["additional_sites_count"] == 1
+    assert ctx["site_addresses"] == "45 Warehouse St, Gebze, Turkey"
+    assert [site["address"] for site in ctx["sites"]] == [
+        "45 Warehouse St, Gebze, Turkey",
+    ]
+    assert ctx["site_1_address"] == "45 Warehouse St, Gebze, Turkey"
+    assert ctx["site_2_address"] == ""
+
+
+def test_document_context_does_not_create_a_site_from_the_main_address():
+    audit_set = _audit_set()
+    audit_set.sites = []
+
+    ctx = build_base_context(audit_set, _stage_2())
+
+    assert ctx["sites"] == []
+    assert ctx["site_addresses"] == ""
+    assert ctx["additional_sites_count"] == 0
+    assert ctx["additional_sites_summary"] == "None"
+
+
 # --------------------------------------------------------------------------- #
 # 7. Download route (skips when the DB stack is unavailable, e.g. local)
 # --------------------------------------------------------------------------- #
