@@ -662,11 +662,37 @@ def update(auditor_id: str, payload: AuditorCreateSchema, db: Session = Depends(
 
 
 @router.delete("/{auditor_id}", status_code=204)
-def soft_delete(auditor_id: str, db: Session = Depends(get_db), _: PlatformUser = Depends(require_admin)):
-    """Soft-delete an auditor (sets is_active=False)."""
-    found = delete_auditor(db, auditor_id)
-    if not found:
+def soft_delete(
+    auditor_id: str,
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    _: PlatformUser = Depends(require_admin),
+):
+    """Safely deactivate an auditor and any linked portal login.
+
+    Auditor profiles are intentionally retained so historical audit assignments,
+    signatures, qualifications, and audit logs remain readable.  Inactive
+    auditors are excluded from the active planning pool.
+    """
+    if not get_auditor(db, auditor_id):
         raise HTTPException(status_code=404, detail=f"Auditor '{auditor_id}' not found.")
+
+    linked_users = (
+        auth_db.query(PlatformUser)
+        .filter(
+            PlatformUser.auditor_id == auditor_id,
+            PlatformUser.is_active.is_(True),
+        )
+        .update({PlatformUser.is_active: False}, synchronize_session=False)
+    )
+    auth_db.commit()
+
+    delete_auditor(db, auditor_id)
+    logger.info(
+        "[Auditors/API] Deactivated auditor id=%s and %s linked portal account(s)",
+        auditor_id,
+        linked_users,
+    )
 
 
 @router.post("/{auditor_id}/check-eligibility", response_model=EligibilityResultSchema)

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useAuth } from '@/lib/auth'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { ArrowLeft, AlertTriangle, CheckCircle2, Loader2, Plus, Trash2, XCircle } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
@@ -994,11 +995,40 @@ function WitnessPanel({ id }: { id: string }) {
 
 export default function AuditorDetailPage({ params }: { params: { id: string } }) {
   const { id } = params
+  const router = useRouter()
+  const { user } = useAuth()
+  const queryClient = useQueryClient()
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const { data, isLoading, isError } = useQuery<AuditorResponse>({
     queryKey: ['auditor', id],
     queryFn: () => api.get<AuditorResponse>(`/auditors/${id}`).then((r) => r.data),
   })
+
+  const deleteAuditor = useMutation({
+    mutationFn: () => api.delete(`/auditors/${id}`),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['auditors-dashboard'] })
+      await queryClient.invalidateQueries({ queryKey: ['auditors-active'] })
+      await queryClient.invalidateQueries({ queryKey: ['auditor-availability'] })
+      queryClient.removeQueries({ queryKey: ['auditor', id] })
+      router.push('/auditors')
+    },
+    onError: (err: unknown) => {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setDeleteError(detail ?? 'The auditor could not be deleted. Please try again.')
+    },
+  })
+
+  function handleDelete() {
+    if (!data || deleteAuditor.isPending) return
+    const confirmed = window.confirm(
+      `Delete ${data.name}?\n\nThey will be removed from active auditor lists and their login will be disabled. Historical audit records will be preserved.`
+    )
+    if (!confirmed) return
+    setDeleteError(null)
+    deleteAuditor.mutate()
+  }
 
   if (isLoading) return (
     <div className="flex items-center justify-center py-24">
@@ -1023,12 +1053,31 @@ export default function AuditorDetailPage({ params }: { params: { id: string } }
             <span className="rounded px-2 py-0.5 text-xs" style={{ background: '#F0FAF4', color: '#1A4731' }}>{data.role}</span>
           )}
         </div>
-        {data.is_active ? (
-          <span className="rounded-lg px-3 py-1 text-sm font-medium" style={{ background: '#F0FAF4', color: '#1A4731' }}>Active</span>
-        ) : (
-          <span className="rounded-lg px-3 py-1 text-sm font-medium" style={{ background: '#F3F4F6', color: '#6B7280' }}>Inactive</span>
-        )}
+        <div className="flex items-center gap-2">
+          {data.is_active ? (
+            <span className="rounded-lg px-3 py-1 text-sm font-medium" style={{ background: '#F0FAF4', color: '#1A4731' }}>Active</span>
+          ) : (
+            <span className="rounded-lg px-3 py-1 text-sm font-medium" style={{ background: '#F3F4F6', color: '#6B7280' }}>Inactive</span>
+          )}
+          {user?.role === 'admin' && data.is_active && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleteAuditor.isPending}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {deleteAuditor.isPending ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+              Delete auditor
+            </button>
+          )}
+        </div>
       </div>
+
+      {deleteError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+          {deleteError}
+        </div>
+      )}
 
       <ProfileOverview a={data} />
       <QualifiedStandards a={data} id={id} />
