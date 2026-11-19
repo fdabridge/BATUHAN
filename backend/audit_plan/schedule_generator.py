@@ -16,7 +16,7 @@ from ai.openai_client import OpenAIClient
 from config.settings import get_settings
 from .clause_map import CLAUSE_MAP, normalize_standard
 from .template_reader import AuditPlanContext, DayWindow
-from site_addresses import is_primary_address
+from site_addresses import additional_sites
 
 logger = logging.getLogger(__name__)
 
@@ -664,8 +664,7 @@ def generate_schedule(ctx: AuditPlanContext) -> list[DaySchedule]:
     # Build site list
     site_lines = [
         f"  Day site option: {site.address} — {site.process}"
-        for site in ctx.sites
-        if not is_primary_address(site.address, ctx.address)
+        for site in additional_sites(ctx.sites, ctx.address)
     ]
     site_summary = "\n".join(site_lines) if site_lines else f"  HQ: {ctx.address}"
 

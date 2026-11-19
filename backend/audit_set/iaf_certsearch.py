@@ -15,7 +15,7 @@ import httpx
 
 from audit_set.certificate_generator import CertificateValues, normalize_standard
 from calculator.advanced import EA_CODE_NAMES
-from site_addresses import is_primary_address
+from site_addresses import additional_sites
 
 
 IAF_STANDARD_NAMES = {
@@ -144,11 +144,11 @@ def _additional_sites(
     main_address: str,
 ) -> list[dict[str, str]]:
     result: list[dict[str, str]] = []
-    for site in getattr(audit_set, "sites", None) or []:
+    for site in additional_sites(getattr(audit_set, "sites", None), main_address):
         if not isinstance(site, dict):
             continue
         full_address = str(site.get("address") or "").strip()
-        if not full_address or is_primary_address(full_address, main_address):
+        if not full_address:
             continue
         country = _country_v2(site.get("country") or default_country)
         result.append({

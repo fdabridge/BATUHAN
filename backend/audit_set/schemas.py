@@ -5,7 +5,9 @@ Input schemas (API receives) and output schemas (API returns).
 from __future__ import annotations
 from datetime import date, datetime
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationInfo, field_validator
+
+from site_addresses import additional_sites
 
 
 # ── Nested input types ─────────────────────────────────────────────────────
@@ -158,6 +160,7 @@ class AuditSetUpdatePlanningSchema(BaseModel):
     document_language: Optional[str] = None
     application_date: Optional[date] = None          # retroactive override — when the client actually applied
     application_data: Optional[ApplicationDataSchema] = None   # ← ADD
+    sites: Optional[list[SiteData]] = None                      # additional sites only
     transfer_reviewer_id: Optional[str] = None
     transfer_reviewer_name: Optional[str] = None
     stages: list[StageInput] = []
@@ -210,6 +213,7 @@ class AuditSetResponse(BaseModel):
     status: str
     company_name: str
     company_address: Optional[str]
+    sites: list[SiteData] = []
     standards: Optional[list]
     audit_type: str
     is_transfer: bool = False
@@ -246,6 +250,20 @@ class AuditSetResponse(BaseModel):
     stages: list[StageResponse]
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("sites", mode="before")
+    @classmethod
+    def exclude_principal_facility(
+        cls,
+        value: object,
+        info: ValidationInfo,
+    ) -> object:
+        """Never expose the principal address as an additional site.
+
+        This also cleans legacy records at the API boundary without mutating
+        their historical database row.
+        """
+        return additional_sites(value if isinstance(value, list) else [], info.data.get("company_address"))
 
     class Config:
         from_attributes = True

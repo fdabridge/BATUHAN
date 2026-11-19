@@ -33,6 +33,7 @@ from auth.policy import CLIENT_EMAIL_VERIFICATION, policy_enabled
 from auth.otp import generate_otp
 from email_service import send_client_welcome, send_otp_code
 from storage.document_store import delete as store_delete, upload as store_upload
+from site_addresses import additional_sites
 
 router = APIRouter(prefix="/apply", tags=["application"])
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -275,6 +276,11 @@ def _submit_application(
             {"name": f"Site {i + 1}", "address": "", "employee_count": 0, "process": ""}
             for i in range(payload.additional_site_count)
         ]
+
+    # The principal facility is already stored in company_address.  Keep the
+    # sites collection strictly for genuine additional facilities, including
+    # when a client accidentally repeats the main address in the form.
+    sites = additional_sites(sites, payload.company_address)
 
     # Resolve effective full-time count (new fields take priority over legacy total_employees)
     ft = payload.full_time_employees or payload.total_employees

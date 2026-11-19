@@ -400,11 +400,14 @@ function Step2({
         )}
       </div>
 
-      {/* Sites */}
+      {/* Additional sites */}
       <div>
-        <p className={sectionHd}>Sites</p>
+        <p className={sectionHd}>Additional sites</p>
+        <p className="mb-3 text-xs text-gray-400">
+          The principal facility is already recorded under Company address. Add only other branches or facilities here.
+        </p>
         <div className="mb-3 flex gap-2">
-          {['Single site', 'Multiple sites'].map((opt, i) => (
+          {['No additional sites', 'Has additional sites'].map((opt, i) => (
             <button
               key={opt} type="button"
               onClick={() => onChange({ multiSite: i === 1 })}
@@ -692,7 +695,7 @@ function Step3({ s1, s2, error }: { s1: Step1Data; s2: Step2Data; error: string 
     ['Transfer',     s1.is_transfer ? 'Yes' : 'No'],
     ['Accreditation', s1.accreditation_body],
     ['Personnel',    `${s2.full_time} FT, ${s2.part_time} PT, ${s2.subcontractors} contractor, ${s2.seasonal} seasonal`],
-    ['Sites',        `${s2.multiSite ? s2.sites.length : 1} site(s)`],
+    ['Additional sites', s2.multiSite ? `${s2.sites.length}` : 'None'],
   ]
   return (
     <div className="space-y-4">

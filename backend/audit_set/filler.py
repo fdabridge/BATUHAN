@@ -30,7 +30,7 @@ from auditors.qualification_scope import (
     normalize_scope_code,
     normalize_scope_type,
 )
-from site_addresses import is_primary_address
+from site_addresses import additional_sites
 
 # --------------------------------------------------------------------------- #
 # Constants
@@ -285,11 +285,7 @@ def build_base_context(audit_set, stage, org_attendees: list | None = None) -> d
     # The document-facing `sites` collection means additional sites only.
     # Legacy cases sometimes stored the principal facility as sites[0]; filter
     # it because the main address already has dedicated fields in every form.
-    sites_raw = [
-        site
-        for site in configured_sites
-        if not is_primary_address(site.get("address"), audit_set.company_address)
-    ]
+    sites_raw = additional_sites(configured_sites, audit_set.company_address)
     sites = [_normalize_site(s) for s in sites_raw]
     calculation_sites = [_normalize_site(s) for s in configured_sites]
     integration_level = audit_set.integration_level or {}

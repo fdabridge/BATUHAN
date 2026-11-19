@@ -23,6 +23,7 @@ from audit_set.schemas import (
     AuditSetUpdatePlanningSchema,
     QuickCalcSchema,
 )
+from site_addresses import additional_sites
 
 logger = logging.getLogger(__name__)
 
@@ -1073,7 +1074,10 @@ def create_audit_set(db: Session, data: AuditSetCreateSchema) -> AuditSet:
         scope_en=data.scope_en,
         non_applicable_clauses=data.non_applicable_clauses,
         personnel=data.personnel.model_dump(),
-        sites=[s.model_dump() for s in data.sites],
+        sites=additional_sites(
+            [s.model_dump() for s in data.sites],
+            data.company_address,
+        ),
         integration_level=data.integration_level.model_dump(),
         certification_fee=data.certification_fee,
         surveillance_fee=data.surveillance_fee,
@@ -1303,6 +1307,12 @@ def update_planning(
             **data.application_data.model_dump(),
         }
         flag_modified(audit_set, "application_data")
+    if data.sites is not None:
+        audit_set.sites = additional_sites(
+            [site.model_dump() for site in data.sites],
+            audit_set.company_address,
+        )
+        flag_modified(audit_set, "sites")
     if data.transfer_reviewer_id is not None or data.transfer_reviewer_name is not None:
         _validate_transfer_reviewer_choice(audit_set, data.transfer_reviewer_id)
         audit_set.transfer_reviewer_id = data.transfer_reviewer_id or None

@@ -23,7 +23,7 @@ from docx import Document
 from docx.oxml.ns import qn
 
 from .schedule_generator import DaySchedule, Slot
-from site_addresses import is_primary_address
+from site_addresses import additional_sites
 
 if TYPE_CHECKING:
     from .template_reader import AuditPlanContext
@@ -170,8 +170,7 @@ def _fill_sites(doc: Document, ctx: "AuditPlanContext") -> None:
 
     records = [
         (site.address, site.process, site.employees)
-        for site in ctx.sites
-        if not is_primary_address(site.address, ctx.address)
+        for site in additional_sites(ctx.sites, ctx.address)
     ]
 
     # Clear old/pre-filled values first, then write genuine additional sites.

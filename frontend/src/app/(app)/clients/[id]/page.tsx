@@ -621,8 +621,7 @@ function PlanOverview({
         <LabeledField label="Personnel">{personnelStr}</LabeledField>
 
         {/* Portal 78 — Additional sites */}
-        {((data.sites && data.sites.length > 0) || sitesEditing) && (
-          <div className="col-span-3">
+        <div className="col-span-3">
             <div className="flex items-center justify-between mb-2">
               <p className="font-medium uppercase tracking-wide text-gray-400" style={{ fontSize: 11 }}>
                 Additional sites ({sitesDraft.length})
@@ -667,8 +666,8 @@ function PlanOverview({
                   </div>
                 ))}
                 {sitesDraft.length === 0 && (
-                  <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-                    Sites were declared but details are missing — edit to add site names, addresses and headcounts so audit duration can be calculated correctly.
+                  <p className="rounded border border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-500">
+                    No additional sites. The principal facility is shown only under the company address.
                   </p>
                 )}
               </div>
@@ -732,8 +731,7 @@ function PlanOverview({
                 >+ Add site</button>
               </div>
             )}
-          </div>
-        )}
+        </div>
 
         {rs && Object.keys(rs).length > 0 && (
           <div className="col-span-3">
