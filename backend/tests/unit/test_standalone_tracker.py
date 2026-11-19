@@ -138,6 +138,68 @@ def test_registry_checks_reject_stale_batch_and_other_fields(setup):
     checks[1]['revision']=1
     checks[0]['payment']='Paid'
     assert client.post('/standalone-tracker/registry-checks',json={'checks':checks}).status_code == 422
+
     checks[0].pop('payment')
     checks[0]['iaf']['url']='https://unrelated.test/certificate'
     assert client.post('/standalone-tracker/registry-checks',json={'checks':checks}).status_code == 422
+
+
+def test_delete_client_across_stages_is_recoverable_and_keeps_finances(setup):
+    client, _, engine, _ = setup
+    data = snapshot()
+    data['records'] += [dict(cert('planning'), stage='Audit Planning', consultant='Another'),
+                        dict(cert('other-country'), country='France'),
+                        dict(cert('similar-name'), company='Example Ltd'),
+                        dict(cert('already-archived'), archived=True)]
+    data['other'] = [dict(id='other', kind='other', company='Example', fee=20)]
+    client.post('/standalone-tracker/import', json=data)
+    before = client.get('/standalone-tracker').json()
+    targets = [r for r in before['records'] if r['id'] in {'c1', 'planning'}]
+    response = client.post('/standalone-tracker/delete-client', json={
+        'company': 'Example', 'country': 'Germany',
+        'records': [{'id': r['id'], 'revision': r['revision']} for r in targets]})
+    assert response.status_code == 200, response.text
+    assert response.json()['deleted'] == 2
+    after = client.get('/standalone-tracker').json()
+    rows = {r['id']: r for r in after['records']}
+    assert rows['c1']['archived'] and rows['planning']['archived']
+    assert not rows['other-country'].get('archived') and not rows['similar-name'].get('archived')
+    assert after['invoices'] == before['invoices'] and after['other'] == before['other']
+    assert set(inspect(engine).get_table_names()) == {'standalone_tracker_records', 'standalone_tracker_history', 'standalone_tracker_metadata'}
+    for original in targets:
+        saved = rows[original['id']]
+        for key in ('annual', 'expiry', 'invoiceRef', 'payment', 'fee', 'certificate'):
+            assert saved[key] == original[key]
+        restored = client.post('/standalone-tracker', json=dict(saved, archived=False))
+        assert restored.status_code == 200 and not restored.json()['record']['archived']
+    history = client.get('/standalone-tracker?history=true').json()['history']
+    assert sum(h['action'] == 'Client deleted (recoverable)' for h in history) == 2
+
+
+@pytest.mark.parametrize('problem', ['stale', 'missing', 'duplicate', 'invoice', 'wrong-country'])
+def test_delete_client_rejects_incomplete_or_stale_selection_atomically(setup, problem):
+    client, _, _, _ = setup
+    data = snapshot()
+    data['records'].append(cert('c2'))
+    client.post('/standalone-tracker/import', json=data)
+    items = [{'id': 'c1', 'revision': 1}, {'id': 'c2', 'revision': 1}]
+    if problem == 'stale': items[1]['revision'] = 2
+    if problem == 'missing': items.pop()
+    if problem == 'duplicate': items.append(dict(items[0]))
+    if problem == 'invoice': items.append({'id': 'i1', 'revision': 1})
+    response = client.post('/standalone-tracker/delete-client', json={
+        'company': 'Example', 'country': 'France' if problem == 'wrong-country' else 'Germany', 'records': items})
+    assert response.status_code in (409, 422)
+    assert all(not r.get('archived') for r in client.get('/standalone-tracker').json()['records'])
+
+
+def test_delete_client_requires_tracker_access(setup, monkeypatch):
+    client, app, _, _ = setup
+    client.post('/standalone-tracker', json=cert())
+    payload = {'company': 'Example', 'country': 'Germany', 'records': [{'id': 'c1', 'revision': 1}]}
+    app.dependency_overrides.pop(get_current_user)
+    assert client.post('/standalone-tracker/delete-client', json=payload).status_code == 401
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(role='planner', email='editor@example.test')
+    assert client.post('/standalone-tracker/delete-client', json=payload).status_code == 403
+    monkeypatch.setenv('IFC_TRACKER_EDITOR_EMAILS', 'editor@example.test')
+    assert client.post('/standalone-tracker/delete-client', json=payload).status_code == 200

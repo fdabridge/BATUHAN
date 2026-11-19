@@ -167,6 +167,47 @@ async def save_record(request: Request, user=Depends(staff), db: Session = Depen
     return {"record": r}
 
 
+@router.post("/delete-client")
+async def delete_client(request: Request, user=Depends(staff), db: Session = Depends(get_db)):
+    """Recoverable deletion of one client's certificates in this register only."""
+    data = await limited_json(request, 250000)
+    if not isinstance(data, dict) or set(data) != {"company", "country", "records"}:
+        raise HTTPException(422, "Choose a tracker client and its records")
+    company, country, expected = data["company"], data["country"], data["records"]
+    if not isinstance(company, str) or not company.strip() or not isinstance(country, str) or not isinstance(expected, list) or not expected:
+        raise HTTPException(422, "Choose a tracker client and its records")
+    revisions = {}
+    for item in expected:
+        if not isinstance(item, dict) or set(item) != {"id", "revision"} or not isinstance(item["id"], str) or type(item["revision"]) is not int or item["revision"] < 1 or item["id"] in revisions:
+            raise HTTPException(422, "Each record needs a unique ID and saved revision")
+        revisions[item["id"]] = item["revision"]
+    # Exact identity avoids merging similarly named companies or countries.
+    # Include every stage and consultant, regardless of the UI's current filters.
+    selected = []
+    for row in db.query(TrackerRecord).filter_by(kind="certificate").all():
+        record = json.loads(row.payload)
+        if not record.get("archived") and record.get("company") == company and (record.get("country") or "") == country:
+            selected.append((row, record))
+    if {row.id: row.revision for row, _ in selected} != revisions:
+        raise HTTPException(409, "This client's records changed. Refresh and review them before deleting.")
+    saved = []
+    try:
+        for row, record in selected:
+            before = row.payload
+            revision = row.revision
+            record.update(archived=True, revision=revision + 1, updatedAt=now(), updatedBy=user.email)
+            changed = db.execute(update(TrackerRecord).where(TrackerRecord.id == row.id, TrackerRecord.revision == revision).values(payload=encode(record), revision=revision + 1)).rowcount
+            if changed != 1:
+                raise HTTPException(409, "A record changed. Refresh and review before deleting.")
+            db.add(TrackerHistory(record_id=row.id, actor=user.email, saved_at=record["updatedAt"], action="Client deleted (recoverable)", before_payload=before, after_payload=encode(record)))
+            saved.append(record)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return {"records": saved, "deleted": len(saved)}
+
+
 @router.post("/import")
 async def import_snapshot(request: Request, user=Depends(require_admin), db: Session = Depends(get_db)):
     data = await limited_json(request, 20_000_000)

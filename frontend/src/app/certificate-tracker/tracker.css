@@ -26,3 +26,17 @@
 
 @font-face{font-family:"IFC Plex";src:url("/ifc-brand/sans.ttf") format("truetype");font-weight:100 900;font-display:swap}
 .ifc-tracker-root{font-family:"IFC Plex",Arial,sans-serif}.ifc-tracker-root .brand{flex-direction:column;align-items:flex-start;gap:10px;padding:0 12px 28px}.ifc-tracker-root .brand img{width:126px;height:auto;object-fit:contain}.ifc-tracker-root .brand small{color:#797979;font-size:12px;letter-spacing:.2px}.ifc-tracker-root h1{color:#012F53}.ifc-tracker-root .eyebrow{color:#012F53}.ifc-tracker-root header{border-bottom:2px solid #012F53;padding-bottom:22px;position:relative;flex-wrap:wrap}.ifc-tracker-root header:after{content:"";position:absolute;bottom:-2px;left:0;width:32px;height:2px;background:#00A7A0}.ifc-tracker-root .actions{flex-wrap:wrap;align-items:center}.ifc-tracker-root select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,#012F53 50%),linear-gradient(135deg,#012F53 50%,transparent 50%)!important;background-position:calc(100% - 15px) 50%,calc(100% - 11px) 50%!important;background-size:4px 4px!important;background-repeat:no-repeat!important;padding-right:30px!important}.ifc-tracker-root .nav.active{border-left:3px solid #00A7A0}.ifc-tracker-root .nav{border-left:3px solid transparent}.ifc-tracker-root .private span{overflow-wrap:anywhere}
+.ifc-tracker-root .delete-client {
+  display: block;
+  margin-top: 10px;
+  padding: 4px 0;
+  color: #a83232;
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.ifc-tracker-root .delete-client:disabled { opacity: .5; cursor: not-allowed; }
+.ifc-tracker-root .delete-client:focus-visible { outline: 2px solid #a83232; outline-offset: 3px; }
