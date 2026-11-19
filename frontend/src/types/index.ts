@@ -79,6 +79,25 @@ export interface StandardAuditResult {
   base_recert_ph2: number
   site_addition: number
   haccp_addition?: number | null   // FSMS only — mandatory add-ons (off-site storage, separate HQ)
+  fsms_basic_duration?: number | null
+  fsms_fte_addition?: number | null
+  fsms_category_codes?: string[]
+}
+
+export interface CalculationTraceStep {
+  step: string
+  basis: string
+  input_days: number
+  adjustment_days: number
+  result_days: number
+}
+
+export interface SiteCalculationResult {
+  name: string
+  address: string
+  employee_count: number
+  standard_days: Record<string, number>
+  total_days: number
 }
 
 /** Full IAF MD 5 calculation result (mirrors backend CalculationResult) */
@@ -88,6 +107,8 @@ export interface ManDayResult {
   audit_type: string
   scope: string
   standard_results: StandardAuditResult[]
+  calculation_trace?: CalculationTraceStep[]
+  site_breakdown?: SiteCalculationResult[]
   combined_base: number
   integration_reduction: number
   reporting_reduction: number
@@ -413,7 +434,7 @@ export interface AuditPlanInput {
 
 // ── Admin user management ─────────────────────────────────────────────────────
 
-export type UserRole = 'admin' | 'planner' | 'planner_us' | 'auditor' | 'officer' | 'executive' | 'gm' | 'certification_manager' | 'client' | 'crm' | 'consultant' | 'training_officer'
+export type UserRole = 'admin' | 'planner' | 'planner_us' | 'auditor' | 'officer' | 'executive' | 'gm' | 'certification_manager' | 'client' | 'crm' | 'consultant' | 'training_officer' | 'sales_manager'
 
 export interface AdminUser {
   id:           string

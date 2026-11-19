@@ -45,6 +45,7 @@ from audit_set.consultant_router import router as consultant_router
 from trainings.router import router as trainings_router
 from vera.router import router as vera_router
 from standalone_tracker.router import router as standalone_tracker_router
+from sales_quotes.router import router as sales_quotation_router
 try:
     from audit_set.crm_router import router as crm_router
     _crm_router_ok = True
@@ -134,6 +135,7 @@ app.include_router(trainings_router)
 # Vera — authenticated, read-only, role-aware workflow assistant.
 app.include_router(vera_router)
 app.include_router(standalone_tracker_router)
+app.include_router(sales_quotation_router)
 
 
 # --- Startup: create DB tables + first-admin bootstrap ---
@@ -151,6 +153,8 @@ def on_startup():
     auth_create_tables()
     from trainings.models import create_tables as trainings_create_tables
     trainings_create_tables()
+    from sales_quotes.models import create_tables as sales_quotation_create_tables
+    sales_quotation_create_tables()
 
     # First-admin bootstrap — only runs if both env vars are set
     startup_settings = get_settings()

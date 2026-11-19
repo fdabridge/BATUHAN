@@ -17,7 +17,13 @@ Execution order (per spec Part 4):
 from __future__ import annotations
 import math
 import logging
-from .models import ExtractedFormData, StandardAuditResult, CalculationResult
+from .models import (
+    CalculationResult,
+    CalculationTraceStep,
+    ExtractedFormData,
+    SiteCalculationResult,
+    StandardAuditResult,
+)
 from .tables import (
     ISO9001_TABLES, ISO14001_TABLES, ISO45001_TABLES,
     ISO13485, ISO27001, ISO50001_A3, ISO50001_A4,
@@ -357,6 +363,16 @@ def calculate(data: ExtractedFormData) -> CalculationResult:
 
     # --- Step 1-2: Per-standard base time lookup ---
     standard_results: list[StandardAuditResult] = []
+    site_rows: list[dict] = [
+        {
+            "name": site.name,
+            "address": site.address,
+            "employee_count": site.employee_count,
+            "standard_days": {},
+            "total_days": 0.0,
+        }
+        for site in data.sites
+    ]
     enms_k: float | None = None
     enms_complexity: str | None = None
     enms_extra: dict = {}
@@ -365,11 +381,17 @@ def calculate(data: ExtractedFormData) -> CalculationResult:
         result = _lookup_standard(data, std)
         # --- Step 3: Site additions ---
         site_add = 0.0
-        for site in data.sites:
+        for site_index, site in enumerate(data.sites):
             if site.employee_count > 0:
                 try:
                     site_res = _lookup_for_eps(float(site.employee_count), std, data)
-                    site_add += site_res.base_init / 2
+                    standard_site_days = round(site_res.base_init / 2, 2)
+                    site_add += standard_site_days
+                    site_rows[site_index]["standard_days"][std] = standard_site_days
+                    site_rows[site_index]["total_days"] = round(
+                        site_rows[site_index]["total_days"] + standard_site_days,
+                        2,
+                    )
                 except Exception as e:
                     logger.warning(f"Site addition failed for {std}: {e}")
         result = result.model_copy(update={"site_addition": site_add})
@@ -417,6 +439,41 @@ def calculate(data: ExtractedFormData) -> CalculationResult:
     # --- Step 7: Final total ---
     raw_total = after_integration - reporting_reduction
     final_total = _round_audit(raw_total)
+    calculation_trace = [
+        CalculationTraceStep(
+            step="Individual standards and additional sites",
+            basis="Each selected standard is calculated separately before combination.",
+            input_days=round(combined_base, 2),
+            result_days=round(combined_base, 2),
+        ),
+        CalculationTraceStep(
+            step="Integrated audit adjustment",
+            basis=(
+                f"IAF MD 11 · {data.scope_integration_level or 'Medium'} integration level"
+                if multi_standard else "Single-standard audit · no integration adjustment"
+            ),
+            input_days=round(combined_base, 2),
+            adjustment_days=-integration_reduction,
+            result_days=round(after_integration, 2),
+        ),
+        CalculationTraceStep(
+            step="Preparation and reporting treatment",
+            basis=(
+                "ISO 22003-1 minimum retained; no reporting deduction applied"
+                if has_fsms else "Legacy UAF planning rule · 20% off-site preparation/reporting treatment"
+            ),
+            input_days=round(after_integration, 2),
+            adjustment_days=-reporting_reduction,
+            result_days=round(raw_total, 2),
+        ),
+        CalculationTraceStep(
+            step="Controlled rounding",
+            basis="IAF half-day rounding rule",
+            input_days=round(raw_total, 2),
+            adjustment_days=round(final_total - raw_total, 2),
+            result_days=final_total,
+        ),
+    ]
 
     # --- Step 8: Phase split — weighted average of per-standard pre-split values ---
     # Weight each standard's Ph1/Ph2 by its share of combined_base
@@ -469,6 +526,8 @@ def calculate(data: ExtractedFormData) -> CalculationResult:
         audit_type=data.audit_type,
         scope=data.scope,
         standard_results=standard_results,
+        calculation_trace=calculation_trace,
+        site_breakdown=[SiteCalculationResult(**row) for row in site_rows],
         combined_base=round(combined_base, 2),
         integration_reduction=integration_reduction,
         reporting_reduction=reporting_reduction,

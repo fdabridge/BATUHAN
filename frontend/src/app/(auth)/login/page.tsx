@@ -26,6 +26,7 @@ function roleHome(role: string | undefined): string {
   if (role === 'consultant') return '/consultant/clients'
   if (role === 'crm')        return '/crm'
   if (role === 'training_officer') return '/training/dashboard'
+  if (role === 'sales_manager') return '/sales'
   return '/dashboard'
 }
 

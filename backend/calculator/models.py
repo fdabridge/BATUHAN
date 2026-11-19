@@ -108,6 +108,24 @@ class StandardAuditResult(BaseModel):
     isms_it_score: Optional[int] = None
 
 
+class CalculationTraceStep(BaseModel):
+    """One auditable step in the deterministic duration calculation."""
+    step: str
+    basis: str
+    input_days: float
+    adjustment_days: float = 0.0
+    result_days: float
+
+
+class SiteCalculationResult(BaseModel):
+    """Time attributable to one additional site, separated by standard."""
+    name: str = ""
+    address: str = ""
+    employee_count: int = 0
+    standard_days: dict[str, float] = Field(default_factory=dict)
+    total_days: float = 0.0
+
+
 # ---------------------------------------------------------------------------
 # Final combined calculation result
 # ---------------------------------------------------------------------------
@@ -121,6 +139,8 @@ class CalculationResult(BaseModel):
 
     # Per-standard breakdown
     standard_results: list[StandardAuditResult]
+    calculation_trace: list[CalculationTraceStep] = Field(default_factory=list)
+    site_breakdown: list[SiteCalculationResult] = Field(default_factory=list)
 
     # Aggregation
     combined_base: float        # Sum of all standards' base times (incl. sites)

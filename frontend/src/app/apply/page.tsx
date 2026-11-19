@@ -1,7 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import axios from 'axios'
+import api from '@/lib/api'
 import { CertivaAdSlot } from '@/components/ads/CertivaAdSlot'
 import {
   mergeCompanyDocumentSelection,
@@ -128,6 +130,11 @@ function SectionPanel({ title, icon, children }: { title: string; icon: string; 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function ApplyPage() {
+  const router = useRouter()
+  const [salesMode, setSalesMode] = useState(false)
+  useEffect(() => {
+    setSalesMode(new URLSearchParams(window.location.search).get('mode') === 'sales')
+  }, [])
   const [form, setForm] = useState<FormState>(INITIAL)
   const [companyDocuments, setCompanyDocuments] = useState<File[]>([])
   const [loading, setLoading] = useState(false)
@@ -227,6 +234,11 @@ export default function ApplyPage() {
         }),
         // Consultant referral
         consultant_code: consultantCode || undefined,
+      }
+      if (salesMode) {
+        const res = await api.post('/sales-quotations', applicationPayload)
+        router.push(`/sales/${res.data.id}`)
+        return
       }
       const res = companyDocuments.length > 0
         ? await (() => {
@@ -388,15 +400,15 @@ export default function ApplyPage() {
         <div className="mb-7 grid gap-6 text-white lg:grid-cols-[minmax(0,1fr)_360px] lg:items-end">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/60">
-              IFC Global LLC Certification Application
+              {salesMode ? 'Private Sales Quotation Workspace' : 'IFC Global LLC Certification Application'}
             </p>
             <h1 className="mt-4 max-w-3xl text-4xl font-semibold leading-tight md:text-6xl">
-              You have made the right choice.
+              {salesMode ? 'Create a calculation-only sales case.' : 'You have made the right choice.'}
             </h1>
             <p className="mt-4 max-w-2xl text-base leading-7 text-white/74">
-              Begin certification with a system that carries the file forward: scope, planning,
-              audit duration, documents, signatures, reports, committee decision, certificate lifecycle,
-              CRM follow-up, and training visibility.
+              {salesMode
+                ? 'This private draft calculates audit duration and prepares commercial documents. It does not create a client, notify a planner, send email, or start certification.'
+                : 'Begin certification with a system that carries the file forward: scope, planning, audit duration, documents, signatures, reports, committee decision, certificate lifecycle, CRM follow-up, and training visibility.'}
             </p>
           </div>
           <div className="rounded-2xl border border-white/20 bg-white/10 p-2 shadow-2xl shadow-black/20 backdrop-blur-md">
@@ -407,10 +419,12 @@ export default function ApplyPage() {
         <form onSubmit={handleSubmit} className="mx-auto max-w-4xl overflow-hidden rounded-[2rem] border border-white/75 bg-white/95 shadow-2xl shadow-emerald-950/20 backdrop-blur">
           <div className="border-b border-slate-100 px-5 py-5 md:px-7">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-              Application intake
+              {salesMode ? 'Sales calculation intake' : 'Application intake'}
             </p>
             <p className="mt-1 text-sm text-slate-500">
-              Complete the essentials below. The platform will use this information to prepare the certification workflow.
+              {salesMode
+                ? 'Use the same fact pattern as the client application. The record remains visible only in your Sales Quotation Workspace.'
+                : 'Complete the essentials below. The platform will use this information to prepare the certification workflow.'}
             </p>
           </div>
 
@@ -802,7 +816,7 @@ export default function ApplyPage() {
           </div>
 
           {/* ── Company Documents ──────────────────────────────────────── */}
-          <div className={`${formSectionCls} space-y-4`}>
+          {!salesMode && <div className={`${formSectionCls} space-y-4`}>
             <div>
               <h2 className={sectionHdCls}>Company Documents</h2>
               <p className="-mt-2 text-xs leading-5 text-gray-500">
@@ -886,7 +900,7 @@ export default function ApplyPage() {
                 ))}
               </div>
             )}
-          </div>
+          </div>}
 
           {/* ── Error + Submit ──────────────────────────────────────── */}
           <div className="px-5 py-6 md:px-7 space-y-4">
@@ -899,12 +913,12 @@ export default function ApplyPage() {
               type="submit" disabled={loading}
               className="w-full bg-[#1A4731] text-white py-3 rounded-lg font-medium hover:bg-[#143828] transition-colors disabled:opacity-60"
             >
-              {loading ? 'Submitting…' : 'Submit Application'}
+              {loading ? (salesMode ? 'Creating private draft…' : 'Submitting…') : (salesMode ? 'Create private sales case' : 'Submit Application')}
             </button>
-            <p className="text-xs text-center text-gray-400">
+            {!salesMode && <p className="text-xs text-center text-gray-400">
               Already have an account?{' '}
               <a href="/login" className="text-[#1A4731] underline">Sign in here</a>
-            </p>
+            </p>}
           </div>
 
         </form>

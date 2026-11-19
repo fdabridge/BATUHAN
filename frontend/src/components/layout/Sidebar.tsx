@@ -101,6 +101,10 @@ const CONSULTANT_NAV: NavItemProps[] = [
   { icon: Briefcase, label: 'My Clients', href: '/consultant/clients', active: false },
 ]
 
+const SALES_NAV: NavItemProps[] = [
+  { icon: Briefcase, label: 'Sales Quotation Workspace', href: '/sales', active: false },
+]
+
 const NAV_BOTTOM: NavItemProps[] = [
   { icon: UserCog,  label: 'Users',        href: '/admin/users',        active: false },
   { icon: PenLine,  label: 'My Signature', href: '/settings/signature', active: false },
@@ -165,6 +169,10 @@ export function Sidebar() {
         ))
       ) : user?.role === 'consultant' ? (
         CONSULTANT_NAV.map((item) => (
+          <NavItem key={item.href} {...item} active={isActive(item.href)} />
+        ))
+      ) : user?.role === 'sales_manager' ? (
+        SALES_NAV.map((item) => (
           <NavItem key={item.href} {...item} active={isActive(item.href)} />
         ))
       ) : (

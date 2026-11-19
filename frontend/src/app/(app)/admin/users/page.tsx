@@ -26,6 +26,7 @@ const ROLES: { value: UserRole; label: string }[] = [
   { value: 'crm',                   label: 'CRM / Finance' },
   { value: 'consultant',            label: 'Consultant' },
   { value: 'training_officer',      label: 'Training Officer' },
+  { value: 'sales_manager',         label: 'Sales Manager' },
 ]
 
 const ROLE_PILL: Record<UserRole, string> = {
@@ -41,6 +42,7 @@ const ROLE_PILL: Record<UserRole, string> = {
   crm:                   'bg-teal-50 text-teal-700',
   consultant:            'bg-orange-50 text-orange-700',
   training_officer:      'bg-indigo-50 text-indigo-700',
+  sales_manager:         'bg-cyan-50 text-cyan-700',
 }
 
 const inputCls = 'w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 placeholder-gray-400 outline-none focus:border-certiva-primary focus:ring-2 focus:ring-certiva-primary/20'

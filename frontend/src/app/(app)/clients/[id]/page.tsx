@@ -2443,7 +2443,9 @@ function ManDaySection({ result }: { result: ManDayResult | null }) {
                       <tr className="text-left text-xs font-medium uppercase tracking-wide text-gray-400">
                         <th className="pb-2 pr-4">Standard</th>
                         <th className="pb-2 pr-4">Category</th>
+                        <th className="pb-2 pr-4">EPS</th>
                         <th className="pb-2 pr-4">Base (init)</th>
+                        <th className="pb-2 pr-4">Additional sites</th>
                         <th className="pb-2 pr-4">Base (surv)</th>
                         <th className="pb-2">Base (recert)</th>
                       </tr>
@@ -2453,13 +2455,44 @@ function ManDaySection({ result }: { result: ManDayResult | null }) {
                         <tr key={r.standard}>
                           <td className="py-2 pr-4 font-medium">{r.standard}</td>
                           <td className="py-2 pr-4 text-gray-500">{r.category}</td>
+                          <td className="py-2 pr-4 text-gray-600">{r.eps}</td>
                           <td className="py-2 pr-4 text-gray-600">{r.base_init}</td>
+                          <td className="py-2 pr-4 text-gray-600">{r.site_addition || 0}</td>
                           <td className="py-2 pr-4 text-gray-600">{r.base_surv}</td>
                           <td className="py-2 text-gray-600">{r.base_recert}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+
+              {result.site_breakdown && result.site_breakdown.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">Additional-site calculation</p>
+                  <div className="space-y-2">
+                    {result.site_breakdown.map((site, index) => (
+                      <div key={`${site.address}-${index}`} className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-gray-50 px-3 py-2 text-xs">
+                        <span><strong>{site.name || `Site ${index + 1}`}</strong> · {site.address || 'Address not recorded'} · {site.employee_count} employees</span>
+                        <span>{Object.entries(site.standard_days).map(([standard, days]) => `${standard}: ${days} d`).join(' · ')} · <strong>Total {site.total_days} d</strong></span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {result.calculation_trace && result.calculation_trace.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">Auditable calculation path</p>
+                  <div className="grid gap-2 md:grid-cols-2">
+                    {result.calculation_trace.map((step, index) => (
+                      <div key={`${step.step}-${index}`} className="rounded-md border border-gray-100 p-3 text-xs">
+                        <div className="flex items-start justify-between gap-3"><strong className="text-gray-700">{index + 1}. {step.step}</strong><span className="whitespace-nowrap font-semibold text-certiva-primary">{step.result_days} days</span></div>
+                        <p className="mt-1 text-gray-500">{step.basis}</p>
+                        <p className="mt-1 text-gray-400">Input {step.input_days} · adjustment {step.adjustment_days > 0 ? '+' : ''}{step.adjustment_days}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
