@@ -775,8 +775,20 @@ def build_team_members(stage, auditor_lookup: dict, standards_codes: list) -> li
 # --------------------------------------------------------------------------- #
 def render_docx(template_path, context: dict) -> bytes:
     """Render one docxtpl template with `context`; return DOCX bytes."""
+    render_context = context
+    # The controlled FR.222 templates have a fixed first additional-site row
+    # and address it as ``sites[0]``.  A company with no additional sites must
+    # leave that row blank (the principal facility belongs only in the main
+    # address field), not fail the whole audit-package render.  Keep the
+    # canonical context unchanged and provide one empty, schema-compatible row
+    # only to the legacy template renderer.
+    if str(getattr(template_path, "name", template_path)).startswith("FR.222") and not context.get("sites"):
+        render_context = {
+            **context,
+            "sites": [_normalize_site({})],
+        }
     doc = DocxTemplate(str(template_path))
-    doc.render(context, autoescape=True)
+    doc.render(render_context, autoescape=True)
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()

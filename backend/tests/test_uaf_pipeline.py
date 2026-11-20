@@ -491,6 +491,20 @@ def test_document_context_does_not_create_a_site_from_the_main_address():
     assert ctx["additional_sites_summary"] == "None"
 
 
+def test_audit_package_renders_fr222_without_additional_sites():
+    """FR.222's fixed first site row stays blank instead of breaking the ZIP."""
+    audit_set = _audit_set()
+    audit_set.sites = []
+
+    entries = _zip_entries(build_audit_set_zip(audit_set, None))
+    error_file = next((name for name in entries if name.endswith("RENDER_ERRORS.txt")), None)
+
+    assert error_file is None, (
+        entries[error_file].decode("utf-8", "ignore") if error_file else ""
+    )
+    assert any("FR.222" in name for name in entries)
+
+
 # --------------------------------------------------------------------------- #
 # 7. Download route (skips when the DB stack is unavailable, e.g. local)
 # --------------------------------------------------------------------------- #
